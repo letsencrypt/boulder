@@ -62,12 +62,12 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	}
 	derStr := b64derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.Err(fmt.Sprintf("Didn't match regex for b64der: %s", line))
+		logger.AuditErr(fmt.Sprintf("Didn't match regex for b64der: %s", line))
 		return true, false
 	}
 	der, err := base64.StdEncoding.DecodeString(derStr[1])
 	if err != nil {
-		logger.Err(fmt.Sprintf("Couldn't decode b64: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Couldn't decode b64: %s, [%s]", err, line))
 		return true, false
 	}
 	err = checkDER(sa, der)
@@ -82,17 +82,17 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	// extract the regID
 	regStr := regOrphan.FindStringSubmatch(line)
 	if len(regStr) <= 1 {
-		logger.Err(fmt.Sprintf("regID variable is empty, [%s]", line))
+		logger.AuditErr(fmt.Sprintf("regID variable is empty, [%s]", line))
 		return true, false
 	}
 	regID, err := strconv.Atoi(regStr[1])
 	if err != nil {
-		logger.Err(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
 	_, err = sa.AddCertificate(ctx, der, int64(regID))
 	if err != nil {
-		logger.Err(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
 	}
 	return true, true

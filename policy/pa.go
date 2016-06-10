@@ -58,7 +58,7 @@ func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
 }
 
 func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
-	pa.log.Err(fmt.Sprintf("error loading hostname policy: %s", err))
+	pa.log.AuditErr(fmt.Sprintf("error loading hostname policy: %s", err))
 }
 
 func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {

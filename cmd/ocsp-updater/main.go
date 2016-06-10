@@ -174,13 +174,13 @@ func newUpdater(
 func (updater *OCSPUpdater) sendPurge(der []byte) {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to parse certificate for cache purge: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to parse certificate for cache purge: %s", err))
 		return
 	}
 
 	req, err := ocsp.CreateRequest(cert, updater.issuer, nil)
 	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to create OCSP request for cache purge: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to create OCSP request for cache purge: %s", err))
 		return
 	}
 
@@ -197,7 +197,7 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 	err = updater.ccu.Purge(urls)
 	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to purge OCSP response from CDN: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to purge OCSP response from CDN: %s", err))
 	}
 }
 
@@ -341,7 +341,7 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindMissingResponses", 1, 1.0)
-		updater.log.AuditErr(fmt.Errorf("Failed to find certificates with missing OCSP responses: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to find certificates with missing OCSP responses: %s", err))
 		return err
 	}
 
@@ -368,21 +368,21 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
-		updater.log.AuditErr(fmt.Errorf("Failed to find revoked certificates: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to find revoked certificates: %s", err))
 		return err
 	}
 
 	for _, status := range statuses {
 		meta, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to generate revoked OCSP response: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to generate revoked OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
 			return err
 		}
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
-			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
 			continue
 		}
 	}
@@ -393,14 +393,14 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	for _, status := range statuses {
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to generate OCSP response: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.ResponseGeneration", 1, 1.0)
 			return err
 		}
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
 		err = updater.storeResponse(meta)
 		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)
 			continue
 		}
@@ -416,7 +416,7 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	statuses, err := updater.findStaleOCSPResponses(now.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindStaleResponses", 1, 1.0)
-		updater.log.AuditErr(fmt.Errorf("Failed to find stale OCSP responses: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
 
@@ -471,14 +471,14 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 	since := now.Add(-updater.oldestIssuedSCT)
 	serials, err := updater.getSerialsIssuedSince(since, batchSize)
 	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to get certificate serials: %s", err))
+		updater.log.AuditErr(fmt.Sprintf("Failed to get certificate serials: %s", err))
 		return err
 	}
 
 	for _, serial := range serials {
 		count, err := updater.getNumberOfReceipts(serial)
 		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to get number of SCT receipts for certificate: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to get number of SCT receipts for certificate: %s", err))
 			continue
 		}
 		if count >= updater.numLogs {
@@ -486,7 +486,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		}
 		cert, err := updater.sac.GetCertificate(ctx, serial)
 		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
+			updater.log.AuditErr(fmt.Sprintf("Failed to get certificate: %s", err))
 			continue
 		}
 		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
@@ -607,7 +607,7 @@ func main() {
 			go func(loop *looper) {
 				err = loop.loop()
 				if err != nil {
-					auditlogger.AuditErr(err)
+					auditlogger.AuditErr(err.Error())
 				}
 			}(l)
 		}

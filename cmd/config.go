@@ -56,9 +56,6 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
-		// UseNewVARPC determines whether to call VA.PerformValidation
-		UseNewVARPC bool
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
