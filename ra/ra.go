@@ -818,7 +818,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		err = core.InternalServerError("Could not compute expected key authorization value")
 		return
 	}
-
 	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
 		err = core.MalformedRequestError("Response does not complete challenge")
 		return
