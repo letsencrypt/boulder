@@ -387,7 +387,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 
 			// The existing authorization must not expire within the next 24 hours for
 			// it to be OK for reuse
-			reuseCutOff := ra.clk.Now().AddDate(0, 1, 0)
+			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
 			if populatedAuthz.Expires.After(reuseCutOff) {
 				ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
 				return populatedAuthz, nil
