@@ -521,6 +521,38 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 	test.AssertEquals(t, secondAuthZ.Status, core.StatusPending)
 }
 
+func TestReuseExpiringAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Create one finalized authorization that expires in 12 hours from now
+	expiringAuth := AuthzInitial
+	expiringAuth.Status = "valid"
+	exp := ra.clk.Now().Add(12 * time.Hour)
+	expiringAuth.Expires = &exp
+	expiringAuth.Challenges[0].Status = "valid"
+	expiringAuth.RegistrationID = Registration.ID
+	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, expiringAuth)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+
+	// The second authz should not have the same ID as the previous AuthZ,
+	// because the existing valid authorization expires within 1 day from now
+	test.AssertNotEquals(t, expiringAuth.ID, secondAuthZ.ID)
+
+	// The second authz shouldn't be valid, but pending since it is a brand new
+	// authz, not a reused one
+	test.AssertEquals(t, secondAuthZ.Status, core.StatusPending)
+}
+
 func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
