@@ -473,7 +473,12 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 			prob = bdns.ProblemDetailsFromDNSError(err)
 		} else {
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-			va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
+			va.log.AuditInfo(fmt.Sprintf(
+				"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+				identifier.Value,
+				present,
+				valid,
+			))
 			if !valid {
 				prob = probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 			}
@@ -493,6 +498,9 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		if prob.Type == probs.ServerInternalProblem {
 			prob.Detail = "Internal communication failure"
 		} else {
+			// bgrpc.CodeToProblem can return non-gRPC errors passed back by
+			// the CAA service (i.e. not ServerInternalProblem). If we get one of these errors strip out the gRPC
+			// metadata from the error before returning it to the user.
 			prob.Detail = grpc.ErrorDesc(err)
 		}
 		return prob
@@ -719,6 +727,16 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return parseResults(results)
 }
 
+func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
+	hostname := strings.ToLower(identifier.Value)
+	caaSet, err := va.getCAASet(ctx, hostname)
+	if err != nil {
+		return false, false, err
+	}
+	present, valid = va.validateCAASet(caaSet)
+	return present, valid, nil
+}
+
 func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
@@ -765,16 +783,6 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
 	return true, false
-}
-
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	hostname := strings.ToLower(identifier.Value)
-	caaSet, err := va.getCAASet(ctx, hostname)
-	if err != nil {
-		return false, false, err
-	}
-	present, valid = va.validateCAASet(caaSet)
-	return present, valid, nil
 }
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,

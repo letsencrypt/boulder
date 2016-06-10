@@ -52,7 +52,7 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
-	case UnauthorizedProblem, CAAProblem:
+	case UnauthorizedProblem:
 		return http.StatusForbidden
 	case RateLimitedProblem:
 		return statusTooManyRequests
@@ -188,14 +188,5 @@ func TLSError(detail string) *ProblemDetails {
 		Type:       TLSProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// CAAError returns a ProblemDetails representing a CAAProblem error
-func CAAError(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       CAAProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusForbidden,
 	}
 }
