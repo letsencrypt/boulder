@@ -380,13 +380,7 @@ func (ch Challenge) IsSaneForValidation() bool {
 func (ch Challenge) IsSane(completed bool) bool {
 
 	// Check that the current status of the challenge is sane.
-	//
-	// We allow for StatusValid in addition to StatusPending to enable an
-	// optimization whereby when Boulder is asked to create a new AuthZ for which
-	// there is already a valid one, it can return the valid one. This means
-	// clients may turn around and naively update already complete challenges, and
-	// we wish to consider that sane for backwards compatibility wins.
-	if ch.Status != StatusPending && ch.Status != StatusValid {
+	if ch.Status != StatusPending {
 		return false
 	}
 

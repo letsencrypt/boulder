@@ -382,7 +382,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			}
 
 			ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
-			ra.log.Info(fmt.Sprintf("\n!!! populatedAuthz: %#v\n", populatedAuthz))
 			return populatedAuthz, nil
 		}
 	}
@@ -820,18 +819,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 
-	// Double check before sending to VA
-	if !ch.IsSaneForValidation() {
-		err = core.MalformedRequestError("Response does not complete challenge")
+	// When configured with `reuseValidAuthz` we can expect some clients to try
+	// and update a challenge for an authorization that is already valid. In this
+	// case we don't need to process the challenge update, it wouldn't be helpful,
+	// the overall authorization is already good! We increment a stat for this
+	// case and return early.
+	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
 		return
 	}
 
-	// If the challenge is sane, and already valid then return - there is no work
-	// required by the VA or SA in this case. Only honoured when reuseValidAuthz
-	// is enabled.
-	if ra.reuseValidAuthz && ch.Status == core.StatusValid {
-		ra.stats.Inc("RA.ReusedValidChallenge", 1, 1.0)
-		ra.log.Info("\n! Was asked to update an already valid authz challenge, returning early")
+	// Double check before sending to VA
+	if !ch.IsSaneForValidation() {
+		err = core.MalformedRequestError("Response does not complete challenge")
 		return
 	}
 
