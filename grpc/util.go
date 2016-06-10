@@ -24,7 +24,7 @@ var CodedError = grpc.Errorf
 // thens dials and returns a grpc.ClientConn to the remote service.
 func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
-		return nil, fmt.Errorf("At least one server address is required")
+		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
 	}
 	serverIssuerBytes, err := ioutil.ReadFile(c.ServerIssuerPath)
 	if err != nil {
@@ -38,29 +38,14 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	clients := []tls.Certificate{clientCert}
-	var names []string
-	var dialAddr string
-	configs := make(map[string]*tls.Config, len(c.ServerAddresses))
-	for _, addr := range c.ServerAddresses {
-		if dialAddr == "" {
-			dialAddr = addr
-		}
-		names = append(names, addr)
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, err
-		}
-		configs[addr] = &tls.Config{
-			ServerName:   host,
-			RootCAs:      rootCAs,
-			Certificates: clients,
-		}
+	mna, err := newTransportCredentials(c.ServerAddresses, rootCAs, []tls.Certificate{clientCert})
+	if err != nil {
+		return nil, err
 	}
 	return grpc.Dial(
-		dialAddr,
-		grpc.WithTransportCredentials(NewMultiNameTLS(configs)),
-		grpc.WithBalancer(grpc.RoundRobin(&staticResolver{names})),
+		"", // Since our staticResolver provides addresses we don't need to pass an address here
+		grpc.WithTransportCredentials(mna),
+		grpc.WithBalancer(grpc.RoundRobin(&staticResolver{c.ServerAddresses})),
 	)
 }
 

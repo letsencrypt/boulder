@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -11,60 +12,76 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// MultiNameAuthenticator does a thing
-type MultiNameAuthenticator struct {
-	names map[string]*tls.Config
+// transportCredentials is a grpc/credentials.TransportAuthenticator which supports
+// connecting to, and verifying multiple DNS names
+type transportCredentials struct {
+	configs map[string]*tls.Config
 }
 
-// NewMultiNameTLS also does a thing
-func NewMultiNameTLS(names map[string]*tls.Config) credentials.TransportAuthenticator {
-	return &MultiNameAuthenticator{names}
-}
-
-func (mna *MultiNameAuthenticator) ClientHandshake(addr string, rawConn net.Conn, timeout time.Duration) (net.Conn, credentials.AuthInfo, error) {
-	var errChannel chan error
-	if timeout != 0 {
-		errChannel = make(chan error, 2)
-		time.AfterFunc(timeout, func() {
-			errChannel <- errors.New("boulder/grpc: Dial timed out")
-		})
+func newTransportCredentials(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportAuthenticator, error) {
+	configs := make(map[string]*tls.Config, len(addrs))
+	for _, addr := range addrs {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		configs[addr] = &tls.Config{
+			ServerName:   host,
+			RootCAs:      rootCAs,
+			Certificates: clientCerts,
+		}
 	}
-	config, present := mna.names[addr]
+	return &transportCredentials{configs}, nil
+}
+
+// ClientHandshake performs the TLS handshake for a client -> server connection
+func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, timeout time.Duration) (net.Conn, credentials.AuthInfo, error) {
+	ctx := context.Background()
+	var cancel func()
+	if timeout != 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	config, present := tc.configs[addr]
 	if !present {
 		return nil, nil, fmt.Errorf("boulder/grpc: Unexpected name, no TLS configuration present for \"%s\"", addr)
 	}
 	conn := tls.Client(rawConn, config)
-	var err error
-	if timeout == 0 {
-		err = conn.Handshake()
-	} else {
-		go func() {
-			errChannel <- conn.Handshake()
-		}()
-		err = <-errChannel
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- conn.Handshake()
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, nil, errors.New("boulder/grpc: TLS handshake timed out")
+	case err := <-errChan:
+		if err != nil {
+			_ = rawConn.Close()
+			return nil, nil, err
+		}
+		return conn, nil, nil
 	}
-	if err != nil {
-		_ = rawConn.Close()
-		return nil, nil, err
-	}
-	return conn, nil, nil
 }
 
-func (mna *MultiNameAuthenticator) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+// ServerHandshake performs the TLS handshake for a server <- client connection
+func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	return nil, nil, fmt.Errorf("boulder/grpc: Server-side handshakes are not implemented")
 }
 
-func (mna *MultiNameAuthenticator) Info() credentials.ProtocolInfo {
+// Info returns information about the transport protocol used
+func (tc *transportCredentials) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
 		SecurityVersion:  "1.2",
 	}
 }
 
-func (mna *MultiNameAuthenticator) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+// GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
+func (tc *transportCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	return nil, nil
 }
 
-func (mna *MultiNameAuthenticator) RequireTransportSecurity() bool {
+// RequireTransportSecurity always returns true because TLS is transport security
+func (tc *transportCredentials) RequireTransportSecurity() bool {
 	return true
 }

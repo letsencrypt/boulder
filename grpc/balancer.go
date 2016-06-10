@@ -8,6 +8,8 @@ type staticResolver struct {
 	addresses []string
 }
 
+// Resolve is called only once by grpc.RoundRobin.Start, it constructs and returns the
+// naming.Watcher which actually provides addresses to grpc.Dial
 func (sr *staticResolver) Resolve(target string) (naming.Watcher, error) {
 	sw := &staticWatcher{}
 	for _, a := range sr.addresses {
@@ -23,6 +25,9 @@ type staticWatcher struct {
 	addresses []*naming.Update
 }
 
+// Next is called in a loop by grpc.RoundRobin expecting updates to which addresses are
+// appropriate. Since we just want to return a static list once return a list on the first
+// call then block forever on the second instead of sitting in a tight loop
 func (sw *staticWatcher) Next() ([]*naming.Update, error) {
 	if sw.addresses != nil {
 		addrs := sw.addresses
