@@ -30,7 +30,7 @@ def install(race_detection):
 def run(cmd, race_detection):
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec ./bin/%s""" % cmd
-    p = subprocess.Popen(cmd, shell=True, env={'GORACE': 'halt_on_error=1'})
+    p = subprocess.Popen(cmd, shell=True, env={'GORACE': 'halt_on_error=1', 'PKCS11_PROXY_SOCKET': 'tcp://boulder-hsm:5657'})
     p.cmd = cmd
     return p
 

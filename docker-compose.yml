@@ -24,8 +24,12 @@ boulder:
       - 9380:9380 # mail-test-srv
       - 9381:9381 # mail-test-srv
     links:
+      - bhsm:boulder-hsm
       - bmysql:boulder-mysql
       - brabbitmq:boulder-rabbitmq
+bhsm:
+    build: test/
+    dockerfile: Dockerfile-hsm
 bmysql:
     image: mariadb:10.1
     net: bridge

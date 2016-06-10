@@ -22,7 +22,11 @@ apt-get install -y --no-install-recommends \
   ruby-dev \
   rsyslog \
   softhsm \
-  protobuf-compiler &
+  protobuf-compiler \
+  build-essential \
+  cmake \
+  libssl-dev \
+  libseccomp-dev &
 
 # Install port forwarder, database migration tool, and testing tools.
 GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
@@ -40,6 +44,13 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   golang.org/x/tools/cover &
 
 wait
+
+# Install pkcs11-proxy
+git clone https://github.com/SUNET/pkcs11-proxy && \
+  cd pkcs11-proxy && \
+  git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
+  cmake . && make && make install && \
+  cd -
 
 gem install fpm
 
