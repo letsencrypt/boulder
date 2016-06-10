@@ -20,7 +20,7 @@ func main() {
 
 	// Set up a connection to the server.
 	conn, err := bgrpc.ClientSetup(&cmd.GRPCClientConfig{
-		ServerAddress:         *addr,
+		ServerAddresses:       []string{*addr},
 		ServerIssuerPath:      "test/grpc-creds/ca.pem",
 		ClientCertificatePath: "test/grpc-creds/client.pem",
 		ClientKeyPath:         "test/grpc-creds/key.pem",

@@ -514,9 +514,6 @@ type GRPCClientConfig struct {
 	ClientCertificatePath string
 	ClientKeyPath         string
 	Timeout               ConfigDuration
-
-	// Depreciated
-	ServerAddress string
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service

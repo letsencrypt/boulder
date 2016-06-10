@@ -23,6 +23,9 @@ var CodedError = grpc.Errorf
 // specific hostname and issued by the provided issuer certificate
 // thens dials and returns a grpc.ClientConn to the remote service.
 func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
+	if len(c.ServerAddresses) == 0 {
+		return nil, fmt.Errorf("At least one server address is required")
+	}
 	serverIssuerBytes, err := ioutil.ReadFile(c.ServerIssuerPath)
 	if err != nil {
 		return nil, err
@@ -36,45 +39,27 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	clients := []tls.Certificate{clientCert}
-	var ta grpc.DialOption
-	var dialAddr string
 	var names []string
-	if len(c.ServerAddresses) > 0 {
-		configs := make(map[string]*tls.Config, len(c.ServerAddresses))
-		for _, addr := range c.ServerAddresses {
-			if dialAddr == "" {
-				dialAddr = addr
-			}
-			names = append(names, addr)
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			configs[addr] = &tls.Config{
-				ServerName:   host,
-				RootCAs:      rootCAs,
-				Certificates: clients,
-			}
+	var dialAddr string
+	configs := make(map[string]*tls.Config, len(c.ServerAddresses))
+	for _, addr := range c.ServerAddresses {
+		if dialAddr == "" {
+			dialAddr = addr
 		}
-		ta = grpc.WithTransportCredentials(NewMultiNameTLS(configs))
-	} else if c.ServerAddress != "" {
-		dialAddr = c.ServerAddress
-		names = append(names, dialAddr)
-		c.ServerAddress, _, err = net.SplitHostPort(c.ServerAddress)
+		names = append(names, addr)
+		host, _, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
 		}
-		ta = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-			ServerName:   c.ServerAddress,
+		configs[addr] = &tls.Config{
+			ServerName:   host,
 			RootCAs:      rootCAs,
 			Certificates: clients,
-		}))
-	} else {
-		return nil, fmt.Errorf("Either ServerAddresses or ServerAddress (depreciated) are required")
+		}
 	}
 	return grpc.Dial(
 		dialAddr,
-		ta,
+		grpc.WithTransportCredentials(NewMultiNameTLS(configs)),
 		grpc.WithBalancer(grpc.RoundRobin(&staticResolver{names})),
 	)
 }
