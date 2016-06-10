@@ -65,6 +65,13 @@ type Config struct {
 
 		MaxNames     int
 		DoNotForceCN bool
+
+		// Controls behaviour of the RA when asked to create a new authz for
+		// a name/regID that already has a valid authz. False preserves historic
+		// behaviour and ignores the existing authz and creates a new one. True
+		// instructs the RA to reuse the previously created authz in lieu of
+		// creating another.
+		ReuseValidAuthz bool
 	}
 
 	SA struct {

@@ -622,7 +622,8 @@ func TestIssueCertificate(t *testing.T) {
 		0,
 		testKeyPolicy,
 		0,
-		true)
+		true,
+		false)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
