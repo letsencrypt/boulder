@@ -362,17 +362,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
-	// Check that the key authorization matches
-	expectedKeyAuth, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, probs.ServerInternal(errString)
-	}
-
-	if expectedKeyAuth != payload {
+	if payload != challenge.ProvidedKeyAuthorization {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth, payload)
+			challenge.ProvidedKeyAuthorization, payload)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, probs.Unauthorized(errString)
 	}
@@ -388,13 +380,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 
 	// Compute the digest that will appear in the certificate
 	h := sha256.New()
-	ka, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, probs.Malformed(errString)
-	}
-	h.Write([]byte(ka))
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
@@ -431,13 +417,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Compute the digest of the key authorization file
 	h := sha256.New()
-	ka, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, probs.Malformed(errString)
-	}
-	h.Write([]byte(ka))
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS

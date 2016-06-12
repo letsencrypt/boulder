@@ -24,16 +24,16 @@ boulder:
       - 9380:9380 # mail-test-srv
       - 9381:9381 # mail-test-srv
     links:
-      - bmysql:boulder-mysql
-      - brabbitmq:boulder-rabbitmq
-bmysql:
+      - mariadb:boulder-mysql
+      - rabbitmq:boulder-rabbitmq
+mariadb:
     image: mariadb:10.1
     net: bridge
     environment:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     command: mysqld --bind-address=0.0.0.0
     log_driver: none
-brabbitmq:
+rabbitmq:
     image: rabbitmq:3
     net: bridge
     environment:

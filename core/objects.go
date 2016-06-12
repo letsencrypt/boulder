@@ -310,8 +310,8 @@ type Challenge struct {
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for
 // the challenge.
-func (ch Challenge) ExpectedKeyAuthorization() (string, error) {
-	expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+func (ch Challenge) ExpectedKeyAuthorization(key *jose.JsonWebKey) (string, error) {
+	expectedKA, err := NewKeyAuthorization(ch.Token, key)
 	if err != nil {
 		return "", err
 	}
@@ -382,8 +382,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// There always needs to be an account key and token
-	if ch.AccountKey == nil || !LooksLikeAToken(ch.Token) {
+	// There always needs to be a token
+	if !LooksLikeAToken(ch.Token) {
 		return false
 	}
 
@@ -392,20 +392,9 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// If the challenge is completed, then there should be a key authorization,
-	// and it should match the challenge.
-	if completed {
-		if ch.ProvidedKeyAuthorization == "" {
-			return false
-		}
-
-		expectedKA, err := ch.ExpectedKeyAuthorization()
-		if err != nil {
-			return false
-		}
-		if ch.ProvidedKeyAuthorization != expectedKA {
-			return false
-		}
+	// If the challenge is completed, then there should be a key authorization
+	if completed && ch.ProvidedKeyAuthorization == "" {
+		return false
 	}
 
 	return true
