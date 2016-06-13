@@ -16,7 +16,6 @@ const (
 	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
 	BadNonceProblem       = ProblemType("urn:acme:error:badNonce")
 	InvalidEmailProblem   = ProblemType("urn:acme:error:invalidEmail")
-	CAAProblem            = ProblemType("urn:acme:error:caa")
 )
 
 // ProblemType defines the error types in the ACME protocol
