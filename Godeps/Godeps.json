@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v66",
+	"GodepVersion": "v67",
 	"Packages": [
 		"./..."
 	],

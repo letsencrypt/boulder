@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 )
 
 // CodedError is a alias required to appease go vet
@@ -38,14 +39,14 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	mna, err := newTransportCredentials(c.ServerAddresses, rootCAs, []tls.Certificate{clientCert})
+	tc, err := bcreds.New(c.ServerAddresses, rootCAs, []tls.Certificate{clientCert})
 	if err != nil {
 		return nil, err
 	}
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
-		grpc.WithTransportCredentials(mna),
-		grpc.WithBalancer(grpc.RoundRobin(&staticResolver{c.ServerAddresses})),
+		grpc.WithTransportCredentials(tc),
+		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
 	)
 }
 

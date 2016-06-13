@@ -1,4 +1,4 @@
-package grpc
+package creds
 
 import (
 	"crypto/tls"
@@ -18,7 +18,8 @@ type transportCredentials struct {
 	configs map[string]*tls.Config
 }
 
-func newTransportCredentials(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportCredentials, error) {
+// New returns a new initialized grpc/credentials.TransportCredentials
+func New(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportCredentials, error) {
 	configs := make(map[string]*tls.Config, len(addrs))
 	for _, addr := range addrs {
 		host, _, err := net.SplitHostPort(addr)
@@ -36,24 +37,22 @@ func newTransportCredentials(addrs []string, rootCAs *x509.CertPool, clientCerts
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
 func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, timeout time.Duration) (net.Conn, credentials.AuthInfo, error) {
-	ctx := context.Background()
-	var cancel func()
-	if timeout != 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
 	config, present := tc.configs[addr]
 	if !present {
-		return nil, nil, fmt.Errorf("boulder/grpc: Unexpected name, no TLS configuration present for \"%s\"", addr)
+		return nil, nil, fmt.Errorf("boulder/grpc/creds: Unexpected name, no TLS configuration present for \"%s\"", addr)
 	}
 	conn := tls.Client(rawConn, config)
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- conn.Handshake()
 	}()
+	var after <-chan time.Time
+	if timeout != 0 {
+		after = time.After(timeout)
+	}
 	select {
-	case <-ctx.Done():
-		return nil, nil, errors.New("boulder/grpc: TLS handshake timed out")
+	case <-after:
+		return nil, nil, errors.New("boulder/grpc/creds: TLS handshake timed out")
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()
@@ -65,7 +64,7 @@ func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, t
 
 // ServerHandshake performs the TLS handshake for a server <- client connection
 func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, fmt.Errorf("boulder/grpc: Server-side handshakes are not implemented")
+	return nil, nil, fmt.Errorf("boulder/grpc/creds: Server-side handshakes are not implemented")
 }
 
 // Info returns information about the transport protocol used
