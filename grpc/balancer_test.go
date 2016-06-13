@@ -27,7 +27,8 @@ func TestStaticResolver(t *testing.T) {
 
 	returned := make(chan struct{}, 1)
 	go func() {
-		watcher.Next()
+		_, err = watcher.Next()
+		test.AssertNotError(t, err, "watcher.Next failed")
 		returned <- struct{}{}
 	}()
 	select {
