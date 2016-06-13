@@ -283,13 +283,16 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) error {
-	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+	if contacts == nil || len(*contacts) == 0 {
+		return nil // Nothing to validate
+	}
+	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
-			len(contacts), ra.maxContactsPerReg))
+			len(*contacts), ra.maxContactsPerReg))
 	}
 
-	for _, contact := range contacts {
+	for _, contact := range *contacts {
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}

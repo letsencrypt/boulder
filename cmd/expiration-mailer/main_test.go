@@ -203,7 +203,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	regA := core.Registration{
 		ID: 1,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailA,
 		},
 		Key:       keyA,
@@ -211,7 +211,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	regB := core.Registration{
 		ID: 2,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailB,
 		},
 		Key:       keyB,
@@ -219,7 +219,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	regC := core.Registration{
 		ID: 3,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailB,
 		},
 		Key:       keyC,
@@ -528,7 +528,7 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailA,
 		},
 		Key:       keyA,
@@ -633,7 +633,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailA,
 		},
 		Key:       keyA,
@@ -689,7 +689,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: []*core.AcmeURL{
+		Contact: &[]*core.AcmeURL{
 			emailA,
 		},
 		Key:       keyA,

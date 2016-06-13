@@ -286,22 +286,22 @@ func TestValidateContacts(t *testing.T) {
 	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail, otherValidEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{nil})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
 }
 
@@ -345,7 +345,7 @@ func TestNewRegistration(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Key:       AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
@@ -356,8 +356,8 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto.String() == result.Contact[0].String(),
+	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
+	test.Assert(t, mailto.String() == (*result.Contact)[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
@@ -373,7 +373,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	input := core.Registration{
 		ID:        23,
 		Key:       AccountKeyC,
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
@@ -400,7 +400,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []*core.AcmeURL{mailto},
+		Contact: &[]*core.AcmeURL{mailto},
 		Key:     ShortKey,
 	}
 
