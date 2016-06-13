@@ -284,7 +284,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 }
 
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
-	if contacts == nil {
+	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
 	}
 	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
