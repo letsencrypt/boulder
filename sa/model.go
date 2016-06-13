@@ -75,11 +75,14 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	if r.InitialIP == nil {
 		return nil, fmt.Errorf("initialIP was nil")
 	}
+	if r.Contact == nil {
+		r.Contact = &[]*core.AcmeURL{}
+	}
 	rm := &regModel{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
-		Contact:   r.Contact,
+		Contact:   *r.Contact,
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
@@ -97,7 +100,7 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 	r := core.Registration{
 		ID:        rm.ID,
 		Key:       *k,
-		Contact:   rm.Contact,
+		Contact:   &rm.Contact,
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,

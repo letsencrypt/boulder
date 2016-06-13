@@ -146,7 +146,7 @@ type Registration struct {
 	Key jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
-	Contact []*AcmeURL `json:"contact,omitempty"`
+	Contact *[]*AcmeURL `json:"contact,omitempty"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
@@ -163,8 +163,12 @@ type Registration struct {
 func (r *Registration) MergeUpdate(input Registration) {
 	// Note: we allow input.Contact to overwrite r.Contact even if the former is
 	// empty in order to allow users to remove the contact associated with
-	// a registration
-	r.Contact = input.Contact
+	// a registration. Since the field type is a pointer to slice of pointers we
+	// can perform a nil check to differentiate between an empty value and a nil
+	// (e.g. not provided) value
+	if input.Contact != nil {
+		r.Contact = input.Contact
+	}
 
 	if len(input.Agreement) > 0 {
 		r.Agreement = input.Agreement

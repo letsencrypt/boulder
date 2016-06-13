@@ -205,7 +205,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			continue
 		}
 
-		err = m.sendNags(reg.Contact, parsedCerts)
+		err = m.sendNags(*reg.Contact, parsedCerts)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("Error sending nag emails: %s", err))
 			continue
