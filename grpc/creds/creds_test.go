@@ -81,7 +81,7 @@ func TestTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
-	ln, err := net.Listen("tcp", ":")
+	ln, err := net.Listen("tcp", "127.0.0.1:")
 	test.AssertNotError(t, err, "net.Listen failed")
 	addrC := ln.Addr().String()
 	go func() {
