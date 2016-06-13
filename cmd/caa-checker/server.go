@@ -191,12 +191,12 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 	present, valid, err := ccs.checkCAA(ctx, *check.Name, *check.IssuerDomain)
 	if err != nil {
 		if err == context.DeadlineExceeded || err == context.Canceled {
-			return nil, bgrpc.CodedError(bgrpc.DNSQueryTimeout.GRPCCode(), err.Error())
+			return nil, bgrpc.CodedError(bgrpc.DNSQueryTimeout, err.Error())
 		}
 		if dnsErr, ok := err.(*bdns.DNSError); ok {
-			return nil, bgrpc.CodedError(bgrpc.DNSError.GRPCCode(), dnsErr.Error())
+			return nil, bgrpc.CodedError(bgrpc.DNSError, dnsErr.Error())
 		}
-		return nil, bgrpc.CodedError(bgrpc.DNSError.GRPCCode(), "server failure at resolver")
+		return nil, bgrpc.CodedError(bgrpc.DNSError, "server failure at resolver")
 	}
 	return &pb.Result{Present: &present, Valid: &valid}, nil
 }

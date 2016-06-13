@@ -33,7 +33,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -620,12 +619,11 @@ func TestIssueCertificate(t *testing.T) {
 		fc,
 		wfe.log,
 		stats,
-		ratelimit.RateLimitConfig{},
 		0,
 		testKeyPolicy,
-		false,
 		0,
-		true)
+		true,
+		false)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
@@ -862,8 +860,8 @@ func TestNewECDSARegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -982,8 +980,8 @@ func TestNewRegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -1591,4 +1589,48 @@ func TestVerifyPOSTInvalidJWK(t *testing.T) {
 	test.Assert(t, prob != nil, "No error returned for request body with invalid JWS key.")
 	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
 	test.AssertEquals(t, http.StatusBadRequest, prob.HTTPStatus)
+}
+
+func TestHeaderBoulderRequestId(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(directoryPath),
+	})
+
+	requestID := responseWriter.Header().Get("Boulder-Request-ID")
+	test.Assert(t, len(requestID) > 0, "Boulder-Request-ID header is empty")
+}
+
+func TestHeaderBoulderRequester(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	// create a signed request
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	// requests that do not call sendError() have the requester header
+	signer.SetNonceSource(wfe.nonceService)
+	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	request := makePostRequestWithPath(regPath+"1", result.FullSerialize())
+	mux.ServeHTTP(responseWriter, request)
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
+
+	// requests that do call sendError() also should have the requester header
+	signer.SetNonceSource(wfe.nonceService)
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
+	mux.ServeHTTP(responseWriter, request)
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
 }
