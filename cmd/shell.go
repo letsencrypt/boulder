@@ -183,7 +183,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
-		logConf.Network,
+		"",
 		logConf.Server,
 		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
 		tag)
