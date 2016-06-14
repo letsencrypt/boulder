@@ -444,8 +444,6 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
 	StdoutLevel *int
 	SyslogLevel *int
 }

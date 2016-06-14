@@ -1,7 +1,5 @@
 {
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6,
     "sysloglevel": 4
   },
