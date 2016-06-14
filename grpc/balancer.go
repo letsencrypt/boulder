@@ -21,8 +21,8 @@ func newStaticResolver(addresses []string) *staticResolver {
 	return sr
 }
 
-// Resolve is called only once by grpc.RoundRobin.Start, it constructs and returns the
-// naming.Watcher which actually provides addresses to grpc.Dial
+// Resolve just returns the staticResolver it was called from as it satisfies
+// both the naming.Resolver and naming.Watcher interfaces
 func (sr *staticResolver) Resolve(target string) (naming.Watcher, error) {
 	return sr, nil
 }
