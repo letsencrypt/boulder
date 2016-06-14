@@ -30,6 +30,8 @@ func New(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) 
 			ServerName:   host,
 			RootCAs:      rootCAs,
 			Certificates: clientCerts,
+			MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
+			MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
 		}
 	}
 	return &transportCredentials{configs}, nil
@@ -71,7 +73,7 @@ func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, cre
 func (tc *transportCredentials) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
-		SecurityVersion:  "1.2",
+		SecurityVersion:  "1.2", // We *only* support TLS 1.2
 	}
 }
 

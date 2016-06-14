@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"math/big"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -16,18 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func slowHandler(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Millisecond * 200)
-}
-
 func TestTransportCredentials(t *testing.T) {
-	serverA := httptest.NewTLSServer(nil)
-	defer serverA.Close()
-	addrA := serverA.Listener.Addr().String()
-	serverB := httptest.NewTLSServer(nil)
-	defer serverB.Close()
-	addrB := serverB.Listener.Addr().String()
-
 	priv, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey failed")
 
@@ -50,17 +38,21 @@ func TestTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	certB, err := x509.ParseCertificate(derB)
 	test.AssertNotError(t, err, "x509.ParserCertificate failed")
-	// XXX: don't do this
-	serverA.TLS.Certificates = []tls.Certificate{{Certificate: [][]byte{derA}, PrivateKey: priv}}
-	serverB.TLS.Certificates = []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}
-
 	roots := x509.NewCertPool()
 	roots.AddCert(certA)
 	roots.AddCert(certB)
 
+	serverA := httptest.NewUnstartedServer(nil)
+	serverA.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derA}, PrivateKey: priv}}}
+	serverB := httptest.NewUnstartedServer(nil)
+	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
+
 	tc, err := New([]string{"A:2020", "B:3030"}, roots, nil)
 	test.AssertNotError(t, err, "New failed")
 
+	serverA.StartTLS()
+	defer serverA.Close()
+	addrA := serverA.Listener.Addr().String()
 	rawConnA, err := net.Dial("tcp", addrA)
 	test.AssertNotError(t, err, "net.Dial failed")
 	defer func() {
@@ -71,6 +63,9 @@ func TestTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
+	serverB.StartTLS()
+	defer serverB.Close()
+	addrB := serverB.Listener.Addr().String()
 	rawConnB, err := net.Dial("tcp", addrB)
 	test.AssertNotError(t, err, "net.Dial failed")
 	defer func() {
@@ -84,6 +79,9 @@ func TestTransportCredentials(t *testing.T) {
 	// Test timeout
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	test.AssertNotError(t, err, "net.Listen failed")
+	defer func() {
+		_ = ln.Close()
+	}()
 	addrC := ln.Addr().String()
 	go func() {
 		for {
