@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"mime/quotedprintable"
@@ -17,6 +18,8 @@ import (
 	"unicode"
 
 	"github.com/jmhodges/clock"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type idGenerator interface {
@@ -38,18 +41,60 @@ func (s realSource) generate() *big.Int {
 // Mailer provides the interface for a mailer
 type Mailer interface {
 	SendMail([]string, string, string) error
+	Connect() error
 	Close() error
 }
 
-// MailerImpl defines a mail transfer agent to use for sending mail
+// MailerImpl defines a mail transfer agent to use for sending mail. It is not
+// safe for concurrent access.
 type MailerImpl struct {
-	server      string
-	port        string
-	auth        smtp.Auth
+	dialer      dialer
 	from        string
-	client      *smtp.Client
+	client      smtpClient
 	clk         clock.Clock
 	csprgSource idGenerator
+}
+
+type dialer interface {
+	Dial() (smtpClient, error)
+}
+
+type smtpClient interface {
+	Mail(string) error
+	Rcpt(string) error
+	Data() (io.WriteCloser, error)
+	Close() error
+}
+
+type dryRunClient struct {
+	log blog.Logger
+}
+
+func (d dryRunClient) Dial() (smtpClient, error) {
+	return d, nil
+}
+
+func (d dryRunClient) Mail(from string) error {
+	d.log.Debug(fmt.Sprintf("MAIL FROM:<%s>", from))
+	return nil
+}
+
+func (d dryRunClient) Rcpt(to string) error {
+	d.log.Debug(fmt.Sprintf("RCPT TO:<%s>", to))
+	return nil
+}
+
+func (d dryRunClient) Close() error {
+	return nil
+}
+
+func (d dryRunClient) Data() (io.WriteCloser, error) {
+	return d, nil
+}
+
+func (d dryRunClient) Write(p []byte) (n int, err error) {
+	d.log.Debug(fmt.Sprintf("data: %s", string(p)))
+	return len(p), nil
 }
 
 func isASCII(str string) bool {
@@ -63,12 +108,25 @@ func isASCII(str string) bool {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password, from string) MailerImpl {
-	auth := smtp.PlainAuth("", username, password, server)
-	return MailerImpl{
-		server:      server,
-		port:        port,
-		auth:        auth,
+func New(server, port, username, password, from string) *MailerImpl {
+	return &MailerImpl{
+		dialer: &dialerImpl{
+			username: username,
+			password: password,
+			server:   server,
+			port:     port,
+		},
+		from:        from,
+		clk:         clock.Default(),
+		csprgSource: realSource{},
+	}
+}
+
+// New constructs a Mailer suitable for doing a dry run. It simply logs each
+// command that would have been run, at debug level.
+func NewDryRun(from string, logger blog.Logger) *MailerImpl {
+	return &MailerImpl{
+		dialer:      dryRunClient{logger},
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
@@ -119,28 +177,41 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 // Connect opens a connection to the specified mail server. It must be called
 // before SendMail.
 func (m *MailerImpl) Connect() error {
-	hostport := net.JoinHostPort(m.server, m.port)
+	client, err := m.dialer.Dial()
+	if err != nil {
+		return err
+	}
+	m.client = client
+	return nil
+}
+
+type dialerImpl struct {
+	username, password, server, port string
+}
+
+func (di *dialerImpl) Dial() (smtpClient, error) {
+	hostport := net.JoinHostPort(di.server, di.port)
 	var conn net.Conn
 	var err error
 	// By convention, port 465 is TLS-wrapped SMTP, while 587 is plaintext SMTP
 	// (with STARTTLS as best-effort).
-	if m.port == "465" {
+	if di.port == "465" {
 		conn, err = tls.Dial("tcp", hostport, nil)
 	} else {
 		conn, err = net.Dial("tcp", hostport)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	client, err := smtp.NewClient(conn, m.server)
+	client, err := smtp.NewClient(conn, di.server)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err = client.Auth(m.auth); err != nil {
-		return err
+	auth := smtp.PlainAuth("", di.username, di.password, di.server)
+	if err = client.Auth(auth); err != nil {
+		return nil, err
 	}
-	m.client = client
-	return nil
+	return client, nil
 }
 
 // SendMail sends an email to the provided list of recipients. The email body

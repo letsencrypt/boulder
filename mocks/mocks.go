@@ -390,6 +390,11 @@ func (m *Mailer) Close() error {
 	return nil
 }
 
+// Connect is a mock
+func (m *Mailer) Connect() error {
+	return nil
+}
+
 // GPDNSHandler mocks the Google Public DNS API
 func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Query().Get("name") {

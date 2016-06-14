@@ -367,14 +367,13 @@ func main() {
 			log:           logger,
 			dbMap:         dbMap,
 			rs:            sac,
-			mailer:        &mailClient,
+			mailer:        mailClient,
 			emailTemplate: tmpl,
 			nagTimes:      nags,
 			limit:         c.Mailer.CertLimit,
 			clk:           cmd.Clock(),
 		}
 
-		logger.Info("expiration-mailer: Starting")
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
