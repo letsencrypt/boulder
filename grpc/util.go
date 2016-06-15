@@ -39,13 +39,9 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	tc, err := bcreds.New(c.ServerAddresses, rootCAs, []tls.Certificate{clientCert})
-	if err != nil {
-		return nil, err
-	}
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
-		grpc.WithTransportCredentials(tc),
+		grpc.WithTransportCredentials(bcreds.New(rootCAs, []tls.Certificate{clientCert})),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
 	)
 }

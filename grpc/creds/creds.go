@@ -15,35 +15,28 @@ import (
 // transportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
 type transportCredentials struct {
-	configs map[string]*tls.Config
+	roots   *x509.CertPool
+	clients []tls.Certificate
 }
 
 // New returns a new initialized grpc/credentials.TransportCredentials
-func New(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportCredentials, error) {
-	configs := make(map[string]*tls.Config, len(addrs))
-	for _, addr := range addrs {
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, err
-		}
-		configs[addr] = &tls.Config{
-			ServerName:   host,
-			RootCAs:      rootCAs,
-			Certificates: clientCerts,
-			MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
-			MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
-		}
-	}
-	return &transportCredentials{configs}, nil
+func New(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
+	return &transportCredentials{rootCAs, clientCerts}
 }
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
 func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, timeout time.Duration) (net.Conn, credentials.AuthInfo, error) {
-	config, present := tc.configs[addr]
-	if !present {
-		return nil, nil, fmt.Errorf("boulder/grpc/creds: Unexpected name, no TLS configuration present for \"%s\"", addr)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, nil, err
 	}
-	conn := tls.Client(rawConn, config)
+	conn := tls.Client(rawConn, &tls.Config{
+		ServerName:   host,
+		RootCAs:      tc.roots,
+		Certificates: tc.clients,
+		MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
+		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
+	})
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- conn.Handshake()
@@ -54,7 +47,7 @@ func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, t
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("boulder/grpc/creds: TLS handshake failed: %s", err)
 		}
 		return conn, nil, nil
 	}

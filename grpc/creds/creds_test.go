@@ -47,8 +47,7 @@ func TestTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	tc, err := New([]string{"A:2020", "B:3030"}, roots, nil)
-	test.AssertNotError(t, err, "New failed")
+	tc := New(roots, nil)
 
 	serverA.StartTLS()
 	defer serverA.Close()
