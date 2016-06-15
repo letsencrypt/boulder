@@ -48,12 +48,8 @@ func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, t
 	go func() {
 		errChan <- conn.Handshake()
 	}()
-	var after <-chan time.Time
-	if timeout != 0 {
-		after = time.After(timeout)
-	}
 	select {
-	case <-after:
+	case <-time.After(timeout):
 		return nil, nil, errors.New("boulder/grpc/creds: TLS handshake timed out")
 	case err := <-errChan:
 		if err != nil {

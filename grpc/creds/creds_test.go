@@ -59,7 +59,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnA.Close()
 	}()
 
-	conn, _, err := tc.ClientHandshake("A:2020", rawConnA, 0)
+	conn, _, err := tc.ClientHandshake("A:2020", rawConnA, time.Second)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
@@ -72,7 +72,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	conn, _, err = tc.ClientHandshake("B:3030", rawConnB, 0)
+	conn, _, err = tc.ClientHandshake("B:3030", rawConnB, time.Second)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
