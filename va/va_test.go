@@ -447,19 +447,19 @@ func TestTLSSNI(t *testing.T) {
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
+	chall.ProvidedKeyAuthorization = "invalid"
 
 	log.Clear()
 	started := time.Now()
 	_, prob = va.validateTLSSNI01(ctx, ident, chall)
 	took := time.Since(started)
-	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
 	if prob == nil {
-		t.Fatalf("Connection should've timed out")
+		t.Fatalf("Validation should've failed")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	// Check that the TLS connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "TLS returned before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "TLS connection didn't timeout after 5 seconds")
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
@@ -524,7 +524,7 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
+	chall.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 	return chall
 }
@@ -533,12 +533,7 @@ func createChallenge(challengeType string) core.Challenge {
 // in the serialized KeyAuthorization object.
 func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
-
-	ka, err := ch.ExpectedKeyAuthorization()
-	if err != nil {
-		panic(err)
-	}
-	ch.ProvidedKeyAuthorization = ka
+	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
 func TestValidateTLSSNI01(t *testing.T) {
@@ -660,7 +655,7 @@ func TestPerformValidationValid(t *testing.T) {
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
-	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
+	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
@@ -683,7 +678,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	chalDNS := core.DNSChallenge01(accountKey)
-	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
+	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 	va, _, _ := setup()
 
@@ -704,19 +699,19 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal2 := core.DNSChallenge01(accountKey)
 	chal2.ProvidedKeyAuthorization = ""
 
-	chal3 := core.DNSChallenge01(accountKey)
-	chal3.ProvidedKeyAuthorization = "a.a"
-
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3},
+		Challenges:     []core.Challenge{chal0, chal1, chal2},
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
 		_, prob := va.validateChallenge(ctx, ident, authz.Challenges[i])
-		test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+		if prob.Type != probs.MalformedProblem {
+			t.Errorf("Got wrong error type for %d: expected %s, got %s",
+				i, prob.Type, probs.MalformedProblem)
+		}
 		if !strings.Contains(prob.Error(), "Challenge failed sanity check.") {
 			t.Errorf("Got wrong error: %s", prob.Error())
 		}
@@ -759,8 +754,7 @@ func TestDNSValidationOK(t *testing.T) {
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
-
-	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
+	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -779,7 +773,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
+	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
