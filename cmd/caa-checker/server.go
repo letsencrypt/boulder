@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -23,7 +22,7 @@ import (
 
 type caaCheckerServer struct {
 	resolver bdns.DNSResolver
-	stats    statsd.Statter
+	stats    metrics.Statter
 }
 
 // caaSet consists of filtered CAA records
@@ -224,7 +223,7 @@ func main() {
 
 	go cmd.DebugServer(c.DebugAddr)
 
-	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
+	stats, err := metrics.NewStatter(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
 
 	resolver := bdns.NewDNSResolverImpl(
@@ -235,7 +234,7 @@ func main() {
 		5,
 	)
 
-	s, l, err := bgrpc.NewServer(&c.GRPC)
+	s, l, err := bgrpc.NewServer(&c.GRPC, stats)
 	cmd.FailOnError(err, "Failed to setup gRPC server")
 	ccs := &caaCheckerServer{resolver, stats}
 	pb.RegisterCAACheckerServer(s, ccs)

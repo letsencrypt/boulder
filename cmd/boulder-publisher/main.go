@@ -48,7 +48,7 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA client")
 
 		if c.Publisher.GRPC != nil {
-			s, l, err := bgrpc.NewServer(c.Publisher.GRPC)
+			s, l, err := bgrpc.NewServer(c.Publisher.GRPC, stats)
 			cmd.FailOnError(err, "Failed to setup gRPC server")
 			gw := bgrpc.NewPublisherServerWrapper(pubi)
 			pubPB.RegisterPublisherServer(s, gw)

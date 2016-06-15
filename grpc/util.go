@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // CodedError is a alias required to appease go vet
@@ -50,7 +51,7 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 // gRPC Server that verifies the client certificate was
 // issued by the provided issuer certificate and presents a
 // a server TLS certificate.
-func NewServer(c *cmd.GRPCServerConfig) (*grpc.Server, net.Listener, error) {
+func NewServer(c *cmd.GRPCServerConfig, stats metrics.Statter) (*grpc.Server, net.Listener, error) {
 	cert, err := tls.LoadX509KeyPair(c.ServerCertificatePath, c.ServerKeyPath)
 	if err != nil {
 		return nil, nil, err
@@ -73,5 +74,6 @@ func NewServer(c *cmd.GRPCServerConfig) (*grpc.Server, net.Listener, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return grpc.NewServer(grpc.Creds(creds)), l, nil
+	si := &serverInterceptor{stats}
+	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
 }
