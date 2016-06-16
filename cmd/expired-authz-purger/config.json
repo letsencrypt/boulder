@@ -5,4 +5,7 @@
         "gracePeriod": "168h",
         "batchSize": 1000
     }
+    "syslog": {
+      "stdoutLevel": 6
+    }
 }
