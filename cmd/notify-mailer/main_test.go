@@ -13,9 +13,9 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestCheckpointIntervalSanity(t *testing.T) {
-	// Test a number of intervals know to be sane, ensure that no error is
-	// produced when calling `isSane()`.
+func TestCheckpointIntervalOK(t *testing.T) {
+	// Test a number of intervals know to be OK, ensure that no error is
+	// produced when calling `ok()`.
 	okCases := []struct {
 		testInterval interval
 	}{
@@ -25,8 +25,8 @@ func TestCheckpointIntervalSanity(t *testing.T) {
 		{interval{start: 10, end: 15}},
 	}
 	for _, testcase := range okCases {
-		err := testcase.testInterval.isSane()
-		test.AssertNotError(t, err, "valid interval produced isSane error")
+		err := testcase.testInterval.ok()
+		test.AssertNotError(t, err, "valid interval produced ok() error")
 	}
 
 	// Test a number of intervals known to be invalid, ensure that the produced
@@ -41,8 +41,8 @@ func TestCheckpointIntervalSanity(t *testing.T) {
 		{interval{start: 999, end: 10}, "interval start value (999) is greater than end value (10)"},
 	}
 	for _, testcase := range failureCases {
-		err := testcase.testInterval.isSane()
-		test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was sane", testcase.testInterval))
+		err := testcase.testInterval.ok()
+		test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was ok", testcase.testInterval))
 		test.AssertEquals(t, err.Error(), testcase.expectedError)
 	}
 }

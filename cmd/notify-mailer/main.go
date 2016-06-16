@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -37,34 +36,38 @@ type interval struct {
 	end   int
 }
 
-func (i *interval) isSane() error {
+func (i *interval) ok() error {
 	if i.start < 0 || i.end < 0 {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"interval start (%d) and end (%d) must both be positive integers",
-			i.start, i.end))
+			i.start, i.end)
 	}
 
 	if i.start > i.end && i.end != 0 {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"interval start value (%d) is greater than end value (%d)",
-			i.start, i.end))
+			i.start, i.end)
 	}
 
 	return nil
 }
 
 func (m *mailer) run() error {
+	// Make sure the checkpoint range is OK
+	if checkpointErr := m.checkpoint.ok(); checkpointErr != nil {
+		return checkpointErr
+	}
 	// Do not allow a start larger than the # of destinations
 	if m.checkpoint.start > len(m.destinations) {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"interval start value (%d) is greater than number of destinations (%d)",
 			m.checkpoint.start,
-			len(m.destinations)))
+			len(m.destinations))
 	}
 	// Do not allow a negative sleep interval
 	if m.sleepInterval < 0 {
-		return errors.New(fmt.Sprintf(
-			"sleep interval (%d) is < 0", m.sleepInterval))
+		return fmt.Errorf(
+			"sleep interval (%d) is < 0", m.sleepInterval)
 	}
 	// If there is no endpoint specified, use the total # of destinations
 	if m.checkpoint.end == 0 {
@@ -139,9 +142,6 @@ func main() {
 		start: *start,
 		end:   *end,
 	}
-
-	checkpointErr := checkpointRange.isSane()
-	cmd.FailOnError(checkpointErr, "Building checkpoint range")
 
 	var mailClient mail.Mailer
 	if *dryRun {
