@@ -324,12 +324,12 @@ func main() {
 		tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
 		cmd.FailOnError(err, "Could not parse email template")
 
-		_, err = netmail.ParseAddress(c.Mailer.From)
+		fromAddress, err := netmail.ParseAddress(c.Mailer.From)
 		cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
 
 		smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 		cmd.FailOnError(err, "Failed to load SMTP password")
-		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
+		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
 		defer func() {
@@ -367,14 +367,13 @@ func main() {
 			log:           logger,
 			dbMap:         dbMap,
 			rs:            sac,
-			mailer:        &mailClient,
+			mailer:        mailClient,
 			emailTemplate: tmpl,
 			nagTimes:      nags,
 			limit:         c.Mailer.CertLimit,
 			clk:           cmd.Clock(),
 		}
 
-		logger.Info("expiration-mailer: Starting")
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
