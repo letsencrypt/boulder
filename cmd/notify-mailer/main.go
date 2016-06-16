@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	netmail "net/mail"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -15,7 +15,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -23,7 +23,7 @@ type mailer struct {
 	clk           clock.Clock
 	log           blog.Logger
 	dbMap         *gorp.DbMap
-	mailer        mail.Mailer
+	mailer        bmail.Mailer
 	subject       string
 	emailTemplate string
 	destinations  []string
@@ -52,11 +52,12 @@ func (i *interval) ok() error {
 	return nil
 }
 
-func (m *mailer) run() error {
+func (m *mailer) ok() error {
 	// Make sure the checkpoint range is OK
 	if checkpointErr := m.checkpoint.ok(); checkpointErr != nil {
 		return checkpointErr
 	}
+
 	// Do not allow a start larger than the # of destinations
 	if m.checkpoint.start > len(m.destinations) {
 		return fmt.Errorf(
@@ -64,19 +65,25 @@ func (m *mailer) run() error {
 			m.checkpoint.start,
 			len(m.destinations))
 	}
+
 	// Do not allow a negative sleep interval
 	if m.sleepInterval < 0 {
 		return fmt.Errorf(
 			"sleep interval (%d) is < 0", m.sleepInterval)
 	}
+
+	return nil
+}
+
+func (m *mailer) run() error {
+	if err := m.ok(); err != nil {
+		return err
+	}
 	// If there is no endpoint specified, use the total # of destinations
 	if m.checkpoint.end == 0 {
 		m.checkpoint.end = len(m.destinations)
 	}
-	for i, dest := range m.destinations {
-		if i < m.checkpoint.start || i >= m.checkpoint.end {
-			continue
-		}
+	for _, dest := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -90,14 +97,14 @@ func (m *mailer) run() error {
 }
 
 func main() {
-	var from = flag.String("from", "", "From header for emails. Must be a bare email address.")
-	var subject = flag.String("subject", "", "Subject of emails")
-	var toFile = flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
-	var bodyFile = flag.String("body", "", "File containing the email body in plain text format.")
-	var dryRun = flag.Bool("dryRun", true, "Whether to do a dry run.")
-	var sleep = flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
-	var start = flag.Int("start", 0, "Line of input file to start from.")
-	var end = flag.Int("end", 99999999, "Line of input file to end before.")
+	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
+	subject := flag.String("subject", "", "Subject of emails")
+	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
+	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
+	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
+	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
+	start := flag.Int("start", 0, "Line of input file to start from.")
+	end := flag.Int("end", 99999999, "Line of input file to end before.")
 	type config struct {
 		NotifyMailer struct {
 			cmd.DBConfig
@@ -131,7 +138,7 @@ func main() {
 	body, err := ioutil.ReadFile(*bodyFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *bodyFile))
 
-	address, err := netmail.ParseAddress(*from)
+	address, err := mail.ParseAddress(*from)
 	cmd.FailOnError(err, fmt.Sprintf("Parsing %s", *from))
 
 	toBody, err := ioutil.ReadFile(*toFile)
@@ -143,13 +150,13 @@ func main() {
 		end:   *end,
 	}
 
-	var mailClient mail.Mailer
+	var mailClient bmail.Mailer
 	if *dryRun {
-		mailClient = mail.NewDryRun(address.Address, log)
+		mailClient = bmail.NewDryRun(address.Address, log)
 	} else {
 		smtpPassword, err := cfg.NotifyMailer.PasswordConfig.Pass()
 		cmd.FailOnError(err, "Failed to load SMTP password")
-		mailClient = mail.New(
+		mailClient = bmail.New(
 			cfg.NotifyMailer.Server,
 			cfg.NotifyMailer.Port,
 			cfg.NotifyMailer.Username,
