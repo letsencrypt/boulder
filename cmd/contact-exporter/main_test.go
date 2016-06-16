@@ -7,8 +7,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,6 +239,32 @@ func TestFindContacts(t *testing.T) {
 	test.AssertEquals(t, len(contacts), 2)
 	test.AssertEquals(t, contacts[0], emailARaw)
 	test.AssertEquals(t, contacts[1], emailCRaw)
+}
+
+func TestWriteContacts(t *testing.T) {
+	expectedOutput := `
+example@example.com
+test-example@example.com
+test-test-test@example.com
+`
+	contacts := strings.Split(expectedOutput, "\n")
+
+	dir := os.TempDir()
+	f, err := ioutil.TempFile(dir, "contacts_test")
+	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+
+	// Writing the contacts with no outFile should print to stdout
+	err = writeContacts(contacts, "")
+	test.AssertNotError(t, err, "writeContacts() with no outfile produced error")
+
+	// Writing the contacts to an outFile should produce the correct results
+	err = writeContacts(contacts, f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("writeContacts() produced an error writing to %s", f.Name()))
+
+	contents, err := ioutil.ReadFile(f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
+
+	test.AssertEquals(t, string(contents), expectedOutput)
 }
 
 type testCtx struct {
