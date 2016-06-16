@@ -23,7 +23,7 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
-	fromAddress, _ := mail.ParseAddress("send@email.com")
+	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	m := New("", "", "", "", *fromAddress)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
@@ -34,7 +34,7 @@ func TestGenerateMessage(t *testing.T) {
 	test.AssertEquals(t, len(fields), 12)
 	fmt.Println(message)
 	test.AssertEquals(t, fields[0], "To: \"recv@email.com\"")
-	test.AssertEquals(t, fields[1], "From: <send@email.com>")
+	test.AssertEquals(t, fields[1], "From: \"happy sender\" <send@email.com>")
 	test.AssertEquals(t, fields[2], "Subject: test subject")
 	test.AssertEquals(t, fields[3], "Date: 01 Jan 70 00:00 UTC")
 	test.AssertEquals(t, fields[4], "Message-Id: <19700101T000000.1991.send@email.com>")
