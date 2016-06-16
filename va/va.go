@@ -116,7 +116,7 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 
 	if len(addrs) == 0 {
 		problem := probs.UnknownHost(
-			fmt.Sprintf("No IPv4 addresses found for %s", hostname),
+			fmt.Sprintf("No valid IP addresses found for %s", hostname),
 		)
 		return net.IP{}, nil, problem
 	}

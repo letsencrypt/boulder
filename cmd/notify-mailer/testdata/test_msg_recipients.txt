@@ -1,0 +1,6 @@
+test@example.com
+example@example.com
+example-test@example.com
+test-example@example.com
+test-test-test@example.com
+example-example-example@example.com
