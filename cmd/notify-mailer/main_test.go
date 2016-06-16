@@ -64,7 +64,8 @@ func TestSleepInterval(t *testing.T) {
 	// Call run() - this should sleep `sleepLen` per destination address
 	// After it returns, we expect (sleepLen * number of destinations) seconds has
 	// elapsed
-	m.run()
+	err := m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
 	expectedEnd := newFakeClock(t)
 	expectedEnd.Add(time.Second * time.Duration(sleepLen*len(m.destinations)))
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
@@ -81,7 +82,8 @@ func TestSleepInterval(t *testing.T) {
 
 	// Call run() - this should blast through all destinations without sleep
 	// After it returns, we expect no clock time to have elapsed on the fake clock
-	m.run()
+	err = m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
 	expectedEnd = newFakeClock(t)
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 }
@@ -250,7 +252,8 @@ func TestMessageContent(t *testing.T) {
 
 	// Run the mailer, one message should have been created with the content
 	// expected
-	m.run()
+	err = m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      testDestination,
