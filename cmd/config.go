@@ -444,8 +444,6 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
 	StdoutLevel *int
 	SyslogLevel *int
 }
@@ -513,7 +511,7 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
