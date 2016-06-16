@@ -152,7 +152,7 @@ func main() {
 
 	var mailClient bmail.Mailer
 	if *dryRun {
-		mailClient = bmail.NewDryRun(address.Address, log)
+		mailClient = bmail.NewDryRun(*address, log)
 	} else {
 		smtpPassword, err := cfg.NotifyMailer.PasswordConfig.Pass()
 		cmd.FailOnError(err, "Failed to load SMTP password")
@@ -161,7 +161,7 @@ func main() {
 			cfg.NotifyMailer.Port,
 			cfg.NotifyMailer.Username,
 			smtpPassword,
-			address.Address)
+			*address)
 	}
 	err = mailClient.Connect()
 	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",
