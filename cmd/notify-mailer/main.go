@@ -112,7 +112,7 @@ func main() {
 			cmd.SMTPConfig
 		}
 	}
-	var configFile = flag.String("configFile", "", "File containing a JSON config.")
+	configFile := flag.String("config", "", "File containing a JSON config.")
 
 	flag.Parse()
 	if from == nil || subject == nil || bodyFile == nil || configFile == nil {
