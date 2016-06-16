@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -56,14 +57,14 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   ratelimit.RateLimitConfig
+	rlPolicies                   ratelimit.Limits
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
-	useNewVARPC                  bool
 	maxNames                     int
 	forceCNFromSAN               bool
+	reuseValidAuthz              bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -76,12 +77,11 @@ func NewRegistrationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	stats statsd.Statter,
-	policies ratelimit.RateLimitConfig,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
-	newVARPC bool,
 	maxNames int,
 	forceCNFromSAN bool,
+	reuseValidAuthz bool,
 ) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -90,18 +90,32 @@ func NewRegistrationAuthorityImpl(
 		log:   logger,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
-		rlPolicies:                   policies,
+		rlPolicies:                   ratelimit.New(),
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
+		reuseValidAuthz:              reuseValidAuthz,
 		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
+}
+
+func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
+	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.rateLimitPoliciesLoadError)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
+	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
 }
 
 const (
@@ -193,11 +207,13 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
+	totalCertWindow := ra.rlPolicies.TotalCertificates().Window.Duration
+
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
 		count, err := ra.SA.CountCertificatesRange(
 			ctx,
-			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
+			now.Add(-totalCertWindow),
 			now,
 		)
 		if err != nil {
@@ -214,7 +230,8 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 const noRegistrationID = -1
 
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
-	limit := ra.rlPolicies.RegistrationsPerIP
+	limit := ra.rlPolicies.RegistrationsPerIP()
+
 	if limit.Enabled() {
 		now := ra.clk.Now()
 		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
@@ -266,13 +283,16 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) error {
-	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+	if contacts == nil || len(*contacts) == 0 {
+		return nil // Nothing to validate
+	}
+	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
-			len(contacts), ra.maxContactsPerReg))
+			len(*contacts), ra.maxContactsPerReg))
 	}
 
-	for _, contact := range contacts {
+	for _, contact := range *contacts {
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
@@ -295,7 +315,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
-	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
 		count, err := ra.SA.CountPendingAuthorizations(ctx, regID)
 		if err != nil {
@@ -344,6 +364,37 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 		if !isSafeResp.GetIsSafe() {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
+		}
+	}
+
+	if ra.reuseValidAuthz {
+		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
+		if err != nil {
+			outErr := core.InternalServerError(
+				fmt.Sprintf("unable to get existing validations for regID: %d, identifier: %s",
+					regID, identifier.Value))
+			ra.log.Warning(string(outErr))
+		}
+
+		if existingAuthz, ok := auths[identifier.Value]; ok {
+			// Use the valid existing authorization's ID to find a fully populated version
+			// The results from `GetValidAuthorizations` are most notably missing
+			// `Challenge` values that the client expects in the result.
+			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
+			if err != nil {
+				outErr := core.InternalServerError(
+					fmt.Sprintf("unable to get existing authorization for auth ID: %s",
+						existingAuthz.ID))
+				ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+			}
+
+			// The existing authorization must not expire within the next 24 hours for
+			// it to be OK for reuse
+			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
+			if populatedAuthz.Expires.After(reuseCutOff) {
+				ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
+				return populatedAuthz, nil
+			}
 		}
 	}
 
@@ -687,13 +738,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
-	limits := ra.rlPolicies
-	if limits.TotalCertificates.Enabled() {
+	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	if totalCertLimits.Enabled() {
 		totalIssued, err := ra.getIssuanceCount(ctx)
 		if err != nil {
 			return err
 		}
-		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+		if totalIssued >= totalCertLimits.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
@@ -701,14 +752,18 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 		}
 		ra.totalCertsStats.Inc("Pass", 1)
 	}
-	if limits.CertificatesPerName.Enabled() {
-		err := ra.checkCertificatesPerNameLimit(ctx, names, limits.CertificatesPerName, regID)
+
+	certNameLimits := ra.rlPolicies.CertificatesPerName()
+	if certNameLimits.Enabled() {
+		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		if err != nil {
 			return err
 		}
 	}
-	if limits.CertificatesPerFQDNSet.Enabled() {
-		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, limits.CertificatesPerFQDNSet, regID)
+
+	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
+	if fqdnLimits.Enabled() {
+		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimits, regID)
 		if err != nil {
 			return err
 		}
@@ -772,6 +827,16 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	}
 	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
 		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
+
+	// When configured with `reuseValidAuthz` we can expect some clients to try
+	// and update a challenge for an authorization that is already valid. In this
+	// case we don't need to process the challenge update. It wouldn't be helpful,
+	// the overall authorization is already good! We increment a stat for this
+	// case and return early.
+	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
 		return
 	}
 
