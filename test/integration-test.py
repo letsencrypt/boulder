@@ -265,6 +265,28 @@ def run_expired_authz_purger_test():
     expect(now, 0)
     expect(after_grace_period, 1)
 
+def run_certificates_per_name_test():
+    try:
+        handle = subprocess.Popen(
+            '''node test.js --email %s --domains %s --challType %s''' %
+            ('test@ratelimit.me', 'lim.it', 'http-01'),
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        handle.wait()
+        out, err = handle.communicate()
+    except subprocess.CalledProcessError as e:
+        print("\nFailure while running certificates per name test %s" % e)
+        die(ExitStatus.PythonFailure)
+
+    expected = [
+        "urn:acme:error:rateLimited",
+        "Error creating new cert :: Too many certificates already issued for: lim.it",
+        "429"
+    ]
+    for s in expected:
+        if s not in out:
+            print("\nCertificates per name test: expected %s not present in output" % s)
+            die(ExitStatus.Error)
+
 @atexit.register
 def cleanup():
     import shutil
@@ -327,6 +349,8 @@ def main():
             die(ExitStatus.NodeFailure)
 
         run_expired_authz_purger_test()
+
+        run_certificates_per_name_test()
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
