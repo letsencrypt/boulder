@@ -248,34 +248,22 @@ def run_expired_authz_purger_test():
     subprocess.check_output('''node test.js --email %s --domains %s --abort-step %s''' %
                             ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
 
+    def expect(target_time, num):
+        expected_output = 'Deleted a total of %d expired pending authorizations' % num
+        try:
+            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+            if expected_output not in out:
+                print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
+                    % (expected_output, out))
+                die(ExitStatus.NodeFailure)
+        except subprocess.CalledProcessError as e:
+            print("\nFailed to run authz purger: %s" % e)
+            die(ExitStatus.NodeFailure)
+
     now = datetime.datetime.utcnow()
     after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
-
-    target_time = now
-    expected_output = 'Deleted a total of 0 expired pending authorizations'
-    try:
-        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
-
-        print(out)
-        if expected_output not in out:
-                print("\nBad output from authz purger")
-                die(ExitStatus.NodeFailure)
-    except subprocess.CalledProcessError as e:
-        print("\nFailed to run authz purger: %s" % e)
-        die(ExitStatus.NodeFailure)
-
-    target_time = after_grace_period
-    expected_output = 'Deleted a total of 1 expired pending authorizations'
-    try:
-        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
-
-        print(out)
-        if expected_output not in out:
-            print("\nBad output from authz purger")
-            die(ExitStatus.NodeFailure)
-    except subprocess.CalledProcessError as e:
-        print("\nFailed to run authz purger: %s" % e)
-        die(ExitStatus.NodeFailure)
+    expect(now, 0)
+    expect(after_grace_period, 1)
 
 @atexit.register
 def cleanup():

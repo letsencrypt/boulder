@@ -120,8 +120,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	seven := 7
-	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: &seven})
+	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *configFile))

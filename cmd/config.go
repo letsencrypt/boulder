@@ -448,8 +448,8 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	StdoutLevel *int
-	SyslogLevel *int
+	StdoutLevel int
+	SyslogLevel int
 }
 
 // StatsdConfig defines the config for Statsd.
