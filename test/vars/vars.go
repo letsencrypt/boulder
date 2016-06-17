@@ -21,4 +21,6 @@ var (
 	DBConnSAFullPerms = fmt.Sprintf(dbURL, "test_setup", "boulder_sa_test")
 	// DBConnSAOcspResp is the sa ocsp_resp database connection
 	DBConnSAOcspResp = fmt.Sprintf(dbURL, "ocsp_resp", "boulder_sa_test")
+	// DBConnContactExporter is the contact exporter tool database connection
+	DBConnContactExporter = fmt.Sprintf(dbURL, "contact_exporter", "boulder_sa_test")
 )
