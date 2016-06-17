@@ -51,7 +51,7 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 // gRPC Server that verifies the client certificate was
 // issued by the provided issuer certificate and presents a
 // a server TLS certificate.
-func NewServer(c *cmd.GRPCServerConfig, stats metrics.Statter) (*grpc.Server, net.Listener, error) {
+func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
 	cert, err := tls.LoadX509KeyPair(c.ServerCertificatePath, c.ServerKeyPath)
 	if err != nil {
 		return nil, nil, err

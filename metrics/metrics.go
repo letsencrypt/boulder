@@ -112,12 +112,6 @@ func NewStatter(addr, prefix string) (Statter, error) {
 	return Statter{suffix, s}, nil
 }
 
-// NewNoopStatter returns a new statsd.NoopClient wrapper
-func NewNoopStatter() Statter {
-	s, _ := statsd.NewNoopClient(nil)
-	return Statter{"test", s}
-}
-
 // Inc wraps statsd.Client.Inc
 func (s Statter) Inc(n string, v int64, r float32) error {
 	return s.s.Inc(n+s.suffix, v, r)

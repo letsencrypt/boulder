@@ -42,7 +42,7 @@ func TestChecking(t *testing.T) {
 		{"unsatisfiable.com", true, false},
 	}
 
-	stats := metrics.NewNoopStatter()
+	stats := metrics.NewNoopScope()
 	ccs := &caaCheckerServer{&bdns.MockDNSResolver{}, stats}
 	issuerDomain := "letsencrypt.org"
 
