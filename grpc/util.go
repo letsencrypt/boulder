@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net"
 
+	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -74,6 +75,6 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 	if err != nil {
 		return nil, nil, err
 	}
-	si := &serverInterceptor{stats}
+	si := &serverInterceptor{stats, clock.Default()}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
 }
