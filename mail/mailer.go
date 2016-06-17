@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ type Mailer interface {
 // safe for concurrent access.
 type MailerImpl struct {
 	dialer      dialer
-	from        string
+	from        mail.Address
 	client      smtpClient
 	clk         clock.Clock
 	csprgSource idGenerator
@@ -108,7 +109,7 @@ func isASCII(str string) bool {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password, from string) *MailerImpl {
+func New(server, port, username, password string, from mail.Address) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -124,7 +125,7 @@ func New(server, port, username, password, from string) *MailerImpl {
 
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
-func NewDryRun(from string, logger blog.Logger) *MailerImpl {
+func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
@@ -145,10 +146,10 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	}
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(addrs, ", ")),
-		fmt.Sprintf("From: %s", m.from),
+		fmt.Sprintf("From: %s", m.from.String()),
 		fmt.Sprintf("Subject: %s", subject),
 		fmt.Sprintf("Date: %s", now.Format(time.RFC822)),
-		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.from),
+		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.from.Address),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Transfer-Encoding: quoted-printable",
@@ -224,7 +225,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-	if err = m.client.Mail(m.from); err != nil {
+	if err = m.client.Mail(m.from.String()); err != nil {
 		return err
 	}
 	for _, t := range to {

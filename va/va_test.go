@@ -333,7 +333,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, err = va.validateHTTP01(ctx, ident, chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`No valid IP addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
