@@ -84,6 +84,7 @@ func TestLoadPolicies(t *testing.T) {
 	test.AssertEquals(t, certsPerName.Threshold, 2)
 	test.AssertDeepEquals(t, certsPerName.Overrides, map[string]int{
 		"ratelimit.me":          1,
+		"lim.it":                0,
 		"le.wtf":                10000,
 		"le1.wtf":               10000,
 		"le2.wtf":               10000,
