@@ -60,6 +60,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'localhost';
 
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'localhost';
+GRANT SELECT ON registrations TO 'mailer'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
 GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
