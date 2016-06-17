@@ -267,9 +267,10 @@ def run_expired_authz_purger_test():
 
 def run_certificates_per_name_test():
     try:
+        # This command will return a non zero error code. In order
+        # to avoid a CalledProcessException we use Popen.
         handle = subprocess.Popen(
-            '''node test.js --email %s --domains %s --challType %s''' %
-            ('test@ratelimit.me', 'lim.it', 'http-01'),
+            '''node test.js --email %s --domains %s''' % ('test@lim.it', 'lim.it'),
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         handle.wait()
         out, err = handle.communicate()
