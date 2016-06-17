@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/gorp.v1"
@@ -23,52 +24,56 @@ type contactExporter struct {
 }
 
 func (c contactExporter) findContacts() ([]string, error) {
-	var contactsJSON []string
-	var contacts []string
-
+	var contactsJSON [][]byte
 	_, err := c.dbMap.Select(
 		&contactsJSON,
-		`
-			SELECT DISTINCT (contact) AS active_contact
-			FROM registrations
-			WHERE contact != 'null' AND
-				id IN (
-					SELECT registrationID
-					FROM certificates
-					WHERE expires >= :expireCutoff
-				)
-			;
-			`,
+		`SELECT contact AS active_contact
+		FROM registrations
+		WHERE contact != 'null' AND
+			id IN (
+				SELECT registrationID
+				FROM certificates
+				WHERE expires >= :expireCutoff
+			);`,
 		map[string]interface{}{
 			"expireCutoff": c.clk.Now(),
 		})
 	if err != nil {
-		c.log.AuditErr(fmt.Sprintf("contact-exporter: Error finding contacts: %s", err))
+		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
 		return nil, err
 	}
 
+	contactMap := make(map[string]struct{}, len(contactsJSON))
 	for _, contactRaw := range contactsJSON {
 		var contactList []string
-		err := json.Unmarshal([]byte(contactRaw), &contactList)
+		err := json.Unmarshal(contactRaw, &contactList)
 		if err != nil {
 			c.log.AuditErr(
-				fmt.Sprintf("contact-exporter: couldn't unmarshal contact JSON %#v: %s\n",
+				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
 					contactRaw, err))
 			continue
 		}
 		for _, entry := range contactList {
 			// Only include email addresses
 			if strings.HasPrefix(entry, "mailto:") {
-				contacts = append(contacts, strings.TrimPrefix(entry, "mailto:"))
+				address := strings.TrimPrefix(entry, "mailto:")
+				// Using the contactMap to deduplicate addresses
+				contactMap[address] = struct{}{}
 			}
 		}
 	}
 
+	// Convert the de-dupe'd map back to a slice, sort it
+	var contacts []string
+	for contact := range contactMap {
+		contacts = append(contacts, contact)
+	}
+	sort.Strings(contacts)
 	return contacts, nil
 }
 
 func writeContacts(contacts []string, outFile string) error {
-	data := []byte(strings.Join(contacts, "\n"))
+	data := []byte(strings.Join(contacts, "\n") + "\n")
 
 	if outFile != "" {
 		return ioutil.WriteFile(outFile, data, 0644)

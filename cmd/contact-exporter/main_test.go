@@ -61,12 +61,12 @@ func TestFindContacts(t *testing.T) {
 	// we should get exactly two contacts back for RegA and RegC. RegB should
 	// *not* be present since their certificate has already expired. Similarly,
 	// RegD should *not* be present since its only contact is a "tel:" prefixed
-	// ACMEUrl.
+	// ACMEUrl. Since the results are sorted, RegC should be first.
 	contacts, err = testCtx.c.findContacts()
 	test.AssertNotError(t, err, "findContacts() produced error")
 	test.AssertEquals(t, len(contacts), 2)
-	test.AssertEquals(t, contacts[0], emailARaw)
-	test.AssertEquals(t, contacts[1], emailCRaw)
+	test.AssertEquals(t, contacts[0], emailCRaw)
+	test.AssertEquals(t, contacts[1], emailARaw)
 }
 
 func TestWriteContacts(t *testing.T) {
@@ -92,7 +92,7 @@ test-test-test@example.com
 	contents, err := ioutil.ReadFile(f.Name())
 	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
 
-	test.AssertEquals(t, string(contents), expectedOutput)
+	test.AssertEquals(t, string(contents), expectedOutput+"\n")
 }
 
 type testCtx struct {
