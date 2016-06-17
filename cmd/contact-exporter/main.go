@@ -79,14 +79,14 @@ func writeContacts(contacts []string, outFile string) error {
 }
 
 func main() {
-	var outFile = flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
 			cmd.PasswordConfig
 		}
 	}
-	var configFile = flag.String("configFile", "", "File containing a JSON config.")
+	configFile := flag.String("config", "", "File containing a JSON config.")
 
 	flag.Parse()
 	if outFile == nil {
