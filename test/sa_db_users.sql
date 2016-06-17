@@ -26,7 +26,6 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
-CREATE USER IF NOT EXISTS 'contact_exporter'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
@@ -61,6 +60,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'localhost';
 
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'localhost';
+GRANT SELECT ON registrations TO 'mailer'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
 GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
@@ -72,7 +72,3 @@ GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
-
--- Contact exporter
-GRANT SELECT ON registrations TO 'contact_exporter'@'localhost';
-GRANT SELECT ON certificates TO 'contact_exporter'@'localhost';
