@@ -283,13 +283,16 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) error {
-	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+	if contacts == nil || len(*contacts) == 0 {
+		return nil // Nothing to validate
+	}
+	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
-			len(contacts), ra.maxContactsPerReg))
+			len(*contacts), ra.maxContactsPerReg))
 	}
 
-	for _, contact := range contacts {
+	for _, contact := range *contacts {
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
@@ -674,18 +677,18 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	names, err := domainsForRateLimiting(names)
+	tldNames, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
 	}
 	now := ra.clk.Now()
 	windowBegin := limit.WindowBegin(now)
-	counts, err := ra.SA.CountCertificatesByNames(ctx, names, windowBegin, now)
+	counts, err := ra.SA.CountCertificatesByNames(ctx, tldNames, windowBegin, now)
 	if err != nil {
 		return err
 	}
 	var badNames []string
-	for _, name := range names {
+	for _, name := range tldNames {
 		count, ok := counts[name]
 		if !ok {
 			// Shouldn't happen, but let's be careful anyhow.

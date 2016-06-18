@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,22 +288,22 @@ func TestValidateContacts(t *testing.T) {
 	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail, otherValidEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{nil})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
 }
 
@@ -345,7 +347,7 @@ func TestNewRegistration(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Key:       AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
@@ -356,8 +358,8 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto.String() == result.Contact[0].String(),
+	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
+	test.Assert(t, mailto.String() == (*result.Contact)[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
@@ -373,7 +375,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	input := core.Registration{
 		ID:        23,
 		Key:       AccountKeyC,
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
@@ -400,7 +402,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []*core.AcmeURL{mailto},
+		Contact: &[]*core.AcmeURL{mailto},
 		Key:     ShortKey,
 	}
 
@@ -1007,6 +1009,90 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
+}
+
+// A mockSAWithFQDNSet is a mock StorageAuthority that supports
+// CountCertificatesByName as well as FQDNSetExists. This allows testing
+// checkCertificatesPerNameRateLimit's FQDN exemption logic.
+type mockSAWithFQDNSet struct {
+	mocks.StorageAuthority
+	fqdnSet    map[string]bool
+	nameCounts map[string]int
+	t          *testing.T
+}
+
+// Construct the FQDN Set key the same way as the SA - by using
+// `core.UniqueLowerNames`, joining the names with a `,` and hashing them.
+func (m mockSAWithFQDNSet) hashNames(names []string) string {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return string(hash[:])
+}
+
+// Add a set of domain names to the FQDN set
+func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
+	hash := m.hashNames(names)
+	m.fqdnSet[hash] = true
+}
+
+// Search for a set of domain names in the FQDN set map
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
+	hash := m.hashNames(names)
+	if _, exists := m.fqdnSet[hash]; exists {
+		return true, nil
+	}
+	return false, nil
+}
+
+// Return a map of domain -> certificate count. Note: This naive implementation
+// ignores names, earliest and latest paremeters and always returns the same
+// nameCount map.
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+	return m.nameCounts, nil
+}
+
+// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
+// properly honours the FQDNSet exemption. E.g. that if a set of domains has
+// reached the certificates per name rate limit policy threshold but the exact
+// same set of FQDN's was previously issued, then it should not be considered
+// over the certificates per name limit.
+//
+// [0] https://github.com/letsencrypt/boulder/issues/1925
+func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 1 certificate per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 1,
+		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+	}
+
+	// Create a mock SA that has both name counts and an FQDN set
+	mockSA := &mockSAWithFQDNSet{
+		nameCounts: map[string]int{
+			"example.com": 100,
+			"zombo.com":   100,
+		},
+		fqdnSet: map[string]bool{},
+		t:       t,
+	}
+	ra.SA = mockSA
+
+	// First check that without a pre-existing FQDN set that the provided set of
+	// names is rate limited due to being over the certificates per name limit for
+	// "example.com" and "zombo.com"
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Now add a FQDN set entry for these domains
+	mockSA.addFQDNSet([]string{"www.example.com", "example.com", "www.zombo.com"})
+
+	// A subsequent check against the certificates per name limit should now be OK
+	// - there exists a FQDN set and so the exemption to this particular limit
+	// comes into effect.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
 var CAkeyPEM = `

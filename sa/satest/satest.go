@@ -44,7 +44,7 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registra
 	if err != nil {
 		t.Fatalf("unable to parse contact link: %s", err)
 	}
-	contacts := []*core.AcmeURL{contact}
+	contacts := &[]*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       GoodJWK(),
 		Contact:   contacts,
