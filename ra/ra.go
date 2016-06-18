@@ -812,6 +812,16 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// return
 	}
 
+	// When configured with `reuseValidAuthz` we can expect some clients to try
+	// and update a challenge for an authorization that is already valid. In this
+	// case we don't need to process the challenge update. It wouldn't be helpful,
+	// the overall authorization is already good! We increment a stat for this
+	// case and return early.
+	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
+		return
+	}
+
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
 	if err != nil {
@@ -833,16 +843,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Copy information over that the client is allowed to supply
 	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
-
-	// When configured with `reuseValidAuthz` we can expect some clients to try
-	// and update a challenge for an authorization that is already valid. In this
-	// case we don't need to process the challenge update. It wouldn't be helpful,
-	// the overall authorization is already good! We increment a stat for this
-	// case and return early.
-	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
-		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
-		return
-	}
 
 	// Double check before sending to VA
 	if !ch.IsSaneForValidation() {
