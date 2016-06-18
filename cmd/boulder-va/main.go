@@ -76,6 +76,9 @@ func main() {
 			r.LookupIPv6 = c.VA.LookupIPv6
 			resolver = r
 		}
+		if c.VA.EnforceCAASERVFAIL {
+			resolver.EnforceCAASERVFAIL()
+		}
 		vai := va.NewValidationAuthorityImpl(
 			pc,
 			sbc,

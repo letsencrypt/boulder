@@ -106,6 +106,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		// Feature flag to enable enforcement of CAA SERVFAILs.
+		EnforceCAASERVFAIL bool
 	}
 
 	Statsd StatsdConfig

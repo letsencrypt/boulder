@@ -213,6 +213,7 @@
   },
 
   "va": {
+    "enforceCAASERVFAIL": true,
     "userAgent": "boulder",
     "debugAddr": "localhost:8004",
     "portConfig": {
