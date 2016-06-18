@@ -827,7 +827,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
-		err = core.MalformedRequestError("Response does not complete challenge")
+		err = core.MalformedRequestError("Provided key authorization was incorrect")
 		return
 	}
 
