@@ -183,20 +183,16 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
-		logConf.Network,
-		logConf.Server,
-		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
+		"",
+		"",
+		syslog.LOG_INFO, // default, not actually used
 		tag)
 	FailOnError(err, "Could not connect to Syslog")
-	stdoutLoglevel := int(syslog.LOG_DEBUG)
-	if logConf.StdoutLevel != nil {
-		stdoutLoglevel = *logConf.StdoutLevel
+	syslogLevel := int(syslog.LOG_INFO)
+	if logConf.SyslogLevel != 0 {
+		syslogLevel = logConf.SyslogLevel
 	}
-	syslogLogLevel := int(syslog.LOG_DEBUG)
-	if logConf.SyslogLevel != nil {
-		syslogLogLevel = *logConf.SyslogLevel
-	}
-	logger, err := blog.New(syslogger, stdoutLoglevel, syslogLogLevel)
+	logger, err := blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)

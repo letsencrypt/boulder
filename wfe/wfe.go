@@ -808,7 +808,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
 	// WFE is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
+	// lying to the RA. We should probably pass a copy of the whole request to the
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
