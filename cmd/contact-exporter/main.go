@@ -23,11 +23,17 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
-func (c contactExporter) findContacts() ([]string, error) {
-	var contactsJSON [][]byte
+type contactRecord struct {
+	ID      int64  `json:"id"`
+	Contact []byte `json:"-"`
+	Email   string `json:"email"`
+}
+
+func (c contactExporter) findContacts() ([]*contactRecord, error) {
+	var contactsList []*contactRecord
 	_, err := c.dbMap.Select(
-		&contactsJSON,
-		`SELECT contact AS active_contact
+		&contactsList,
+		`SELECT id, contact
 		FROM registrations
 		WHERE contact != 'null' AND
 			id IN (
@@ -43,36 +49,63 @@ func (c contactExporter) findContacts() ([]string, error) {
 		return nil, err
 	}
 
-	contactMap := make(map[string]struct{}, len(contactsJSON))
-	for _, contactRaw := range contactsJSON {
-		var contactList []string
-		err := json.Unmarshal(contactRaw, &contactList)
+	for _, contact := range contactsList {
+		var contactFields []string
+		err := json.Unmarshal(contact.Contact, &contactFields)
 		if err != nil {
 			c.log.AuditErr(
 				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
-					contactRaw, err))
+					contact.Contact, err))
 			continue
 		}
-		for _, entry := range contactList {
-			// Only include email addresses
+		for _, entry := range contactFields {
+			// Set the Email field if there is a `mailto:` address
 			if strings.HasPrefix(entry, "mailto:") {
 				address := strings.TrimPrefix(entry, "mailto:")
-				// Using the contactMap to deduplicate addresses
-				contactMap[address] = struct{}{}
+				contact.Email = address
 			}
 		}
 	}
 
-	// Convert the de-dupe'd map back to a slice, sort it
+	return contactsList, nil
+}
+
+func contactsToEmails(contactList []*contactRecord) []string {
+	contactMap := make(map[string]struct{}, len(contactList))
+	for _, contact := range contactList {
+		if strings.TrimSpace(contact.Email) == "" {
+			continue
+		}
+		// Using the contactMap to deduplicate addresses
+		contactMap[contact.Email] = struct{}{}
+	}
 	var contacts []string
+	// Convert the de-dupe'd map back to a slice, sort it
 	for contact := range contactMap {
 		contacts = append(contacts, contact)
 	}
 	sort.Strings(contacts)
-	return contacts, nil
+	return contacts
 }
 
-func writeContacts(contacts []string, outFile string) error {
+func writeContacts(contactsList []*contactRecord, outfile string) error {
+	data, err := json.Marshal(contactsList)
+	data = append(data, "\n"...)
+	if err != nil {
+		return err
+	}
+
+	if outfile != "" {
+		return ioutil.WriteFile(outfile, data, 0644)
+	} else {
+		fmt.Printf("%s", data)
+		return nil
+	}
+}
+
+func writeEmails(contactList []*contactRecord, outFile string) error {
+	contacts := contactsToEmails(contactList)
+
 	data := []byte(strings.Join(contacts, "\n") + "\n")
 
 	if outFile != "" {
@@ -85,6 +118,7 @@ func writeContacts(contacts []string, outFile string) error {
 
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	emailOut := flag.Bool("emails", false, "Export contact email addresses (defaults to registration IDs).")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -121,6 +155,10 @@ func main() {
 	contacts, err := exporter.findContacts()
 	cmd.FailOnError(err, "Could not find contacts")
 
-	err = writeContacts(contacts, *outFile)
+	if *emailOut {
+		err = writeEmails(contacts, *outFile)
+	} else {
+		err = writeContacts(contacts, *outFile)
+	}
 	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile '%s'", *outFile))
 }
