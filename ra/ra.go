@@ -808,26 +808,11 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	ch := &authz.Challenges[challengeIndex]
 
-	// Copy information over that the client is allowed to supply
-	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
-
 	if response.Type != "" && ch.Type != response.Type {
 		// TODO(riking): Check the rate on this, uncomment error return if negligible
 		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
 		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
 		// return
-	}
-
-	// Recompute the key authorization field provided by the client and
-	// check it against the value provided
-	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization()
-	if err != nil {
-		err = core.InternalServerError("Could not compute expected key authorization value")
-		return
-	}
-	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
-		err = core.MalformedRequestError("Response does not complete challenge")
-		return
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try
@@ -839,6 +824,28 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
 		return
 	}
+
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
+	// Recompute the key authorization field provided by the client and
+	// check it against the value provided
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(&reg.Key)
+	if err != nil {
+		err = core.InternalServerError("Could not compute expected key authorization value")
+		return
+	}
+	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
+		err = core.MalformedRequestError("Provided key authorization was incorrect")
+		return
+	}
+
+	// Copy information over that the client is allowed to supply
+	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	// Double check before sending to VA
 	if !ch.IsSaneForValidation() {
@@ -854,20 +861,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
-
-	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		return
-	}
-
-	// Reject the update if the challenge in question was created
-	// with a different account key
-	if !core.KeyDigestEquals(reg.Key, ch.AccountKey) {
-		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
-		return
-	}
 
 	// Dispatch to the VA for service
 

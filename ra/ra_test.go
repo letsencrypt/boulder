@@ -136,12 +136,12 @@ var (
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
+	keyAuthorization, err := ch.ExpectedKeyAuthorization(&AccountKeyA)
 	if err != nil {
 		return
 	}
 
-	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization}
 	return
 }
 
@@ -645,30 +645,6 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
-}
-
-func TestUpdateAuthorizationReject(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	// Change the account key
-	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
-	test.AssertNotError(t, err, "GetRegistration failed")
-	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(ctx, reg)
-	test.AssertNotError(t, err, "UpdateRegistration failed")
-
-	// Verify that the RA rejected the authorization request
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
-
-	t.Log("DONE TestUpdateAuthorizationReject")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
