@@ -68,6 +68,7 @@ var ctx = context.Background()
 
 // All paths that get assigned to tokens MUST be valid tokens
 const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+const expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
 const path404 = "404"
 const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
@@ -518,20 +519,18 @@ func TestValidateHTTP(t *testing.T) {
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
-		Type:             challengeType,
-		Status:           core.StatusPending,
-		Token:            core.NewToken(),
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
+		Type:                     challengeType,
+		Status:                   core.StatusPending,
+		Token:                    expectedToken,
+		ValidationRecord:         []core.ValidationRecord{},
+		ProvidedKeyAuthorization: expectedKeyAuthorization,
 	}
-
-	chall.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 	return chall
 }
 
-// setChallengeToken sets the token value both in the Token field and
-// in the serialized KeyAuthorization object.
+// setChallengeToken sets the token value, and sets the ProvidedKeyAuthorization
+// to match.
 func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
 	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
@@ -656,7 +655,7 @@ func TestPerformValidationValid(t *testing.T) {
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
-	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
@@ -679,7 +678,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	chalDNS := core.DNSChallenge01(accountKey)
-	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	va, _, _ := setup()
 
@@ -755,7 +754,7 @@ func TestDNSValidationOK(t *testing.T) {
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
-	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -774,7 +773,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	chalDNS.ProvidedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
