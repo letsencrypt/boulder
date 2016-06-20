@@ -89,6 +89,9 @@ type TooManyRPCRequestsError string
 // BadNonceError indicates an empty of invalid nonce was provided
 type BadNonceError string
 
+// RejectedIdentifierError indicates the user data was rejected
+type RejectedIdentifierError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -100,6 +103,7 @@ func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e BadNonceError) Error() string            { return string(e) }
+func (e RejectedIdentifierError) Error() string  { return string(e) }
 
 // statusTooManyRequests is the HTTP status code meant for rate limiting
 // errors. It's not currently in the net/http library so we add it here.
