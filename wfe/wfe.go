@@ -568,6 +568,13 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
+	for _, url := range init.Contact {
+		if url.Scheme == "mailto" && !core.IsASCII(url.String()) {
+			msg := fmt.Sprintf("Provided contact email [%s] does not contain all ASCII encoded characters", url.String())
+			wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+			return
+		}
+	}
 	init.Key = *key
 	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
 	if init.InitialIP == nil {

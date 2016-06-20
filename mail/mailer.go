@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -98,14 +98,6 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func isASCII(str string) bool {
-	for _, r := range str {
-		if r > unicode.MaxASCII {
-			return false
-		}
-	}
-	return true
-}
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
@@ -139,7 +131,7 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	now := m.clk.Now().UTC()
 	addrs := []string{}
 	for _, a := range to {
-		if !isASCII(a) {
+		if !core.IsASCII(a) {
 			return nil, fmt.Errorf("Non-ASCII email address")
 		}
 		addrs = append(addrs, strconv.Quote(a))
