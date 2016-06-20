@@ -16,6 +16,8 @@ certificatesPerName:
     nginx.wtf: 9999
     good-caa-reserved.com: 9999
     bad-caa-reserved.com: 9999
+    ecdsa.le.wtf: 9999
+    must-staple.le.wtf: 9999
   registrationOverrides:
     101: 1000
 registrationsPerIP:
@@ -37,3 +39,5 @@ certificatesPerFQDNSet:
     le.wtf,le1.wtf: 9999
     good-caa-reserved.com: 9999
     nginx.wtf: 9999
+    ecdsa.le.wtf: 9999
+    must-staple.le.wtf: 9999

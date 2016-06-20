@@ -91,6 +91,8 @@ func TestLoadPolicies(t *testing.T) {
 		"nginx.wtf":             10000,
 		"good-caa-reserved.com": 10000,
 		"bad-caa-reserved.com":  10000,
+		"ecdsa.le.wtf":          10000,
+		"must-staple.le.wtf":    10000,
 	})
 	test.AssertDeepEquals(t, certsPerName.RegistrationOverrides, map[int64]int{
 		101: 1000,
@@ -121,6 +123,8 @@ func TestLoadPolicies(t *testing.T) {
 		"le.wtf,le1.wtf":        10000,
 		"good-caa-reserved.com": 10000,
 		"nginx.wtf":             10000,
+		"ecdsa.le.wtf":          10000,
+		"must-staple.le.wtf":    10000,
 	})
 	test.AssertEquals(t, len(certsPerFQDN.RegistrationOverrides), 0)
 
