@@ -287,6 +287,7 @@ func TestValidateContacts(t *testing.T) {
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
+	nonASCII, _ := core.ParseAcmeURL("mailto:señor@email.com")
 
 	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
@@ -305,6 +306,9 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
+
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nonASCII})
+	test.AssertError(t, err, "Non ASCII email")
 }
 
 func TestValidateEmail(t *testing.T) {
