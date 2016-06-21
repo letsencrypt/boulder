@@ -25,17 +25,17 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	http01 := HTTPChallenge01(accountKey)
+	http01 := HTTPChallenge01()
 	if !http01.IsSane(false) {
 		t.Errorf("New http-01 challenge is not sane: %v", http01)
 	}
 
-	tlssni01 := TLSSNIChallenge01(accountKey)
+	tlssni01 := TLSSNIChallenge01()
 	if !tlssni01.IsSane(false) {
 		t.Errorf("New tls-sni-01 challenge is not sane: %v", tlssni01)
 	}
 
-	dns01 := DNSChallenge01(accountKey)
+	dns01 := DNSChallenge01()
 	if !dns01.IsSane(false) {
 		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
 	}

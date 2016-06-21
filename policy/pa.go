@@ -15,7 +15,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
-	"github.com/square/go-jose"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -259,19 +258,19 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
-		challenges = append(challenges, core.HTTPChallenge01(accountKey))
+		challenges = append(challenges, core.HTTPChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
-		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
+		challenges = append(challenges, core.TLSSNIChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeDNS01] {
-		challenges = append(challenges, core.DNSChallenge01(accountKey))
+		challenges = append(challenges, core.DNSChallenge01())
 	}
 
 	// We shuffle the challenges and combinations to prevent ACME clients from

@@ -337,12 +337,6 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	reg, err := ra.SA.GetRegistration(ctx, regID)
-	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
-		return authz, err
-	}
-
 	identifier := request.Identifier
 	identifier.Value = strings.ToLower(identifier.Value)
 
@@ -399,7 +393,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
