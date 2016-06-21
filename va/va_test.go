@@ -198,7 +198,7 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 }
 
 func TestHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
@@ -302,7 +302,7 @@ func TestHTTP(t *testing.T) {
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
@@ -357,7 +357,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, "looper")
 
 	hs := httpSrv(t, expectedToken)
@@ -374,7 +374,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 }
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
@@ -501,7 +501,7 @@ func TestTLSError(t *testing.T) {
 }
 
 func TestValidateHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
@@ -653,7 +653,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 func TestPerformValidationValid(t *testing.T) {
 	va, stats, _ := setup()
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS := core.DNSChallenge01()
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
@@ -677,7 +677,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS := core.DNSChallenge01()
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	va, _, _ := setup()
@@ -690,13 +690,13 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	va, _, _ := setup()
 
-	chal0 := core.DNSChallenge01(accountKey)
+	chal0 := core.DNSChallenge01()
 	chal0.Token = ""
 
-	chal1 := core.DNSChallenge01(accountKey)
+	chal1 := core.DNSChallenge01()
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
-	chal2 := core.DNSChallenge01(accountKey)
+	chal2 := core.DNSChallenge01()
 	chal2.ProvidedKeyAuthorization = ""
 
 	var authz = core.Authorization{
@@ -752,7 +752,7 @@ func TestDNSValidationOK(t *testing.T) {
 	va, _, _ := setup()
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS := core.DNSChallenge01()
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
@@ -770,7 +770,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _, _ := setup()
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS := core.DNSChallenge01()
 	chalDNS.Token = expectedToken
 
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
@@ -802,7 +802,7 @@ func TestCAAFailure(t *testing.T) {
 }
 
 func TestLimitedReader(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, core.NewToken())
 
 	ident.Value = "localhost"

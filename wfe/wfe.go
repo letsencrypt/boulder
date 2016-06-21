@@ -909,13 +909,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URI field and clearing its AccountKey and ID
-// fields.
+// the client by filling in its URI field and clearing its ID field.
 // TODO: Come up with a cleaner way to do this.
 // https://github.com/letsencrypt/boulder/issues/761
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	challenge.AccountKey = nil
 	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 }

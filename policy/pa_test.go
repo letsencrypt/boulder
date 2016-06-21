@@ -6,8 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/square/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -192,13 +190,7 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	var accountKey *jose.JsonWebKey
-	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
-	if err != nil {
-		t.Errorf("Error unmarshaling JWK: %v", err)
-	}
-
-	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
+	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")

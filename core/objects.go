@@ -238,16 +238,6 @@ type Challenge struct {
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
-
-	// The account key used to create this challenge.  This is not part of the
-	// spec, but clients are required to ignore unknown fields, so it's harmless
-	// to include.
-	//
-	// Boulder needs to remember what key was used to create a challenge in order
-	// to prevent an attacker from re-using a validation signature with a different,
-	// unauthorized key. See:
-	//   https://mailarchive.ietf.org/arch/msg/acme/F71iz6qq1o_QPVhJCV4dqWf-4Yc
-	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
 }
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for

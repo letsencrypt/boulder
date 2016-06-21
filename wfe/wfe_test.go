@@ -177,7 +177,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
