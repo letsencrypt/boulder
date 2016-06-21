@@ -139,6 +139,8 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case BadNonceError:
 		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
+	case RejectedIdentifierError:
+		return probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
