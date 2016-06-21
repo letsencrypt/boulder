@@ -7,6 +7,7 @@ certificatesPerName:
   threshold: 2
   overrides:
     ratelimit.me: 1
+    lim.it: 0
     # Hostnames used by the letsencrypt client integration test.
     le.wtf: 10000
     le1.wtf: 10000

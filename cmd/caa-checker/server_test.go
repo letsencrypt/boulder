@@ -3,7 +3,6 @@ package main
 import (
 	"testing"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
@@ -11,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -45,7 +45,7 @@ func TestChecking(t *testing.T) {
 		{"unsatisfiable.com", true, false},
 	}
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 	ccs := &caaCheckerServer{&bdns.MockDNSResolver{}, stats}
 	issuerDomain := "letsencrypt.org"
 

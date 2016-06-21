@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,12 +136,12 @@ var (
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
+	keyAuthorization, err := ch.ExpectedKeyAuthorization(&AccountKeyA)
 	if err != nil {
 		return
 	}
 
-	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization}
 	return
 }
 
@@ -645,30 +647,6 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
-func TestUpdateAuthorizationReject(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	// Change the account key
-	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
-	test.AssertNotError(t, err, "GetRegistration failed")
-	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(ctx, reg)
-	test.AssertNotError(t, err, "UpdateRegistration failed")
-
-	// Verify that the RA rejected the authorization request
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
-
-	t.Log("DONE TestUpdateAuthorizationReject")
-}
-
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1031,6 +1009,90 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
+}
+
+// A mockSAWithFQDNSet is a mock StorageAuthority that supports
+// CountCertificatesByName as well as FQDNSetExists. This allows testing
+// checkCertificatesPerNameRateLimit's FQDN exemption logic.
+type mockSAWithFQDNSet struct {
+	mocks.StorageAuthority
+	fqdnSet    map[string]bool
+	nameCounts map[string]int
+	t          *testing.T
+}
+
+// Construct the FQDN Set key the same way as the SA - by using
+// `core.UniqueLowerNames`, joining the names with a `,` and hashing them.
+func (m mockSAWithFQDNSet) hashNames(names []string) string {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return string(hash[:])
+}
+
+// Add a set of domain names to the FQDN set
+func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
+	hash := m.hashNames(names)
+	m.fqdnSet[hash] = true
+}
+
+// Search for a set of domain names in the FQDN set map
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
+	hash := m.hashNames(names)
+	if _, exists := m.fqdnSet[hash]; exists {
+		return true, nil
+	}
+	return false, nil
+}
+
+// Return a map of domain -> certificate count. Note: This naive implementation
+// ignores names, earliest and latest paremeters and always returns the same
+// nameCount map.
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+	return m.nameCounts, nil
+}
+
+// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
+// properly honours the FQDNSet exemption. E.g. that if a set of domains has
+// reached the certificates per name rate limit policy threshold but the exact
+// same set of FQDN's was previously issued, then it should not be considered
+// over the certificates per name limit.
+//
+// [0] https://github.com/letsencrypt/boulder/issues/1925
+func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 1 certificate per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 1,
+		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+	}
+
+	// Create a mock SA that has both name counts and an FQDN set
+	mockSA := &mockSAWithFQDNSet{
+		nameCounts: map[string]int{
+			"example.com": 100,
+			"zombo.com":   100,
+		},
+		fqdnSet: map[string]bool{},
+		t:       t,
+	}
+	ra.SA = mockSA
+
+	// First check that without a pre-existing FQDN set that the provided set of
+	// names is rate limited due to being over the certificates per name limit for
+	// "example.com" and "zombo.com"
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Now add a FQDN set entry for these domains
+	mockSA.addFQDNSet([]string{"www.example.com", "example.com", "www.zombo.com"})
+
+	// A subsequent check against the certificates per name limit should now be OK
+	// - there exists a FQDN set and so the exemption to this particular limit
+	// comes into effect.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
 var CAkeyPEM = `
