@@ -98,7 +98,6 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
 func New(server, port, username, password string, from mail.Address) *MailerImpl {

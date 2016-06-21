@@ -416,4 +416,3 @@ func IsASCII(str string) bool {
 	}
 	return true
 }
-
