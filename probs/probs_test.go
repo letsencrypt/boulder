@@ -60,6 +60,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		{RateLimited("rate limited detail"), RateLimitedProblem, statusTooManyRequests, "rate limited detail"},
 		{BadNonce("bad nonce detail"), BadNonceProblem, http.StatusBadRequest, "bad nonce detail"},
 		{TLSError("TLS error detail"), TLSProblem, http.StatusBadRequest, "TLS error detail"},
+		{RejectedIdentifier("rejected identifier detail"), RejectedIdentifierProblem, http.StatusBadRequest, "rejected identifier detail"},
 	}
 
 	for _, c := range testCases {
