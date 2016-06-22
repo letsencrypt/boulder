@@ -94,12 +94,6 @@ const (
 	// octets: https://tools.ietf.org/html/rfc1035#page-10
 	maxLabelLength         = 63
 	maxDNSIdentifierLength = 255
-
-	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
-	// to skip the domain whitelist (but not the blacklist). This is for an
-	// early partner integration during the beta period and should be removed
-	// later.
-	whitelistedPartnerRegID = 131
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
@@ -163,7 +157,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}

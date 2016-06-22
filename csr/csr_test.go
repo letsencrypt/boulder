@@ -26,7 +26,7 @@ func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []co
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Value == "bad-name.com" {
 		return errors.New("")
 	}

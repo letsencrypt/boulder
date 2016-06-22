@@ -140,7 +140,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(identifier, 100)
+	err = pa.WillingToIssue(identifier)
 	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
@@ -148,7 +148,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test syntax errors
 	for _, tc := range testCases {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != tc.err {
 			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
@@ -157,7 +157,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != errICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -166,7 +166,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test blacklisting
 	for _, domain := range shouldBeBlacklisted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != errBlacklisted {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -175,7 +175,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.WillingToIssue(identifier, 100); err != nil {
+		if err := pa.WillingToIssue(identifier); err != nil {
 			t.Error("Identifier was incorrectly forbidden: ", identifier, err)
 		}
 	}

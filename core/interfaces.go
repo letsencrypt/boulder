@@ -81,7 +81,7 @@ type CertificateAuthority interface {
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
-	WillingToIssue(domain AcmeIdentifier, regID int64) error
+	WillingToIssue(domain AcmeIdentifier) error
 	ChallengesFor(domain AcmeIdentifier) (challenges []Challenge, validCombinations [][]int)
 }
 
