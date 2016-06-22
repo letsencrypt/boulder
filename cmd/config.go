@@ -39,6 +39,8 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
+
+		SubscriberAgreementURL string
 	}
 
 	CA CAConfig
@@ -56,9 +58,6 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
-		// UseNewVARPC determines whether to call VA.PerformValidation
-		UseNewVARPC bool
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
@@ -68,6 +67,13 @@ type Config struct {
 
 		MaxNames     int
 		DoNotForceCN bool
+
+		// Controls behaviour of the RA when asked to create a new authz for
+		// a name/regID that already has a valid authz. False preserves historic
+		// behaviour and ignores the existing authz and creates a new one. True
+		// instructs the RA to reuse the previously created authz in lieu of
+		// creating another.
+		ReuseValidAuthz bool
 	}
 
 	SA struct {
@@ -116,13 +122,10 @@ type Config struct {
 	Mailer struct {
 		ServiceConfig
 		DBConfig
-		PasswordConfig
+		SMTPConfig
 
-		Server   string
-		Port     string
-		Username string
-		From     string
-		Subject  string
+		From    string
+		Subject string
 
 		CertLimit int
 		NagTimes  []string
@@ -191,6 +194,7 @@ type Config struct {
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
+	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
 	SubscriberAgreementURL string
 }
 
@@ -265,6 +269,13 @@ func (d *DBConfig) URL() (string, error) {
 		return string(url), err
 	}
 	return d.DBConnect, nil
+}
+
+type SMTPConfig struct {
+	PasswordConfig
+	Server   string
+	Port     string
+	Username string
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
@@ -440,10 +451,8 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
-	StdoutLevel *int
-	SyslogLevel *int
+	StdoutLevel int
+	SyslogLevel int
 }
 
 // StatsdConfig defines the config for Statsd.
@@ -509,7 +518,7 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string

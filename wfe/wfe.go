@@ -808,7 +808,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
 	// WFE is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
+	// lying to the RA. We should probably pass a copy of the whole request to the
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
@@ -909,13 +909,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URI field and clearing its AccountKey and ID
-// fields.
+// the client by filling in its URI field and clearing its ID field.
 // TODO: Come up with a cleaner way to do this.
 // https://github.com/letsencrypt/boulder/issues/761
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	challenge.AccountKey = nil
 	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 }

@@ -1,7 +1,5 @@
 {
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6,
     "sysloglevel": 4
   },
@@ -21,6 +19,7 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
+    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
@@ -139,7 +138,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "publisherService": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -173,8 +172,9 @@
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "reuseValidAuthz": true,
     "vaService": {
-      "serverAddress": "boulder:9092",
+      "serverAddresses": ["boulder:9092"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -225,7 +225,7 @@
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "caaService": {
-      "serverAddress": "boulder:9090",
+      "serverAddresses": ["boulder:9090"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
@@ -298,7 +298,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "publisher": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -382,8 +382,6 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10
   },
-
-  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {
     "rsa": true,

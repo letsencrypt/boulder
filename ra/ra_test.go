@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,12 +136,12 @@ var (
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
+	keyAuthorization, err := ch.ExpectedKeyAuthorization(&AccountKeyA)
 	if err != nil {
 		return
 	}
 
-	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization}
 	return
 }
 
@@ -239,7 +241,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, false, 0, true)
+		1, testKeyPolicy, 0, true, false)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -248,7 +250,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -285,24 +287,28 @@ func TestValidateContacts(t *testing.T) {
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
+	nonASCII, _ := core.ParseAcmeURL("mailto:señor@email.com")
 
-	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail, otherValidEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{nil})
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
+
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nonASCII})
+	test.AssertError(t, err, "Non ASCII email")
 }
 
 func TestValidateEmail(t *testing.T) {
@@ -345,7 +351,7 @@ func TestNewRegistration(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Key:       AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
@@ -356,8 +362,8 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto.String() == result.Contact[0].String(),
+	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
+	test.Assert(t, mailto.String() == (*result.Contact)[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
@@ -373,7 +379,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	input := core.Registration{
 		ID:        23,
 		Key:       AccountKeyC,
-		Contact:   []*core.AcmeURL{mailto},
+		Contact:   &[]*core.AcmeURL{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
@@ -400,7 +406,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []*core.AcmeURL{mailto},
+		Contact: &[]*core.AcmeURL{mailto},
 		Key:     ShortKey,
 	}
 
@@ -435,6 +441,132 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
+}
+
+func TestReuseAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Create one finalized authorization
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
+
+	// The first authz should be reused as the second and thus have the same ID
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+
+	// The second authz shouldn't be pending, it should be valid (that's why it
+	// was reused)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+
+	// It should have one http challenge already marked valid
+	httpIndex := ResponseIndex
+	httpChallenge := secondAuthz.Challenges[httpIndex]
+	test.AssertEquals(t, httpChallenge.Type, core.ChallengeTypeHTTP01)
+	test.AssertEquals(t, httpChallenge.Status, core.StatusValid)
+
+	// It should have one SNI challenge that is pending
+	sniIndex := httpIndex + 1
+	sniChallenge := secondAuthz.Challenges[sniIndex]
+	test.AssertEquals(t, sniChallenge.Type, core.ChallengeTypeTLSSNI01)
+	test.AssertEquals(t, sniChallenge.Status, core.StatusPending)
+
+	// Sending an update to this authz for an already valid challenge should do
+	// nothing (but produce no error), since it is already a valid authz
+	response, err := makeResponse(httpChallenge)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthz http challenge")
+	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, httpIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz http failed")
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+
+	// Similarly, sending an update to this authz for a pending challenge should do
+	// nothing (but produce no error), since the overall authz is already valid
+	response, err = makeResponse(sniChallenge)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthz sni challenge")
+	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, sniIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+}
+
+func TestReuseAuthorizationDisabled(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn *off* AuthZ Reuse
+	ra.reuseValidAuthz = false
+
+	// Create one finalized authorization
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
+
+	// The second authz should not have the same ID as the previous AuthZ,
+	// because we have set `reuseValidAuthZ` to false. It should be a fresh
+	// & unique authz
+	test.AssertNotEquals(t, finalAuthz.ID, secondAuthz.ID)
+
+	// The second authz shouldn't be valid, but pending since it is a brand new
+	// authz, not a reused one
+	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
+}
+
+func TestReuseExpiringAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Create one finalized authorization that expires in 12 hours from now
+	expiringAuth := AuthzInitial
+	expiringAuth.Status = "valid"
+	exp := ra.clk.Now().Add(12 * time.Hour)
+	expiringAuth.Expires = &exp
+	expiringAuth.Challenges[0].Status = "valid"
+	expiringAuth.RegistrationID = Registration.ID
+	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, expiringAuth)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
+
+	// The second authz should not have the same ID as the previous AuthZ,
+	// because the existing valid authorization expires within 1 day from now
+	test.AssertNotEquals(t, expiringAuth.ID, secondAuthz.ID)
+
+	// The second authz shouldn't be valid, but pending since it is a brand new
+	// authz, not a reused one
+	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
 }
 
 func TestNewAuthorizationCapitalLetters(t *testing.T) {
@@ -517,30 +649,6 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
-}
-
-func TestUpdateAuthorizationReject(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	// Change the account key
-	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
-	test.AssertNotError(t, err, "GetRegistration failed")
-	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(ctx, reg)
-	test.AssertNotError(t, err, "UpdateRegistration failed")
-
-	// Verify that the RA rejected the authorization request
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
-
-	t.Log("DONE TestUpdateAuthorizationReject")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
@@ -905,6 +1013,90 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
+}
+
+// A mockSAWithFQDNSet is a mock StorageAuthority that supports
+// CountCertificatesByName as well as FQDNSetExists. This allows testing
+// checkCertificatesPerNameRateLimit's FQDN exemption logic.
+type mockSAWithFQDNSet struct {
+	mocks.StorageAuthority
+	fqdnSet    map[string]bool
+	nameCounts map[string]int
+	t          *testing.T
+}
+
+// Construct the FQDN Set key the same way as the SA - by using
+// `core.UniqueLowerNames`, joining the names with a `,` and hashing them.
+func (m mockSAWithFQDNSet) hashNames(names []string) string {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return string(hash[:])
+}
+
+// Add a set of domain names to the FQDN set
+func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
+	hash := m.hashNames(names)
+	m.fqdnSet[hash] = true
+}
+
+// Search for a set of domain names in the FQDN set map
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
+	hash := m.hashNames(names)
+	if _, exists := m.fqdnSet[hash]; exists {
+		return true, nil
+	}
+	return false, nil
+}
+
+// Return a map of domain -> certificate count. Note: This naive implementation
+// ignores names, earliest and latest paremeters and always returns the same
+// nameCount map.
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+	return m.nameCounts, nil
+}
+
+// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
+// properly honours the FQDNSet exemption. E.g. that if a set of domains has
+// reached the certificates per name rate limit policy threshold but the exact
+// same set of FQDN's was previously issued, then it should not be considered
+// over the certificates per name limit.
+//
+// [0] https://github.com/letsencrypt/boulder/issues/1925
+func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 1 certificate per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 1,
+		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+	}
+
+	// Create a mock SA that has both name counts and an FQDN set
+	mockSA := &mockSAWithFQDNSet{
+		nameCounts: map[string]int{
+			"example.com": 100,
+			"zombo.com":   100,
+		},
+		fqdnSet: map[string]bool{},
+		t:       t,
+	}
+	ra.SA = mockSA
+
+	// First check that without a pre-existing FQDN set that the provided set of
+	// names is rate limited due to being over the certificates per name limit for
+	// "example.com" and "zombo.com"
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Now add a FQDN set entry for these domains
+	mockSA.addFQDNSet([]string{"www.example.com", "example.com", "www.zombo.com"})
+
+	// A subsequent check against the certificates per name limit should now be OK
+	// - there exists a FQDN set and so the exemption to this particular limit
+	// comes into effect.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
 var CAkeyPEM = `

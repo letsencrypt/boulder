@@ -177,11 +177,11 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
@@ -621,9 +621,9 @@ func TestIssueCertificate(t *testing.T) {
 		stats,
 		0,
 		testKeyPolicy,
-		false,
 		0,
-		true)
+		true,
+		false)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
@@ -860,8 +860,8 @@ func TestNewECDSARegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -980,8 +980,8 @@ func TestNewRegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 

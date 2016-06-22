@@ -17,8 +17,10 @@ go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cmd/stringer \
   golang.org/x/tools/cover &
+
+# Create the database and roles
+./test/create_db.sh &
 
 (curl -sL https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
  tar -xzv &&
