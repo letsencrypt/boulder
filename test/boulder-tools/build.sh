@@ -11,7 +11,7 @@ deb-src https://deb.nodesource.com/node_4.x trusty main
 deb http://ftp.debian.org/debian jessie-backports main
 EOAPT
 apt-get update
-apt-get install -y --no-install-recommends  -t jessie-backports letsencrypt python-letsencrypt-apache
+apt-get install -y --no-install-recommends  -t jessie-backports certbot python-certbot python-certbot-apache python-cffi
 
 apt-get install -y --no-install-recommends \
   libltdl-dev \
