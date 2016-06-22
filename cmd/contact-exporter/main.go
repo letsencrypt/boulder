@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"gopkg.in/gorp.v1"
 
@@ -20,6 +21,7 @@ type contactExporter struct {
 	log   blog.Logger
 	dbMap *gorp.DbMap
 	clk   clock.Clock
+	grace time.Duration
 }
 
 // Find all registration contacts with unexpired certificates.
@@ -36,7 +38,7 @@ func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 				WHERE expires >= :expireCutoff
 			);`,
 		map[string]interface{}{
-			"expireCutoff": c.clk.Now(),
+			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
 		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
@@ -65,6 +67,7 @@ func writeContacts(contactsList []*mail.MailerDestination, outfile string) error
 
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -96,6 +99,7 @@ func main() {
 		log:   log,
 		dbMap: dbMap,
 		clk:   cmd.Clock(),
+		grace: *grace,
 	}
 
 	contacts, err := exporter.findContacts()
