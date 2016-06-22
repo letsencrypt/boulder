@@ -345,7 +345,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
+	if err = ra.PA.WillingToIssue(identifier); err != nil {
 		return authz, err
 	}
 
