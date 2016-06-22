@@ -7,6 +7,7 @@ certificatesPerName:
   threshold: 2
   overrides:
     ratelimit.me: 1
+    lim.it: 0
     # Hostnames used by the letsencrypt client integration test.
     le.wtf: 10000
     le1.wtf: 10000
@@ -15,6 +16,8 @@ certificatesPerName:
     nginx.wtf: 10000
     good-caa-reserved.com: 10000
     bad-caa-reserved.com: 10000
+    ecdsa.le.wtf: 10000
+    must-staple.le.wtf: 10000
   registrationOverrides:
     101: 1000
 registrationsPerIP:
@@ -36,3 +39,5 @@ certificatesPerFQDNSet:
     le.wtf,le1.wtf: 10000
     good-caa-reserved.com: 10000
     nginx.wtf: 10000
+    ecdsa.le.wtf: 10000
+    must-staple.le.wtf: 10000

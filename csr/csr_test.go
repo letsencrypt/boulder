@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/square/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
@@ -24,11 +22,11 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Value == "bad-name.com" {
 		return errors.New("")
 	}

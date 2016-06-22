@@ -91,7 +91,7 @@ func main() {
 		amqpConf := c.VA.AMQP
 
 		if c.VA.GRPC != nil {
-			s, l, err := bgrpc.NewServer(c.VA.GRPC)
+			s, l, err := bgrpc.NewServer(c.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
 			err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 			cmd.FailOnError(err, "Unable to register VA gRPC server")

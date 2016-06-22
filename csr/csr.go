@@ -64,7 +64,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		if err := pa.WillingToIssue(core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
 			Value: name,
-		}, regID); err != nil {
+		}); err != nil {
 			badNames = append(badNames, name)
 		}
 	}

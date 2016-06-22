@@ -23,7 +23,7 @@ import (
 
 type caaCheckerServer struct {
 	resolver bdns.DNSResolver
-	stats    statsd.Statter
+	stats    metrics.Scope
 }
 
 // caaSet consists of filtered CAA records
@@ -150,12 +150,12 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
-		ccs.stats.Inc("CCS.UnknownCritical", 1, 1.0)
+		ccs.stats.Inc("CCS.UnknownCritical", 1)
 		return true, false, nil
 	}
 
 	if len(caaSet.Unknown) > 0 {
-		ccs.stats.Inc("CCS.WithUnknownNoncritical", 1, 1.0)
+		ccs.stats.Inc("CCS.WithUnknownNoncritical", 1)
 	}
 
 	if len(caaSet.Issue) == 0 {
@@ -163,7 +163,7 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
-		ccs.stats.Inc("CCS.CAA.NoneRelevant", 1, 1.0)
+		ccs.stats.Inc("CCS.CAA.NoneRelevant", 1)
 		return true, true, nil
 	}
 
@@ -174,13 +174,13 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == issuer {
-			ccs.stats.Inc("CCS.CAA.Authorized", 1, 1.0)
+			ccs.stats.Inc("CCS.CAA.Authorized", 1)
 			return true, true, nil
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
-	ccs.stats.Inc("CCS.CAA.Unauthorized", 1, 1.0)
+	ccs.stats.Inc("CCS.CAA.Unauthorized", 1)
 	return true, false, nil
 }
 
@@ -226,18 +226,19 @@ func main() {
 
 	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
+	scope := metrics.NewStatsdScope(stats, "caa-service")
 
 	resolver := bdns.NewDNSResolverImpl(
 		c.DNSTimeout.Duration,
 		[]string{c.DNSResolver},
-		metrics.NewStatsdScope(stats, "caa-service"),
+		scope,
 		clock.Default(),
 		5,
 	)
 
-	s, l, err := bgrpc.NewServer(&c.GRPC)
+	s, l, err := bgrpc.NewServer(&c.GRPC, scope)
 	cmd.FailOnError(err, "Failed to setup gRPC server")
-	ccs := &caaCheckerServer{resolver, stats}
+	ccs := &caaCheckerServer{resolver, scope}
 	pb.RegisterCAACheckerServer(s, ccs)
 	err = s.Serve(l)
 	cmd.FailOnError(err, "gRPC service failed")

@@ -4,7 +4,7 @@
   "repository": "https://github.com/letsencrypt/boulder",
   "version": "0.0.1",
   "dependencies": {
-    "cli": "^0.6.5",
+    "cli": "^0.7.1",
     "colors": "^1.1.0",
     "inquirer": "^0.8.2",
     "node-forge": "^0.6.21",
