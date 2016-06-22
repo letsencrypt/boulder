@@ -299,6 +299,10 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if contact.Scheme != "mailto" {
 			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 		}
+		if !core.IsASCII(contact.String()) {
+			return core.MalformedRequestError(
+				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact.String()))
+		}
 
 		start := ra.clk.Now()
 		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
