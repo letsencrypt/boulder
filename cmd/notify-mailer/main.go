@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/mail"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,10 +97,74 @@ func (m *mailer) run() error {
 	return nil
 }
 
+// Since the only thing we use from gorp is the SelectOne method on the
+// gorp.DbMap object, we just define an interface with that method
+// instead of importing all of gorp. This facilitates mock implementations for
+// unit tests
+type dbSelector interface {
+	SelectOne(holder interface{}, query string, args ...interface{}) error
+}
+
+// Updates a bmail.MailerDestination using the reg ID to ensure the "freshest"
+// contact field.
+func updateEmail(contact *bmail.MailerDestination, dbMap dbSelector) error {
+	id := contact.ID
+	err := dbMap.SelectOne(contact,
+		`SELECT id, contact
+		FROM registrations
+		WHERE contact != 'null' AND id = :id;`,
+		map[string]interface{}{
+			"id": id,
+		})
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal the Contact JSON and set the Email field
+	var contactFields []string
+	err = json.Unmarshal(contact.Contact, &contactFields)
+	if err != nil {
+		return err
+	}
+	for _, entry := range contactFields {
+		// Set the Email field if there is a `mailto:` address
+		if strings.HasPrefix(entry, "mailto:") {
+			address := strings.TrimPrefix(entry, "mailto:")
+			contact.Email = address
+		}
+	}
+
+	return nil
+}
+
+func resolveDestinations(contacts []*bmail.MailerDestination, dbMap dbSelector) ([]string, error) {
+	contactMap := make(map[string]struct{}, len(contacts))
+	for _, c := range contacts {
+		err := updateEmail(c, dbMap)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(c.Email) == "" {
+			continue
+		}
+		// Using the contactMap to deduplicate addresses
+		contactMap[c.Email] = struct{}{}
+	}
+
+	var contactsList []string
+	// Convert the de-dupe'd map back to a slice, sort it
+	for contact := range contactMap {
+		contactsList = append(contactsList, contact)
+	}
+	sort.Strings(contactsList)
+	return contactsList, nil
+}
+
 func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
 	subject := flag.String("subject", "", "Subject of emails")
 	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
+	toFileEmails := flag.Bool("emails", false, "toFile contains email addresses (default: reg. IDs)")
 	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
@@ -142,7 +207,16 @@ func main() {
 
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
-	destinations := strings.Split(string(toBody), "\n")
+	var destinations []string
+	if *toFileEmails {
+		destinations = strings.Split(string(toBody), "\n")
+	} else {
+		var contacts []*bmail.MailerDestination
+		err := json.Unmarshal(toBody, &contacts)
+		cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
+		destinations, err = resolveDestinations(contacts, dbMap)
+		cmd.FailOnError(err, "Resolving emails")
+	}
 
 	checkpointRange := interval{
 		start: *start,

@@ -14,6 +14,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -23,14 +24,8 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
-type contactRecord struct {
-	ID      int64  `json:"id"`
-	Contact []byte `json:"-"`
-	Email   string `json:"email"`
-}
-
-func (c contactExporter) findContacts() ([]*contactRecord, error) {
-	var contactsList []*contactRecord
+func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
+	var contactsList []*mail.MailerDestination
 	_, err := c.dbMap.Select(
 		&contactsList,
 		`SELECT id, contact
@@ -70,7 +65,7 @@ func (c contactExporter) findContacts() ([]*contactRecord, error) {
 	return contactsList, nil
 }
 
-func contactsToEmails(contactList []*contactRecord) []string {
+func contactsToEmails(contactList []*mail.MailerDestination) []string {
 	contactMap := make(map[string]struct{}, len(contactList))
 	for _, contact := range contactList {
 		if strings.TrimSpace(contact.Email) == "" {
@@ -88,7 +83,7 @@ func contactsToEmails(contactList []*contactRecord) []string {
 	return contacts
 }
 
-func writeContacts(contactsList []*contactRecord, outfile string) error {
+func writeContacts(contactsList []*mail.MailerDestination, outfile string) error {
 	data, err := json.Marshal(contactsList)
 	data = append(data, "\n"...)
 	if err != nil {
@@ -103,7 +98,7 @@ func writeContacts(contactsList []*contactRecord, outfile string) error {
 	}
 }
 
-func writeEmails(contactList []*contactRecord, outFile string) error {
+func writeEmails(contactList []*mail.MailerDestination, outFile string) error {
 	contacts := contactsToEmails(contactList)
 
 	data := []byte(strings.Join(contacts, "\n") + "\n")

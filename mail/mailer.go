@@ -56,6 +56,14 @@ type MailerImpl struct {
 	csprgSource idGenerator
 }
 
+// A MailerDestination associates a reg ID with a blob of Contact JSON and an
+// extracted Email
+type MailerDestination struct {
+	ID      int64  `json:"id"`
+	Email   string `json:"email"`
+	Contact []byte `json:"-"`
+}
+
 type dialer interface {
 	Dial() (smtpClient, error)
 }

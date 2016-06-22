@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -260,6 +262,68 @@ func TestMessageContent(t *testing.T) {
 		Subject: testSubject,
 		Body:    string(testBody),
 	}, mc.Messages[0])
+}
+
+type mockSelector struct{}
+
+func (bs mockSelector) SelectOne(output interface{}, _ string, args ...interface{}) error {
+	db := []bmail.MailerDestination{
+		bmail.MailerDestination{
+			ID:      1,
+			Contact: []byte(`["mailto:example@example.com"]`),
+		},
+		bmail.MailerDestination{
+			ID:      2,
+			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
+		},
+		bmail.MailerDestination{
+			ID:      3,
+			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		},
+	}
+
+	argsRaw := args[0]
+	argsMap, ok := argsRaw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("incorrect args type %T", args)
+	}
+	idRaw := argsMap["id"]
+	id, ok := idRaw.(int64)
+	if !ok {
+		return fmt.Errorf("incorrect args ID type %T", id)
+	}
+
+	outputPtr, ok := output.(*bmail.MailerDestination)
+	if !ok {
+		return fmt.Errorf("incorrect output type %T", output)
+	}
+	*outputPtr = db[id-1]
+	return nil
+}
+
+func TestResolveEmails(t *testing.T) {
+	toBody := []byte(`[{"id":1,"email":"example@example.com"},{"id":2,"email":"test-example@example.com"},{"id":3,"email":"test-test-test@example.com"}]`)
+	var contacts []*bmail.MailerDestination
+	err := json.Unmarshal(toBody, &contacts)
+	test.AssertNotError(t, err, "failed to unmarshal testResolveEmails json")
+
+	dbMap := mockSelector{}
+
+	var destinations []string
+	destinations, err = resolveEmails(contacts, dbMap)
+	test.AssertNotError(t, err, "failed to resolveEmails")
+
+	expected := []string{
+		"example@example.com",
+		"test-example-updated@example.com",
+		"test-test-test@example.com",
+	}
+
+	test.AssertEquals(t, len(destinations), len(expected))
+
+	for i := range expected {
+		test.AssertEquals(t, destinations[i], expected[i])
+	}
 }
 
 func newFakeClock(t *testing.T) clock.FakeClock {
