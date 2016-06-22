@@ -310,8 +310,8 @@ func TestResolveEmails(t *testing.T) {
 	dbMap := mockSelector{}
 
 	var destinations []string
-	destinations, err = resolveEmails(contacts, dbMap)
-	test.AssertNotError(t, err, "failed to resolveEmails")
+	destinations, err = resolveDestinations(contacts, dbMap)
+	test.AssertNotError(t, err, "failed to resolveDestinations")
 
 	expected := []string{
 		"example@example.com",
