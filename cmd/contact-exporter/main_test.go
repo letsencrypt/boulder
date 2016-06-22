@@ -57,32 +57,32 @@ func TestFindContacts(t *testing.T) {
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	// Run findContacts - since there are two registrations with unexpired certs
-	// we should get exactly two contacts back for RegA and RegC. RegB should
-	// *not* be present since their certificate has already expired. Similarly,
-	// RegD should *not* be present since its only contact is a "tel:" prefixed
-	// ACMEUrl. Since the results are sorted, RegC should be first.
+	// Run findContacts - since there are three registrations with unexpired certs
+	// we should get exactly three contacts back: RegA, RegC and RegD. RegB should
+	// *not* be present since their certificate has already expired. Unlike
+	// previous versions of this test RegD is not filtered out for having a `tel:`
+	// contact field anymore - this is the duty of the notify-mailer.
 	contacts, err = testCtx.c.findContacts()
 	test.AssertNotError(t, err, "findContacts() produced error")
-	emails := contactsToEmails(contacts)
-	test.AssertEquals(t, len(emails), 2)
-	test.AssertEquals(t, emails[0], emailCRaw)
-	test.AssertEquals(t, emails[1], emailARaw)
+	test.AssertEquals(t, len(contacts), 3)
+	test.AssertEquals(t, contacts[0].ID, regA.ID)
+	test.AssertEquals(t, contacts[1].ID, regC.ID)
+	test.AssertEquals(t, contacts[2].ID, regD.ID)
 }
 
 func exampleContacts() []*mail.MailerDestination {
 	return []*mail.MailerDestination{
 		&mail.MailerDestination{
-			ID:    1,
-			Email: "example@example.com",
+			ID:      1,
+			Contact: []byte(`["mailto:example@example.com"]`),
 		},
 		&mail.MailerDestination{
-			ID:    2,
-			Email: "test-example@example.com",
+			ID:      2,
+			Contact: []byte(`["mailto:test-example@example.com"]`),
 		},
 		&mail.MailerDestination{
-			ID:    3,
-			Email: "test-test-test@example.com",
+			ID:      3,
+			Contact: []byte(`["mailto:test-test-test@example.com"]`),
 		},
 	}
 }
@@ -90,41 +90,25 @@ func exampleContacts() []*mail.MailerDestination {
 type WriteFunc func([]*mail.MailerDestination, string) error
 
 func TestWriteOutput(t *testing.T) {
-	testCases := []struct {
-		expected  string
-		writeFunc WriteFunc
-	}{
-		{
-			`[{"id":1,"email":"example@example.com"},{"id":2,"email":"test-example@example.com"},{"id":3,"email":"test-test-test@example.com"}]`,
-			writeContacts,
-		},
-		{
-			`example@example.com
-test-example@example.com
-test-test-test@example.com`,
-			writeEmails,
-		},
-	}
+	expected := `[{"id":1},{"id":2},{"id":3}]`
 
-	for _, writeTest := range testCases {
-		contacts := exampleContacts()
-		dir := os.TempDir()
-		f, err := ioutil.TempFile(dir, "contacts_test")
-		test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+	contacts := exampleContacts()
+	dir := os.TempDir()
+	f, err := ioutil.TempFile(dir, "contacts_test")
+	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
 
-		// Writing the contacts with no outFile should print to stdout
-		err = writeTest.writeFunc(contacts, "")
-		test.AssertNotError(t, err, "writeFunc with no outfile produced error")
+	// Writing the contacts with no outFile should print to stdout
+	err = writeContacts(contacts, "")
+	test.AssertNotError(t, err, "writeContacts with no outfile produced error")
 
-		// Writing the contacts to an outFile should produce the correct results
-		err = writeTest.writeFunc(contacts, f.Name())
-		test.AssertNotError(t, err, fmt.Sprintf("writeEmails() produced an error writing to %s", f.Name()))
+	// Writing the contacts to an outFile should produce the correct results
+	err = writeContacts(contacts, f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("writeContacts produced an error writing to %s", f.Name()))
 
-		contents, err := ioutil.ReadFile(f.Name())
-		test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
+	contents, err := ioutil.ReadFile(f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
 
-		test.AssertEquals(t, string(contents), writeTest.expected+"\n")
-	}
+	test.AssertEquals(t, string(contents), expected+"\n")
 }
 
 type testCtx struct {

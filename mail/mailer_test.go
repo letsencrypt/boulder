@@ -52,55 +52,6 @@ func TestFailNonASCIIAddress(t *testing.T) {
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
 
-func TestUnmarshalEmail(t *testing.T) {
-	testcases := []struct {
-		c             *MailerDestination
-		expectedEmail string
-	}{
-		{
-			// A MailerDestination with an empty Email should be updated
-			// post-Unmarshal
-			&MailerDestination{
-				Contact: []byte(`["mailto:foo@bar.com"]`),
-				Email:   "",
-			},
-			"foo@bar.com",
-		},
-		{
-			// A MailerDestination without a 'mailto:' contact shouldn't change Email
-			&MailerDestination{
-				Contact: []byte(`["tel:666-666-7777"]`),
-				Email:   "",
-			},
-			"",
-		},
-		{
-			//A MailerDestination with a non-empty Email should have it replaced
-			//post-Unmarshal
-			&MailerDestination{
-				Contact: []byte(`["mailto:new@bar.com"]`),
-				Email:   "old@bar.com",
-			},
-			"new@bar.com",
-		},
-		{
-			// A MailerDestination with two Contacts should have the last one used as
-			// the Email
-			&MailerDestination{
-				Contact: []byte(`["mailto:one@bar.com", "mailto:two@bar.com"]`),
-				Email:   "zzz@yyy.com",
-			},
-			"two@bar.com",
-		},
-	}
-
-	for _, testcase := range testcases {
-		err := testcase.c.UnmarshalEmail()
-		test.AssertNotError(t, err, "Failed to unmarshal MailerDestination JSON")
-		test.AssertEquals(t, testcase.c.Email, testcase.expectedEmail)
-	}
-}
-
 func expect(t *testing.T, buf *bufio.Reader, expected string) error {
 	line, _, err := buf.ReadLine()
 	if err != nil {

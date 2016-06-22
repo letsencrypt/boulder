@@ -105,11 +105,10 @@ type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 }
 
-// Updates a bmail.MailerDestination using the reg ID to ensure the "freshest"
-// contact field.
-func updateEmail(contact *bmail.MailerDestination, dbMap dbSelector) error {
+// Finds the email address associated with a bmail.MailerDestination using the
+// reg ID
+func emailForDestination(contact *bmail.MailerDestination, dbMap dbSelector) (string, error) {
 	id := contact.ID
-	// Select fields into the contact object
 	err := dbMap.SelectOne(contact,
 		`SELECT id, contact
 		FROM registrations
@@ -118,26 +117,38 @@ func updateEmail(contact *bmail.MailerDestination, dbMap dbSelector) error {
 			"id": id,
 		})
 	if err != nil {
-		return err
+		return "", err
 	}
-	// Update the Email field using the contact JSON
-	return contact.UnmarshalEmail()
+
+	var contactFields []string
+	var address string
+	err = json.Unmarshal(contact.Contact, &contactFields)
+	if err != nil {
+		return address, err
+	}
+	for _, entry := range contactFields {
+		if strings.HasPrefix(entry, "mailto:") {
+			address = strings.TrimPrefix(entry, "mailto:")
+		}
+	}
+	return address, nil
 }
 
-// Update each `MailerDestination` to the most up-to-date contact email, convert
-// to a slice of email addresses and return both deduplicated and sorted.
+// Resolves each `MailerDestination` to the most up-to-date contact email.
+// The email addresses are returned deduplicated and sorted.
 func resolveDestinations(contacts []*bmail.MailerDestination, dbMap dbSelector) ([]string, error) {
 	contactMap := make(map[string]struct{}, len(contacts))
 	for _, c := range contacts {
-		err := updateEmail(c, dbMap)
+		// Get the email address for the MailerDestination by reg ID
+		email, err := emailForDestination(c, dbMap)
 		if err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(c.Email) == "" {
+		if strings.TrimSpace(email) == "" {
 			continue
 		}
 		// Using the contactMap to deduplicate addresses
-		contactMap[c.Email] = struct{}{}
+		contactMap[email] = struct{}{}
 	}
 
 	var contactsList []string
@@ -153,7 +164,6 @@ func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
 	subject := flag.String("subject", "", "Subject of emails")
 	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
-	toFileEmails := flag.Bool("emails", false, "toFile contains email addresses (default: reg. IDs)")
 	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
@@ -197,21 +207,11 @@ func main() {
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
 
-	var destinations []string
-	if *toFileEmails {
-		// If the toFile is full of bare email addresses, use them as-is for the
-		// destinations, no processing required
-		destinations = strings.Split(string(toBody), "\n")
-	} else {
-		// Otherwise, we have a file of JSON MailerDestinations to unmarshal
-		var contacts []*bmail.MailerDestination
-		err := json.Unmarshal(toBody, &contacts)
-		cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
-		// Resolving the MailerDestinations to de-dupe'd email addresses and use
-		// that for the mail destinations
-		destinations, err = resolveDestinations(contacts, dbMap)
-		cmd.FailOnError(err, "Resolving emails")
-	}
+	var contacts []*bmail.MailerDestination
+	err = json.Unmarshal(toBody, &contacts)
+	cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
+	destinations, err := resolveDestinations(contacts, dbMap)
+	cmd.FailOnError(err, "Resolving emails")
 
 	checkpointRange := interval{
 		start: *start,

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
-	"strings"
 
 	"gopkg.in/gorp.v1"
 
@@ -29,7 +27,7 @@ func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 	var contactsList []*mail.MailerDestination
 	_, err := c.dbMap.Select(
 		&contactsList,
-		`SELECT id, contact
+		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
 			id IN (
@@ -45,36 +43,11 @@ func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 		return nil, err
 	}
 
-	// For each, set the `Email` field by unmarshalling the JSON `Contact` data
-	for _, contact := range contactsList {
-		contact.UnmarshalEmail()
-	}
-
 	return contactsList, nil
 }
 
-// Convert a list of regisration contacts into bare email addresses. Results are
-// returned deduplicated and sorted.
-func contactsToEmails(contactList []*mail.MailerDestination) []string {
-	contactMap := make(map[string]struct{}, len(contactList))
-	for _, contact := range contactList {
-		if strings.TrimSpace(contact.Email) == "" {
-			continue
-		}
-		// Using the contactMap to deduplicate addresses
-		contactMap[contact.Email] = struct{}{}
-	}
-	var contacts []string
-	// Convert the de-dupe'd map back to a slice, sort it
-	for contact := range contactMap {
-		contacts = append(contacts, contact)
-	}
-	sort.Strings(contacts)
-	return contacts
-}
-
 // The `writeContacts` function produces a file containing JSON serialized
-// `bmail.MailerDestination` objects containing both an email and a reg ID.
+// `bmail.MailerDestination` objects
 func writeContacts(contactsList []*mail.MailerDestination, outfile string) error {
 	data, err := json.Marshal(contactsList)
 	if err != nil {
@@ -90,23 +63,8 @@ func writeContacts(contactsList []*mail.MailerDestination, outfile string) error
 	}
 }
 
-// The `writeEmails` function produces the "legacy" output, e.g. bare email
-// addresses \n separated.
-func writeEmails(contactList []*mail.MailerDestination, outFile string) error {
-	contacts := contactsToEmails(contactList)
-	data := []byte(strings.Join(contacts, "\n") + "\n")
-
-	if outFile != "" {
-		return ioutil.WriteFile(outFile, data, 0644)
-	} else {
-		fmt.Printf("%s", data)
-		return nil
-	}
-}
-
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
-	emailOut := flag.Bool("emails", false, "Export contact email addresses (defaults to registration IDs).")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -143,10 +101,6 @@ func main() {
 	contacts, err := exporter.findContacts()
 	cmd.FailOnError(err, "Could not find contacts")
 
-	if *emailOut {
-		err = writeEmails(contacts, *outFile)
-	} else {
-		err = writeContacts(contacts, *outFile)
-	}
+	err = writeContacts(contacts, *outFile)
 	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile '%s'", *outFile))
 }
