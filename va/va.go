@@ -467,26 +467,30 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	if va.caaClient != nil {
 		prob = va.checkCAAService(ctx, identifier)
 	} else {
-		present, valid, err := va.checkCAARecords(ctx, identifier)
-		if err != nil {
-			prob = bdns.ProblemDetailsFromDNSError(err)
-		} else {
-			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-			va.log.AuditInfo(fmt.Sprintf(
-				"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-				identifier.Value,
-				present,
-				valid,
-			))
-			if !valid {
-				prob = probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
-			}
-		}
+		prob = va.checkCAAInternal(ctx, identifier)
 	}
 	if va.caaDR != nil && prob != nil && prob.Type == probs.ConnectionProblem {
 		return va.checkGPDNS(ctx, identifier)
 	}
 	return prob
+}
+
+func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, ident)
+	if err != nil {
+		return bdns.ProblemDetailsFromDNSError(err)
+	}
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.AuditInfo(fmt.Sprintf(
+		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+		ident.Value,
+		present,
+		valid,
+	))
+	if !valid {
+		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
+	}
+	return nil
 }
 
 func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
