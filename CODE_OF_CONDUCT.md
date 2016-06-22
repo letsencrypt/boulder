@@ -55,11 +55,13 @@ further defined and clarified by project maintainers.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at admin@letsencrypt.org. All
-complaints will be reviewed and investigated and will result in a response that
-is deemed necessary and appropriate to the circumstances. The project team is
-obligated to maintain confidentiality with regard to the reporter of an incident.
-Further details of specific enforcement policies may be posted separately.
+reported by sending a private message to the project team (@jsha, @roland, @cpu)
+on [the community forum](https://community.letsencrypt.org/). All complaints
+will be reviewed and investigated and will result in a response that is deemed
+necessary and appropriate to the circumstances. The project team will maintain
+confidentiality with regard to the reporter of an incident, so long as it does
+not conflict with the duty to investigate workplace harassment. Further details
+of specific enforcement policies may be posted separately.
 
 Project maintainers who do not follow or enforce the Code of Conduct in good
 faith may face temporary or permanent repercussions as determined by other
