@@ -33,7 +33,7 @@ func CodeToProblem(c codes.Code) probs.ProblemType {
 // probs.ProblemDetails
 func ErrorToProb(err error) *probs.ProblemDetails {
 	return &probs.ProblemDetails{
-		Detail: grpc.ErrorDesc(err),
 		Type:   CodeToProblem(grpc.Code(err)),
+		Detail: grpc.ErrorDesc(err),
 	}
 }

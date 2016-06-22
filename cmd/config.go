@@ -65,6 +65,13 @@ type Config struct {
 
 		MaxNames     int
 		DoNotForceCN bool
+
+		// Controls behaviour of the RA when asked to create a new authz for
+		// a name/regID that already has a valid authz. False preserves historic
+		// behaviour and ignores the existing authz and creates a new one. True
+		// instructs the RA to reuse the previously created authz in lieu of
+		// creating another.
+		ReuseValidAuthz bool
 	}
 
 	SA struct {
@@ -113,13 +120,10 @@ type Config struct {
 	Mailer struct {
 		ServiceConfig
 		DBConfig
-		PasswordConfig
+		SMTPConfig
 
-		Server   string
-		Port     string
-		Username string
-		From     string
-		Subject  string
+		From    string
+		Subject string
 
 		CertLimit int
 		NagTimes  []string
@@ -262,6 +266,13 @@ func (d *DBConfig) URL() (string, error) {
 		return string(url), err
 	}
 	return d.DBConnect, nil
+}
+
+type SMTPConfig struct {
+	PasswordConfig
+	Server   string
+	Port     string
+	Username string
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
@@ -437,10 +448,8 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
-	StdoutLevel *int
-	SyslogLevel *int
+	StdoutLevel int
+	SyslogLevel int
 }
 
 // StatsdConfig defines the config for Statsd.
@@ -506,7 +515,7 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
