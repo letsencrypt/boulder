@@ -52,7 +52,13 @@ func main() {
 		rac, sac := setupWFE(c, logger, stats)
 		wfe.RA = rac
 		wfe.SA = sac
-		wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
+
+		// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
+		if c.SubscriberAgreementURL {
+			wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
+		} else {
+			wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
+		}
 
 		wfe.AllowOrigins = c.WFE.AllowOrigins
 
