@@ -54,10 +54,10 @@ func main() {
 		wfe.SA = sac
 
 		// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
-		if c.SubscriberAgreementURL {
-			wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
-		} else {
+		if c.WFE.SubscriberAgreementURL {
 			wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
+		} else {
+			wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 		}
 
 		wfe.AllowOrigins = c.WFE.AllowOrigins
