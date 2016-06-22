@@ -109,6 +109,7 @@ type dbSelector interface {
 // contact field.
 func updateEmail(contact *bmail.MailerDestination, dbMap dbSelector) error {
 	id := contact.ID
+	// Select fields into the contact object
 	err := dbMap.SelectOne(contact,
 		`SELECT id, contact
 		FROM registrations
@@ -119,24 +120,12 @@ func updateEmail(contact *bmail.MailerDestination, dbMap dbSelector) error {
 	if err != nil {
 		return err
 	}
-
-	// Unmarshal the Contact JSON and set the Email field
-	var contactFields []string
-	err = json.Unmarshal(contact.Contact, &contactFields)
-	if err != nil {
-		return err
-	}
-	for _, entry := range contactFields {
-		// Set the Email field if there is a `mailto:` address
-		if strings.HasPrefix(entry, "mailto:") {
-			address := strings.TrimPrefix(entry, "mailto:")
-			contact.Email = address
-		}
-	}
-
-	return nil
+	// Update the Email field using the contact JSON
+	return contact.UnmarshalEmail()
 }
 
+// Update each `MailerDestination` to the most up-to-date contact email, convert
+// to a slice of email addresses and return both deduplicated and sorted.
 func resolveDestinations(contacts []*bmail.MailerDestination, dbMap dbSelector) ([]string, error) {
 	contactMap := make(map[string]struct{}, len(contacts))
 	for _, c := range contacts {
@@ -207,13 +196,19 @@ func main() {
 
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
+
 	var destinations []string
 	if *toFileEmails {
+		// If the toFile is full of bare email addresses, use them as-is for the
+		// destinations, no processing required
 		destinations = strings.Split(string(toBody), "\n")
 	} else {
+		// Otherwise, we have a file of JSON MailerDestinations to unmarshal
 		var contacts []*bmail.MailerDestination
 		err := json.Unmarshal(toBody, &contacts)
 		cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
+		// Resolving the MailerDestinations to de-dupe'd email addresses and use
+		// that for the mail destinations
 		destinations, err = resolveDestinations(contacts, dbMap)
 		cmd.FailOnError(err, "Resolving emails")
 	}

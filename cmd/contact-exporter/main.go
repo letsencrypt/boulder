@@ -24,6 +24,7 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
+// Find all registration contacts with unexpired certificates.
 func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 	var contactsList []*mail.MailerDestination
 	_, err := c.dbMap.Select(
@@ -44,27 +45,16 @@ func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 		return nil, err
 	}
 
+	// For each, set the `Email` field by unmarshalling the JSON `Contact` data
 	for _, contact := range contactsList {
-		var contactFields []string
-		err := json.Unmarshal(contact.Contact, &contactFields)
-		if err != nil {
-			c.log.AuditErr(
-				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
-					contact.Contact, err))
-			continue
-		}
-		for _, entry := range contactFields {
-			// Set the Email field if there is a `mailto:` address
-			if strings.HasPrefix(entry, "mailto:") {
-				address := strings.TrimPrefix(entry, "mailto:")
-				contact.Email = address
-			}
-		}
+		contact.UnmarshalEmail()
 	}
 
 	return contactsList, nil
 }
 
+// Convert a list of regisration contacts into bare email addresses. Results are
+// returned deduplicated and sorted.
 func contactsToEmails(contactList []*mail.MailerDestination) []string {
 	contactMap := make(map[string]struct{}, len(contactList))
 	for _, contact := range contactList {
@@ -83,12 +73,14 @@ func contactsToEmails(contactList []*mail.MailerDestination) []string {
 	return contacts
 }
 
+// The `writeContacts` function produces a file containing JSON serialized
+// `bmail.MailerDestination` objects containing both an email and a reg ID.
 func writeContacts(contactsList []*mail.MailerDestination, outfile string) error {
 	data, err := json.Marshal(contactsList)
-	data = append(data, "\n"...)
 	if err != nil {
 		return err
 	}
+	data = append(data, "\n"...)
 
 	if outfile != "" {
 		return ioutil.WriteFile(outfile, data, 0644)
@@ -98,9 +90,10 @@ func writeContacts(contactsList []*mail.MailerDestination, outfile string) error
 	}
 }
 
+// The `writeEmails` function produces the "legacy" output, e.g. bare email
+// addresses \n separated.
 func writeEmails(contactList []*mail.MailerDestination, outFile string) error {
 	contacts := contactsToEmails(contactList)
-
 	data := []byte(strings.Join(contacts, "\n") + "\n")
 
 	if outFile != "" {

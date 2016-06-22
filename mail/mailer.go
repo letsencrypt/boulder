@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,11 +58,30 @@ type MailerImpl struct {
 }
 
 // A MailerDestination associates a reg ID with a blob of Contact JSON and an
-// extracted Email
+// extracted Email. This type lives in the common mail package because it is
+// required both by the `contact-exporter` cmd as a type to serialize for output
+// as well as the `notify-mailer` cmd which unserializes this type.
 type MailerDestination struct {
 	ID      int64  `json:"id"`
 	Email   string `json:"email"`
 	Contact []byte `json:"-"`
+}
+
+// Unmarshal the `Contact` JSON and set the `Email` field
+func (m *MailerDestination) UnmarshalEmail() error {
+	var contactFields []string
+	err := json.Unmarshal(m.Contact, &contactFields)
+	if err != nil {
+		return err
+	}
+	for _, entry := range contactFields {
+		// Set the Email field if there is a `mailto:` address
+		if strings.HasPrefix(entry, "mailto:") {
+			address := strings.TrimPrefix(entry, "mailto:")
+			m.Email = address
+		}
+	}
+	return nil
 }
 
 type dialer interface {
