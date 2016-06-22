@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -264,9 +263,15 @@ func TestMessageContent(t *testing.T) {
 	}, mc.Messages[0])
 }
 
-type mockSelector struct{}
+// the `mockEmailResolver` implements the `dbSelector` interface from
+// `notify-mailer/main.go` to allow unit testing without using a backing
+// database
+type mockEmailResolver struct{}
 
-func (bs mockSelector) SelectOne(output interface{}, _ string, args ...interface{}) error {
+// the `mockEmailResolver` select method treats the requested reg ID as an index
+// into a list of `MailerDestinations`
+func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
+	// The "db" is just a list in memory
 	db := []bmail.MailerDestination{
 		bmail.MailerDestination{
 			ID:      1,
@@ -282,6 +287,8 @@ func (bs mockSelector) SelectOne(output interface{}, _ string, args ...interface
 		},
 	}
 
+	// Play the type cast game so that we can dig into the arguments map and get
+	// out an integer "id" parameter
 	argsRaw := args[0]
 	argsMap, ok := argsRaw.(map[string]interface{})
 	if !ok {
@@ -293,26 +300,48 @@ func (bs mockSelector) SelectOne(output interface{}, _ string, args ...interface
 		return fmt.Errorf("incorrect args ID type %T", id)
 	}
 
+	// Play the type cast game to get a pointer to the output `MailerDestination`
+	// pointer so we can write the result from the db list
 	outputPtr, ok := output.(*bmail.MailerDestination)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
-	*outputPtr = db[id-1]
+
+	// If the ID (shifted by 1 to account for zero indexing) is within the range
+	// of the DB list, return the DB entry
+	if (id-1) > 0 || int(id-1) < len(db) {
+		*outputPtr = db[id-1]
+	}
 	return nil
 }
 
 func TestResolveEmails(t *testing.T) {
-	toBody := []byte(`[{"id":1,"email":"example@example.com"},{"id":2,"email":"test-example@example.com"},{"id":3,"email":"test-test-test@example.com"}]`)
-	var contacts []*bmail.MailerDestination
-	err := json.Unmarshal(toBody, &contacts)
-	test.AssertNotError(t, err, "failed to unmarshal testResolveEmails json")
+	// Start with three contacts. Note: the IDs have been matched with fake
+	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
+	// more test cases here you must also add the corresponding DB result in the
+	// mock.
+	contacts := []*bmail.MailerDestination{
+		&bmail.MailerDestination{
+			ID:      1,
+			Contact: []byte(`["mailto:example@example.com"]`),
+		},
+		&bmail.MailerDestination{
+			ID:      2,
+			Contact: []byte(`["mailto:test-example@example.com"]`),
+		},
+		&bmail.MailerDestination{
+			ID:      3,
+			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		},
+	}
 
-	dbMap := mockSelector{}
-
-	var destinations []string
-	destinations, err = resolveDestinations(contacts, dbMap)
+	dbMap := mockEmailResolver{}
+	destinations, err := resolveDestinations(contacts, dbMap)
 	test.AssertNotError(t, err, "failed to resolveDestinations")
 
+	// Note: the DB result for ID 2 has an "updated" email we are testing for.
+	// test-example@example.com should be updated to
+	// test-example-updated@example.com if `resolveDestinations` is working.
 	expected := []string{
 		"example@example.com",
 		"test-example-updated@example.com",
@@ -320,7 +349,6 @@ func TestResolveEmails(t *testing.T) {
 	}
 
 	test.AssertEquals(t, len(destinations), len(expected))
-
 	for i := range expected {
 		test.AssertEquals(t, destinations[i], expected[i])
 	}
