@@ -12,8 +12,8 @@ import (
 	"sync"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/probs"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 )
