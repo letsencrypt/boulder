@@ -513,7 +513,7 @@ func TestIndex(t *testing.T) {
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
 	test.Assert(t, strings.Contains(responseWriter.Body.String(), directoryPath),
 		"directory path not found")
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 
 	responseWriter.Body.Reset()
 	responseWriter.Header().Del("Cache-Control")
@@ -1392,7 +1392,6 @@ func TestIssuer(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert) == 0, "Incorrect bytes returned")
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 }
 
 func TestGetCertificate(t *testing.T) {
@@ -1416,7 +1415,7 @@ func TestGetCertificate(t *testing.T) {
 	req.RemoteAddr = "192.168.0.1"
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 

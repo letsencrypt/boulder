@@ -160,7 +160,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			}
 
 			// No cache header is set for all requests, succeed or fail.
-			response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
+			addNoCacheHeader(response)
 
 			if !methodsMap[request.Method] {
 				response.Header().Set("Allow", methodsStr)
@@ -291,6 +291,7 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, r
 		return
 	}
 
+	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
 	response.Write([]byte(fmt.Sprintf(`<html>
 		<body>
@@ -300,6 +301,10 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, r
 		</body>
 	</html>
 	`, directoryPath, directoryPath)))
+}
+
+func addNoCacheHeader(w http.ResponseWriter) {
+	w.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 }
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
