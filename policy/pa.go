@@ -134,7 +134,7 @@ var (
 	errTooFewLabels        = core.MalformedRequestError("DNS name does not have enough labels")
 	errLabelTooShort       = core.MalformedRequestError("DNS label is too short")
 	errLabelTooLong        = core.MalformedRequestError("DNS label is too long")
-	errIDNNotSupported     = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
+	errIDNNotSupported     = core.UnsupportedIdentifierError("Internationalized domain names (starting with xn--) not yet supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided

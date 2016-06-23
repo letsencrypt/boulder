@@ -143,6 +143,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{LengthRequiredError("foo"), 411, probs.MalformedProblem},
 		{BadNonceError("foo"), 400, probs.BadNonceProblem},
 		{RejectedIdentifierError("foo"), 400, probs.RejectedIdentifierProblem},
+		{UnsupportedIdentifierError("foo"), 400, probs.UnsupportedIdentifierProblem},
 	}
 	for _, c := range testCases {
 		p := ProblemDetailsForError(c.err, "k")
