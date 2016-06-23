@@ -1162,8 +1162,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 	// digits.
 	if !core.ValidSerial(serial) {
 		logEvent.AddError("certificate serial provided was not valid: %s", serial)
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		addNoCacheHeader(response)
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
