@@ -838,20 +838,36 @@ func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	return va, stats, logger
 }
 
-func TestGetCAASetFallback(t *testing.T) {
+func TestCheckCAAFallback(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testSrv.Close()
 
+	stats := mocks.NewStatter()
+	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
 	caaDR.URI = testSrv.URL
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
-	va, _, _ := setup()
-	va.caaDR = caaDR
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		nil,
+		nil,
+		caaDR,
+		&bdns.MockDNSResolver{},
+		"user agent 1.0",
+		"ca.com",
+		stats,
+		clock.Default(),
+		logger)
 
-	set, err := va.getCAASet(ctx, "bad-local-resolver.com")
-	test.AssertNotError(t, err, "getCAASet failed to fail back to cdr on timeout")
-	test.AssertEquals(t, len(set.Issue), 1)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
+	test.Assert(t, prob == nil, fmt.Sprintf("returned ProblemDetails was non-nil: %#v", prob))
+
+	va.caaDR = nil
+	prob = va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
+	test.Assert(t, prob != nil, "returned ProblemDetails was nil")
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.AssertEquals(t, prob.Detail, "server failure at resolver")
 }
 
 func TestParseResults(t *testing.T) {
