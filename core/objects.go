@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -116,6 +117,10 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw rawCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
+	}
+
+	if len(raw.CSR) >= 10 && raw.CSR[8] == 2 && raw.CSR[9] == 0 {
+		return errors.New("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version")
 	}
 
 	csr, err := x509.ParseCertificateRequest(raw.CSR)
