@@ -17,7 +17,6 @@ go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  github.com/weppos/publicsuffix-go \
   golang.org/x/tools/cover &
 
 # Create the database and roles
