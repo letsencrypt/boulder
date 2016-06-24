@@ -1,15 +1,19 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/facebookgo/httpdown"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -18,8 +22,59 @@ import (
 
 const clientName = "WFE"
 
-func setupWFE(c cmd.Config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
-	amqpConf := c.WFE.AMQP
+type config struct {
+	WFE struct {
+		cmd.ServiceConfig
+		BaseURL       string
+		ListenAddress string
+
+		AllowOrigins []string
+
+		CertCacheDuration           string
+		CertNoCacheExpirationWindow string
+		IndexCacheDuration          string
+		IssuerCacheDuration         string
+
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
+
+		SubscriberAgreementURL string
+	}
+
+	*cmd.AllowedSigningAlgos
+
+	cmd.StatsdConfig
+
+	cmd.SyslogConfig
+
+	SubscriberAgreementURL string
+
+	Common struct {
+		BaseURL string
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+	}
+
+	// This could be removed
+	AMQP *cmd.AMQPConfig
+}
+
+func (cfg config) KeyPolicy() goodkey.KeyPolicy {
+	if cfg.AllowedSigningAlgos != nil {
+		return goodkey.KeyPolicy{
+			AllowRSA:           cfg.AllowedSigningAlgos.RSA,
+			AllowECDSANISTP256: cfg.AllowedSigningAlgos.ECDSANISTP256,
+			AllowECDSANISTP384: cfg.AllowedSigningAlgos.ECDSANISTP384,
+			AllowECDSANISTP521: cfg.AllowedSigningAlgos.ECDSANISTP521,
+		}
+	}
+	return goodkey.KeyPolicy{
+		AllowRSA: true,
+	}
+}
+
+func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+	amqpConf := cfg.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
 
@@ -29,81 +84,96 @@ func setupWFE(c cmd.Config, logger blog.Logger, stats metrics.Statter) (*rpc.Reg
 	return rac, sac
 }
 
+func load(configFile string) config {
+	var cfg config
+	configData, err := ioutil.ReadFile(configFile)
+	cmd.FailOnError(err, fmt.Sprintf("Reading %s", configFile))
+	err = json.Unmarshal(configData, &cfg)
+	cmd.FailOnError(err, "Unmarshaling config")
+	return cfg
+}
+
 func main() {
-	app := cmd.NewAppShell("boulder-wfe", "Handles HTTP API requests")
-	addrFlag := cli.StringFlag{
-		Name:   "addr",
-		Value:  "",
-		Usage:  "if set, overrides the listenAddr setting in the WFE config",
-		EnvVar: "WFE_LISTEN_ADDR",
+	configFile := flag.String("config", "", "Mandatory file containing a JSON config.")
+	listenAddr := flag.String("addr", "", "Overrides the listenAddr setting in WFE config")
+
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
-	app.App.Flags = append(app.App.Flags, addrFlag)
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		if c.GlobalString("addr") != "" {
-			config.WFE.ListenAddress = c.GlobalString("addr")
-		}
-		return config
-	}
-	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
-		go cmd.DebugServer(c.WFE.DebugAddr)
+	cfg := load(*configFile)
 
-		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy(), logger)
-		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac := setupWFE(c, logger, stats)
-		wfe.RA = rac
-		wfe.SA = sac
-
-		// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
-		if c.WFE.SubscriberAgreementURL != "" {
-			wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
-		} else {
-			wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
-		}
-
-		wfe.AllowOrigins = c.WFE.AllowOrigins
-
-		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
-		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
-		wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
-		cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
-		wfe.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
-		cmd.FailOnError(err, "Couldn't parse index caching duration")
-		wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
-		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
-
-		wfe.ShutdownStopTimeout, err = time.ParseDuration(c.WFE.ShutdownStopTimeout)
-		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
-		wfe.ShutdownKillTimeout, err = time.ParseDuration(c.WFE.ShutdownKillTimeout)
-		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-
-		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
-
-		logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
-
-		go cmd.ProfileCmd("WFE", stats)
-
-		// Set up paths
-		wfe.BaseURL = c.Common.BaseURL
-		h, err := wfe.Handler()
-		cmd.FailOnError(err, "Problem setting up HTTP handlers")
-
-		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
-
-		logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		srv := &http.Server{
-			Addr:    c.WFE.ListenAddress,
-			Handler: httpMonitor,
-		}
-
-		hd := &httpdown.HTTP{
-			StopTimeout: wfe.ShutdownStopTimeout,
-			KillTimeout: wfe.ShutdownKillTimeout,
-			Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
-		}
-		err = httpdown.ListenAndServe(srv, hd)
-		cmd.FailOnError(err, "Error starting HTTP server")
+	if *listenAddr != "" {
+		cfg.WFE.ListenAddress = *listenAddr
 	}
 
-	app.Run()
+	if os.Getenv("WFE_LISTEN_ADDR") != "" {
+		cfg.WFE.ListenAddress = os.Getenv("WFE_LISTEN_ADDR")
+	}
+
+	if cfg.WFE.AMQP == nil {
+		cfg.WFE.AMQP = cfg.AMQP
+	}
+
+	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
+
+	go cmd.DebugServer(cfg.WFE.DebugAddr)
+
+	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), cfg.KeyPolicy(), logger)
+	cmd.FailOnError(err, "Unable to create WFE")
+	rac, sac := setupWFE(cfg, logger, stats)
+	wfe.RA = rac
+	wfe.SA = sac
+
+	// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
+	if cfg.WFE.SubscriberAgreementURL != "" {
+		wfe.SubscriberAgreementURL = cfg.WFE.SubscriberAgreementURL
+	} else {
+		wfe.SubscriberAgreementURL = cfg.SubscriberAgreementURL
+	}
+
+	wfe.AllowOrigins = cfg.WFE.AllowOrigins
+
+	wfe.CertCacheDuration, err = time.ParseDuration(cfg.WFE.CertCacheDuration)
+	cmd.FailOnError(err, "Couldn't parse certificate caching duration")
+	wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(cfg.WFE.CertNoCacheExpirationWindow)
+	cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
+	wfe.IndexCacheDuration, err = time.ParseDuration(cfg.WFE.IndexCacheDuration)
+	cmd.FailOnError(err, "Couldn't parse index caching duration")
+	wfe.IssuerCacheDuration, err = time.ParseDuration(cfg.WFE.IssuerCacheDuration)
+	cmd.FailOnError(err, "Couldn't parse issuer caching duration")
+
+	wfe.ShutdownStopTimeout, err = time.ParseDuration(cfg.WFE.ShutdownStopTimeout)
+	cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+	wfe.ShutdownKillTimeout, err = time.ParseDuration(cfg.WFE.ShutdownKillTimeout)
+	cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
+
+	wfe.IssuerCert, err = cmd.LoadCert(cfg.Common.IssuerCert)
+	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", cfg.Common.IssuerCert))
+
+	logger.Info(fmt.Sprintf("WFE using key policy: %#v", cfg.KeyPolicy()))
+
+	go cmd.ProfileCmd("WFE", stats)
+
+	// Set up paths
+	wfe.BaseURL = cfg.Common.BaseURL
+	h, err := wfe.Handler()
+	cmd.FailOnError(err, "Problem setting up HTTP handlers")
+
+	httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
+
+	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", cfg.WFE.ListenAddress))
+	srv := &http.Server{
+		Addr:    cfg.WFE.ListenAddress,
+		Handler: httpMonitor,
+	}
+
+	hd := &httpdown.HTTP{
+		StopTimeout: wfe.ShutdownStopTimeout,
+		KillTimeout: wfe.ShutdownKillTimeout,
+		Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
+	}
+	err = httpdown.ListenAndServe(srv, hd)
+	cmd.FailOnError(err, "Error starting HTTP server")
 }

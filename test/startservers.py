@@ -16,6 +16,15 @@ if default_config == '':
     default_config = 'test/boulder-config.json'
 processes = []
 
+def get_config(service):
+    config_dir = os.environ.get('BOULDER_CONFIG_DIR')
+    if not config_dir:
+        return default_config
+    path = os.path.join(config_dir, service + "-config.json")
+    if os.path.exists(path):
+        print path
+        return path
+    return default_config
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -44,7 +53,7 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe --config %s' % default_config,
+        'boulder-wfe --config %s' % get_config('boulder-wfe'),
         'boulder-ra --config %s' % default_config,
         'boulder-sa --config %s' % default_config,
         'boulder-ca --config %s' % default_config,
