@@ -94,21 +94,22 @@ var makeTicker = func(tickerDuration time.Duration) (func(), <-chan time.Time) {
 type issuanceLoadStat struct {
 	sync.RWMutex
 	issuedCounts []int
+	lastBucket   int
 	windowSize   int
 	ticker       <-chan time.Time
 	clk          clock.Clock
 }
 
 // Spawn a goroutine blocking on the ticker
-func (i *issuanceLoadStat) updateForever() {
+func (ils *issuanceLoadStat) updateForever() {
 	go func() {
 		for {
 			// Compute the count and update the expvar immediately so the
 			// first round of the go-routine sets the initial expvar value
-			count := i.countIssuances()
+			count := ils.countIssuances()
 			issuanceExpvar.Set(int64(count))
 			// Then block on the ticker until its time to update again
-			<-i.ticker
+			<-ils.ticker
 		}
 	}()
 }
@@ -132,12 +133,17 @@ func (ils *issuanceLoadStat) countIssuances() int {
 	return sum
 }
 
-func (i *issuanceLoadStat) issuedCert() {
+func (ils *issuanceLoadStat) issuedCert() {
 	// Increment the bucket for this minute's issuance count
-	cur := i.clk.Now().Minute()
-	i.Lock()
-	i.issuedCounts[cur]++
-	i.Unlock()
+	cur := ils.clk.Now().Minute()
+
+	ils.Lock()
+	if cur != ils.lastBucket {
+		ils.issuedCounts[cur] = 0
+		ils.lastBucket = cur
+	}
+	ils.issuedCounts[cur]++
+	ils.Unlock()
 }
 
 func newIssuanceLoadStat(clk clock.Clock) *issuanceLoadStat {

@@ -1273,11 +1273,11 @@ func TestIssuanceLoadStat(t *testing.T) {
 	test.AssertEquals(t, stat.issuedCounts[curMin], 3)
 
 	// Increment the clock ahead one minute and issue another cert. Check that the
-	// next bucket is used and is 2
+	// next bucket is used and is now 1
 	fc.Add(time.Minute)
 	stat.issuedCert()
 	curMin = fc.Now().Minute()
-	test.AssertEquals(t, stat.issuedCounts[curMin], 2)
+	test.AssertEquals(t, stat.issuedCounts[curMin], 1)
 
 	// Since we haven't done an update tick yet, assert that the expvar is still 5
 	test.AssertEquals(t, issuanceExpvar.String(), "5")
@@ -1285,7 +1285,7 @@ func TestIssuanceLoadStat(t *testing.T) {
 	// Let the ticker run and update the expvar, it should now be an accurate
 	// tally of the 5 default bucket values & the 3 certs we issued
 	fakeTick <- time.Now()
-	test.AssertEquals(t, issuanceExpvar.String(), "8")
+	test.AssertEquals(t, issuanceExpvar.String(), "7")
 
 	// Advance the clock 15 minutes, tick the ticker to update the expvar, it
 	// should be 5 since we've advanced through the circular bucket slice to
@@ -1294,6 +1294,20 @@ func TestIssuanceLoadStat(t *testing.T) {
 	fakeTick <- time.Now()
 	fakeTick <- time.Now() // Tick twice to give time for the update
 	test.AssertEquals(t, issuanceExpvar.String(), "5")
+
+	// Pretend we issued 666 certificates a minute for the whole past hour
+	stat.Lock()
+	for i := 0; i < 60; i++ {
+		stat.issuedCounts[i] = 666
+	}
+	stat.Unlock()
+	// Advance the clock 1 minute, and record a new issuance
+	fc.Add(1 * time.Minute)
+	curMin = fc.Now().Minute()
+	stat.issuedCert()
+	// The count in the curMin bucket should be 1, not 667 because the bucket is
+	// reset to 0 when the minute changes and an issuance is recorded
+	test.AssertEquals(t, stat.issuedCounts[curMin], 1)
 }
 
 // Override makeTicker for testing.
