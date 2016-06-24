@@ -127,10 +127,6 @@
 			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "0a8bc7afe9edcfb0ed73c794b730500f61701a07"
-		},
-		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
 			"Rev": "2c364245d9f3b4f744ed6f8b37c3b27107f3a72a"
 		},
@@ -164,7 +160,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Rev": "18dd61586155add3efdb1ef62afa4ef4d7b9a3c4"
+			"Comment": "v0.1.0-8-gbade7fb",
+			"Rev": "bade7fbe40dfe5c1af82bc4637f1f35bfcc03e19"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",

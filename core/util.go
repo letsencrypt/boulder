@@ -27,6 +27,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 	jose "github.com/square/go-jose"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
 // Package Variables Variables
@@ -415,4 +416,29 @@ func IsASCII(str string) bool {
 		}
 	}
 	return true
+}
+
+// ExtractDomainIANASuffix returns the public suffix of the domain using only the "ICANN"
+// section of the Public Suffix List database.
+// If the domain does not end in a suffix that belongs to an IANA-assigned
+// domain, ExtractDomainIANASuffix returns an error.
+func ExtractDomainIANASuffix(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("Blank name argument passed to ExtractDomainIANASuffix")
+	}
+
+	rule := publicsuffix.DefaultList.Find(name, &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
+	if rule == nil {
+		return "", fmt.Errorf("Domain %s has no IANA TLD", name)
+	}
+
+	suffix := rule.Decompose(name)[1]
+
+	// If the TLD is empty, it means name is actually a suffix.
+	// In fact, decompose returns an array of empty strings in this case.
+	if suffix == "" {
+		suffix = name
+	}
+
+	return suffix, nil
 }

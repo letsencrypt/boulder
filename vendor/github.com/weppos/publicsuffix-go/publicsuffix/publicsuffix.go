@@ -32,7 +32,7 @@ var DefaultRule = NewRule("*")
 var DefaultParserOptions = &ParserOption{PrivateDomains: true}
 
 // DefaultFindOptions are the default options used to perform the lookup of rules in the list.
-var DefaultFindOptions = &FindOptions{IgnorePrivate: false}
+var DefaultFindOptions = &FindOptions{IgnorePrivate: false, DefaultRule: DefaultRule}
 
 // Rule represents a single rule in a Public Suffix List.
 type Rule struct {
@@ -51,7 +51,13 @@ type ParserOption struct {
 // FindOptions are the options you can use to customize the way a Rule
 // is searched within the list.
 type FindOptions struct {
+	// Set to true to ignore the rules within the "Private" section of the Public Suffix List.
 	IgnorePrivate bool
+
+	// The default rule to use when no rule matches the input.
+	// The format Public Suffix algorithm states that the rule "*" should be used when no other rule matches,
+	// but some consumers may have different needs.
+	DefaultRule *Rule
 }
 
 // List represents a Public Suffix List.
@@ -160,32 +166,31 @@ Scanning:
 }
 
 // Find and returns the most appropriate rule for the domain name.
-func (l *List) Find(name string, options *FindOptions) Rule {
-	var rule *Rule
-
-	for _, r := range l.Select(name, options) {
-		if r.Type == ExceptionType {
-			return r
-		}
-		if rule == nil || rule.Length < r.Length {
-			rule = &r
-		}
-	}
-
-	if rule != nil {
-		return *rule
-	}
-
-	return *DefaultRule
-}
-
-// experimental
-func (l *List) Select(name string, options *FindOptions) []Rule {
-	var found []Rule
+func (l *List) Find(name string, options *FindOptions) *Rule {
+	var bestRule *Rule
 
 	if options == nil {
 		options = DefaultFindOptions
 	}
+
+	for _, r := range l.selectRules(name, options) {
+		if r.Type == ExceptionType {
+			return &r
+		}
+		if bestRule == nil || bestRule.Length < r.Length {
+			bestRule = &r
+		}
+	}
+
+	if bestRule != nil {
+		return bestRule
+	}
+
+	return options.DefaultRule
+}
+
+func (l *List) selectRules(name string, options *FindOptions) []Rule {
+	var found []Rule
 
 	// In this phase the search is a simple sequential scan
 	for _, rule := range l.rules {
@@ -328,7 +333,7 @@ func (d *DomainName) String() string {
 //
 // 	publicsuffix.Domain("example.com")
 //	// example.com
-// 	publicsuffix.Domain("www.example.com)
+// 	publicsuffix.Domain("www.example.com")
 //	// example.com
 // 	publicsuffix.Domain("www.example.co.uk")
 //	// example.co.uk
@@ -347,7 +352,7 @@ func Domain(name string) (string, error) {
 //
 // 	publicsuffix.Parse("example.com")
 //	// &DomainName{"com", "example"}
-// 	publicsuffix.Parse("www.example.com)
+// 	publicsuffix.Parse("www.example.com")
 //	// &DomainName{"com", "example", "www"}
 // 	publicsuffix.Parse("www.example.co.uk")
 //	// &DomainName{"co.uk", "example"}
@@ -365,7 +370,7 @@ func Parse(name string) (*DomainName, error) {
 //
 // 	publicsuffix.DomainFromListWithOptions(list, "example.com")
 //	// example.com
-// 	publicsuffix.DomainFromListWithOptions(list, "www.example.com)
+// 	publicsuffix.DomainFromListWithOptions(list, "www.example.com")
 //	// example.com
 // 	publicsuffix.DomainFromListWithOptions(list, "www.example.co.uk")
 //	// example.co.uk
@@ -389,7 +394,7 @@ func DomainFromListWithOptions(l *List, name string, options *FindOptions) (stri
 //
 // 	publicsuffix.ParseFromListWithOptions(list, "example.com")
 //	// &DomainName{"com", "example"}
-// 	publicsuffix.ParseFromListWithOptions(list, "www.example.com)
+// 	publicsuffix.ParseFromListWithOptions(list, "www.example.com")
 //	// &DomainName{"com", "example", "www"}
 // 	publicsuffix.ParseFromListWithOptions(list, "www.example.co.uk")
 //	// &DomainName{"co.uk", "example"}
@@ -405,8 +410,8 @@ func ParseFromListWithOptions(l *List, name string, options *FindOptions) (*Doma
 		return nil, fmt.Errorf("%s is a suffix", n)
 	}
 
-	dn := &DomainName{Rule: &r}
-	dn.TLD, dn.SLD, dn.TRD = decompose(&r, n)
+	dn := &DomainName{Rule: r}
+	dn.TLD, dn.SLD, dn.TRD = decompose(r, n)
 	return dn, nil
 }
 

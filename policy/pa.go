@@ -14,7 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
-	"github.com/letsencrypt/net/publicsuffix"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -210,7 +209,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := publicsuffix.ICANNTLD(domain)
+	icannTLD, err := core.ExtractDomainIANASuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
