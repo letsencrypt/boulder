@@ -89,7 +89,7 @@ var makeTicker = func(tickerDuration time.Duration) (func(), <-chan time.Time) {
 // The issuanceLoadStat allows us to expose a window of RA issuance volume as an
 // expvar. Internally a circular slice of 60 counts is maintained (one for each
 // minute). When a certificate is issued we increment the count in the current
-// minutes' bucket. A Go routine monitoring a ticket updates the expvar
+// minutes' bucket. A goroutine monitoring a ticket updates the expvar
 // periodically with the past 5 minutes of buckets totalled up.
 type issuanceLoadStat struct {
 	sync.RWMutex
@@ -99,7 +99,7 @@ type issuanceLoadStat struct {
 	clk          clock.Clock
 }
 
-// Spawn a Go routine blocking on the ticker
+// Spawn a goroutine blocking on the ticker
 func (i *issuanceLoadStat) updateForever() {
 	go func() {
 		for {
