@@ -663,3 +663,23 @@ type tempError bool
 
 func (t tempError) Temporary() bool { return bool(t) }
 func (t tempError) Error() string   { return fmt.Sprintf("Temporary: %t", t) }
+
+func TestReadHostList(t *testing.T) {
+	res, err := ReadHostList("")
+	if res != nil {
+		t.Errorf("Expected res to be nil")
+	}
+	if err != nil {
+		t.Errorf("Expected err to be nil: %s", err)
+	}
+	res, err = ReadHostList("../test/caa-servfail-exceptions.txt")
+	if err != nil {
+		t.Errorf("Expected err to be nil: %s", err)
+	}
+	if len(res) != 1 {
+		t.Errorf("Wrong size of host list: %d", len(res))
+	}
+	if res["servfailexception.example.com"] != true {
+		t.Errorf("Didn't find servfailexception.example.com in list")
+	}
+}
