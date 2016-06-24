@@ -917,7 +917,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 	// when we wrote bodyOne to the file earlier.
 	bodyTwo, readErr := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
 	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	writeErr = ioutil.WriteFile(filename, bodyTwo, 0644)
 	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 
