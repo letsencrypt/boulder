@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v67",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
@@ -161,6 +161,10 @@
 		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
+		},
+		{
+			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
+			"Rev": "18dd61586155add3efdb1ef62afa4ef4d7b9a3c4"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
