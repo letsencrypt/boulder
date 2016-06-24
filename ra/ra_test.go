@@ -917,7 +917,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 	// when we wrote bodyOne to the file earlier.
 	bodyTwo, readErr := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
 	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
-	time.Sleep(1 * time.Second)
+	time.Sleep(15 * time.Millisecond)
 	writeErr = ioutil.WriteFile(filename, bodyTwo, 0644)
 	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 
@@ -1249,7 +1249,7 @@ func TestIssuanceLoadStat(t *testing.T) {
 	defer restoreMakeTicker()
 
 	fc := clock.NewFake()
-	stat := newIssuanceLoadStat("testIssuanceStat", fc)
+	stat := newIssuanceLoadStat(fc)
 
 	// Assert that there are exactly 60 buckets, one for each minute
 	test.AssertEquals(t, len(stat.issuedCounts), 60)

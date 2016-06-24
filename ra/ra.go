@@ -113,22 +113,22 @@ func (i *issuanceLoadStat) updateForever() {
 	}()
 }
 
-func (i *issuanceLoadStat) countIssuances() int {
+func (ils *issuanceLoadStat) countIssuances() int {
 	// Calculate a sum over the last `windowSize` buckets of the `issuedCounts`
 	// slice, wrapping around as required to stay within the 60 buckets.
 	sum := 0
-	cur := i.clk.Now().Minute()
-	i.RLock()
-	for j := i.windowSize - 1; j >= 0; j-- {
-		index := (cur - j) % 60
+	cur := ils.clk.Now().Minute()
+	ils.RLock()
+	defer ils.RUnlock()
+	for i := ils.windowSize - 1; i >= 0; i-- {
+		index := (cur - i) % 60
 		// Note: Go's % operator is remainder, not modulus and we need to handle the
 		// negative case ourselves
 		if index < 0 {
 			index = index + 60
 		}
-		sum += i.issuedCounts[index]
+		sum += ils.issuedCounts[index]
 	}
-	i.RUnlock()
 	return sum
 }
 
@@ -136,11 +136,11 @@ func (i *issuanceLoadStat) issuedCert() {
 	// Increment the bucket for this minute's issuance count
 	cur := i.clk.Now().Minute()
 	i.Lock()
-	i.issuedCounts[cur] = i.issuedCounts[cur] + 1
+	i.issuedCounts[cur]++
 	i.Unlock()
 }
 
-func newIssuanceLoadStat(statName string, clk clock.Clock) *issuanceLoadStat {
+func newIssuanceLoadStat(clk clock.Clock) *issuanceLoadStat {
 	// Update the expvar once every `tickerDuration`
 	const tickerDuration = time.Second * 60
 	_, tickerChan := makeTicker(tickerDuration)
@@ -186,7 +186,7 @@ func NewRegistrationAuthorityImpl(
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
-		issuanceLoad:                 newIssuanceLoadStat("successfulIssuances", clk),
+		issuanceLoad:                 newIssuanceLoadStat(clk),
 		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
