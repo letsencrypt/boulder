@@ -74,16 +74,11 @@ type RegistrationAuthorityImpl struct {
 	totalCertsStats      metrics.Scope
 }
 
-// Note: the issuanceExpvar must be a global initialized by the package
-// init() function. If it is a member of the RA, or initialized with everything
-// else in NewRegistrationAuthority() then multiple invocations of the
-// constructor (e.g from unit tests) will panic with a "Reuse of exported var
-// name:" error from the expvar package.
-var issuanceExpvar *expvar.Int
-
-func init() {
-	issuanceExpvar = expvar.NewInt("successfulIssuances")
-}
+// Note: the issuanceExpvar must be a global. If it is a member of the RA, or
+// initialized with everything else in NewRegistrationAuthority() then multiple
+// invocations of the constructor (e.g from unit tests) will panic with a "Reuse
+// of exported var name:" error from the expvar package.
+var issuanceExpvar = expvar.NewInt("successfulIssuances")
 
 // Wrap time.Tick so we can override it in tests.
 var makeTicker = func(tickerDuration time.Duration) (func(), <-chan time.Time) {
