@@ -207,12 +207,13 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 type config struct {
 	GRPC cmd.GRPCServerConfig
 
-	DebugAddr    string             `yaml:"debug-addr"`
-	DNSResolver  string             `yaml:"dns-resolver"`
-	DNSNetwork   string             `yaml:"dns-network"`
-	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
-	StatsdServer string             `yaml:"statsd-server"`
-	StatsdPrefix string             `yaml:"statsd-prefix"`
+	DebugAddr             string             `yaml:"debug-addr"`
+	DNSResolver           string             `yaml:"dns-resolver"`
+	DNSNetwork            string             `yaml:"dns-network"`
+	DNSTimeout            cmd.ConfigDuration `yaml:"dns-timeout"`
+	StatsdServer          string             `yaml:"statsd-server"`
+	StatsdPrefix          string             `yaml:"statsd-prefix"`
+	CAASERVFAILExceptions string             `yaml:"caa-servfail-exceptions"`
 }
 
 func main() {
@@ -231,9 +232,13 @@ func main() {
 	cmd.FailOnError(err, "Failed to create StatsD client")
 	scope := metrics.NewStatsdScope(stats, "caa-service")
 
+	caaSERVFAILExceptions, err := bdns.ReadHostList(c.CAASERVFAILExceptions)
+	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
+
 	resolver := bdns.NewDNSResolverImpl(
 		c.DNSTimeout.Duration,
 		[]string{c.DNSResolver},
+		caaSERVFAILExceptions,
 		scope,
 		clock.Default(),
 		5,

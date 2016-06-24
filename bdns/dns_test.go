@@ -280,7 +280,7 @@ func TestDNSServFail(t *testing.T) {
 	test.AssertNotError(t, err, "LookupCAA returned an error")
 
 	// When we turn on enforceCAASERVFAIL, such lookups should fail.
-	obj.EnforceCAASERVFAIL()
+	obj.caaSERVFAILExceptions = map[string]bool{"servfailexception.example.com": true}
 	emptyCaa, err = obj.LookupCAA(context.Background(), bad)
 	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
 	test.AssertError(t, err, "LookupCAA should have returned an error")

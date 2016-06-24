@@ -66,18 +66,23 @@ func main() {
 			dnsTries = 1
 		}
 		clk := clock.Default()
+		caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
+		cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 		var resolver bdns.DNSResolver
 		if !c.Common.DNSAllowLoopbackAddresses {
-			r := bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+			r := bdns.NewDNSResolverImpl(
+				dnsTimeout,
+				[]string{c.Common.DNSResolver},
+				caaSERVFAILExceptions,
+				scoped,
+				clk,
+				dnsTries)
 			r.LookupIPv6 = c.VA.LookupIPv6
 			resolver = r
 		} else {
 			r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 			r.LookupIPv6 = c.VA.LookupIPv6
 			resolver = r
-		}
-		if c.VA.EnforceCAASERVFAIL {
-			resolver.EnforceCAASERVFAIL()
 		}
 		vai := va.NewValidationAuthorityImpl(
 			pc,

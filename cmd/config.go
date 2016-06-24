@@ -108,7 +108,7 @@ type Config struct {
 		DNSTries int
 
 		// Feature flag to enable enforcement of CAA SERVFAILs.
-		EnforceCAASERVFAIL bool
+		CAASERVFAILExceptions string
 	}
 
 	Statsd StatsdConfig

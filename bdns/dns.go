@@ -2,6 +2,7 @@ package bdns
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"strings"
@@ -141,7 +142,6 @@ type DNSResolver interface {
 	LookupHost(context.Context, string) ([]net.IP, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, error)
 	LookupMX(context.Context, string) ([]string, error)
-	EnforceCAASERVFAIL()
 }
 
 // DNSResolverImpl represents a client that talks to an external resolver
@@ -149,17 +149,18 @@ type DNSResolverImpl struct {
 	dnsClient                exchanger
 	servers                  []string
 	allowRestrictedAddresses bool
-	// Temporary feature flag. TODO(jsha): Remove once it's turned on.
-	enforceCAASERVFAIL bool
-	maxTries           int
-	LookupIPv6         bool
-	clk                clock.Clock
-	stats              metrics.Scope
-	txtStats           metrics.Scope
-	aStats             metrics.Scope
-	aaaaStats          metrics.Scope
-	caaStats           metrics.Scope
-	mxStats            metrics.Scope
+	// If non-nil, these are already-issued names whose registrar returns SERVFAIL
+	// for CAA queries that get a temporary pass during a notification period.
+	caaSERVFAILExceptions map[string]bool
+	maxTries              int
+	LookupIPv6            bool
+	clk                   clock.Clock
+	stats                 metrics.Scope
+	txtStats              metrics.Scope
+	aStats                metrics.Scope
+	aaaaStats             metrics.Scope
+	caaStats              metrics.Scope
+	mxStats               metrics.Scope
 }
 
 var _ DNSResolver = &DNSResolverImpl{}
@@ -170,7 +171,14 @@ type exchanger interface {
 
 // NewDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
-func NewDNSResolverImpl(readTimeout time.Duration, servers []string, stats metrics.Scope, clk clock.Clock, maxTries int) *DNSResolverImpl {
+func NewDNSResolverImpl(
+	readTimeout time.Duration,
+	servers []string,
+	caaSERVFAILExceptions map[string]bool,
+	stats metrics.Scope,
+	clk clock.Clock,
+	maxTries int,
+) *DNSResolverImpl {
 	// TODO(jmhodges): make constructor use an Option func pattern
 	dnsClient := new(dns.Client)
 
@@ -182,6 +190,7 @@ func NewDNSResolverImpl(readTimeout time.Duration, servers []string, stats metri
 		dnsClient:                dnsClient,
 		servers:                  servers,
 		allowRestrictedAddresses: false,
+		caaSERVFAILExceptions:    caaSERVFAILExceptions,
 		maxTries:                 maxTries,
 		clk:                      clk,
 		stats:                    stats,
@@ -193,15 +202,11 @@ func NewDNSResolverImpl(readTimeout time.Duration, servers []string, stats metri
 	}
 }
 
-func (dr *DNSResolverImpl) EnforceCAASERVFAIL() {
-	dr.enforceCAASERVFAIL = true
-}
-
 // NewTestDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
 func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats metrics.Scope, clk clock.Clock, maxTries int) *DNSResolverImpl {
-	resolver := NewDNSResolverImpl(readTimeout, servers, stats, clk, maxTries)
+	resolver := NewDNSResolverImpl(readTimeout, servers, nil, stats, clk, maxTries)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
@@ -398,8 +403,9 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(ctx context.Context, hostname stri
 	// period we will remove these exceptions.
 	var CAAs []*dns.CAA
 	if r.Rcode == dns.RcodeServerFailure {
-		if !dnsResolver.enforceCAASERVFAIL || caaServfailException[hostname] {
-			return CAAs, nil
+		if dnsResolver.caaSERVFAILExceptions == nil ||
+			dnsResolver.caaSERVFAILExceptions[hostname] {
+			return nil, nil
 		} else {
 			return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 		}
@@ -435,4 +441,23 @@ func (dnsResolver *DNSResolverImpl) LookupMX(ctx context.Context, hostname strin
 	}
 
 	return results, nil
+}
+
+// ReadHostList reads in a newline-separated file and returns a map containing
+// each entry. If the filename is empty, returns a nil map and no error.
+func ReadHostList(filename string) (map[string]bool, error) {
+	if filename == "" {
+		return nil, nil
+	}
+	body, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var output = make(map[string]bool)
+	for _, v := range strings.Split(string(body), "\n") {
+		if len(v) > 0 {
+			output[v] = true
+		}
+	}
+	return output, nil
 }

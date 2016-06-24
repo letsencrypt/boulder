@@ -15,9 +15,6 @@ import (
 type MockDNSResolver struct {
 }
 
-func (mock *MockDNSResolver) EnforceCAASERVFAIL() {
-}
-
 // LookupTXT is a mock
 func (mock *MockDNSResolver) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
