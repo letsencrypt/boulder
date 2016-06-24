@@ -17,12 +17,17 @@ if default_config == '':
 processes = []
 
 def get_config(service):
+    """
+    returns the path of the configuration file. All configuration files need
+    to be of the form [service-name]-config.json. I.E. boulder-wfe-config.json
+
+    todo: remove default_config once all binaries have been converted
+    """
     config_dir = os.environ.get('BOULDER_CONFIG_DIR')
     if not config_dir:
         return default_config
     path = os.path.join(config_dir, service + "-config.json")
     if os.path.exists(path):
-        print path
         return path
     return default_config
 

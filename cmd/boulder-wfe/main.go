@@ -55,7 +55,7 @@ type config struct {
 		IssuerCert string
 	}
 
-	// This could be removed
+	// I'm not sure if this is necessary
 	AMQP *cmd.AMQPConfig
 }
 
