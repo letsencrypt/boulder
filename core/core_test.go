@@ -52,6 +52,7 @@ var testCertificateRequestBadCSR = []byte(`{"csr":"AAAA"}`)
 var testCertificateRequestGood = []byte(`{
   "csr": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P_N1S-ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD_4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq_8dnYbtmyDdXgopeKkSV5_76VSpcog-wkwEwo"
 }`)
+var testCertificateRequestBadASN1 = []byte(`{"csr":"MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="}`)
 
 func TestCertificateRequest(t *testing.T) {
 
@@ -71,6 +72,12 @@ func TestCertificateRequest(t *testing.T) {
 	if err == nil {
 		t.Errorf("Unexpectedly accepted certificate request with bad CSR")
 	}
+
+	// Bad ASN.1 CSR
+	var badASN1CR CertificateRequest
+	err = json.Unmarshal(testCertificateRequestBadASN1, &badASN1CR)
+	test.AssertError(t, err, "json.Unmarshal didn't fail")
+	test.AssertEquals(t, err.Error(), "CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version")
 
 	// Marshal
 	jsonCR, err := json.Marshal(goodCR)
