@@ -917,7 +917,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 	// when we wrote bodyOne to the file earlier.
 	bodyTwo, readErr := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
 	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
-	time.Sleep(1 * time.Second)
+	time.Sleep(15 * time.Millisecond)
 	writeErr = ioutil.WriteFile(filename, bodyTwo, 0644)
 	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 
@@ -1242,3 +1242,84 @@ xGUhoOJp0T++nz6R3TX7Rwk7KmG6xX3vWr/MFu5A3c8fvkqj987Vti5BeBezCXfs
 rA==
 -----END CERTIFICATE-----
 `)
+
+func TestIssuanceLoadStat(t *testing.T) {
+	// Mock out makeTicker
+	fakeTick, restoreMakeTicker := makeFakeMakeTicker()
+	defer restoreMakeTicker()
+
+	fc := clock.NewFake()
+	stat := newIssuanceLoadStat(fc)
+
+	// Assert that there are exactly 60 buckets, one for each minute
+	test.AssertEquals(t, len(stat.issuedCounts), 60)
+
+	// Assert that the issuedCounts buckets all start at 1
+	for i := 0; i < 60; i++ {
+		test.AssertEquals(t, stat.issuedCounts[i], 1)
+	}
+
+	// Assert that the initial stat is "5" (a 5 min bucket across 5 buckets of 1)
+	// Note: the expvar.Int type doesn't expose the internal value except as
+	// a string so we check against "5" instead of 5.
+	test.AssertEquals(t, issuanceExpvar.String(), "5")
+
+	// Issue a certificate and check that the current bucket is now 2
+	stat.issuedCert()
+	curMin := fc.Now().Minute()
+	test.AssertEquals(t, stat.issuedCounts[curMin], 2)
+	// Issue another, and check that the bucket is now 3
+	stat.issuedCert()
+	test.AssertEquals(t, stat.issuedCounts[curMin], 3)
+
+	// Increment the clock ahead one minute and issue another cert. Check that the
+	// next bucket is used and is now 1
+	fc.Add(time.Minute)
+	stat.issuedCert()
+	curMin = fc.Now().Minute()
+	test.AssertEquals(t, stat.issuedCounts[curMin], 1)
+
+	// Since we haven't done an update tick yet, assert that the expvar is still 5
+	test.AssertEquals(t, issuanceExpvar.String(), "5")
+
+	// Let the ticker run and update the expvar, it should now be an accurate
+	// tally of the 5 default bucket values & the 3 certs we issued
+	fakeTick <- time.Now()
+	test.AssertEquals(t, issuanceExpvar.String(), "7")
+
+	// Advance the clock 15 minutes, tick the ticker to update the expvar, it
+	// should be 5 since we've advanced through the circular bucket slice to
+	// a point where only the default values are counted
+	fc.Add(15 * time.Minute)
+	fakeTick <- time.Now()
+	fakeTick <- time.Now() // Tick twice to give time for the update
+	test.AssertEquals(t, issuanceExpvar.String(), "5")
+
+	// Pretend we issued 666 certificates a minute for the whole past hour
+	stat.Lock()
+	for i := 0; i < 60; i++ {
+		stat.issuedCounts[i] = 666
+	}
+	stat.Unlock()
+	// Advance the clock 1 minute, and record a new issuance
+	fc.Add(1 * time.Minute)
+	curMin = fc.Now().Minute()
+	stat.issuedCert()
+	// The count in the curMin bucket should be 1, not 667 because the bucket is
+	// reset to 0 when the minute changes and an issuance is recorded
+	test.AssertEquals(t, stat.issuedCounts[curMin], 1)
+}
+
+// Override makeTicker for testing.
+// Returns a channel on which to send artificial ticks, and a function to
+// restore the default makeTicker.
+func makeFakeMakeTicker() (chan<- time.Time, func()) {
+	origMakeTicker := makeTicker
+	fakeTickChan := make(chan time.Time)
+	makeTicker = func(dur time.Duration) (func(), <-chan time.Time) {
+		return func() {}, fakeTickChan
+	}
+	return fakeTickChan, func() {
+		makeTicker = origMakeTicker
+	}
+}
