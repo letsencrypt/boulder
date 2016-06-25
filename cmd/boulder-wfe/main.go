@@ -54,9 +54,6 @@ type config struct {
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
 	}
-
-	// I'm not sure if this is necessary
-	AMQP *cmd.AMQPConfig
 }
 
 func (cfg config) KeyPolicy() goodkey.KeyPolicy {
@@ -110,10 +107,6 @@ func main() {
 
 	if os.Getenv("WFE_LISTEN_ADDR") != "" {
 		cfg.WFE.ListenAddress = os.Getenv("WFE_LISTEN_ADDR")
-	}
-
-	if cfg.WFE.AMQP == nil {
-		cfg.WFE.AMQP = cfg.AMQP
 	}
 
 	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
