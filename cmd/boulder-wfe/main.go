@@ -81,12 +81,12 @@ func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.Regis
 func main() {
 	configFile := flag.String("config", "", "Mandatory file containing a JSON config")
 	listenAddr := flag.String("addr", "", "Overrides the listenAddr setting in WFE config")
-
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+
 	var cfg config
 	err := cmd.ReadJSONFile(*configFile, &cfg)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
