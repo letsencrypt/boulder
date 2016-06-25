@@ -1,15 +1,4 @@
 {
-  "syslog": {
-    "network": "",
-    "server": "",
-    "stdoutlevel": 6
-  },
-
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
     "allowOrigins": [
@@ -36,17 +25,28 @@
     }
   },
 
-  "common": {
-    "baseURL": "http://127.0.0.1:4000",
-    "issuerCert": "test/test-ca.pem"
-  },
-
-  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,
     "ecdsanistp384": true,
     "ecdsanistp521": false
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+
+  "syslog": {
+    "network": "",
+    "server": "",
+    "stdoutlevel": 6
+  },
+
+  "common": {
+    "baseURL": "http://127.0.0.1:4000",
+    "issuerCert": "test/test-ca.pem"
   }
 }

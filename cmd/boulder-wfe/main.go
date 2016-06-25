@@ -43,9 +43,9 @@ type config struct {
 
 	cmd.StatsdConfig
 
-	cmd.SyslogConfig
-
 	SubscriberAgreementURL string
+
+	cmd.SyslogConfig
 
 	Common struct {
 		BaseURL    string

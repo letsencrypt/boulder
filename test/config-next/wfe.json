@@ -1,14 +1,4 @@
 {
-  "syslog": {
-    "stdoutlevel": 6,
-    "sysloglevel": 4
-  },
-
-  "statsd": {
-      "server": "localhost:8125",
-      "prefix": "Boulder"
-  },
-
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
     "requestTimeout": "10s",
@@ -35,15 +25,25 @@
     }
   },
 
-  "common": {
-    "issuerCert": "test/test-ca.pem",
-    "dnsResolver": "127.0.0.1:8053"
-  },
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,
     "ecdsanistp384": true,
     "ecdsanistp521": false
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 4
+  },
+
+  "common": {
+    "issuerCert": "test/test-ca.pem",
+    "dnsResolver": "127.0.0.1:8053"
   }
 }
