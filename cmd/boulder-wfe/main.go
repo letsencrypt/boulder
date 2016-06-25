@@ -99,6 +99,8 @@ func main() {
 	}
 
 	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString(clientName))
 
 	go cmd.DebugServer(cfg.WFE.DebugAddr)
 
