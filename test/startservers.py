@@ -18,15 +18,15 @@ processes = []
 
 def get_config(service):
     """
-    returns the path of the configuration file. All configuration files need
-    to be of the form [service-name]-config.json. I.E. boulder-wfe-config.json
-
-    todo: remove default_config once all binaries have been converted
+    Returns the path of the configuration file. Currently defaults to
+    `default_config` if a BOULDER_CONFIG_DIR is not defined. If a BOULDER_CONFIG_DIR
+    is defined, a check to see if the file path exists is done as a temporary
+    measure until all components are moved away from the global config.
     """
     config_dir = os.environ.get('BOULDER_CONFIG_DIR')
     if not config_dir:
         return default_config
-    path = os.path.join(config_dir, service + "-config.json")
+    path = os.path.join(config_dir, service + ".json")
     if os.path.exists(path):
         return path
     return default_config
@@ -58,7 +58,7 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe --config %s' % get_config('boulder-wfe'),
+        'boulder-wfe --config %s' % get_config('wfe'),
         'boulder-ra --config %s' % default_config,
         'boulder-sa --config %s' % default_config,
         'boulder-ca --config %s' % default_config,

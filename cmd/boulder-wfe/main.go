@@ -48,8 +48,7 @@ type config struct {
 	SubscriberAgreementURL string
 
 	Common struct {
-		BaseURL string
-		// Path to a PEM-encoded copy of the issuer certificate.
+		BaseURL    string
 		IssuerCert string
 	}
 }
@@ -89,12 +88,12 @@ func main() {
 		os.Exit(1)
 	}
 	var cfg config
-	cmd.ReadJSONFile(*configFile, &cfg)
+	err := cmd.ReadJSONFile(*configFile, &cfg)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	if *listenAddr != "" {
 		cfg.WFE.ListenAddress = *listenAddr
 	}
-
 	if os.Getenv("WFE_LISTEN_ADDR") != "" {
 		cfg.WFE.ListenAddress = os.Getenv("WFE_LISTEN_ADDR")
 	}
