@@ -73,6 +73,15 @@ func (cfg config) KeyPolicy() goodkey.KeyPolicy {
 	}
 }
 
+func load(configFile string) config {
+	var cfg config
+	configData, err := ioutil.ReadFile(configFile)
+	cmd.FailOnError(err, fmt.Sprintf("Reading %s", configFile))
+	err = json.Unmarshal(configData, &cfg)
+	cmd.FailOnError(err, "Unmarshaling config")
+	return cfg
+}
+
 func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := cfg.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -82,15 +91,6 @@ func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.Regis
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac
-}
-
-func load(configFile string) config {
-	var cfg config
-	configData, err := ioutil.ReadFile(configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", configFile))
-	err = json.Unmarshal(configData, &cfg)
-	cmd.FailOnError(err, "Unmarshaling config")
-	return cfg
 }
 
 func main() {
