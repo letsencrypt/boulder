@@ -302,3 +302,14 @@ func DebugServer(addr string) {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
 }
+
+// ReadJSONFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a
+// configuration of a boulder component.
+func ReadJSONFile(filename string, out interface{}) {
+	configData, err := ioutil.ReadFile(filename)
+	FailOnError(err, fmt.Sprintf("Reading %s", filename))
+	err = json.Unmarshal(configData, out)
+	FailOnError(err, "Unmarshaling config")
+}
+

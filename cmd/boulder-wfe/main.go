@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -70,15 +68,6 @@ func (cfg config) KeyPolicy() goodkey.KeyPolicy {
 	}
 }
 
-func load(configFile string) config {
-	var cfg config
-	configData, err := ioutil.ReadFile(configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", configFile))
-	err = json.Unmarshal(configData, &cfg)
-	cmd.FailOnError(err, "Unmarshaling config")
-	return cfg
-}
-
 func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := cfg.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -99,7 +88,8 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	cfg := load(*configFile)
+	var cfg config
+	cmd.ReadJSONFile(*configFile, &cfg)
 
 	if *listenAddr != "" {
 		cfg.WFE.ListenAddress = *listenAddr
