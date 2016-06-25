@@ -79,7 +79,7 @@ func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.Regis
 }
 
 func main() {
-	configFile := flag.String("config", "", "Mandatory file containing a JSON config.")
+	configFile := flag.String("config", "", "Mandatory file containing a JSON config")
 	listenAddr := flag.String("addr", "", "Overrides the listenAddr setting in WFE config")
 
 	flag.Parse()
