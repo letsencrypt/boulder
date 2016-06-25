@@ -312,4 +312,3 @@ func ReadJSONFile(filename string, out interface{}) {
 	err = json.Unmarshal(configData, out)
 	FailOnError(err, "Unmarshaling config")
 }
-
