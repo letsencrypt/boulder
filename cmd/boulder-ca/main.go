@@ -212,7 +212,6 @@ func main() {
 		issuers,
 		cfg.KeyPolicy(),
 		logger)
-
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
