@@ -83,7 +83,7 @@ func (cfg config) KeyPolicy() goodkey.KeyPolicy {
 }
 
 func main() {
-	configFile := flag.String("config", "", "Mandatory file containing a JSON config")
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
