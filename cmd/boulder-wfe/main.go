@@ -91,11 +91,11 @@ func main() {
 	err := cmd.ReadJSONFile(*configFile, &cfg)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	if *listenAddr != "" {
-		cfg.WFE.ListenAddress = *listenAddr
-	}
 	if os.Getenv("WFE_LISTEN_ADDR") != "" {
 		cfg.WFE.ListenAddress = os.Getenv("WFE_LISTEN_ADDR")
+	}
+	if *listenAddr != "" {
+		cfg.WFE.ListenAddress = *listenAddr
 	}
 
 	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
