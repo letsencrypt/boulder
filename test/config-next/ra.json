@@ -1,14 +1,4 @@
 {
-  "syslog": {
-    "stdoutlevel": 6,
-    "sysloglevel": 4
-  },
-
-  "statsd": {
-      "server": "localhost:8125",
-      "prefix": "Boulder"
-  },
-
   "ra": {
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
@@ -46,16 +36,26 @@
     }
   },
 
-  "common": {
-    "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
-    "dnsAllowLoopbackAddresses": true
-  },
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,
     "ecdsanistp384": true,
     "ecdsanistp521": false
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 4
+  },
+
+  "common": {
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s",
+    "dnsAllowLoopbackAddresses": true
   }
 }

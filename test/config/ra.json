@@ -28,6 +28,13 @@
     }
   },
 
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  },
+
   "pa": {
     "challenges": {
       "http-01": true,
@@ -36,27 +43,20 @@
     }
   },
 
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
   "syslog": {
     "network": "",
     "server": "",
     "stdoutlevel": 6
   },
 
-  "statsd": {
-      "server": "localhost:8125",
-      "prefix": "Boulder"
-  },
-
   "common": {
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
     "dnsAllowLoopbackAddresses": true
-  },
-
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
   }
 }

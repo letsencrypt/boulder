@@ -55,11 +55,11 @@ type config struct {
 
 	*cmd.AllowedSigningAlgos
 
+	PA cmd.PAConfig
+
 	cmd.StatsdConfig
 
 	cmd.SyslogConfig
-
-	PA cmd.PAConfig
 
 	Common struct {
 		DNSResolver               string
