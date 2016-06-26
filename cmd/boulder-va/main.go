@@ -68,6 +68,8 @@ func main() {
 	err := cmd.ReadJSONFile(*configFile, &cfg)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	go cmd.DebugServer(cfg.VA.DebugAddr)
+
 	stats, logger := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
