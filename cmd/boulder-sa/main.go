@@ -37,21 +37,15 @@ func main() {
 
 	var cfg config
 	err := cmd.ReadJSONFile(*configFile, &cfg)
-	if err != nil {
-		cmd.FailOnError(err, "Reading JSON config file into config structure")
-	}
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(cfg.SA.DebugAddr)
 
 	dbURL, err := cfg.SA.DBConfig.URL()
-	if err != nil {
-		cmd.FailOnError(err, "Couldn't load DB URL")
-	}
+	cmd.FailOnError(err, "Couldn't load DB URL")
 
 	dbMap, err := sa.NewDbMap(dbURL, cfg.SA.DBConfig.MaxDBConns)
-	if err != nil {
-		cmd.FailOnError(err, "Couldn't connect to SA database")
-	}
+	cmd.FailOnError(err, "Couldn't connect to SA database")
 
 	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
 	defer logger.AuditPanic()
