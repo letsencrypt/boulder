@@ -33,7 +33,7 @@ type config struct {
 		MaxContactsPerRegistration int
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
+		UseIsSafeDomain bool // TODO: remove after va IsSafeDomain deploy
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
