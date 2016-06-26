@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"time"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 
@@ -66,7 +66,6 @@ type config struct {
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 	}
-
 }
 
 func (cfg config) KeyPolicy() goodkey.KeyPolicy {
