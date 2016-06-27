@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -101,26 +100,22 @@ type AcmeIdentifier struct {
 
 // CertificateRequest is just a CSR
 //
-// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
 	CSR   *x509.CertificateRequest // The CSR
 	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
-type rawCertificateRequest struct {
+type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw rawCertificateRequest
+	var raw RawCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
-	}
-
-	if len(raw.CSR) >= 10 && raw.CSR[8] == 2 && raw.CSR[9] == 0 {
-		return errors.New("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version")
 	}
 
 	csr, err := x509.ParseCertificateRequest(raw.CSR)
@@ -135,7 +130,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawCertificateRequest{
+	return json.Marshal(RawCertificateRequest{
 		CSR: cr.CSR.Raw,
 	})
 }
