@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
@@ -209,7 +211,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := core.ExtractDomainIANASuffix(domain)
+	icannTLD, err := extractDomainIANASuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
@@ -282,4 +284,29 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	}
 
 	return shuffled, shuffledCombos
+}
+
+// ExtractDomainIANASuffix returns the public suffix of the domain using only the "ICANN"
+// section of the Public Suffix List database.
+// If the domain does not end in a suffix that belongs to an IANA-assigned
+// domain, ExtractDomainIANASuffix returns an error.
+func extractDomainIANASuffix(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("Blank name argument passed to ExtractDomainIANASuffix")
+	}
+
+	rule := publicsuffix.DefaultList.Find(name, &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
+	if rule == nil {
+		return "", fmt.Errorf("Domain %s has no IANA TLD", name)
+	}
+
+	suffix := rule.Decompose(name)[1]
+
+	// If the TLD is empty, it means name is actually a suffix.
+	// In fact, decompose returns an array of empty strings in this case.
+	if suffix == "" {
+		suffix = name
+	}
+
+	return suffix, nil
 }
