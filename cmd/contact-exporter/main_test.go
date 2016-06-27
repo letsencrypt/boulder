@@ -20,7 +20,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -70,24 +69,22 @@ func TestFindContacts(t *testing.T) {
 	test.AssertEquals(t, contacts[2].ID, regD.ID)
 }
 
-func exampleContacts() []*mail.MailerDestination {
-	return []*mail.MailerDestination{
-		&mail.MailerDestination{
+func exampleContacts() []contactJSON {
+	return []contactJSON{
+		contactJSON{
 			ID:      1,
 			Contact: []byte(`["mailto:example@example.com"]`),
 		},
-		&mail.MailerDestination{
+		contactJSON{
 			ID:      2,
 			Contact: []byte(`["mailto:test-example@example.com"]`),
 		},
-		&mail.MailerDestination{
+		contactJSON{
 			ID:      3,
 			Contact: []byte(`["mailto:test-test-test@example.com"]`),
 		},
 	}
 }
-
-type WriteFunc func([]*mail.MailerDestination, string) error
 
 func TestWriteOutput(t *testing.T) {
 	expected := `[{"id":1},{"id":2},{"id":3}]`

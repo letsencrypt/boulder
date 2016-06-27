@@ -12,7 +12,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -22,9 +21,14 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
+type contactJSON struct {
+	ID      int64  `json:"id"`
+	Contact []byte `json:"-"`
+}
+
 // Find all registration contacts with unexpired certificates.
-func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
-	var contactsList []*mail.MailerDestination
+func (c contactExporter) findContacts() ([]contactJSON, error) {
+	var contactsList []contactJSON
 	_, err := c.dbMap.Select(
 		&contactsList,
 		`SELECT id
@@ -47,8 +51,8 @@ func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
 }
 
 // The `writeContacts` function produces a file containing JSON serialized
-// `bmail.MailerDestination` objects
-func writeContacts(contactsList []*mail.MailerDestination, outfile string) error {
+// contact objects
+func writeContacts(contactsList []contactJSON, outfile string) error {
 	data, err := json.Marshal(contactsList)
 	if err != nil {
 		return err

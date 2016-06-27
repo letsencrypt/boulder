@@ -37,6 +37,15 @@ type interval struct {
 	end   int
 }
 
+type contact struct {
+	ID int
+}
+
+type contactJSON struct {
+	ID      int
+	Contact []byte
+}
+
 func (i *interval) ok() error {
 	if i.start < 0 || i.end < 0 {
 		return fmt.Errorf(
@@ -105,11 +114,10 @@ type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 }
 
-// Finds the email address associated with a bmail.MailerDestination using the
-// reg ID
-func emailForDestination(contact *bmail.MailerDestination, dbMap dbSelector) (string, error) {
-	id := contact.ID
-	err := dbMap.SelectOne(contact,
+// Finds the email addresses associated with a reg ID
+func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
+	var contact contactJSON
+	err := dbMap.SelectOne(&contact,
 		`SELECT id, contact
 		FROM registrations
 		WHERE contact != 'null' AND id = :id;`,
@@ -117,38 +125,41 @@ func emailForDestination(contact *bmail.MailerDestination, dbMap dbSelector) (st
 			"id": id,
 		})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var contactFields []string
-	var address string
+	var addresses []string
 	err = json.Unmarshal(contact.Contact, &contactFields)
 	if err != nil {
-		return address, err
+		return addresses, err
 	}
 	for _, entry := range contactFields {
 		if strings.HasPrefix(entry, "mailto:") {
-			address = strings.TrimPrefix(entry, "mailto:")
+			addresses = append(addresses, strings.TrimPrefix(entry, "mailto:"))
 		}
 	}
-	return address, nil
+	return addresses, nil
 }
 
-// Resolves each `MailerDestination` to the most up-to-date contact email.
+// Resolves each reg ID to the most up-to-date contact email.
 // The email addresses are returned deduplicated and sorted.
-func resolveDestinations(contacts []*bmail.MailerDestination, dbMap dbSelector) ([]string, error) {
+func resolveDestinations(contacts []contact, dbMap dbSelector) ([]string, error) {
 	contactMap := make(map[string]struct{}, len(contacts))
 	for _, c := range contacts {
-		// Get the email address for the MailerDestination by reg ID
-		email, err := emailForDestination(c, dbMap)
+		// Get the email address for the reg ID
+		emails, err := emailsForReg(c.ID, dbMap)
 		if err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(email) == "" {
-			continue
+
+		for _, email := range emails {
+			if strings.TrimSpace(email) == "" {
+				continue
+			}
+			// Using the contactMap to deduplicate addresses
+			contactMap[email] = struct{}{}
 		}
-		// Using the contactMap to deduplicate addresses
-		contactMap[email] = struct{}{}
 	}
 
 	var contactsList []string
@@ -207,7 +218,7 @@ func main() {
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
 
-	var contacts []*bmail.MailerDestination
+	var contacts []contact
 	err = json.Unmarshal(toBody, &contacts)
 	cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
 	destinations, err := resolveDestinations(contacts, dbMap)

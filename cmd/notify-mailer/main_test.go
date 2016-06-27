@@ -9,7 +9,6 @@ import (
 
 	"github.com/jmhodges/clock"
 
-	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -269,19 +268,19 @@ func TestMessageContent(t *testing.T) {
 type mockEmailResolver struct{}
 
 // the `mockEmailResolver` select method treats the requested reg ID as an index
-// into a list of `MailerDestinations`
+// into a list of anonymous structs
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "db" is just a list in memory
-	db := []bmail.MailerDestination{
-		bmail.MailerDestination{
+	db := []contactJSON{
+		contactJSON{
 			ID:      1,
 			Contact: []byte(`["mailto:example@example.com"]`),
 		},
-		bmail.MailerDestination{
+		contactJSON{
 			ID:      2,
 			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
 		},
-		bmail.MailerDestination{
+		contactJSON{
 			ID:      3,
 			Contact: []byte(`["mailto:test-test-test@example.com"]`),
 		},
@@ -295,14 +294,14 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		return fmt.Errorf("incorrect args type %T", args)
 	}
 	idRaw := argsMap["id"]
-	id, ok := idRaw.(int64)
+	id, ok := idRaw.(int)
 	if !ok {
 		return fmt.Errorf("incorrect args ID type %T", id)
 	}
 
-	// Play the type cast game to get a pointer to the output `MailerDestination`
+	// Play the type cast game to get a pointer to the output `contactJSON`
 	// pointer so we can write the result from the db list
-	outputPtr, ok := output.(*bmail.MailerDestination)
+	outputPtr, ok := output.(*contactJSON)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -320,18 +319,15 @@ func TestResolveEmails(t *testing.T) {
 	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
 	// more test cases here you must also add the corresponding DB result in the
 	// mock.
-	contacts := []*bmail.MailerDestination{
-		&bmail.MailerDestination{
-			ID:      1,
-			Contact: []byte(`["mailto:example@example.com"]`),
+	contacts := []contact{
+		contact{
+			ID: 1,
 		},
-		&bmail.MailerDestination{
-			ID:      2,
-			Contact: []byte(`["mailto:test-example@example.com"]`),
+		contact{
+			ID: 2,
 		},
-		&bmail.MailerDestination{
-			ID:      3,
-			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		contact{
+			ID: 3,
 		},
 	}
 
