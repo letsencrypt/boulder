@@ -803,7 +803,12 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 		// with a more useful error message.
 		if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
 			logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
-			wfe.sendError(response, logEvent, probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version"), nil)
+			wfe.sendError(
+				response,
+				logEvent,
+				probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version"),
+				nil,
+			)
 			return
 		}
 	}
@@ -811,8 +816,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	var certificateRequest core.CertificateRequest
 	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
-		logEvent.AddError("unable to JSON unmarshal CertificateRequest: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling certificate request"), err)
+		logEvent.AddError("unable to parse certificate request: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request"), err)
 		return
 	}
 	certificateRequest.Bytes = certificateRequest.CSR.Raw
