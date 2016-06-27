@@ -85,7 +85,7 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 // are different
 func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
 	if one == two {
-		fatalf(t, "%s [%v] == [%v]", caller(), one, two)
+		fatalf(t, "%s [%#v] == [%#v]", caller(), one, two)
 	}
 }
 
