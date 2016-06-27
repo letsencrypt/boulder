@@ -51,7 +51,7 @@ func TestQueryCAA(t *testing.T) {
 
 	client := new(http.Client)
 	cpr := CAADistributedResolver{logger: log}
-	set, err := cpr.queryCAA(context.Background(), req, client)
+	set, err := cpr.queryCAA(context.Background(), testServ.URL+"?name=test-domain", client)
 	test.AssertNotError(t, err, "queryCAA failed")
 	test.AssertEquals(t, len(set), 1)
 	test.AssertEquals(t, set[0].Hdr.Name, "test-domain.")

@@ -98,11 +98,10 @@ func TestVAChallenge(t *testing.T) {
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	chall := core.Challenge{
-		AccountKey: &jwk,
-		ID:         10,
-		Type:       core.ChallengeTypeDNS01,
-		Status:     core.StatusPending,
-		Token:      "asd",
+		ID:     10,
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
@@ -179,11 +178,10 @@ func TestPerformValidationReq(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	domain := "example.com"
 	chall := core.Challenge{
-		AccountKey: &jwk,
-		ID:         10,
-		Type:       core.ChallengeTypeDNS01,
-		Status:     core.StatusPending,
-		Token:      "asd",
+		ID:     10,
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 	authz := core.Authorization{ID: "asd", RegistrationID: 10}

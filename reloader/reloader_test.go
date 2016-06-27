@@ -120,7 +120,7 @@ func TestReload(t *testing.T) {
 
 	// Write to the file, expect a reload. Sleep a few milliseconds first so the
 	// timestamps actually differ.
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	err = ioutil.WriteFile(filename, []byte("second body"), 0644)
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestReloadFailure(t *testing.T) {
 		t.Errorf("timed out waiting for reload")
 	}
 
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	// Create a file with no permissions
 	oldReadFile := readFile
 	readFile = func(string) ([]byte, error) {

@@ -3,6 +3,7 @@ package ra
 import (
 	"crypto/x509"
 	"errors"
+	"expvar"
 	"fmt"
 	"net"
 	"net/mail"
@@ -39,6 +40,12 @@ const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 // challenge this quickly, then you need to request a new challenge.
 // TODO(rlb): Read from a config file
 const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
+
+// Note: the issuanceExpvar must be a global. If it is a member of the RA, or
+// initialized with everything else in NewRegistrationAuthority() then multiple
+// invocations of the constructor (e.g from unit tests) will panic with a "Reuse
+// of exported var name:" error from the expvar package.
+var issuanceExpvar = expvar.NewInt("lastIssuance")
 
 // RegistrationAuthorityImpl defines an RA.
 //
@@ -299,6 +306,10 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if contact.Scheme != "mailto" {
 			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 		}
+		if !core.IsASCII(contact.String()) {
+			return core.MalformedRequestError(
+				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact.String()))
+		}
 
 		start := ra.clk.Now()
 		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
@@ -337,17 +348,11 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	reg, err := ra.SA.GetRegistration(ctx, regID)
-	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
-		return authz, err
-	}
-
 	identifier := request.Identifier
 	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
+	if err = ra.PA.WillingToIssue(identifier); err != nil {
 		return authz, err
 	}
 
@@ -399,7 +404,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
@@ -639,14 +644,16 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
+	now := ra.clk.Now()
 	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = ra.clk.Now()
+	logEvent.ResponseTime = now
 
 	logEventResult = "successful"
 
+	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
 }
@@ -808,26 +815,11 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	ch := &authz.Challenges[challengeIndex]
 
-	// Copy information over that the client is allowed to supply
-	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
-
 	if response.Type != "" && ch.Type != response.Type {
 		// TODO(riking): Check the rate on this, uncomment error return if negligible
 		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
 		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
 		// return
-	}
-
-	// Recompute the key authorization field provided by the client and
-	// check it against the value provided
-	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization()
-	if err != nil {
-		err = core.InternalServerError("Could not compute expected key authorization value")
-		return
-	}
-	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
-		err = core.MalformedRequestError("Response does not complete challenge")
-		return
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try
@@ -839,6 +831,28 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
 		return
 	}
+
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
+	// Recompute the key authorization field provided by the client and
+	// check it against the value provided
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(&reg.Key)
+	if err != nil {
+		err = core.InternalServerError("Could not compute expected key authorization value")
+		return
+	}
+	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
+		err = core.MalformedRequestError("Provided key authorization was incorrect")
+		return
+	}
+
+	// Copy information over that the client is allowed to supply
+	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	// Double check before sending to VA
 	if !ch.IsSaneForValidation() {
@@ -854,20 +868,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
-
-	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		return
-	}
-
-	// Reject the update if the challenge in question was created
-	// with a different account key
-	if !core.KeyDigestEquals(reg.Key, ch.AccountKey) {
-		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
-		return
-	}
 
 	// Dispatch to the VA for service
 

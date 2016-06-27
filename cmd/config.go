@@ -39,6 +39,8 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
+
+		SubscriberAgreementURL string
 	}
 
 	CA CAConfig
@@ -192,6 +194,7 @@ type Config struct {
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
+	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
 	SubscriberAgreementURL string
 }
 

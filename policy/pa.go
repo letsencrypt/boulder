@@ -15,7 +15,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
-	"github.com/square/go-jose"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -95,12 +94,6 @@ const (
 	// octets: https://tools.ietf.org/html/rfc1035#page-10
 	maxLabelLength         = 63
 	maxDNSIdentifierLength = 255
-
-	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
-	// to skip the domain whitelist (but not the blacklist). This is for an
-	// early partner integration during the beta period and should be removed
-	// later.
-	whitelistedPartnerRegID = 131
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
@@ -164,7 +157,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}
@@ -259,19 +252,19 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
-		challenges = append(challenges, core.HTTPChallenge01(accountKey))
+		challenges = append(challenges, core.HTTPChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
-		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
+		challenges = append(challenges, core.TLSSNIChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeDNS01] {
-		challenges = append(challenges, core.DNSChallenge01(accountKey))
+		challenges = append(challenges, core.DNSChallenge01())
 	}
 
 	// We shuffle the challenges and combinations to prevent ACME clients from
