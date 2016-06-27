@@ -19,7 +19,7 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "debugAddr": "0.0.0.0:8000",
+    "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
@@ -38,7 +38,7 @@
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
-    "debugAddr": "0.0.0.0:8001",
+    "debugAddr": "localhost:8001",
     "Key": {
       "File": "test/test-ca.key"
     },
@@ -164,7 +164,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
-    "debugAddr": "0.0.0.0:8002",
+    "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
@@ -192,7 +192,7 @@
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "0.0.0.0:8003",
+    "debugAddr": "localhost:8003",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -202,7 +202,7 @@
 
   "va": {
     "userAgent": "boulder",
-    "debugAddr": "0.0.0.0:8004",
+    "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
@@ -247,7 +247,7 @@
     "maxAge": "10s",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "debugAddr": "0.0.0.0:8005"
+    "debugAddr": "localhost:8005"
   },
 
   "ocspUpdater": {
@@ -265,7 +265,7 @@
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
-    "debugAddr": "0.0.0.0:8006",
+    "debugAddr": "localhost:8006",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -296,7 +296,7 @@
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
-    "debugAddr": "0.0.0.0:8008",
+    "debugAddr": "localhost:8008",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -310,7 +310,7 @@
   "publisher": {
     "maxConcurrentRPCServerRequests": 16,
     "submissionTimeout": "5s",
-    "debugAddr": "0.0.0.0:8009",
+    "debugAddr": "localhost:8009",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
