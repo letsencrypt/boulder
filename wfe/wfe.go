@@ -85,7 +85,7 @@ type WebFrontEndImpl struct {
 	ShutdownKillTimeout time.Duration
 
 	// Feature gates
-	checkMalformedCSR bool
+	CheckMalformedCSR bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -793,7 +793,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling certificate request"), err)
 		return
 	}
-	if wfe.checkMalformedCSR {
+	if wfe.CheckMalformedCSR {
 		// Assuming a properly formatted CSR there should be two four byte SEQUENCE
 		// declarations then a two byte integer declaration which defines the version
 		// of the CSR. If those two bytes (at offset 8 and 9) and equal to 2 and 0

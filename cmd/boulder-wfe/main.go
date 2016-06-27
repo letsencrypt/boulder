@@ -61,6 +61,7 @@ func main() {
 		}
 
 		wfe.AllowOrigins = c.WFE.AllowOrigins
+		wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
 
 		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse certificate caching duration")

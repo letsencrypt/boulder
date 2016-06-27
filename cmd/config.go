@@ -41,6 +41,8 @@ type Config struct {
 		ShutdownKillTimeout string
 
 		SubscriberAgreementURL string
+
+		CheckMalformedCSR bool
 	}
 
 	CA CAConfig
