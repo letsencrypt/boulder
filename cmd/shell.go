@@ -310,7 +310,7 @@ func ReadJSONFile(filename string, out interface{}) error {
 }
 
 // VersionString produces a friendly Application version string. Duplicated
-// from AppShell, with the exception that it takes a name as an argument.
+// from cmd.AppShell, with the exception that it takes a name as an argument.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

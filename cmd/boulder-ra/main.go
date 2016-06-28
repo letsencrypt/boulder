@@ -68,8 +68,16 @@ func main() {
 		if dnsTries < 1 {
 			dnsTries = 1
 		}
+		caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
+		cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = bdns.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
+			rai.DNSResolver = bdns.NewDNSResolverImpl(
+				raDNSTimeout,
+				[]string{c.Common.DNSResolver},
+				caaSERVFAILExceptions,
+				scoped,
+				clock.Default(),
+				dnsTries)
 		} else {
 			rai.DNSResolver = bdns.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
 		}
