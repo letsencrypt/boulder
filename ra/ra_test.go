@@ -202,6 +202,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
 	fc := clock.NewFake()
+	// Advance past epoch
+	fc.Add(360 * 24 * time.Hour)
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
@@ -766,6 +768,9 @@ func TestNewCertificate(t *testing.T) {
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
+	// Before issuance the issuanceExpvar should be 0
+	test.AssertEquals(t, issuanceExpvar.String(), "0")
+
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest = core.CertificateRequest{
@@ -774,6 +779,10 @@ func TestNewCertificate(t *testing.T) {
 
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
+
+	// After issuance the issuanceExpvar should be the current timestamp
+	now := ra.clk.Now()
+	test.AssertEquals(t, issuanceExpvar.String(), fmt.Sprintf("%d", now.Unix()))
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
