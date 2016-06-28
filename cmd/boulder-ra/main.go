@@ -68,20 +68,6 @@ type config struct {
 	}
 }
 
-func (cfg config) KeyPolicy() goodkey.KeyPolicy {
-	if cfg.AllowedSigningAlgos != nil {
-		return goodkey.KeyPolicy{
-			AllowRSA:           cfg.AllowedSigningAlgos.RSA,
-			AllowECDSANISTP256: cfg.AllowedSigningAlgos.ECDSANISTP256,
-			AllowECDSANISTP384: cfg.AllowedSigningAlgos.ECDSANISTP384,
-			AllowECDSANISTP521: cfg.AllowedSigningAlgos.ECDSANISTP521,
-		}
-	}
-	return goodkey.KeyPolicy{
-		AllowRSA: true,
-	}
-}
-
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -90,34 +76,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	var cfg config
-	err := cmd.ReadJSONFile(*configFile, &cfg)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
 	// Validate PA config and set defaults if needed
-	cmd.FailOnError(cfg.PA.CheckChallenges(), "Invalid PA configuration")
+	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
-	go cmd.DebugServer(cfg.RA.DebugAddr)
+	go cmd.DebugServer(c.RA.DebugAddr)
 
-	pa, err := policy.New(cfg.PA.Challenges)
+	pa, err := policy.New(c.PA.Challenges)
 	cmd.FailOnError(err, "Couldn't create PA")
 
-	if cfg.RA.HostnamePolicyFile == "" {
+	if c.RA.HostnamePolicyFile == "" {
 		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile must be provided."), "")
 	}
-	err = pa.SetHostnamePolicyFile(cfg.RA.HostnamePolicyFile)
+	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	go cmd.ProfileCmd("RA", stats)
 
-	amqpConf := cfg.RA.AMQP
+	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
-	if cfg.RA.VAService != nil {
-		conn, err := bgrpc.ClientSetup(cfg.RA.VAService)
+	if c.RA.VAService != nil {
+		conn, err := bgrpc.ClientSetup(c.RA.VAService)
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {
@@ -135,34 +121,34 @@ func main() {
 		clock.Default(),
 		logger,
 		stats,
-		cfg.RA.MaxContactsPerRegistration,
-		cfg.KeyPolicy(),
-		cfg.RA.MaxNames,
-		cfg.RA.DoNotForceCN,
-		cfg.RA.ReuseValidAuthz)
+		c.RA.MaxContactsPerRegistration,
+		c.AllowedSigningAlgos.KeyPolicy(),
+		c.RA.MaxNames,
+		c.RA.DoNotForceCN,
+		c.RA.ReuseValidAuthz)
 
-	policyErr := rai.SetRateLimitPoliciesFile(cfg.RA.RateLimitPoliciesFilename)
+	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
 
-	raDNSTimeout, err := time.ParseDuration(cfg.Common.DNSTimeout)
+	raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
 	scoped := metrics.NewStatsdScope(stats, "RA", "DNS")
-	dnsTries := cfg.RA.DNSTries
+	dnsTries := c.RA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
-	if !cfg.Common.DNSAllowLoopbackAddresses {
+	if !c.Common.DNSAllowLoopbackAddresses {
 		rai.DNSResolver = bdns.NewDNSResolverImpl(
 			raDNSTimeout,
-			[]string{cfg.Common.DNSResolver},
+			[]string{c.Common.DNSResolver},
 			scoped,
 			clock.Default(),
 			dnsTries)
 	} else {
 		rai.DNSResolver = bdns.NewTestDNSResolverImpl(
 			raDNSTimeout,
-			[]string{cfg.Common.DNSResolver},
+			[]string{c.Common.DNSResolver},
 			scoped,
 			clock.Default(),
 			dnsTries)
@@ -172,7 +158,7 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
-	ras, err := rpc.NewAmqpRPCServer(amqpConf, cfg.RA.MaxConcurrentRPCServerRequests, stats, logger)
+	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")
 	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 	cmd.FailOnError(err, "Unable to setup RA RPC server")

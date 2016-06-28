@@ -27,37 +27,6 @@ type Config struct {
 
 	CA CAConfig
 
-	RA struct {
-		ServiceConfig
-		HostnamePolicyConfig
-
-		RateLimitPoliciesFilename string
-
-		MaxConcurrentRPCServerRequests int64
-
-		MaxContactsPerRegistration int
-
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries int
-
-		VAService *GRPCClientConfig
-
-		MaxNames     int
-		DoNotForceCN bool
-
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
-	}
-
 	SA struct {
 		ServiceConfig
 		DBConfig
