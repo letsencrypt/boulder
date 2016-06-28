@@ -25,24 +25,6 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	WFE struct {
-		ServiceConfig
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		SubscriberAgreementURL string
-	}
-
 	CA CAConfig
 
 	RA struct {
@@ -208,6 +190,22 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
+	if asa != nil {
+		return goodkey.KeyPolicy{
+			AllowRSA:           asa.RSA,
+			AllowECDSANISTP256: asa.ECDSANISTP256,
+			AllowECDSANISTP384: asa.ECDSANISTP384,
+			AllowECDSANISTP521: asa.ECDSANISTP521,
+		}
+	}
+	return goodkey.KeyPolicy{
+		AllowRSA: true,
+	}
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+// TODO: remove once WFE, RA and CA all use KeyPolicy belonging to the type AllowedSigningAlgos
 func (config *Config) KeyPolicy() goodkey.KeyPolicy {
 	if config.AllowedSigningAlgos != nil {
 		return goodkey.KeyPolicy{
