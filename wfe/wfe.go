@@ -813,14 +813,13 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 		}
 	}
 
-	var certificateRequest core.CertificateRequest
+	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
 	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request"), err)
 		return
 	}
-	certificateRequest.Bytes = certificateRequest.CSR.Raw
 	wfe.logCsr(request, certificateRequest, reg)
 	// Check that the key in the CSR is good. This will also be checked in the CA
 	// component, but we want to discard CSRs with bad keys as early as possible
