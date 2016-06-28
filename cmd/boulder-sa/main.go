@@ -35,19 +35,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	var cfg config
-	err := cmd.ReadJSONFile(*configFile, &cfg)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(cfg.SA.DebugAddr)
+	saConf := c.SA
 
-	dbURL, err := cfg.SA.DBConfig.URL()
+	go cmd.DebugServer(saConf.DebugAddr)
+
+	dbURL, err := saConf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
-	dbMap, err := sa.NewDbMap(dbURL, cfg.SA.DBConfig.MaxDBConns)
+	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -58,12 +60,13 @@ func main() {
 
 	go cmd.ProfileCmd("SA", stats)
 
-	sas, err := rpc.NewAmqpRPCServer(cfg.SA.AMQP, cfg.SA.MaxConcurrentRPCServerRequests, stats, logger)
+	amqpConf := saConf.AMQP
+	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
 	err = rpc.NewStorageAuthorityServer(sas, sai)
 	cmd.FailOnError(err, "Unable to setup SA RPC server")
 
-	err = sas.Start(cfg.SA.AMQP)
+	err = sas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run SA RPC server")
 }

@@ -106,12 +106,6 @@ func (as *AppShell) Run() {
 				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
 			}
 		}
-		if config.SA.AMQP == nil {
-			config.SA.AMQP = config.AMQP
-			if config.SA.AMQP != nil && config.AMQP.SA != nil {
-				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
-			}
-		}
 		if config.VA.AMQP == nil {
 			config.VA.AMQP = config.AMQP
 			if config.VA.AMQP != nil && config.AMQP.VA != nil {

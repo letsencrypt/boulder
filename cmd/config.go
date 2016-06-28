@@ -58,13 +58,6 @@ type Config struct {
 		ReuseValidAuthz bool
 	}
 
-	SA struct {
-		ServiceConfig
-		DBConfig
-
-		MaxConcurrentRPCServerRequests int64
-	}
-
 	VA struct {
 		ServiceConfig
 
