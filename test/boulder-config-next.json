@@ -187,6 +187,7 @@
   },
 
   "va": {
+    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
     "debugAddr": "localhost:8004",
     "portConfig": {
