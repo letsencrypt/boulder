@@ -9,32 +9,6 @@
       "prefix": "Boulder"
   },
 
-  "wfe": {
-    "listenAddress": "0.0.0.0:4000",
-    "requestTimeout": "10s",
-    "allowOrigins": ["*"],
-    "certCacheDuration": "6h",
-    "certNoCacheExpirationWindow": "96h",
-    "indexCacheDuration": "24h",
-    "issuerCacheDuration": "48h",
-    "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
-    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "debugAddr": "localhost:8000",
-    "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
-      "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "ca": {
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
