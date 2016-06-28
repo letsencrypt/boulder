@@ -53,20 +53,6 @@ type config struct {
 	}
 }
 
-func (cfg config) KeyPolicy() goodkey.KeyPolicy {
-	if cfg.AllowedSigningAlgos != nil {
-		return goodkey.KeyPolicy{
-			AllowRSA:           cfg.AllowedSigningAlgos.RSA,
-			AllowECDSANISTP256: cfg.AllowedSigningAlgos.ECDSANISTP256,
-			AllowECDSANISTP384: cfg.AllowedSigningAlgos.ECDSANISTP384,
-			AllowECDSANISTP521: cfg.AllowedSigningAlgos.ECDSANISTP521,
-		}
-	}
-	return goodkey.KeyPolicy{
-		AllowRSA: true,
-	}
-}
-
 func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := cfg.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -96,7 +82,7 @@ func main() {
 
 	go cmd.DebugServer(cfg.WFE.DebugAddr)
 
-	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), cfg.KeyPolicy(), logger)
+	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), cfg.AllowedSigningAlgos.KeyPolicy(), logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(cfg, logger, stats)
 	wfe.RA = rac
