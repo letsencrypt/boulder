@@ -80,7 +80,6 @@ func setupWFE(cfg config, logger blog.Logger, stats metrics.Statter) (*rpc.Regis
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	listenAddr := flag.String("addr", "", "Overrides the listenAddr setting in WFE config")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -90,13 +89,6 @@ func main() {
 	var cfg config
 	err := cmd.ReadJSONFile(*configFile, &cfg)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
-	if os.Getenv("WFE_LISTEN_ADDR") != "" {
-		cfg.WFE.ListenAddress = os.Getenv("WFE_LISTEN_ADDR")
-	}
-	if *listenAddr != "" {
-		cfg.WFE.ListenAddress = *listenAddr
-	}
 
 	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
 	defer logger.AuditPanic()
