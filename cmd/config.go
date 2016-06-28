@@ -25,24 +25,6 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	WFE struct {
-		ServiceConfig
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		SubscriberAgreementURL string
-	}
-
 	CA CAConfig
 
 	RA struct {
