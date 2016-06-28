@@ -52,6 +52,11 @@ type config struct {
 		ReuseValidAuthz bool
 	}
 
+	VA struct {
+		// Feature flag to enable enforcement of CAA SERVFAILs.
+		CAASERVFAILExceptions string
+	}
+
 	*cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
@@ -137,10 +142,13 @@ func main() {
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
+	caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
+	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 	if !c.Common.DNSAllowLoopbackAddresses {
 		rai.DNSResolver = bdns.NewDNSResolverImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
+			caaSERVFAILExceptions,
 			scoped,
 			clock.Default(),
 			dnsTries)
