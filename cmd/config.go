@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 )
 
 // Config stores configuration parameters that applications
@@ -23,22 +24,6 @@ type Config struct {
 	// Default AMQPConfig for services that don't specify one.
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
-
-	WFE struct {
-		ServiceConfig
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-	}
 
 	CA CAConfig
 
@@ -55,9 +40,6 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
-		// UseNewVARPC determines whether to call VA.PerformValidation
-		UseNewVARPC bool
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
@@ -67,6 +49,13 @@ type Config struct {
 
 		MaxNames     int
 		DoNotForceCN bool
+
+		// Controls behaviour of the RA when asked to create a new authz for
+		// a name/regID that already has a valid authz. False preserves historic
+		// behaviour and ignores the existing authz and creates a new one. True
+		// instructs the RA to reuse the previously created authz in lieu of
+		// creating another.
+		ReuseValidAuthz bool
 	}
 
 	SA struct {
@@ -99,6 +88,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		// Feature flag to enable enforcement of CAA SERVFAILs.
+		CAASERVFAILExceptions string
 	}
 
 	Statsd StatsdConfig
@@ -115,13 +107,10 @@ type Config struct {
 	Mailer struct {
 		ServiceConfig
 		DBConfig
-		PasswordConfig
+		SMTPConfig
 
-		Server   string
-		Port     string
-		Username string
-		From     string
-		Subject  string
+		From    string
+		Subject string
 
 		CertLimit int
 		NagTimes  []string
@@ -190,6 +179,7 @@ type Config struct {
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
+	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
 	SubscriberAgreementURL string
 }
 
@@ -203,16 +193,32 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-func (config *Config) KeyPolicy() core.KeyPolicy {
+func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
+	if asa != nil {
+		return goodkey.KeyPolicy{
+			AllowRSA:           asa.RSA,
+			AllowECDSANISTP256: asa.ECDSANISTP256,
+			AllowECDSANISTP384: asa.ECDSANISTP384,
+			AllowECDSANISTP521: asa.ECDSANISTP521,
+		}
+	}
+	return goodkey.KeyPolicy{
+		AllowRSA: true,
+	}
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+// TODO: remove once WFE, RA and CA all use KeyPolicy belonging to the type AllowedSigningAlgos
+func (config *Config) KeyPolicy() goodkey.KeyPolicy {
 	if config.AllowedSigningAlgos != nil {
-		return core.KeyPolicy{
+		return goodkey.KeyPolicy{
 			AllowRSA:           config.AllowedSigningAlgos.RSA,
 			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
 			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
 			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
 		}
 	}
-	return core.KeyPolicy{
+	return goodkey.KeyPolicy{
 		AllowRSA: true,
 	}
 }
@@ -264,6 +270,13 @@ func (d *DBConfig) URL() (string, error) {
 		return string(url), err
 	}
 	return d.DBConnect, nil
+}
+
+type SMTPConfig struct {
+	PasswordConfig
+	Server   string
+	Port     string
+	Username string
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
@@ -439,10 +452,8 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
-	StdoutLevel *int
-	SyslogLevel *int
+	StdoutLevel int
+	SyslogLevel int
 }
 
 // StatsdConfig defines the config for Statsd.
@@ -508,7 +519,7 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string

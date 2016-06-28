@@ -1,0 +1,50 @@
+{
+  "wfe": {
+    "listenAddress": "0.0.0.0:4000",
+    "allowOrigins": ["*"],
+    "certCacheDuration": "6h",
+    "certNoCacheExpirationWindow": "96h",
+    "indexCacheDuration": "24h",
+    "issuerCacheDuration": "48h",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
+    "debugAddr": "localhost:8000",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "RA": {
+        "server": "RA.server",
+        "rpcTimeout": "15s"
+      },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "15s"
+      }
+    }
+  },
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+
+  "syslog": {
+    "network": "",
+    "server": "",
+    "stdoutlevel": 6
+  },
+
+  "common": {
+    "baseURL": "http://127.0.0.1:4000",
+    "issuerCert": "test/test-ca.pem"
+  }
+}

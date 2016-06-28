@@ -88,7 +88,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil && err != sql.ErrNoRows {
-		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
+		src.log.AuditErr(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
 	}
 	if err != nil {
 		return nil, false

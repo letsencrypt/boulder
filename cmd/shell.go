@@ -94,9 +94,6 @@ func (as *AppShell) Run() {
 		}
 
 		// Provide default values for each service's AMQP config section.
-		if config.WFE.AMQP == nil {
-			config.WFE.AMQP = config.AMQP
-		}
 		if config.CA.AMQP == nil {
 			config.CA.AMQP = config.AMQP
 			if config.CA.AMQP != nil && config.AMQP.CA != nil {
@@ -157,7 +154,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...interface{}) {
-	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
+	m.AuditErr(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
 }
 
 // cfsslLogger provides two additional methods that are expected by CFSSL's
@@ -167,11 +164,11 @@ type cfsslLogger struct {
 }
 
 func (cl cfsslLogger) Crit(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 func (cl cfsslLogger) Emerg(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
@@ -183,20 +180,16 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
-		logConf.Network,
-		logConf.Server,
-		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
+		"",
+		"",
+		syslog.LOG_INFO, // default, not actually used
 		tag)
 	FailOnError(err, "Could not connect to Syslog")
-	stdoutLoglevel := int(syslog.LOG_DEBUG)
-	if logConf.StdoutLevel != nil {
-		stdoutLoglevel = *logConf.StdoutLevel
+	syslogLevel := int(syslog.LOG_INFO)
+	if logConf.SyslogLevel != 0 {
+		syslogLevel = logConf.SyslogLevel
 	}
-	syslogLogLevel := int(syslog.LOG_DEBUG)
-	if logConf.SyslogLevel != nil {
-		syslogLogLevel = *logConf.SyslogLevel
-	}
-	logger, err := blog.New(syslogger, stdoutLoglevel, syslogLogLevel)
+	logger, err := blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
@@ -216,7 +209,7 @@ func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		logger := blog.Get()
-		logger.Err(fmt.Sprintf("%s: %s", msg, err))
+		logger.AuditErr(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}
@@ -305,4 +298,25 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
+}
+
+// ReadJSONFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a
+// configuration of a boulder component.
+func ReadJSONFile(filename string, out interface{}) error {
+	configData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(configData, out)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// VersionString produces a friendly Application version string. Duplicated
+// from cmd.AppShell, with the exception that it takes a name as an argument.
+func VersionString(name string) string {
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -37,9 +36,6 @@ func main() {
 		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-		rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
-		cmd.FailOnError(err, "Couldn't load rate limit policies file")
-
 		go cmd.ProfileCmd("RA", stats)
 
 		amqpConf := c.RA.AMQP
@@ -59,14 +55,11 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
-		var dc *ra.DomainCheck
-		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{VA: vac}
-		}
-
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
-			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
-			c.RA.UseNewVARPC, c.RA.MaxNames, c.RA.DoNotForceCN)
+			c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
+			c.RA.MaxNames, c.RA.DoNotForceCN, c.RA.ReuseValidAuthz)
+		policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
+		cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
@@ -75,8 +68,16 @@ func main() {
 		if dnsTries < 1 {
 			dnsTries = 1
 		}
+		caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
+		cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = bdns.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
+			rai.DNSResolver = bdns.NewDNSResolverImpl(
+				raDNSTimeout,
+				[]string{c.Common.DNSResolver},
+				caaSERVFAILExceptions,
+				scoped,
+				clock.Default(),
+				dnsTries)
 		} else {
 			rai.DNSResolver = bdns.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
 		}
@@ -85,9 +86,9 @@ func main() {
 		rai.CA = cac
 		rai.SA = sac
 
-		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		err = rpc.NewRegistrationAuthorityServer(ras, rai)
+		err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 		cmd.FailOnError(err, "Unable to setup RA RPC server")
 
 		err = ras.Start(amqpConf)

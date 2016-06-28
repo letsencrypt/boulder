@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
@@ -403,4 +404,15 @@ func RetryBackoff(retries int, base, max time.Duration, factor float64) time.Dur
 	// the same time, they won't operate in lockstep.
 	backoff *= (1 - retryJitter) + 2*retryJitter*mrand.Float64()
 	return time.Duration(backoff)
+}
+
+// IsASCII determines if every character in a string is encoded in
+// the ASCII character set.
+func IsASCII(str string) bool {
+	for _, r := range str {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
 }

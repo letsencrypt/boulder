@@ -23,7 +23,7 @@ type requestEvent struct {
 	ResponseTime  time.Time `json:",omitempty"`
 	Errors        []string
 	Requester     int64                  `json:",omitempty"`
-	Contacts      []*core.AcmeURL        `json:",omitempty"`
+	Contacts      *[]*core.AcmeURL       `json:",omitempty"`
 	RequestNonce  string                 `json:",omitempty"`
 	ResponseNonce string                 `json:",omitempty"`
 	UserAgent     string                 `json:",omitempty"`
@@ -61,6 +61,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserAgent:   r.Header.Get("User-Agent"),
 		Extra:       make(map[string]interface{}, 0),
 	}
+	w.Header().Set("Boulder-Request-ID", logEvent.ID)
 	if r.URL != nil {
 		logEvent.Endpoint = r.URL.String()
 	}
@@ -79,7 +80,7 @@ func (th *topHandler) logEvent(logEvent *requestEvent) {
 	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.Err(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
 		return
 	}
 	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))

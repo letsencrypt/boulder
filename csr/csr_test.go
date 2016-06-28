@@ -9,13 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/square/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
 )
 
-var testingPolicy = &core.KeyPolicy{
+var testingPolicy = &goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
@@ -23,11 +22,11 @@ var testingPolicy = &core.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Value == "bad-name.com" {
 		return errors.New("")
 	}
@@ -57,7 +56,7 @@ func TestVerifyCSR(t *testing.T) {
 	cases := []struct {
 		csr           *x509.CertificateRequest
 		maxNames      int
-		keyPolicy     *core.KeyPolicy
+		keyPolicy     *goodkey.KeyPolicy
 		pa            core.PolicyAuthority
 		regID         int64
 		expectedError error

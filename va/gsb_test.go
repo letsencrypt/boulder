@@ -10,6 +10,7 @@ import (
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -29,7 +30,17 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		sbc,
+		nil,
+		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		stats,
+		clock.NewFake(),
+		blog.NewMock())
 
 	domain := "good.com"
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
@@ -70,7 +81,17 @@ func TestIsSafeDomain(t *testing.T) {
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		nil,
+		nil,
+		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		stats,
+		clock.NewFake(),
+		blog.NewMock())
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.

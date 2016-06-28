@@ -1,38 +1,12 @@
 {
   "syslog": {
-    "network": "",
-    "server": "",
-    "stdoutlevel": 7,
+    "stdoutlevel": 6,
     "sysloglevel": 4
   },
 
   "statsd": {
       "server": "localhost:8125",
       "prefix": "Boulder"
-  },
-
-  "wfe": {
-    "listenAddress": "0.0.0.0:4000",
-    "allowOrigins": ["*"],
-    "certCacheDuration": "6h",
-    "certNoCacheExpirationWindow": "96h",
-    "indexCacheDuration": "24h",
-    "issuerCacheDuration": "48h",
-    "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
-    "debugAddr": "localhost:8000",
-    "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
-      "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
   },
 
   "ca": {
@@ -138,7 +112,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "publisherService": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -172,8 +146,9 @@
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "reuseValidAuthz": true,
     "vaService": {
-      "serverAddress": "boulder:9092",
+      "serverAddresses": ["boulder:9092"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -212,6 +187,7 @@
   },
 
   "va": {
+    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
     "debugAddr": "localhost:8004",
     "portConfig": {
@@ -224,7 +200,7 @@
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "caaService": {
-      "serverAddress": "boulder:9090",
+      "serverAddresses": ["boulder:9090"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
@@ -297,7 +273,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "publisher": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -353,6 +329,7 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
+      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"
@@ -380,8 +357,6 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10
   },
-
-  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {
     "rsa": true,
