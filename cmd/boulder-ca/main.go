@@ -25,10 +25,10 @@ import (
 
 const clientName = "CA"
 
+// Configuration information for the certificate
+// authority, including database parameters as well as controls for
+// issued certificates.
 type config struct {
-	// CAConfig structs have configuration information for the certificate
-	// authority, including database parameters as well as controls for
-	// issued certificates.
 	CA struct {
 		cmd.ServiceConfig
 		cmd.DBConfig
@@ -171,6 +171,7 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(c.CA.DebugAddr)
+
 	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
