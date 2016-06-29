@@ -53,4 +53,7 @@ git clone https://github.com/SUNET/pkcs11-proxy && \
 
 gem install fpm
 
+apt-get autoremove -y build-essential
+apt-get clean -y
+
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
