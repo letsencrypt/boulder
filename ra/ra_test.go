@@ -604,8 +604,11 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
-	if _, ok := err.(core.MalformedRequestError); !ok {
-		t.Errorf("Wrong type for NewAuthorization error: expected core.MalformedRequestError, got %T", err)
+	if _, ok := err.(*probs.ProblemDetails); !ok {
+		t.Errorf("Wrong type for NewAuthorization error: expected *probs.ProblemDetails, got %T", err)
+	}
+	if err.(*probs.ProblemDetails).Type != probs.MalformedProblem {
+		t.Errorf("Incorrect problem type. Expected %s got %s", probs.MalformedProblem, err.(*probs.ProblemDetails).Type)
 	}
 }
 
