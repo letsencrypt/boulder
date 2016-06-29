@@ -27,13 +27,6 @@ type Config struct {
 
 	CA CAConfig
 
-	SA struct {
-		ServiceConfig
-		DBConfig
-
-		MaxConcurrentRPCServerRequests int64
-	}
-
 	VA struct {
 		ServiceConfig
 
