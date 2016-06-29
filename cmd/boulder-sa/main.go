@@ -39,19 +39,19 @@ func main() {
 	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	saConf := c.SA
+	go cmd.DebugServer(c.SA.DebugAddr)
 
-	go cmd.DebugServer(saConf.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString(clientName))
+
+	saConf := c.SA
 
 	dbURL, err := saConf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
-
-	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
-	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
 
 	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "SA"))
 
