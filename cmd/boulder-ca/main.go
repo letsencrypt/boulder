@@ -82,24 +82,10 @@ type config struct {
 	}
 }
 
-func (cfg config) KeyPolicy() goodkey.KeyPolicy {
-	if cfg.AllowedSigningAlgos != nil {
-		return goodkey.KeyPolicy{
-			AllowRSA:           cfg.AllowedSigningAlgos.RSA,
-			AllowECDSANISTP256: cfg.AllowedSigningAlgos.ECDSANISTP256,
-			AllowECDSANISTP384: cfg.AllowedSigningAlgos.ECDSANISTP384,
-			AllowECDSANISTP521: cfg.AllowedSigningAlgos.ECDSANISTP521,
-		}
-	}
-	return goodkey.KeyPolicy{
-		AllowRSA: true,
-	}
-}
-
-func loadIssuers(cfg config) ([]ca.Issuer, error) {
-	if cfg.CA.Key != nil {
-		issuerConfig := *cfg.CA.Key
-		issuerConfig.CertFile = cfg.Common.IssuerCert
+func loadIssuers(c config) ([]ca.Issuer, error) {
+	if c.CA.Key != nil {
+		issuerConfig := *c.CA.Key
+		issuerConfig.CertFile = c.Common.IssuerCert
 		priv, cert, err := loadIssuer(issuerConfig)
 		return []ca.Issuer{{
 			Signer: priv,
@@ -107,7 +93,7 @@ func loadIssuers(cfg config) ([]ca.Issuer, error) {
 		}}, err
 	}
 	var issuers []ca.Issuer
-	for _, issuerConfig := range cfg.CA.Issuers {
+	for _, issuerConfig := range c.CA.Issuers {
 		priv, cert, err := loadIssuer(issuerConfig)
 		cmd.FailOnError(err, "Couldn't load private key")
 		issuers = append(issuers, ca.Issuer{
@@ -181,56 +167,55 @@ func main() {
 		os.Exit(1)
 	}
 
-	var cfg config
-	err := cmd.ReadJSONFile(*configFile, &cfg)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	cmd.FailOnError(cfg.PA.CheckChallenges(), "Invalid PA configuration")
-
-	stats, logger := cmd.StatsAndLogging(cfg.StatsdConfig, cfg.SyslogConfig)
+	go cmd.DebugServer(c.CA.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	go cmd.DebugServer(cfg.CA.DebugAddr)
+	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
-	pa, err := policy.New(cfg.PA.Challenges)
+	pa, err := policy.New(c.PA.Challenges)
 	cmd.FailOnError(err, "Couldn't create PA")
 
-	if cfg.CA.HostnamePolicyFile == "" {
+	if c.CA.HostnamePolicyFile == "" {
 		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
 	}
-	err = pa.SetHostnamePolicyFile(cfg.CA.HostnamePolicyFile)
+	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	issuers, err := loadIssuers(cfg)
+	issuers, err := loadIssuers(c)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
 	cai, err := ca.NewCertificateAuthorityImpl(
-		cfg.CA,
+		c.CA,
 		clock.Default(),
 		stats,
 		issuers,
-		cfg.KeyPolicy(),
+		c.KeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
 	go cmd.ProfileCmd("CA", stats)
 
-	amqpConf := cfg.CA.AMQP
+	amqpConf := c.CA.AMQP
 	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	if cfg.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(cfg.CA.PublisherService)
+	if c.CA.PublisherService != nil {
+		conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), cfg.CA.PublisherService.Timeout.Duration)
+		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
 	} else {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, cfg.CA.MaxConcurrentRPCServerRequests, stats, logger)
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")

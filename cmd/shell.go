@@ -94,12 +94,6 @@ func (as *AppShell) Run() {
 		}
 
 		// Provide default values for each service's AMQP config section.
-		if config.CA.AMQP == nil {
-			config.CA.AMQP = config.AMQP
-			if config.CA.AMQP != nil && config.AMQP.CA != nil {
-				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
-			}
-		}
 		if config.VA.AMQP == nil {
 			config.VA.AMQP = config.AMQP
 			if config.VA.AMQP != nil && config.AMQP.VA != nil {
