@@ -31,7 +31,6 @@
       "CA": {
         "server": "CA.server",
         "rpcTimeout": "15s"
-
       }
     }
   },
