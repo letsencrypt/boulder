@@ -7,7 +7,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 	"github.com/letsencrypt/boulder/core"
@@ -16,8 +15,10 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -69,6 +70,8 @@ func New(ocspBase string, getRate, postRate int, issuerPath, latencyPath string,
 // Run runs the OCSP-Responder load generator for the configured runtime/rate
 func (s *State) Run() {
 	stop := make(chan bool, 2)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	if s.getRate > 0 {
 		go func() {
 			for {
@@ -98,28 +101,17 @@ func (s *State) Run() {
 		}()
 	}
 
-	time.Sleep(s.runtime)
+	select {
+	case <-time.After(s.runtime):
+		fmt.Println("SLEEP END")
+	case sig := <-sigs:
+		fmt.Printf("SIG CAUGHT [%s], ENDING\n", sig.String())
+	}
 	stop <- true
 	stop <- true
 	fmt.Println("sent stop signals, waiting")
 	s.wg.Wait()
 	fmt.Println("all calls finished")
-}
-
-// Dump saves the latency data as a JSON file to be consumed by latency-charter.py
-func (s *State) Dump(jsonPath string) error {
-	if jsonPath != "" {
-		data, err := json.Marshal(s.callLatency)
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(jsonPath, data, os.ModePerm)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (s *State) warmup(serials []string, issuer *x509.Certificate) error {

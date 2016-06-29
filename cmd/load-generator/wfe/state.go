@@ -14,9 +14,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/square/go-jose"
@@ -254,6 +256,8 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 
 	// Run sending loop
 	stop := make(chan bool, 1)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		for {
 			select {
@@ -267,8 +271,12 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 		}
 	}()
 
-	time.Sleep(s.runtime)
-	fmt.Println("SLEEP END")
+	select {
+	case <-time.After(s.runtime):
+		fmt.Println("SLEEP END")
+	case sig := <-sigs:
+		fmt.Printf("SIG CAUGHT [%s], ENDING\n", sig.String())
+	}
 	stop <- true
 	fmt.Println("SENT STOP")
 	s.wg.Wait()
