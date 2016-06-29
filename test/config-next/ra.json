@@ -35,10 +35,6 @@
     }
   },
 
-  "va": {
-    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt"
-  },
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,
