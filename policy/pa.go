@@ -13,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 )
@@ -121,20 +122,20 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 }
 
 var (
-	errInvalidIdentifier   = core.MalformedRequestError("Invalid identifier type")
-	errNonPublic           = core.MalformedRequestError("Name does not end in a public suffix")
-	errICANNTLD            = core.MalformedRequestError("Name is an ICANN TLD")
-	errBlacklisted         = core.MalformedRequestError("Policy forbids issuing for name")
-	errNotWhitelisted      = core.MalformedRequestError("Name is not whitelisted")
-	errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
-	errNameTooLong         = core.MalformedRequestError("DNS name too long")
-	errIPAddress           = core.MalformedRequestError("Issuance for IP addresses not supported")
-	errTooManyLabels       = core.MalformedRequestError("DNS name has too many labels")
-	errEmptyName           = core.MalformedRequestError("DNS name was empty")
-	errTooFewLabels        = core.MalformedRequestError("DNS name does not have enough labels")
-	errLabelTooShort       = core.MalformedRequestError("DNS label is too short")
-	errLabelTooLong        = core.MalformedRequestError("DNS label is too long")
-	errIDNNotSupported     = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
+	errInvalidIdentifier   = probs.Malformed("Invalid identifier type")
+	errNonPublic           = probs.Malformed("Name does not end in a public suffix")
+	errICANNTLD            = probs.Malformed("Name is an ICANN TLD")
+	errBlacklisted         = probs.RejectedIdentifier("Policy forbids issuing for name")
+	errNotWhitelisted      = probs.Malformed("Name is not whitelisted")
+	errInvalidDNSCharacter = probs.Malformed("Invalid character in DNS name")
+	errNameTooLong         = probs.Malformed("DNS name too long")
+	errIPAddress           = probs.Malformed("Issuance for IP addresses not supported")
+	errTooManyLabels       = probs.Malformed("DNS name has too many labels")
+	errEmptyName           = probs.Malformed("DNS name was empty")
+	errTooFewLabels        = probs.Malformed("DNS name does not have enough labels")
+	errLabelTooShort       = probs.Malformed("DNS label is too short")
+	errLabelTooLong        = probs.Malformed("DNS label is too long")
+	errIDNNotSupported     = probs.UnsupportedIdentifier("Internationalized domain names (starting with xn--) not yet supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
