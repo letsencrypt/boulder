@@ -32,13 +32,17 @@ type State struct {
 	dbURI       string
 	runtime     time.Duration
 	client      *http.Client
-	callLatency *latency.Map
+	callLatency *latency.File
 	wg          *sync.WaitGroup
 }
 
 // New returns a pointer to a new State struct, or an error
-func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime time.Duration, serials []string) (*State, error) {
+func New(ocspBase string, getRate, postRate int, issuerPath, latencyPath string, runtime time.Duration, serials []string) (*State, error) {
 	issuer, err := core.LoadCert(issuerPath)
+	if err != nil {
+		return nil, err
+	}
+	latencyFile, err := latency.New(latencyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +52,7 @@ func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime 
 		postRate:    int64(postRate),
 		runtime:     runtime,
 		client:      new(http.Client),
-		callLatency: latency.New("OCSP Responder test"),
+		callLatency: latencyFile,
 		wg:          new(sync.WaitGroup),
 	}
 
@@ -64,7 +68,6 @@ func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime 
 
 // Run runs the OCSP-Responder load generator for the configured runtime/rate
 func (s *State) Run() {
-	s.callLatency.Started = time.Now()
 	stop := make(chan bool, 2)
 	if s.getRate > 0 {
 		go func() {
@@ -101,7 +104,6 @@ func (s *State) Run() {
 	fmt.Println("sent stop signals, waiting")
 	s.wg.Wait()
 	fmt.Println("all calls finished")
-	s.callLatency.Stopped = time.Now()
 }
 
 // Dump saves the latency data as a JSON file to be consumed by latency-charter.py

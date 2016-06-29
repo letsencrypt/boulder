@@ -2,6 +2,7 @@ package wfe
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -112,11 +113,12 @@ func (s *State) sendHTTPOneChallenge(token, content string) error {
 }
 
 func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jose.Signer, authURI string) error {
-	keyAuthz, err := core.NewKeyAuthorization(chall.Token, &jose.JsonWebKey{Key: &reg.key.PublicKey})
+	jwk := &jose.JsonWebKey{Key: &reg.key.PublicKey}
+	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return err
 	}
-	authStr := fmt.Sprintf("%s.%s", keyAuthz.Token, keyAuthz.Thumbprint)
+	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
 	err = s.sendHTTPOneChallenge(
 		chall.Token,
 		authStr,

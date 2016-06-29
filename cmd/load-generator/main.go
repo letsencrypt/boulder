@@ -165,6 +165,7 @@ func main() {
 					c.Int("maxRegs"),
 					c.Int("warmupRegs"),
 					c.Int("warmupWorkers"),
+					c.String("latencyDataPath"),
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
@@ -182,9 +183,6 @@ func main() {
 					err = s.Snapshot(c.String("saveRegsPath"))
 					cmd.FailOnError(err, "Failed to save registration snapshot")
 				}
-
-				err = s.Dump(c.String("latencyDataPath"))
-				cmd.FailOnError(err, "Failed to dump latency data")
 			},
 		},
 		{
@@ -234,6 +232,7 @@ func main() {
 					c.Int("getRate"),
 					c.Int("postRate"),
 					c.String("issuerPath"),
+					c.String("latencyDataPath"),
 					runtime,
 					serials,
 				)
@@ -242,8 +241,6 @@ func main() {
 				// go cmd.DebugServer("localhost:7002")
 
 				s.Run()
-				err = s.Dump(c.String("latencyDataPath"))
-				cmd.FailOnError(err, "Failed to dump latency data")
 			},
 		},
 		{

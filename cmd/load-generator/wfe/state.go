@@ -62,7 +62,7 @@ type State struct {
 	certKey    *rsa.PrivateKey
 	domainBase string
 
-	callLatency *latency.Map
+	callLatency *latency.File
 
 	runtime time.Duration
 
@@ -138,7 +138,7 @@ func (s *State) Restore(filename string) error {
 }
 
 // New returns a pointer to a new State struct, or an error
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int, latencyPath string) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -155,6 +155,10 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 			},
 		},
 	}
+	latencyFile, err := latency.New(latencyPath)
+	if err != nil {
+		return nil, err
+	}
 	return &State{
 		rMu:           new(sync.RWMutex),
 		nMu:           new(sync.RWMutex),
@@ -164,7 +168,7 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		throughput:    int64(rate),
 		certKey:       certKey,
 		domainBase:    domainBase,
-		callLatency:   latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
+		callLatency:   latencyFile,
 		runtime:       runtime,
 		termsURL:      termsURL,
 		wg:            new(sync.WaitGroup),
@@ -228,7 +232,6 @@ func (s *State) warmup() {
 
 // Run runs the WFE load-generator for either the specified runtime/rate or the execution plan
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
-	s.callLatency.Started = time.Now()
 	// If warmup, warmup
 	if s.warmupRegs > len(s.regs) {
 		s.warmup()
@@ -275,22 +278,6 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 		fmt.Printf("Error killing challenge server: %s\n", err)
 	}
 	fmt.Println("ALL DONE")
-	s.callLatency.Stopped = time.Now()
-	return nil
-}
-
-// Dump saves the latency data out as a JSON file to be processed by latency-charter.py
-func (s *State) Dump(jsonPath string) error {
-	if jsonPath != "" {
-		data, err := json.Marshal(s.callLatency)
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(jsonPath, data, os.ModePerm)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

@@ -1,7 +1,8 @@
 package latency
 
 import (
-	"sync"
+	"encoding/json"
+	"os"
 	"time"
 )
 
@@ -10,37 +11,62 @@ type point struct {
 	Finished time.Time `json:"finished"`
 	Took     int64     `json:"took"`
 	PType    string    `json:"type"`
+	Action   string    `json:"action"`
 }
 
-// Map holds per endpoint metrics
-type Map struct {
-	mu      *sync.Mutex
-	Metrics map[string][]point `json:"metrics"`
-	Started time.Time          `json:"started"`
-	Stopped time.Time          `json:"stopped"`
-	Title   string             `json:"title"`
+// File holds per endpoint metrics
+type File struct {
+	metrics chan *point
+	f       *os.File
+	die     chan struct{}
 }
 
-// New returns a new latency metrics map
-func New(title string) *Map {
-	return &Map{
-		mu:      new(sync.Mutex),
-		Metrics: make(map[string][]point),
-		Title:   title,
+// New returns a new latency metrics file
+func New(filename string) (*File, error) {
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		return nil, err
+	}
+	f := &File{
+		metrics: make(chan *point, 2048),
+		die:     make(chan struct{}, 1),
+		f:       file,
+	}
+	go f.write()
+	return f, nil
+}
+
+func (f *File) write() {
+	for {
+		select {
+		case p := <-f.metrics:
+			data, err := json.Marshal(p)
+			if err != nil {
+				panic(err)
+			}
+			_, err = f.f.Write(append(data, []byte("\n")...))
+			if err != nil {
+				panic(err)
+			}
+		case <-f.die:
+			return
+		}
 	}
 }
 
-// Add a point to the map
-func (m *Map) Add(endpoint string, sent, finished time.Time, pType string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, found := m.Metrics[endpoint]; !found {
-		m.Metrics[endpoint] = []point{}
-	}
-	m.Metrics[endpoint] = append(m.Metrics[endpoint], point{
+// Add writes a point to the file
+func (f *File) Add(action string, sent, finished time.Time, pType string) {
+	f.metrics <- &point{
 		Sent:     sent,
 		Finished: finished,
 		Took:     finished.Sub(sent).Nanoseconds(),
 		PType:    pType,
-	})
+		Action:   action,
+	}
+}
+
+// Close stops f.write() and closes the file, any remaining metrics will be discarded
+func (f *File) Close() {
+	f.die <- struct{}{}
+	f.f.Close()
 }
