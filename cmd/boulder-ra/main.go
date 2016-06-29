@@ -79,14 +79,14 @@ func main() {
 	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	go cmd.DebugServer(c.RA.DebugAddr)
+
 	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-
-	go cmd.DebugServer(c.RA.DebugAddr)
 
 	pa, err := policy.New(c.PA.Challenges)
 	cmd.FailOnError(err, "Couldn't create PA")
