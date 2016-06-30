@@ -893,6 +893,13 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
+
+	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
+	test.AssertNotError(t, err, "failed on public suffix private domain")
+	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, domains[0], "github.io")
+	test.AssertEquals(t, domains[1], "foo.github.io")
+	test.AssertEquals(t, domains[2], "bar.github.io")
 }
 
 func TestRateLimitLiveReload(t *testing.T) {
