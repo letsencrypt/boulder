@@ -37,7 +37,6 @@ import (
 
 type DummyValidationAuthority struct {
 	done            chan struct{}
-	Called          bool
 	Argument        core.Authorization
 	RecordsReturn   []core.ValidationRecord
 	ProblemReturn   *probs.ProblemDetails
@@ -46,7 +45,6 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	dva.Called = true
 	dva.Argument = authz
 	dva.done <- struct{}{}
 	return dva.RecordsReturn, dva.ProblemReturn
@@ -635,7 +633,6 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	test.Assert(t, va.Called, "Authorization was not passed to the VA")
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
@@ -689,7 +686,6 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	test.Assert(t, va.Called, "Authorization was not passed to the VA")
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
