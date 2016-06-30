@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 )
 
 type DummyValidationAuthority struct {
+	mu              sync.Mutex
 	Called          bool
 	Argument        core.Authorization
 	RecordsReturn   []core.ValidationRecord
@@ -45,6 +47,8 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	dva.mu.Lock()
+	defer dva.mu.Unlock()
 	dva.Called = true
 	dva.Argument = authz
 	return dva.RecordsReturn, dva.ProblemReturn
@@ -628,11 +632,13 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
+	va.mu.Lock()
 	test.Assert(t, va.Called, "Authorization was not passed to the VA")
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	va.mu.Unlock()
 
 	t.Log("DONE TestUpdateAuthorization")
 }
