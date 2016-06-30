@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
