@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -37,7 +36,7 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	mu              sync.Mutex
+	done            chan struct{}
 	Called          bool
 	Argument        core.Authorization
 	RecordsReturn   []core.ValidationRecord
@@ -47,10 +46,9 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	dva.mu.Lock()
-	defer dva.mu.Unlock()
 	dva.Called = true
 	dva.Argument = authz
+	dva.done <- struct{}{}
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
@@ -220,7 +218,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	va := &DummyValidationAuthority{}
+	va := &DummyValidationAuthority{done: make(chan struct{}, 1)}
 
 	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -625,6 +623,11 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	select {
+	case <-va.done:
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
@@ -632,13 +635,11 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	va.mu.Lock()
 	test.Assert(t, va.Called, "Authorization was not passed to the VA")
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
-	va.mu.Unlock()
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -676,6 +677,11 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	select {
+	case <-va.done:
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
