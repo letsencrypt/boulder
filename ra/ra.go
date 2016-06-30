@@ -3,6 +3,7 @@ package ra
 import (
 	"crypto/x509"
 	"errors"
+	"expvar"
 	"fmt"
 	"net"
 	"net/mail"
@@ -39,6 +40,12 @@ const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 // challenge this quickly, then you need to request a new challenge.
 // TODO(rlb): Read from a config file
 const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
+
+// Note: the issuanceExpvar must be a global. If it is a member of the RA, or
+// initialized with everything else in NewRegistrationAuthority() then multiple
+// invocations of the constructor (e.g from unit tests) will panic with a "Reuse
+// of exported var name:" error from the expvar package.
+var issuanceExpvar = expvar.NewInt("lastIssuance")
 
 // RegistrationAuthorityImpl defines an RA.
 //
@@ -637,14 +644,16 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
+	now := ra.clk.Now()
 	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = ra.clk.Now()
+	logEvent.ResponseTime = now
 
 	logEventResult = "successful"
 
+	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
 }

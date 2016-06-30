@@ -94,25 +94,10 @@ func (as *AppShell) Run() {
 		}
 
 		// Provide default values for each service's AMQP config section.
-		if config.WFE.AMQP == nil {
-			config.WFE.AMQP = config.AMQP
-		}
 		if config.CA.AMQP == nil {
 			config.CA.AMQP = config.AMQP
 			if config.CA.AMQP != nil && config.AMQP.CA != nil {
 				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
-			}
-		}
-		if config.RA.AMQP == nil {
-			config.RA.AMQP = config.AMQP
-			if config.RA.AMQP != nil && config.AMQP.RA != nil {
-				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
-			}
-		}
-		if config.SA.AMQP == nil {
-			config.SA.AMQP = config.AMQP
-			if config.SA.AMQP != nil && config.AMQP.SA != nil {
-				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
 			}
 		}
 		if config.VA.AMQP == nil {
@@ -301,4 +286,25 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
+}
+
+// ReadJSONFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a
+// configuration of a boulder component.
+func ReadJSONFile(filename string, out interface{}) error {
+	configData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(configData, out)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// VersionString produces a friendly Application version string. Duplicated
+// from cmd.AppShell, with the exception that it takes a name as an argument.
+func VersionString(name string) string {
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

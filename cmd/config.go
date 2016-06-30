@@ -25,63 +25,7 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	WFE struct {
-		ServiceConfig
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		SubscriberAgreementURL string
-	}
-
 	CA CAConfig
-
-	RA struct {
-		ServiceConfig
-		HostnamePolicyConfig
-
-		RateLimitPoliciesFilename string
-
-		MaxConcurrentRPCServerRequests int64
-
-		MaxContactsPerRegistration int
-
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries int
-
-		VAService *GRPCClientConfig
-
-		MaxNames     int
-		DoNotForceCN bool
-
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
-	}
-
-	SA struct {
-		ServiceConfig
-		DBConfig
-
-		MaxConcurrentRPCServerRequests int64
-	}
 
 	VA struct {
 		ServiceConfig
@@ -106,6 +50,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		// Feature flag to enable enforcement of CAA SERVFAILs.
+		CAASERVFAILExceptions string
 	}
 
 	Statsd StatsdConfig
@@ -208,6 +155,22 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
+	if asa != nil {
+		return goodkey.KeyPolicy{
+			AllowRSA:           asa.RSA,
+			AllowECDSANISTP256: asa.ECDSANISTP256,
+			AllowECDSANISTP384: asa.ECDSANISTP384,
+			AllowECDSANISTP521: asa.ECDSANISTP521,
+		}
+	}
+	return goodkey.KeyPolicy{
+		AllowRSA: true,
+	}
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+// TODO: remove once WFE, RA and CA all use KeyPolicy belonging to the type AllowedSigningAlgos
 func (config *Config) KeyPolicy() goodkey.KeyPolicy {
 	if config.AllowedSigningAlgos != nil {
 		return goodkey.KeyPolicy{
