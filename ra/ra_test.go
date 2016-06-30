@@ -36,8 +36,7 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	done            chan struct{}
-	Argument        core.Authorization
+	argument        chan core.Authorization
 	RecordsReturn   []core.ValidationRecord
 	ProblemReturn   *probs.ProblemDetails
 	IsNotSafe       bool
@@ -45,8 +44,7 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	dva.Argument = authz
-	dva.done <- struct{}{}
+	dva.argument <- authz
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
@@ -216,7 +214,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	va := &DummyValidationAuthority{done: make(chan struct{}, 1)}
+	va := &DummyValidationAuthority{argument: make(chan core.Authorization, 1)}
 
 	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -621,8 +619,10 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	var vaAuthz core.Authorization
 	select {
-	case <-va.done:
+	case a := <-va.argument:
+		vaAuthz = a
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
@@ -633,10 +633,10 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, va.Argument)
+	assertAuthzEqual(t, authz, vaAuthz)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -674,8 +674,10 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	var vaAuthz core.Authorization
 	select {
-	case <-va.done:
+	case a := <-va.argument:
+		vaAuthz = a
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
@@ -686,10 +688,10 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, va.Argument)
+	assertAuthzEqual(t, authz, vaAuthz)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 
 	t.Log("DONE TestUpdateAuthorizationNewRPC")
