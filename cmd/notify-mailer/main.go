@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
-
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -23,11 +21,11 @@ import (
 type mailer struct {
 	clk           clock.Clock
 	log           blog.Logger
-	dbMap         *gorp.DbMap
+	dbMap         dbSelector
 	mailer        bmail.Mailer
 	subject       string
 	emailTemplate string
-	destinations  []string
+	destinations  []byte
 	checkpoint    interval
 	sleepInterval time.Duration
 }
@@ -68,14 +66,6 @@ func (m *mailer) ok() error {
 		return checkpointErr
 	}
 
-	// Do not allow a start larger than the # of destinations
-	if m.checkpoint.start > len(m.destinations) {
-		return fmt.Errorf(
-			"interval start value (%d) is greater than number of destinations (%d)",
-			m.checkpoint.start,
-			len(m.destinations))
-	}
-
 	// Do not allow a negative sleep interval
 	if m.sleepInterval < 0 {
 		return fmt.Errorf(
@@ -89,11 +79,13 @@ func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
 	}
-	// If there is no endpoint specified, use the total # of destinations
-	if m.checkpoint.end == 0 {
-		m.checkpoint.end = len(m.destinations)
+
+	destinations, err := m.resolveDestinations()
+	if err != nil {
+		return err
 	}
-	for _, dest := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
+
+	for _, dest := range destinations {
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -104,6 +96,54 @@ func (m *mailer) run() error {
 		m.clk.Sleep(m.sleepInterval)
 	}
 	return nil
+}
+
+// Resolves each reg ID to the most up-to-date contact email.
+// The email addresses are returned deduplicated and sorted.
+func (m *mailer) resolveDestinations() ([]string, error) {
+	var contacts []contact
+	err := json.Unmarshal(m.destinations, &contacts)
+	if err != nil {
+		return nil, err
+	}
+
+	// If there is no endpoint specified, use the total # of destinations
+	if m.checkpoint.end == 0 {
+		m.checkpoint.end = len(contacts)
+	}
+
+	// Do not allow a start larger than the # of destinations
+	if m.checkpoint.start > len(contacts) {
+		return nil, fmt.Errorf(
+			"interval start value (%d) is greater than number of destinations (%d)",
+			m.checkpoint.start,
+			len(contacts))
+	}
+
+	contactMap := make(map[string]struct{}, len(contacts))
+	for _, c := range contacts[m.checkpoint.start:m.checkpoint.end] {
+		// Get the email address for the reg ID
+		emails, err := emailsForReg(c.ID, m.dbMap)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, email := range emails {
+			if strings.TrimSpace(email) == "" {
+				continue
+			}
+			// Using the contactMap to deduplicate addresses
+			contactMap[email] = struct{}{}
+		}
+	}
+
+	var contactsList []string
+	// Convert the de-dupe'd map back to a slice, sort it
+	for contact := range contactMap {
+		contactsList = append(contactsList, contact)
+	}
+	sort.Strings(contactsList)
+	return contactsList, nil
 }
 
 // Since the only thing we use from gorp is the SelectOne method on the
@@ -132,7 +172,7 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 	var addresses []string
 	err = json.Unmarshal(contact.Contact, &contactFields)
 	if err != nil {
-		return addresses, err
+		return nil, err
 	}
 	for _, entry := range contactFields {
 		if strings.HasPrefix(entry, "mailto:") {
@@ -140,35 +180,6 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 		}
 	}
 	return addresses, nil
-}
-
-// Resolves each reg ID to the most up-to-date contact email.
-// The email addresses are returned deduplicated and sorted.
-func resolveDestinations(contacts []contact, dbMap dbSelector) ([]string, error) {
-	contactMap := make(map[string]struct{}, len(contacts))
-	for _, c := range contacts {
-		// Get the email address for the reg ID
-		emails, err := emailsForReg(c.ID, dbMap)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, email := range emails {
-			if strings.TrimSpace(email) == "" {
-				continue
-			}
-			// Using the contactMap to deduplicate addresses
-			contactMap[email] = struct{}{}
-		}
-	}
-
-	var contactsList []string
-	// Convert the de-dupe'd map back to a slice, sort it
-	for contact := range contactMap {
-		contactsList = append(contactsList, contact)
-	}
-	sort.Strings(contactsList)
-	return contactsList, nil
 }
 
 func main() {
@@ -218,12 +229,6 @@ func main() {
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
 
-	var contacts []contact
-	err = json.Unmarshal(toBody, &contacts)
-	cmd.FailOnError(err, fmt.Sprintf("Unmarshaling %s", *toFile))
-	destinations, err := resolveDestinations(contacts, dbMap)
-	cmd.FailOnError(err, "Resolving emails")
-
 	checkpointRange := interval{
 		start: *start,
 		end:   *end,
@@ -256,7 +261,7 @@ func main() {
 		dbMap:         dbMap,
 		mailer:        mailClient,
 		subject:       *subject,
-		destinations:  destinations,
+		destinations:  toBody,
 		emailTemplate: string(body),
 		checkpoint:    checkpointRange,
 		sleepInterval: *sleep,

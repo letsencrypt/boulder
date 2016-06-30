@@ -21,14 +21,13 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
-type contactJSON struct {
-	ID      int64  `json:"id"`
-	Contact []byte `json:"-"`
+type contact struct {
+	ID int64 `json:"id"`
 }
 
 // Find all registration contacts with unexpired certificates.
-func (c contactExporter) findContacts() ([]contactJSON, error) {
-	var contactsList []contactJSON
+func (c contactExporter) findContacts() ([]contact, error) {
+	var contactsList []contact
 	_, err := c.dbMap.Select(
 		&contactsList,
 		`SELECT id
@@ -52,7 +51,7 @@ func (c contactExporter) findContacts() ([]contactJSON, error) {
 
 // The `writeContacts` function produces a file containing JSON serialized
 // contact objects
-func writeContacts(contactsList []contactJSON, outfile string) error {
+func writeContacts(contactsList []contact, outfile string) error {
 	data, err := json.Marshal(contactsList)
 	if err != nil {
 		return err

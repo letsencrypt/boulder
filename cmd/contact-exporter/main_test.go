@@ -69,19 +69,16 @@ func TestFindContacts(t *testing.T) {
 	test.AssertEquals(t, contacts[2].ID, regD.ID)
 }
 
-func exampleContacts() []contactJSON {
-	return []contactJSON{
-		contactJSON{
-			ID:      1,
-			Contact: []byte(`["mailto:example@example.com"]`),
+func exampleContacts() []contact {
+	return []contact{
+		contact{
+			ID: 1,
 		},
-		contactJSON{
-			ID:      2,
-			Contact: []byte(`["mailto:test-example@example.com"]`),
+		contact{
+			ID: 2,
 		},
-		contactJSON{
-			ID:      3,
-			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		contact{
+			ID: 3,
 		},
 	}
 }
