@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
@@ -171,6 +172,47 @@ func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
 type PasswordConfig struct {
 	Password     string
 	PasswordFile string
+}
+
+// Configuration information for the certificate
+// authority, including database parameters as well as controls for
+// issued certificates.
+type CAConfig struct {
+	ServiceConfig
+	DBConfig
+	HostnamePolicyConfig
+
+	RSAProfile   string
+	ECDSAProfile string
+	TestMode     bool
+	SerialPrefix int
+	// TODO(jsha): Remove Key field once we've migrated to Issuers
+	Key *IssuerConfig
+	// Issuers contains configuration information for each issuer cert and key
+	// this CA knows about. The first in the list is used as the default.
+	Issuers []IssuerConfig
+	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
+	// than the minTimeToExpiry field for the OCSP Updater.
+	LifespanOCSP ConfigDuration
+	// How long issued certificates are valid for, should match expiry field
+	// in cfssl config.
+	Expiry string
+	// The maximum number of subjectAltNames in a single certificate
+	MaxNames int
+	CFSSL    cfsslConfig.Config
+
+	MaxConcurrentRPCServerRequests int64
+
+	// DoNotForceCN is a temporary config setting. It controls whether
+	// to add a certificate's serial to its Subject, and whether to
+	// not pull a SAN entry to be the CN if no CN was given in a CSR.
+	DoNotForceCN bool
+
+	// EnableMustStaple governs whether the Must Staple extension in CSRs
+	// triggers issuance of certificates with Must Staple.
+	EnableMustStaple bool
+
+	PublisherService *GRPCClientConfig
 }
 
 // Pass returns a password, either directly from the configuration
