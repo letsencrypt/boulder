@@ -43,6 +43,9 @@ type config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		// Feature flag to enable enforcement of CAA SERVFAILs.
+		CAASERVFAILExceptions string
 	}
 
 	Statsd cmd.StatsdConfig
@@ -64,13 +67,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	var cfg config
-	err := cmd.ReadJSONFile(*configFile, &cfg)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(cfg.VA.DebugAddr)
+	go cmd.DebugServer(c.VA.DebugAddr)
 
-	stats, logger := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -81,53 +84,61 @@ func main() {
 		HTTPSPort: 443,
 		TLSPort:   443,
 	}
-	if cfg.VA.PortConfig.HTTPPort != 0 {
-		pc.HTTPPort = cfg.VA.PortConfig.HTTPPort
+	if c.VA.PortConfig.HTTPPort != 0 {
+		pc.HTTPPort = c.VA.PortConfig.HTTPPort
 	}
-	if cfg.VA.PortConfig.HTTPSPort != 0 {
-		pc.HTTPSPort = cfg.VA.PortConfig.HTTPSPort
+	if c.VA.PortConfig.HTTPSPort != 0 {
+		pc.HTTPSPort = c.VA.PortConfig.HTTPSPort
 	}
-	if cfg.VA.PortConfig.TLSPort != 0 {
-		pc.TLSPort = cfg.VA.PortConfig.TLSPort
+	if c.VA.PortConfig.TLSPort != 0 {
+		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
 	var caaClient caaPB.CAACheckerClient
-	if cfg.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(cfg.VA.CAAService)
+	if c.VA.CAAService != nil {
+		conn, err := bgrpc.ClientSetup(c.VA.CAAService)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}
 
 	scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
-	sbc := newGoogleSafeBrowsing(cfg.VA.GoogleSafeBrowsing)
+	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 
 	var cdrClient *cdr.CAADistributedResolver
-	if cfg.VA.CAADistributedResolver != nil {
+	if c.VA.CAADistributedResolver != nil {
 		var err error
 		cdrClient, err = cdr.New(
 			scoped,
-			cfg.VA.CAADistributedResolver.Timeout.Duration,
-			cfg.VA.CAADistributedResolver.MaxFailures,
-			cfg.VA.CAADistributedResolver.Proxies,
+			c.VA.CAADistributedResolver.Timeout.Duration,
+			c.VA.CAADistributedResolver.MaxFailures,
+			c.VA.CAADistributedResolver.Proxies,
 			logger)
 		cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 	}
 
-	dnsTimeout, err := time.ParseDuration(cfg.Common.DNSTimeout)
+	dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse DNS timeout")
-	dnsTries := cfg.VA.DNSTries
+	dnsTries := c.VA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
 	clk := clock.Default()
+	caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
+	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 	var resolver bdns.DNSResolver
-	if !cfg.Common.DNSAllowLoopbackAddresses {
-		r := bdns.NewDNSResolverImpl(dnsTimeout, []string{cfg.Common.DNSResolver}, scoped, clk, dnsTries)
-		r.LookupIPv6 = cfg.VA.LookupIPv6
+	if !c.Common.DNSAllowLoopbackAddresses {
+		r := bdns.NewDNSResolverImpl(
+			dnsTimeout,
+			[]string{c.Common.DNSResolver},
+			caaSERVFAILExceptions,
+			scoped,
+			clk,
+			dnsTries)
+		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{cfg.Common.DNSResolver}, scoped, clk, dnsTries)
-		r.LookupIPv6 = cfg.VA.LookupIPv6
+		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	}
 
@@ -137,15 +148,15 @@ func main() {
 		caaClient,
 		cdrClient,
 		resolver,
-		cfg.VA.UserAgent,
-		cfg.VA.IssuerDomain,
+		c.VA.UserAgent,
+		c.VA.IssuerDomain,
 		stats,
 		clk,
 		logger)
 
-	amqpConf := cfg.VA.AMQP
-	if cfg.VA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(cfg.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
+	amqpConf := c.VA.AMQP
+	if c.VA.GRPC != nil {
+		s, l, err := bgrpc.NewServer(c.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
 		err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 		cmd.FailOnError(err, "Unable to register VA gRPC server")
@@ -155,7 +166,7 @@ func main() {
 		}()
 	}
 
-	vas, err := rpc.NewAmqpRPCServer(amqpConf, cfg.VA.MaxConcurrentRPCServerRequests, stats, logger)
+	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")

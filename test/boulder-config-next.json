@@ -9,32 +9,6 @@
       "prefix": "Boulder"
   },
 
-  "wfe": {
-    "listenAddress": "0.0.0.0:4000",
-    "requestTimeout": "10s",
-    "allowOrigins": ["*"],
-    "certCacheDuration": "6h",
-    "certNoCacheExpirationWindow": "96h",
-    "indexCacheDuration": "24h",
-    "issuerCacheDuration": "48h",
-    "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
-    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "debugAddr": "localhost:8000",
-    "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
-      "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "ca": {
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
@@ -160,96 +134,6 @@
       "http-01": true,
       "tls-sni-01": true,
       "dns-01": true
-    }
-  },
-
-  "ra": {
-    "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
-    "maxConcurrentRPCServerRequests": 16,
-    "maxContactsPerRegistration": 100,
-    "dnsTries": 3,
-    "debugAddr": "localhost:8002",
-    "hostnamePolicyFile": "test/hostname-policy.json",
-    "maxNames": 1000,
-    "doNotForceCN": true,
-    "reuseValidAuthz": true,
-    "vaService": {
-      "serverAddresses": ["boulder:9092"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
-      "timeout": "90s"
-    },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "RA.server",
-      "VA": {
-        "server": "VA.server",
-        "rpcTimeout": "60s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
-
-      }
-    }
-  },
-
-  "sa": {
-    "dbConnectFile": "test/secrets/sa_dburl",
-    "maxDBConns": 10,
-    "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8003",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "SA.server"
-    }
-  },
-
-  "va": {
-    "userAgent": "boulder",
-    "debugAddr": "localhost:8004",
-    "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
-    },
-    "lookupIPV6": true,
-    "maxConcurrentRPCServerRequests": 16,
-    "dnsTries": 3,
-    "issuerDomain": "happy-hacker-ca.invalid",
-    "caaService": {
-      "serverAddresses": ["boulder:9090"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem"
-    },
-    "caaPublicResolver": {
-        "timeout": "10s",
-        "keepalive": "30s",
-        "maxFailures": 1,
-        "proxies": []
-    },
-    "grpc": {
-      "address": "boulder:9092",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
-    },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "VA.server",
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      }
     }
   },
 

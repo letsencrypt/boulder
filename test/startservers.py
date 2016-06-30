@@ -11,22 +11,24 @@ import tempfile
 import threading
 import time
 
+# TODO: remove default_config once all binaries have been migrated from the global config
 default_config = os.environ.get('BOULDER_CONFIG', '')
 if default_config == '':
     default_config = 'test/boulder-config.json'
+
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
 processes = []
 
 def get_config(service):
     """
-    Returns the path of the configuration file. Currently defaults to
-    `default_config` if a BOULDER_CONFIG_DIR is not defined. If a BOULDER_CONFIG_DIR
-    is defined, a check to see if the file path exists is done as a temporary
-    measure until all components are moved away from the global config.
+    Returns the path to the configuration file for a service, if it does not
+    exist, it return a path to the default config files, which will
+    eventually be removed completely
     """
-    config_dir = os.environ.get('BOULDER_CONFIG_DIR')
-    if not config_dir:
-        return default_config
-    path = os.path.join(config_dir, service + ".json")
+    path = os.path.join(default_config_dir, service + ".json")
     if os.path.exists(path):
         return path
     return default_config

@@ -34,7 +34,9 @@ var _ = math.Inf
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
-const _ = proto1.ProtoPackageIsVersion1
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto1.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type IsSafeDomainRequest struct {
 	Domain           *string `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
@@ -167,7 +169,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion2
+const _ = grpc.SupportPackageIsVersion3
 
 // Client API for VA service
 
@@ -262,8 +264,11 @@ var _VA_serviceDesc = grpc.ServiceDesc{
 			Handler:    _VA_PerformValidation_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: fileDescriptor0,
 }
+
+func init() { proto1.RegisterFile("va/proto/va.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
 	// 311 bytes of a gzipped FileDescriptorProto
