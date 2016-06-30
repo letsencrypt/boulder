@@ -39,6 +39,8 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
+
+		SubscriberAgreementURL string
 	}
 
 	CA CAConfig
@@ -120,13 +122,10 @@ type Config struct {
 	Mailer struct {
 		ServiceConfig
 		DBConfig
-		PasswordConfig
+		SMTPConfig
 
-		Server   string
-		Port     string
-		Username string
-		From     string
-		Subject  string
+		From    string
+		Subject string
 
 		CertLimit int
 		NagTimes  []string
@@ -195,6 +194,7 @@ type Config struct {
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
+	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
 	SubscriberAgreementURL string
 }
 
@@ -269,6 +269,13 @@ func (d *DBConfig) URL() (string, error) {
 		return string(url), err
 	}
 	return d.DBConnect, nil
+}
+
+type SMTPConfig struct {
+	PasswordConfig
+	Server   string
+	Port     string
+	Username string
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
@@ -444,10 +451,8 @@ type GoogleSafeBrowsingConfig struct {
 
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
-	Network     string
-	Server      string
-	StdoutLevel *int
-	SyslogLevel *int
+	StdoutLevel int
+	SyslogLevel int
 }
 
 // StatsdConfig defines the config for Statsd.
@@ -513,7 +518,7 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string

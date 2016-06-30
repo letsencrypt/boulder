@@ -114,6 +114,8 @@ func NewWebFrontEndImpl(
 //
 // * Respond to OPTIONS requests, including CORS preflight requests.
 //
+// * Set a no cache header
+//
 // * Respond http.StatusMethodNotAllowed for HTTP methods other than
 // those listed.
 //
@@ -156,6 +158,9 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 				wfe.Options(response, request, methodsStr, methodsMap)
 				return
 			}
+
+			// No cache header is set for all requests, succeed or fail.
+			addNoCacheHeader(response)
 
 			if !methodsMap[request.Method] {
 				response.Header().Set("Allow", methodsStr)
@@ -286,6 +291,7 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, r
 		return
 	}
 
+	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
 	response.Write([]byte(fmt.Sprintf(`<html>
 		<body>
@@ -295,15 +301,10 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, r
 		</body>
 	</html>
 	`, directoryPath, directoryPath)))
-	addCacheHeader(response, wfe.IndexCacheDuration.Seconds())
 }
 
 func addNoCacheHeader(w http.ResponseWriter) {
 	w.Header().Add("Cache-Control", "public, max-age=0, no-cache")
-}
-
-func addCacheHeader(w http.ResponseWriter, age float64) {
-	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
@@ -808,7 +809,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
 	// WFE is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
+	// lying to the RA. We should probably pass a copy of the whole request to the
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
@@ -909,13 +910,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URI field and clearing its AccountKey and ID
-// fields.
+// the client by filling in its URI field and clearing its ID field.
 // TODO: Come up with a cleaner way to do this.
 // https://github.com/letsencrypt/boulder/issues/761
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	challenge.AccountKey = nil
 	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 }
@@ -1165,7 +1164,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 	if !core.ValidSerial(serial) {
 		logEvent.AddError("certificate serial provided was not valid: %s", serial)
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		addNoCacheHeader(response)
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
@@ -1177,13 +1175,10 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), err)
 		} else {
-			addNoCacheHeader(response)
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
 		}
 		return
 	}
-
-	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -1204,8 +1199,6 @@ func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *requestEvent, r
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
 func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
-
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)

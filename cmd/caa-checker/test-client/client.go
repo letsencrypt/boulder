@@ -13,14 +13,14 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:9090", "CCS address")
+	addr := flag.String("addr", "boulder:9090", "CCS address")
 	name := flag.String("name", "", "Name to check")
 	issuer := flag.String("issuerDomain", "", "Issuer domain to check against")
 	flag.Parse()
 
 	// Set up a connection to the server.
 	conn, err := bgrpc.ClientSetup(&cmd.GRPCClientConfig{
-		ServerAddress:         *addr,
+		ServerAddresses:       []string{*addr},
 		ServerIssuerPath:      "test/grpc-creds/ca.pem",
 		ClientCertificatePath: "test/grpc-creds/client.pem",
 		ClientKeyPath:         "test/grpc-creds/key.pem",

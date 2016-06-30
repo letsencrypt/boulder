@@ -21,7 +21,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -116,7 +115,7 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 
 	if len(addrs) == 0 {
 		problem := probs.UnknownHost(
-			fmt.Sprintf("No IPv4 addresses found for %s", hostname),
+			fmt.Sprintf("No valid IP addresses found for %s", hostname),
 		)
 		return net.IP{}, nil, problem
 	}
@@ -362,17 +361,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
-	// Check that the key authorization matches
-	expectedKeyAuth, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, probs.ServerInternal(errString)
-	}
-
-	if expectedKeyAuth != payload {
+	if payload != challenge.ProvidedKeyAuthorization {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth, payload)
+			challenge.ProvidedKeyAuthorization, payload)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, probs.Unauthorized(errString)
 	}
@@ -388,13 +379,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 
 	// Compute the digest that will appear in the certificate
 	h := sha256.New()
-	ka, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, probs.Malformed(errString)
-	}
-	h.Write([]byte(ka))
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
@@ -431,13 +416,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Compute the digest of the key authorization file
 	h := sha256.New()
-	ka, err := challenge.ExpectedKeyAuthorization()
-	if err != nil {
-		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.AuditErr(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, probs.Malformed(errString)
-	}
-	h.Write([]byte(ka))
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
@@ -464,17 +443,32 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 }
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	// Check CAA records for the requested identifier
-	present, valid, err := va.checkCAARecords(ctx, identifier)
+	var prob *probs.ProblemDetails
+	if va.caaClient != nil {
+		prob = va.checkCAAService(ctx, identifier)
+	} else {
+		prob = va.checkCAAInternal(ctx, identifier)
+	}
+	if va.caaDR != nil && prob != nil && prob.Type == probs.ConnectionProblem {
+		return va.checkGPDNS(ctx, identifier)
+	}
+	return prob
+}
+
+func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, ident)
 	if err != nil {
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
+	va.log.AuditInfo(fmt.Sprintf(
+		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+		ident.Value,
+		present,
+		valid,
+	))
 	if !valid {
-		return probs.ConnectionFailure(
-			fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
-		)
+		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
 	}
 	return nil
 }
@@ -483,13 +477,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.issuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
-		prob := &probs.ProblemDetails{Type: bgrpc.CodeToProblem(grpc.Code(err))}
-		if prob.Type == probs.ServerInternalProblem {
-			prob.Detail = "Internal communication failure"
-		} else {
-			prob.Detail = err.Error()
-		}
-		return prob
+		return bgrpc.ErrorToProb(err)
 	}
 	if r.Present == nil || r.Valid == nil {
 		va.log.AuditErr("gRPC: communication failure: response is missing fields")
@@ -506,9 +494,29 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		*r.Valid,
 	))
 	if !*r.Valid {
-		return probs.ConnectionFailure(
-			fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
-		)
+		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
+	}
+	return nil
+}
+
+func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
+	results := va.parallelCAALookup(ctx, identifier.Value, va.caaDR.LookupCAA)
+	set, err := parseResults(results)
+	if err != nil {
+		return probs.ConnectionFailure(err.Error())
+	}
+	present, valid := va.validateCAASet(set)
+	va.log.AuditInfo(fmt.Sprintf(
+		"Checked CAA records for %s using GPDNS, [Present: %t, Valid for issuance: %t]",
+		identifier.Value,
+		present,
+		valid,
+	))
+	if !valid {
+		return &probs.ProblemDetails{
+			Type:   probs.ConnectionProblem,
+			Detail: fmt.Sprintf("CAA records prevents issuance for %s", identifier.Value),
+		}
 	}
 	return nil
 }
@@ -516,11 +524,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		if va.caaClient == nil {
-			ch <- va.checkCAA(ctx, identifier)
-			return
-		}
-		ch <- va.checkCAAService(ctx, identifier)
+		ch <- va.checkCAA(ctx, identifier)
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -694,22 +698,6 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
 	results := va.parallelCAALookup(ctx, hostname, va.dnsResolver.LookupCAA)
-	set, err := parseResults(results)
-	if err == nil {
-		return set, nil
-	}
-	if va.caaDR == nil {
-		return nil, err
-	}
-	// we have a CAADistributedResolver and one of the local lookups failed
-	// so we talk to the Google Public DNS service over various proxies
-	// instead if the initial error was a timeout
-	if dnsErr, ok := err.(*bdns.DNSError); ok {
-		if !dnsErr.Timeout() {
-			return nil, err
-		}
-	}
-	results = va.parallelCAALookup(ctx, hostname, va.caaDR.LookupCAA)
 	return parseResults(results)
 }
 
@@ -719,11 +707,15 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	if err != nil {
 		return false, false, err
 	}
+	present, valid = va.validateCAASet(caaSet)
+	return present, valid, nil
+}
 
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("VA.CAA.None", 1, 1.0)
-		return false, true, nil
+		return false, true
 	}
 
 	// Record stats on directives not currently processed.
@@ -734,7 +726,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
 		va.stats.Inc("VA.CAA.UnknownCritical", 1, 1.0)
-		return true, false, nil
+		return true, false
 	}
 
 	if len(caaSet.Unknown) > 0 {
@@ -747,7 +739,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
 		va.stats.Inc("VA.CAA.NoneRelevant", 1, 1.0)
-		return true, true, nil
+		return true, true
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
@@ -758,13 +750,13 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.issuerDomain {
 			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
-			return true, true, nil
+			return true, true
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
-	return true, false, nil
+	return true, false
 }
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
