@@ -18,28 +18,6 @@
     }
   },
 
-  "va": {
-    "userAgent": "boulder",
-    "debugAddr": "localhost:8004",
-    "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
-    },
-    "maxConcurrentRPCServerRequests": 16,
-    "dnsTries": 3,
-    "issuerDomain": "happy-hacker-ca.invalid",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "VA.server",
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
     "maxDBConns": 1,

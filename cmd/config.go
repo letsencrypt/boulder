@@ -25,34 +25,6 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	VA struct {
-		ServiceConfig
-
-		UserAgent string
-
-		IssuerDomain string
-
-		PortConfig PortConfig
-
-		MaxConcurrentRPCServerRequests int64
-
-		LookupIPv6 bool
-
-		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
-
-		CAAService *GRPCClientConfig
-
-		CAADistributedResolver *CAADistributedResolverConfig
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries int
-
-		// Feature flag to enable enforcement of CAA SERVFAILs.
-		CAASERVFAILExceptions string
-	}
-
 	Statsd StatsdConfig
 
 	Syslog SyslogConfig
