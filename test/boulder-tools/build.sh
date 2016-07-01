@@ -22,6 +22,7 @@ apt-get install -y --no-install-recommends \
   ruby-dev \
   rsyslog \
   protobuf-compiler \
+  softhsm \
   build-essential \
   cmake \
   libssl-dev \
@@ -52,7 +53,7 @@ git clone https://github.com/SUNET/pkcs11-proxy && \
 
 gem install fpm
 
-apt-get autoremove -y build-essential cmake libssl-dev libseccomp-dev
+apt-get autoremove -y build-essential cmake libssl-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

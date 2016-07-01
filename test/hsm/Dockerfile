@@ -1,13 +1,5 @@
-FROM ubuntu:15.10
+FROM letsencrypt/boulder-tools:latest
 MAINTAINER Roland Bracewell Shoemaker <roland@letsencrypt.org>
-
-RUN apt-get update && apt-get install -y softhsm git-core build-essential cmake libssl-dev libseccomp-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN git clone https://github.com/SUNET/pkcs11-proxy && \
-    cd pkcs11-proxy && \
-    git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
-    cmake . && make && make install
 
 COPY test-ca.key /root/key.pem
 
