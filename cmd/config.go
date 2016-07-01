@@ -25,8 +25,6 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	CA CAConfig
-
 	VA struct {
 		ServiceConfig
 
@@ -162,22 +160,6 @@ func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
 			AllowECDSANISTP256: asa.ECDSANISTP256,
 			AllowECDSANISTP384: asa.ECDSANISTP384,
 			AllowECDSANISTP521: asa.ECDSANISTP521,
-		}
-	}
-	return goodkey.KeyPolicy{
-		AllowRSA: true,
-	}
-}
-
-// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-// TODO: remove once WFE, RA and CA all use KeyPolicy belonging to the type AllowedSigningAlgos
-func (config *Config) KeyPolicy() goodkey.KeyPolicy {
-	if config.AllowedSigningAlgos != nil {
-		return goodkey.KeyPolicy{
-			AllowRSA:           config.AllowedSigningAlgos.RSA,
-			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
-			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
-			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
 		}
 	}
 	return goodkey.KeyPolicy{
