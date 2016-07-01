@@ -170,7 +170,6 @@ func (r *Registration) MergeUpdate(input Registration) (changed bool) {
 		// If there is no existing contact slice, or the contact slice lengths
 		// differ, then the input is new and the base contact is changed
 		if r.Contact == nil || len(*input.Contact) != len(*r.Contact) {
-			fmt.Printf("input.Contact len differed.\n")
 			r.Contact = input.Contact
 			changed = true
 		}
