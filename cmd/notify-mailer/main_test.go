@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"testing"
@@ -155,9 +156,9 @@ func TestMailCheckpointing(t *testing.T) {
 		clk:           newFakeClock(t),
 	}
 
-	// Run the mailer. Two messages should have been produced, one to
-	// example-example-example@example.com (id 4 of the fake DB), and one to
-	// mail@example.com (id 5).
+	// Run the mailer. Three messages should have been produced, one to
+	// example-example-example@example.com (id 4 of the fake DB), one to
+	// mail@example.com (id 5), and one to youve.got.mail@example.com (id 6).
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
@@ -191,8 +192,8 @@ func TestMailCheckpointing(t *testing.T) {
 	}
 
 	// Run the mailer. Three messages should have been produced, one to
-	// example@example.com (ID 1 of test_msg_recipients.txt), one to
-	// example@example.com (ID 2), and one to example-test@example.com (ID 3)
+	// example@example.com (ID 1), one to test-example-updated@example.com (ID 2),
+	// and one to test-test-test@example.com (ID 3)
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
@@ -228,7 +229,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Run the mailer. Two messages should have been produced, one to
 	// example-example-example@example.com (ID 4) and another
-	// one destined to youve.got.mail@example.com (Line 5)
+	// one destined to youve.got.mail@example.com (ID 5)
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
@@ -347,7 +348,6 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	return nil
 }
 
-/*
 func TestResolveEmails(t *testing.T) {
 	// Start with three contacts. Note: the IDs have been matched with fake
 	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
@@ -364,14 +364,25 @@ func TestResolveEmails(t *testing.T) {
 			ID: 3,
 		},
 	}
+	contactsJSON, err := json.Marshal(contacts)
+	test.AssertNotError(t, err, "failed to marshal test contacts")
 
 	dbMap := mockEmailResolver{}
-	destinations, err := resolveDestinations(contacts, dbMap)
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "Test",
+		destinations:  contactsJSON,
+		emailTemplate: "Hi",
+		checkpoint:    interval{start: 0},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	destinations, err := m.resolveDestinations()
 	test.AssertNotError(t, err, "failed to resolveDestinations")
 
-	// Note: the DB result for ID 2 has an "updated" email we are testing for.
-	// test-example@example.com should be updated to
-	// test-example-updated@example.com if `resolveDestinations` is working.
 	expected := []string{
 		"example@example.com",
 		"test-example-updated@example.com",
@@ -383,7 +394,6 @@ func TestResolveEmails(t *testing.T) {
 		test.AssertEquals(t, destinations[i], expected[i])
 	}
 }
-*/
 
 func newFakeClock(t *testing.T) clock.FakeClock {
 	const fakeTimeFormat = "2006-01-02T15:04:05.999999999Z"
