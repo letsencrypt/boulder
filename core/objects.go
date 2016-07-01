@@ -158,20 +158,52 @@ type Registration struct {
 }
 
 // MergeUpdate copies a subset of information from the input Registration
-// into this one.
-func (r *Registration) MergeUpdate(input Registration) {
+// into this one. It returns true if an update was performed and the base object
+// was changed, and false if no change was made.
+func (r *Registration) MergeUpdate(input Registration) (changed bool) {
 	// Note: we allow input.Contact to overwrite r.Contact even if the former is
 	// empty in order to allow users to remove the contact associated with
 	// a registration. Since the field type is a pointer to slice of pointers we
 	// can perform a nil check to differentiate between an empty value and a nil
 	// (e.g. not provided) value
 	if input.Contact != nil {
-		r.Contact = input.Contact
+		// If there is no existing contact slice, or the contact slice lengths
+		// differ, then the input is new and the base contact is changed
+		if r.Contact == nil || len(*input.Contact) != len(*r.Contact) {
+			fmt.Printf("input.Contact len differed.\n")
+			r.Contact = input.Contact
+			changed = true
+		}
+
+		// If there is an existing contact slice and it has the same length as the
+		// new contact slice we need to look at each AcmeURL to determine if there
+		// is a change being made
+		a := *input.Contact
+		b := *r.Contact
+		var diff bool
+		for i := 0; i < len(a); i++ {
+			contactA := (*a[i]).String()
+			contactB := (*b[i]).String()
+			if contactA != contactB {
+				diff = true
+				break
+			}
+		}
+		// If there was at least one difference between the two slices, we update
+		// the base Contact slice
+		if diff {
+			r.Contact = input.Contact
+			changed = true
+		}
 	}
 
-	if len(input.Agreement) > 0 {
+	// If there is an agreement in the input and it's not the same as the base,
+	// then we update the base
+	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
 		r.Agreement = input.Agreement
+		changed = true
 	}
+	return
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
