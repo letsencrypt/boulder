@@ -949,7 +949,7 @@ func TestEmptyRegistration(t *testing.T) {
 
 	// There should be no error, particularly from the FailureRegistrationAuthority
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
-	// There shouldn't have a Contact or Agreement in the response
+	// There shouldn't be a Contact or Agreement in the response
 	test.AssertNotContains(t, responseWriter.Body.String(), "Contact")
 	test.AssertNotContains(t, responseWriter.Body.String(), "Agreement")
 	responseWriter.Body.Reset()
