@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
-	"strings"
+	"time"
 
 	"gopkg.in/gorp.v1"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -21,13 +21,15 @@ type contactExporter struct {
 	log   blog.Logger
 	dbMap *gorp.DbMap
 	clk   clock.Clock
+	grace time.Duration
 }
 
-func (c contactExporter) findContacts() ([]string, error) {
-	var contactsJSON [][]byte
+// Find all registration contacts with unexpired certificates.
+func (c contactExporter) findContacts() ([]*mail.MailerDestination, error) {
+	var contactsList []*mail.MailerDestination
 	_, err := c.dbMap.Select(
-		&contactsJSON,
-		`SELECT contact AS active_contact
+		&contactsList,
+		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
 			id IN (
@@ -36,47 +38,27 @@ func (c contactExporter) findContacts() ([]string, error) {
 				WHERE expires >= :expireCutoff
 			);`,
 		map[string]interface{}{
-			"expireCutoff": c.clk.Now(),
+			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
 		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
 		return nil, err
 	}
 
-	contactMap := make(map[string]struct{}, len(contactsJSON))
-	for _, contactRaw := range contactsJSON {
-		var contactList []string
-		err := json.Unmarshal(contactRaw, &contactList)
-		if err != nil {
-			c.log.AuditErr(
-				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
-					contactRaw, err))
-			continue
-		}
-		for _, entry := range contactList {
-			// Only include email addresses
-			if strings.HasPrefix(entry, "mailto:") {
-				address := strings.TrimPrefix(entry, "mailto:")
-				// Using the contactMap to deduplicate addresses
-				contactMap[address] = struct{}{}
-			}
-		}
-	}
-
-	// Convert the de-dupe'd map back to a slice, sort it
-	var contacts []string
-	for contact := range contactMap {
-		contacts = append(contacts, contact)
-	}
-	sort.Strings(contacts)
-	return contacts, nil
+	return contactsList, nil
 }
 
-func writeContacts(contacts []string, outFile string) error {
-	data := []byte(strings.Join(contacts, "\n") + "\n")
+// The `writeContacts` function produces a file containing JSON serialized
+// `bmail.MailerDestination` objects
+func writeContacts(contactsList []*mail.MailerDestination, outfile string) error {
+	data, err := json.Marshal(contactsList)
+	if err != nil {
+		return err
+	}
+	data = append(data, "\n"...)
 
-	if outFile != "" {
-		return ioutil.WriteFile(outFile, data, 0644)
+	if outfile != "" {
+		return ioutil.WriteFile(outfile, data, 0644)
 	} else {
 		fmt.Printf("%s", data)
 		return nil
@@ -85,6 +67,7 @@ func writeContacts(contacts []string, outFile string) error {
 
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -116,6 +99,7 @@ func main() {
 		log:   log,
 		dbMap: dbMap,
 		clk:   cmd.Clock(),
+		grace: *grace,
 	}
 
 	contacts, err := exporter.findContacts()

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	//"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -54,6 +55,15 @@ type MailerImpl struct {
 	client      smtpClient
 	clk         clock.Clock
 	csprgSource idGenerator
+}
+
+// A MailerDestination associates a reg ID with a blob of Contact JSON and an
+// extracted Email. This type lives in the common mail package because it is
+// required both by the `contact-exporter` cmd as a type to serialize for output
+// as well as the `notify-mailer` cmd which unserializes this type.
+type MailerDestination struct {
+	ID      int64  `json:"id"`
+	Contact []byte `json:"-"`
 }
 
 type dialer interface {

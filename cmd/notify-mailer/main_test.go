@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -260,6 +261,97 @@ func TestMessageContent(t *testing.T) {
 		Subject: testSubject,
 		Body:    string(testBody),
 	}, mc.Messages[0])
+}
+
+// the `mockEmailResolver` implements the `dbSelector` interface from
+// `notify-mailer/main.go` to allow unit testing without using a backing
+// database
+type mockEmailResolver struct{}
+
+// the `mockEmailResolver` select method treats the requested reg ID as an index
+// into a list of `MailerDestinations`
+func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
+	// The "db" is just a list in memory
+	db := []bmail.MailerDestination{
+		bmail.MailerDestination{
+			ID:      1,
+			Contact: []byte(`["mailto:example@example.com"]`),
+		},
+		bmail.MailerDestination{
+			ID:      2,
+			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
+		},
+		bmail.MailerDestination{
+			ID:      3,
+			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		},
+	}
+
+	// Play the type cast game so that we can dig into the arguments map and get
+	// out an integer "id" parameter
+	argsRaw := args[0]
+	argsMap, ok := argsRaw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("incorrect args type %T", args)
+	}
+	idRaw := argsMap["id"]
+	id, ok := idRaw.(int64)
+	if !ok {
+		return fmt.Errorf("incorrect args ID type %T", id)
+	}
+
+	// Play the type cast game to get a pointer to the output `MailerDestination`
+	// pointer so we can write the result from the db list
+	outputPtr, ok := output.(*bmail.MailerDestination)
+	if !ok {
+		return fmt.Errorf("incorrect output type %T", output)
+	}
+
+	// If the ID (shifted by 1 to account for zero indexing) is within the range
+	// of the DB list, return the DB entry
+	if (id-1) > 0 || int(id-1) < len(db) {
+		*outputPtr = db[id-1]
+	}
+	return nil
+}
+
+func TestResolveEmails(t *testing.T) {
+	// Start with three contacts. Note: the IDs have been matched with fake
+	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
+	// more test cases here you must also add the corresponding DB result in the
+	// mock.
+	contacts := []*bmail.MailerDestination{
+		&bmail.MailerDestination{
+			ID:      1,
+			Contact: []byte(`["mailto:example@example.com"]`),
+		},
+		&bmail.MailerDestination{
+			ID:      2,
+			Contact: []byte(`["mailto:test-example@example.com"]`),
+		},
+		&bmail.MailerDestination{
+			ID:      3,
+			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+		},
+	}
+
+	dbMap := mockEmailResolver{}
+	destinations, err := resolveDestinations(contacts, dbMap)
+	test.AssertNotError(t, err, "failed to resolveDestinations")
+
+	// Note: the DB result for ID 2 has an "updated" email we are testing for.
+	// test-example@example.com should be updated to
+	// test-example-updated@example.com if `resolveDestinations` is working.
+	expected := []string{
+		"example@example.com",
+		"test-example-updated@example.com",
+		"test-test-test@example.com",
+	}
+
+	test.AssertEquals(t, len(destinations), len(expected))
+	for i := range expected {
+		test.AssertEquals(t, destinations[i], expected[i])
+	}
 }
 
 func newFakeClock(t *testing.T) clock.FakeClock {
