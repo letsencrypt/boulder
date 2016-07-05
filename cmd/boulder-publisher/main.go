@@ -55,7 +55,6 @@ func main() {
 	logger.Info(cmd.VersionString(clientName))
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
-	var err error
 	for i, ld := range c.Common.CT.Logs {
 		logs[i], err = publisher.NewLog(ld.URI, ld.Key)
 		cmd.FailOnError(err, "Unable to parse CT log description")
