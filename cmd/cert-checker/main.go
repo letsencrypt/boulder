@@ -15,7 +15,6 @@ import (
 
 	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
-	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -58,9 +57,19 @@ type reportEntry struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
+/*
+ * certDB is an interface collecting the gorp.DbMap functions that the
+ * various parts of cert-checker rely on. Using this adapter shim allows tests to
+ * swap out the dbMap implementation.
+ */
+type certDB interface {
+	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectOne(holder interface{}, query string, args ...interface{}) error
+}
+
 type certChecker struct {
 	pa           core.PolicyAuthority
-	dbMap        *gorp.DbMap
+	dbMap        certDB
 	certs        chan core.Certificate
 	clock        clock.Clock
 	rMu          *sync.Mutex
@@ -69,7 +78,7 @@ type certChecker struct {
 	stats        metrics.Statter
 }
 
-func newChecker(saDbMap *gorp.DbMap, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
+func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
 	c := certChecker{
 		pa:          pa,
 		dbMap:       saDbMap,
@@ -124,6 +133,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		}
 		for _, cert := range certs {
 			c.certs <- cert
+		}
+		if len(certs) == 0 {
+			break
 		}
 		args["lastSerial"] = certs[len(certs)-1].Serial
 		offset += len(certs)

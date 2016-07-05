@@ -1,4 +1,0 @@
-#!/bin/bash
-#
-# Temporary shim until the letsencrypt Debian package ships `certbot`
-exec letsencrypt "$@"
