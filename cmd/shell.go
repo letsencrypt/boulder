@@ -103,12 +103,6 @@ func (as *AppShell) Run() {
 		if config.OCSPResponder.AMQP == nil {
 			config.OCSPResponder.AMQP = config.AMQP
 		}
-		if config.Publisher.AMQP == nil {
-			config.Publisher.AMQP = config.AMQP
-			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
-				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
-			}
-		}
 
 		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
 		logger.Info(as.VersionString())
