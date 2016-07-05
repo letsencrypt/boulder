@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -157,6 +158,17 @@ type Registration struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// A type used to implement sort.Interface on a slice of AcmeURL pointers
+type contactList []*AcmeURL
+
+func (c contactList) Len() int { return len(c) }
+func (c contactList) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+func (c contactList) Less(i, j int) bool {
+	return (*c[i]).String() < (*c[j]).String()
+}
+
 // MergeUpdate copies a subset of information from the input Registration
 // into this one. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -174,11 +186,17 @@ func (r *Registration) MergeUpdate(input Registration) (changed bool) {
 			changed = true
 		}
 
+		// Sort the two contact slices - coerce to `contactList` to satisfy
+		// `sort.Interface`
+		var a, b contactList
+		a = *input.Contact
+		b = *r.Contact
+		sort.Sort(a)
+		sort.Sort(b)
+
 		// If there is an existing contact slice and it has the same length as the
 		// new contact slice we need to look at each AcmeURL to determine if there
 		// is a change being made
-		a := *input.Contact
-		b := *r.Contact
 		var diff bool
 		for i := 0; i < len(a); i++ {
 			contactA := (*a[i]).String()
