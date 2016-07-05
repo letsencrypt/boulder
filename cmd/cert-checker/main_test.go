@@ -242,7 +242,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
 }
 
 /*
- * In Boulder #2004[0] it was identified that there is a race in `getCerts`
+ * In Boulder #2004[0] we identified that there is a race in `getCerts`
  * between the first call to `SelectOne` to identify how many rows there are,
  * and the subsequent call to `Select` to get the actual rows in batches. This
  * manifests in an index out of range panic where the cert checker thinks there
