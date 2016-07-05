@@ -76,12 +76,6 @@ type Config struct {
 
 	OCSPUpdater OCSPUpdaterConfig
 
-	Publisher struct {
-		ServiceConfig
-		SubmissionTimeout              ConfigDuration
-		MaxConcurrentRPCServerRequests int64
-	}
-
 	PA PAConfig
 
 	Common struct {

@@ -105,27 +105,6 @@
     }
   },
 
-  "publisher": {
-    "maxConcurrentRPCServerRequests": 16,
-    "submissionTimeout": "5s",
-    "debugAddr": "localhost:8009",
-    "grpc": {
-      "address": "boulder:9091",
-      "clientIssuerPath": "test/grpc-creds/ca.pem",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem"
-    },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "Publisher.server",
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "common": {
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",
