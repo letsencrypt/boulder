@@ -131,11 +131,11 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		if err != nil {
 			return err
 		}
-		if len(certs) == 0 {
-			break
-		}
 		for _, cert := range certs {
 			c.certs <- cert
+		}
+		if len(certs) == 0 {
+			break
 		}
 		args["lastSerial"] = certs[len(certs)-1].Serial
 		offset += len(certs)
