@@ -778,31 +778,30 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 }
 
 // UpdateRegistration updates an existing Registration with new values.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (reg core.Registration, err error) {
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
 	changed := base.MergeUpdate(update)
 	if !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since theres
 		// nothing for the SA to do
-		reg = base
-		return
+		return base, nil
 	}
 
-	err = ra.validateContacts(ctx, base.Contact)
+	err := ra.validateContacts(ctx, base.Contact)
 	if err != nil {
-		return
+		return core.Registration{}, err
 	}
 
-	reg = base
 	err = ra.SA.UpdateRegistration(ctx, base)
 	if err != nil {
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
+		return core.Registration{}, err
 	}
 
 	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
-	return
+	return base, nil
 }
 
 // UpdateAuthorization updates an authorization with new values.
