@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
-	"github.com/letsencrypt/net/publicsuffix"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -665,19 +665,18 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	domainsMap := make(map[string]struct{}, len(names))
 	var domains []string
 	for _, name := range names {
-		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
+		domain, err := publicsuffix.Domain(name)
 		if err != nil {
 			// The only possible errors are:
-			// (1) publicsuffix.PublicSuffix is giving garbage
-			//     values
+			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
 			//
 			// Assume (2).
-			eTLDPlusOne = name
+			domain = name
 		}
-		if _, ok := domainsMap[eTLDPlusOne]; !ok {
-			domainsMap[eTLDPlusOne] = struct{}{}
-			domains = append(domains, eTLDPlusOne)
+		if _, ok := domainsMap[domain]; !ok {
+			domainsMap[domain] = struct{}{}
+			domains = append(domains, domain)
 		}
 	}
 	return domains, nil

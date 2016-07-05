@@ -16,7 +16,6 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 COPY . .
 RUN mkdir bin
 RUN GOBIN=/usr/local/bin go install ./cmd/rabbitmq-setup
-COPY ./test/certbot /usr/local/bin/
 
 RUN chown -R buser /go/
 
