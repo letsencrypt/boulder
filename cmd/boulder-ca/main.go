@@ -27,7 +27,7 @@ const clientName = "CA"
 type config struct {
 	CA cmd.CAConfig
 
-	*cmd.AllowedSigningAlgos
+	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 
@@ -155,7 +155,7 @@ func main() {
 		clock.Default(),
 		stats,
 		issuers,
-		c.KeyPolicy(),
+		c.AllowedSigningAlgos.KeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa

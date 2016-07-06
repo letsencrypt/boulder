@@ -52,7 +52,7 @@ type config struct {
 		ReuseValidAuthz bool
 	}
 
-	*cmd.AllowedSigningAlgos
+	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 

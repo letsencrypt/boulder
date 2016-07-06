@@ -40,7 +40,7 @@ type config struct {
 		CheckMalformedCSR bool
 	}
 
-	*cmd.AllowedSigningAlgos
+	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	cmd.StatsdConfig
 
@@ -116,7 +116,7 @@ func main() {
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-	logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
+	logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.AllowedSigningAlgos.KeyPolicy()))
 
 	go cmd.ProfileCmd("WFE", stats)
 
