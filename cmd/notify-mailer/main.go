@@ -191,7 +191,7 @@ func main() {
 	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %#v", *configFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
@@ -203,13 +203,13 @@ func main() {
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %#v", *bodyFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *bodyFile))
 
 	address, err := mail.ParseAddress(*from)
-	cmd.FailOnError(err, fmt.Sprintf("Parsing %#v", *from))
+	cmd.FailOnError(err, fmt.Sprintf("Parsing %q", *from))
 
 	toBody, err := ioutil.ReadFile(*toFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %#v", *toFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *toFile))
 	destinations := strings.Split(string(toBody), "\n")
 
 	checkpointRange := interval{

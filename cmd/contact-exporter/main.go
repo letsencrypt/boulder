@@ -129,7 +129,7 @@ func main() {
 	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %#v", *configFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
@@ -149,5 +149,5 @@ func main() {
 	cmd.FailOnError(err, "Could not find contacts")
 
 	err = writeContacts(contacts, *outFile)
-	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile %#v", *outFile))
+	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile %q", *outFile))
 }
