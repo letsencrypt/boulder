@@ -97,9 +97,6 @@ func (as *AppShell) Run() {
 		if config.Mailer.AMQP == nil {
 			config.Mailer.AMQP = config.AMQP
 		}
-		if config.OCSPUpdater.AMQP == nil {
-			config.OCSPUpdater.AMQP = config.AMQP
-		}
 		if config.OCSPResponder.AMQP == nil {
 			config.OCSPResponder.AMQP = config.AMQP
 		}

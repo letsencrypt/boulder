@@ -74,8 +74,6 @@ type Config struct {
 		ShutdownKillTimeout string
 	}
 
-	OCSPUpdater OCSPUpdaterConfig
-
 	PA PAConfig
 
 	Common struct {
