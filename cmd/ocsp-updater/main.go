@@ -552,9 +552,9 @@ const clientName = "OCSP"
 type config struct {
 	OCSPUpdater cmd.OCSPUpdaterConfig
 
-	cmd.StatsdConfig
+	Statsd cmd.StatsdConfig
 
-	cmd.SyslogConfig
+	Syslog cmd.SyslogConfig
 
 	Common struct {
 		IssuerCert string
@@ -603,7 +603,7 @@ func main() {
 
 	go cmd.DebugServer(conf.DebugAddr)
 
-	stats, auditlogger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
 

@@ -22,9 +22,9 @@ type config struct {
 		MaxConcurrentRPCServerRequests int64
 	}
 
-	cmd.StatsdConfig
+	Statsd cmd.StatsdConfig
 
-	cmd.SyslogConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {
@@ -41,7 +41,7 @@ func main() {
 
 	go cmd.DebugServer(c.SA.DebugAddr)
 
-	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 

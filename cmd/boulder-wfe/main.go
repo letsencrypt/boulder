@@ -42,11 +42,11 @@ type config struct {
 
 	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
-	cmd.StatsdConfig
+	Statsd cmd.StatsdConfig
 
 	SubscriberAgreementURL string
 
-	cmd.SyslogConfig
+	Syslog cmd.SyslogConfig
 
 	Common struct {
 		BaseURL    string
@@ -79,7 +79,7 @@ func main() {
 
 	go cmd.DebugServer(c.WFE.DebugAddr)
 
-	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
