@@ -74,14 +74,6 @@ type Config struct {
 		ShutdownKillTimeout string
 	}
 
-	OCSPUpdater OCSPUpdaterConfig
-
-	Publisher struct {
-		ServiceConfig
-		SubmissionTimeout              ConfigDuration
-		MaxConcurrentRPCServerRequests int64
-	}
-
 	PA PAConfig
 
 	Common struct {
