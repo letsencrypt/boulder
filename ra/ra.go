@@ -779,8 +779,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 
 // UpdateRegistration updates an existing Registration with new values.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
-	changed := base.MergeUpdate(update)
-	if !changed {
+	if changed := base.MergeUpdate(update); !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since theres
 		// nothing for the SA to do
