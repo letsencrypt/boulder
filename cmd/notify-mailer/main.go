@@ -106,7 +106,7 @@ verbatim and must be provided as a path to a plaintext file via the -body
 argument. The list of recipient emails should be provided via the -toFile
 argument as a path to a plaintext file containing one email per line.
 
-To help the operator gain confidence in the mailing run before commiting fully
+To help the operator gain confidence in the mailing run before committing fully
 three safety features are supported: dry runs, checkpointing and a sleep
 interval.
 
@@ -118,7 +118,7 @@ sent.
 Checkpointing is supported via the -start and -end arguments. The -start flag
 specifies which line of the -toFile to start processing at. Similarly, the -end
 flag specifies which line of the -toFile to end processing at. In combination
-these can be used to processs only a fixed number of recipients at a time, and
+these can be used to process only a fixed number of recipients at a time, and
 to resume mailing after early termination.
 
 During mailing the -sleep argument is used to space out individual messages.
