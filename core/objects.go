@@ -160,7 +160,9 @@ type Registration struct {
 // MergeUpdate copies a subset of information from the input Registration
 // into this one. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
-func (r *Registration) MergeUpdate(input Registration) (changed bool) {
+func (r *Registration) MergeUpdate(input Registration) bool {
+	var changed bool
+
 	// Note: we allow input.Contact to overwrite r.Contact even if the former is
 	// empty in order to allow users to remove the contact associated with
 	// a registration. Since the field type is a pointer to slice of pointers we
@@ -202,7 +204,7 @@ func (r *Registration) MergeUpdate(input Registration) (changed bool) {
 		r.Agreement = input.Agreement
 		changed = true
 	}
-	return
+	return changed
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
