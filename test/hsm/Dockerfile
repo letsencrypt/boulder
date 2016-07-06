@@ -1,4 +1,4 @@
-FROM letsencrypt/boulder-tools:latest
+FROM letsencrypt/boulder-tools:2016-07-05
 MAINTAINER Roland Bracewell Shoemaker <roland@letsencrypt.org>
 
 COPY test-ca.key /root/key.pem
