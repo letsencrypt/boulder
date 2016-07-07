@@ -30,7 +30,7 @@ func TestRegistrationUpdate(t *testing.T) {
 	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
 
-	// Make sure that a `MergeUpdate` call with a nil entry doesn't procude an
+	// Make sure that a `MergeUpdate` call with a nil entry doesn't produce an
 	// error and results in a change to the base reg.
 	nilUpdate := Registration{
 		Contact:   &[]*AcmeURL{nil},
