@@ -194,11 +194,11 @@ func main() {
 					Usage: "The base URI of ocsp responder",
 					Value: "http://localhost:4000",
 				},
-				cli.IntFlag{
+				cli.Float64Flag{
 					Name:  "getRate",
 					Usage: "",
 				},
-				cli.IntFlag{
+				cli.Float64Flag{
 					Name:  "postRate",
 					Usage: "",
 				},
@@ -229,8 +229,8 @@ func main() {
 
 				s, err := responder.New(
 					c.String("ocspBase"),
-					c.Int("getRate"),
-					c.Int("postRate"),
+					c.Float64("getRate"),
+					c.Float64("postRate"),
 					c.String("issuerPath"),
 					c.String("latencyDataPath"),
 					runtime,

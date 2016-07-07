@@ -16,10 +16,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 // State holds all the good stuff
@@ -28,8 +30,8 @@ type State struct {
 	numRequests int
 	maxRequests int
 	ocspBase    string
-	getRate     int64
-	postRate    int64
+	getRate     float64
+	postRate    float64
 	dbURI       string
 	runtime     time.Duration
 	client      *http.Client
@@ -38,7 +40,7 @@ type State struct {
 }
 
 // New returns a pointer to a new State struct, or an error
-func New(ocspBase string, getRate, postRate int, issuerPath, latencyPath string, runtime time.Duration, serials []string) (*State, error) {
+func New(ocspBase string, getRate, postRate float64, issuerPath, latencyPath string, runtime time.Duration, serials []string) (*State, error) {
 	issuer, err := core.LoadCert(issuerPath)
 	if err != nil {
 		return nil, err
@@ -47,10 +49,13 @@ func New(ocspBase string, getRate, postRate int, issuerPath, latencyPath string,
 	if err != nil {
 		return nil, err
 	}
+	if !strings.HasSuffix(ocspBase, "/") {
+		ocspBase += "/"
+	}
 	s := &State{
 		ocspBase:    ocspBase,
-		getRate:     int64(getRate),
-		postRate:    int64(postRate),
+		getRate:     getRate,
+		postRate:    postRate,
 		runtime:     runtime,
 		client:      new(http.Client),
 		callLatency: latencyFile,
@@ -75,13 +80,14 @@ func (s *State) Run() {
 	if s.getRate > 0 {
 		go func() {
 			for {
+				up := unsafe.Pointer(&s.getRate)
+				gr := (*float64)(atomic.LoadPointer(&up))
 				select {
 				case <-stop:
 					return
-				default:
+				case <-time.After(time.Duration(float64(time.Second.Nanoseconds()) / *gr)):
 					s.wg.Add(1)
 					go s.sendGET()
-					time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.getRate)))
 				}
 			}
 		}()
@@ -89,13 +95,14 @@ func (s *State) Run() {
 	if s.postRate > 0 {
 		go func() {
 			for {
+				up := unsafe.Pointer(&s.postRate)
+				pr := (*float64)(atomic.LoadPointer(&up))
 				select {
 				case <-stop:
 					return
-				default:
+				case <-time.After(time.Duration(float64(time.Second.Nanoseconds()) / *pr)):
 					s.wg.Add(1)
 					go s.sendPOST()
-					time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.postRate)))
 				}
 			}
 		}()
