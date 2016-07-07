@@ -261,20 +261,17 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 	})
 
 	rpc.Handle(MethodNewCertificate, func(ctx context.Context, req []byte) (response []byte, err error) {
-		log.Info(fmt.Sprintf(" [.] Entering MethodNewCertificate"))
 		var cr certificateRequest
 		if err = json.Unmarshal(req, &cr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewCertificate, err, req)
 			return
 		}
-		log.Info(fmt.Sprintf(" [.] No problem unmarshaling request"))
 
 		cert, err := impl.NewCertificate(ctx, cr.Req, cr.RegID)
 		if err != nil {
 			return
 		}
-		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
 
 		response, err = json.Marshal(cert)
 		if err != nil {
