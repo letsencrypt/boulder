@@ -36,8 +36,7 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	Called          bool
-	Argument        core.Authorization
+	argument        chan core.Authorization
 	RecordsReturn   []core.ValidationRecord
 	ProblemReturn   *probs.ProblemDetails
 	IsNotSafe       bool
@@ -45,8 +44,7 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	dva.Called = true
-	dva.Argument = authz
+	dva.argument <- authz
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
@@ -136,12 +134,12 @@ var (
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
+	keyAuthorization, err := ch.ExpectedKeyAuthorization(&AccountKeyA)
 	if err != nil {
 		return
 	}
 
-	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization}
 	return
 }
 
@@ -202,6 +200,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
 	fc := clock.NewFake()
+	// Advance past epoch
+	fc.Add(360 * 24 * time.Hour)
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
@@ -214,7 +214,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	va := &DummyValidationAuthority{}
+	va := &DummyValidationAuthority{argument: make(chan core.Authorization, 1)}
 
 	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -250,7 +250,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -287,6 +287,7 @@ func TestValidateContacts(t *testing.T) {
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
+	nonASCII, _ := core.ParseAcmeURL("mailto:señor@email.com")
 
 	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
@@ -305,6 +306,9 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
+
+	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nonASCII})
+	test.AssertError(t, err, "Non ASCII email")
 }
 
 func TestValidateEmail(t *testing.T) {
@@ -408,6 +412,48 @@ func TestNewRegistrationBadKey(t *testing.T) {
 
 	_, err := ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
+}
+
+type NoUpdateSA struct {
+	mocks.StorageAuthority
+}
+
+func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ core.Registration) error {
+	return fmt.Errorf("UpdateRegistration() is mocked to always error")
+}
+
+func TestUpdateRegistrationSame(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+
+	// Make a new registration with AccountKeyC and a Contact
+	input := core.Registration{
+		Key:       AccountKeyC,
+		Contact:   &[]*core.AcmeURL{mailto},
+		Agreement: "I agreed",
+		InitialIP: net.ParseIP("5.0.5.0"),
+	}
+	createResult, err := ra.NewRegistration(ctx, input)
+	test.AssertNotError(t, err, "Could not create new registration")
+	id := createResult.ID
+
+	// Switch to a mock SA that will always error if UpdateRegistration() is called
+	ra.SA = &NoUpdateSA{}
+
+	// Make an update to the registration with the same Contact & Agreement values.
+	updateSame := core.Registration{
+		ID:        id,
+		Key:       AccountKeyC,
+		Contact:   &[]*core.AcmeURL{mailto},
+		Agreement: "I agreed",
+	}
+
+	// The update operation should *not* error, even with the NoUpdateSA because
+	// UpdateRegistration() should not be called when the update content doesn't
+	// actually differ from the existing content
+	_, err = ra.UpdateRegistration(ctx, input, updateSame)
+	test.AssertNotError(t, err, "Error updating registration")
 }
 
 func TestNewAuthorization(t *testing.T) {
@@ -598,8 +644,11 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
-	if _, ok := err.(core.MalformedRequestError); !ok {
-		t.Errorf("Wrong type for NewAuthorization error: expected core.MalformedRequestError, got %T", err)
+	if _, ok := err.(*probs.ProblemDetails); !ok {
+		t.Errorf("Wrong type for NewAuthorization error: expected *probs.ProblemDetails, got %T", err)
+	}
+	if err.(*probs.ProblemDetails).Type != probs.MalformedProblem {
+		t.Errorf("Incorrect problem type. Expected %s got %s", probs.MalformedProblem, err.(*probs.ProblemDetails).Type)
 	}
 }
 
@@ -615,6 +664,13 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	var vaAuthz core.Authorization
+	select {
+	case a := <-va.argument:
+		vaAuthz = a
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
@@ -622,11 +678,10 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	test.Assert(t, va.Called, "Authorization was not passed to the VA")
-	assertAuthzEqual(t, authz, va.Argument)
+	assertAuthzEqual(t, authz, vaAuthz)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -647,30 +702,6 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
-func TestUpdateAuthorizationReject(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	// Change the account key
-	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
-	test.AssertNotError(t, err, "GetRegistration failed")
-	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(ctx, reg)
-	test.AssertNotError(t, err, "UpdateRegistration failed")
-
-	// Verify that the RA rejected the authorization request
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
-
-	t.Log("DONE TestUpdateAuthorizationReject")
-}
-
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -688,6 +719,13 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	var vaAuthz core.Authorization
+	select {
+	case a := <-va.argument:
+		vaAuthz = a
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
@@ -695,11 +733,10 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	test.Assert(t, va.Called, "Authorization was not passed to the VA")
-	assertAuthzEqual(t, authz, va.Argument)
+	assertAuthzEqual(t, authz, vaAuthz)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 
 	t.Log("DONE TestUpdateAuthorizationNewRPC")
@@ -786,6 +823,9 @@ func TestNewCertificate(t *testing.T) {
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
+	// Before issuance the issuanceExpvar should be 0
+	test.AssertEquals(t, issuanceExpvar.String(), "0")
+
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest = core.CertificateRequest{
@@ -794,6 +834,10 @@ func TestNewCertificate(t *testing.T) {
 
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
+
+	// After issuance the issuanceExpvar should be the current timestamp
+	now := ra.clk.Now()
+	test.AssertEquals(t, issuanceExpvar.String(), fmt.Sprintf("%d", now.Unix()))
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
@@ -901,6 +945,13 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
+
+	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
+	test.AssertNotError(t, err, "failed on public suffix private domain")
+	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, domains[0], "github.io")
+	test.AssertEquals(t, domains[1], "foo.github.io")
+	test.AssertEquals(t, domains[2], "bar.github.io")
 }
 
 func TestRateLimitLiveReload(t *testing.T) {
@@ -937,7 +988,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 	// when we wrote bodyOne to the file earlier.
 	bodyTwo, readErr := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
 	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
-	time.Sleep(15 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	writeErr = ioutil.WriteFile(filename, bodyTwo, 0644)
 	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 

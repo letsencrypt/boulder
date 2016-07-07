@@ -66,6 +66,27 @@ func writeContacts(contactsList []contact, outfile string) error {
 	}
 }
 
+const usageIntro = `
+Introduction:
+
+The contact exporter exists to retrieve the email addresses of all registered
+users with currently unexpired certificates. This list of email addresses can
+then be given as input to the notification mailer to send bulk notifications.
+
+The email addresses are deduplicated and sorted prior to being writen to the
+outfile. E.g. if two registrations exist with the contact email
+"example@example.com", this address will only appear once. Registration contacts
+that are *not* email addresses are discarded (e.g. tel:999-999-9999)
+
+Examples:
+  Export all email addresses to "emails.txt":
+
+  contact-exporter -config test/config/contact-exporter.json -outfile emails.txt
+
+Required arguments:
+- config
+- outfile`
+
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
 	type config struct {
@@ -76,8 +97,14 @@ func main() {
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageIntro)
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
-	if outFile == nil {
+	if *outFile == "" || *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -85,7 +112,7 @@ func main() {
 	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *configFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
@@ -105,5 +132,5 @@ func main() {
 	cmd.FailOnError(err, "Could not find contacts")
 
 	err = writeContacts(contacts, *outFile)
-	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile '%s'", *outFile))
+	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile %q", *outFile))
 }

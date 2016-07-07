@@ -4,8 +4,10 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	"flag"
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 	"time"
 
@@ -547,6 +549,21 @@ func (l *looper) loop() error {
 
 const clientName = "OCSP"
 
+type config struct {
+	OCSPUpdater cmd.OCSPUpdaterConfig
+
+	Statsd cmd.StatsdConfig
+
+	Syslog cmd.SyslogConfig
+
+	Common struct {
+		IssuerCert string
+		CT         struct {
+			Logs []cmd.LogDescription
+		}
+	}
+}
+
 func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
@@ -571,50 +588,61 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 }
 
 func main() {
-	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
-
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger blog.Logger) {
-		conf := c.OCSPUpdater
-		go cmd.DebugServer(conf.DebugAddr)
-		go cmd.ProfileCmd("OCSP-Updater", stats)
-
-		// Configure DB
-		dbURL, err := conf.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
-		cmd.FailOnError(err, "Could not connect to database")
-		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPUpdater"))
-
-		cac, pubc, sac := setupClients(conf, stats)
-
-		updater, err := newUpdater(
-			stats,
-			clock.Default(),
-			dbMap,
-			cac,
-			pubc,
-			sac,
-			// Necessary evil for now
-			conf,
-			len(c.Common.CT.Logs),
-			c.Common.IssuerCert,
-			auditlogger,
-		)
-
-		cmd.FailOnError(err, "Failed to create updater")
-
-		for _, l := range updater.loops {
-			go func(loop *looper) {
-				err = loop.loop()
-				if err != nil {
-					auditlogger.AuditErr(err.Error())
-				}
-			}(l)
-		}
-
-		// Sleep forever (until signaled)
-		select {}
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	app.Run()
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	conf := c.OCSPUpdater
+
+	go cmd.DebugServer(conf.DebugAddr)
+
+	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	defer auditlogger.AuditPanic()
+	auditlogger.Info(cmd.VersionString(clientName))
+
+	go cmd.ProfileCmd("OCSP-Updater", stats)
+
+	// Configure DB
+	dbURL, err := conf.DBConfig.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
+	cmd.FailOnError(err, "Could not connect to database")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPUpdater"))
+
+	cac, pubc, sac := setupClients(conf, stats)
+
+	updater, err := newUpdater(
+		stats,
+		clock.Default(),
+		dbMap,
+		cac,
+		pubc,
+		sac,
+		// Necessary evil for now
+		conf,
+		len(c.Common.CT.Logs),
+		c.Common.IssuerCert,
+		auditlogger,
+	)
+
+	cmd.FailOnError(err, "Failed to create updater")
+
+	for _, l := range updater.loops {
+		go func(loop *looper) {
+			err = loop.loop()
+			if err != nil {
+				auditlogger.AuditErr(err.Error())
+			}
+		}(l)
+	}
+
+	// Sleep forever (until signaled)
+	select {}
 }

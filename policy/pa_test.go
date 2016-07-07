@@ -6,8 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/square/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -142,7 +140,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(identifier, 100)
+	err = pa.WillingToIssue(identifier)
 	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
@@ -150,7 +148,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test syntax errors
 	for _, tc := range testCases {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != tc.err {
 			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
@@ -159,7 +157,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != errICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -168,7 +166,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test blacklisting
 	for _, domain := range shouldBeBlacklisted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
+		err := pa.WillingToIssue(identifier)
 		if err != errBlacklisted {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -177,7 +175,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.WillingToIssue(identifier, 100); err != nil {
+		if err := pa.WillingToIssue(identifier); err != nil {
 			t.Error("Identifier was incorrectly forbidden: ", identifier, err)
 		}
 	}
@@ -192,13 +190,7 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	var accountKey *jose.JsonWebKey
-	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
-	if err != nil {
-		t.Errorf("Error unmarshaling JWK: %v", err)
-	}
-
-	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
+	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
@@ -214,4 +206,66 @@ func TestChallengesFor(t *testing.T) {
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
+}
+
+func TestExtractDomainIANASuffix_Valid(t *testing.T) {
+	testCases := []struct {
+		domain, want string
+	}{
+		// TLD with only 1 rule.
+		{"biz", "biz"},
+		{"domain.biz", "biz"},
+		{"b.domain.biz", "biz"},
+
+		// The relevant {kobe,kyoto}.jp rules are:
+		// jp
+		// *.kobe.jp
+		// !city.kobe.jp
+		// kyoto.jp
+		// ide.kyoto.jp
+		{"jp", "jp"},
+		{"kobe.jp", "jp"},
+		{"c.kobe.jp", "c.kobe.jp"},
+		{"b.c.kobe.jp", "c.kobe.jp"},
+		{"a.b.c.kobe.jp", "c.kobe.jp"},
+		{"city.kobe.jp", "kobe.jp"},
+		{"www.city.kobe.jp", "kobe.jp"},
+		{"kyoto.jp", "kyoto.jp"},
+		{"test.kyoto.jp", "kyoto.jp"},
+		{"ide.kyoto.jp", "ide.kyoto.jp"},
+		{"b.ide.kyoto.jp", "ide.kyoto.jp"},
+		{"a.b.ide.kyoto.jp", "ide.kyoto.jp"},
+
+		// Domain with a private public suffix should return the ICANN public suffix.
+		{"foo.compute-1.amazonaws.com", "com"},
+		// Domain equal to a private public suffix should return the ICANN public
+		// suffix.
+		{"cloudapp.net", "net"},
+	}
+
+	for _, tc := range testCases {
+		got, err := extractDomainIANASuffix(tc.domain)
+		if err != nil {
+			t.Errorf("%q: returned error", tc.domain)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.domain, got, tc.want)
+		}
+	}
+}
+
+func TestExtractDomainIANASuffix_Invalid(t *testing.T) {
+	testCases := []string{
+		"",
+		"example",
+		"example.example",
+	}
+
+	for _, tc := range testCases {
+		_, err := extractDomainIANASuffix(tc)
+		if err == nil {
+			t.Errorf("%q: expected err, got none", tc)
+		}
+	}
 }

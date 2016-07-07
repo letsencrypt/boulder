@@ -205,6 +205,10 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			continue
 		}
 
+		if reg.Contact == nil {
+			continue
+		}
+
 		err = m.sendNags(*reg.Contact, parsedCerts)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("Error sending nag emails: %s", err))
@@ -234,7 +238,8 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		right := now.Add(expiresIn)
 
-		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry", left, right, expiresIn))
+		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
+			left.UTC(), right.UTC(), expiresIn))
 		var certs []core.Certificate
 		_, err := m.dbMap.Select(
 			&certs,

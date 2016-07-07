@@ -11,11 +11,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
-	"github.com/letsencrypt/net/publicsuffix"
-	"github.com/square/go-jose"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -95,12 +96,6 @@ const (
 	// octets: https://tools.ietf.org/html/rfc1035#page-10
 	maxLabelLength         = 63
 	maxDNSIdentifierLength = 255
-
-	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
-	// to skip the domain whitelist (but not the blacklist). This is for an
-	// early partner integration during the beta period and should be removed
-	// later.
-	whitelistedPartnerRegID = 131
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
@@ -128,20 +123,20 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 }
 
 var (
-	errInvalidIdentifier   = core.MalformedRequestError("Invalid identifier type")
-	errNonPublic           = core.MalformedRequestError("Name does not end in a public suffix")
-	errICANNTLD            = core.MalformedRequestError("Name is an ICANN TLD")
-	errBlacklisted         = core.MalformedRequestError("Policy forbids issuing for name")
-	errNotWhitelisted      = core.MalformedRequestError("Name is not whitelisted")
-	errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
-	errNameTooLong         = core.MalformedRequestError("DNS name too long")
-	errIPAddress           = core.MalformedRequestError("Issuance for IP addresses not supported")
-	errTooManyLabels       = core.MalformedRequestError("DNS name has too many labels")
-	errEmptyName           = core.MalformedRequestError("DNS name was empty")
-	errTooFewLabels        = core.MalformedRequestError("DNS name does not have enough labels")
-	errLabelTooShort       = core.MalformedRequestError("DNS label is too short")
-	errLabelTooLong        = core.MalformedRequestError("DNS label is too long")
-	errIDNNotSupported     = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
+	errInvalidIdentifier   = probs.Malformed("Invalid identifier type")
+	errNonPublic           = probs.Malformed("Name does not end in a public suffix")
+	errICANNTLD            = probs.Malformed("Name is an ICANN TLD")
+	errBlacklisted         = probs.RejectedIdentifier("Policy forbids issuing for name")
+	errNotWhitelisted      = probs.Malformed("Name is not whitelisted")
+	errInvalidDNSCharacter = probs.Malformed("Invalid character in DNS name")
+	errNameTooLong         = probs.Malformed("DNS name too long")
+	errIPAddress           = probs.Malformed("Issuance for IP addresses not supported")
+	errTooManyLabels       = probs.Malformed("DNS name has too many labels")
+	errEmptyName           = probs.Malformed("DNS name was empty")
+	errTooFewLabels        = probs.Malformed("DNS name does not have enough labels")
+	errLabelTooShort       = probs.Malformed("DNS label is too short")
+	errLabelTooLong        = probs.Malformed("DNS label is too long")
+	errIDNNotSupported     = probs.UnsupportedIdentifier("Internationalized domain names (starting with xn--) not yet supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -164,7 +159,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}
@@ -217,7 +212,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) err
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := publicsuffix.ICANNTLD(domain)
+	icannTLD, err := extractDomainIANASuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
@@ -259,19 +254,19 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
-		challenges = append(challenges, core.HTTPChallenge01(accountKey))
+		challenges = append(challenges, core.HTTPChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
-		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
+		challenges = append(challenges, core.TLSSNIChallenge01())
 	}
 
 	if pa.enabledChallenges[core.ChallengeTypeDNS01] {
-		challenges = append(challenges, core.DNSChallenge01(accountKey))
+		challenges = append(challenges, core.DNSChallenge01())
 	}
 
 	// We shuffle the challenges and combinations to prevent ACME clients from
@@ -290,4 +285,29 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKe
 	}
 
 	return shuffled, shuffledCombos
+}
+
+// ExtractDomainIANASuffix returns the public suffix of the domain using only the "ICANN"
+// section of the Public Suffix List database.
+// If the domain does not end in a suffix that belongs to an IANA-assigned
+// domain, ExtractDomainIANASuffix returns an error.
+func extractDomainIANASuffix(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("Blank name argument passed to ExtractDomainIANASuffix")
+	}
+
+	rule := publicsuffix.DefaultList.Find(name, &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
+	if rule == nil {
+		return "", fmt.Errorf("Domain %s has no IANA TLD", name)
+	}
+
+	suffix := rule.Decompose(name)[1]
+
+	// If the TLD is empty, it means name is actually a suffix.
+	// In fact, decompose returns an array of empty strings in this case.
+	if suffix == "" {
+		suffix = name
+	}
+
+	return suffix, nil
 }
