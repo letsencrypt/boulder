@@ -157,6 +157,45 @@ type Registration struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+func (r *Registration) contactsEqual(other Registration) bool {
+	// If there is no existing contact slice, or the contact slice lengths
+	// differ, then the other contact is not equal
+	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+		return false
+	}
+
+	// If there is an existing contact slice and it has the same length as the
+	// new contact slice we need to look at each AcmeURL to determine if there
+	// is a change being made
+	//
+	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
+	//            should use `sort.Strings` here to ensure a consistent
+	//            comparison.
+	a := *other.Contact
+	b := *r.Contact
+	for i := 0; i < len(a); i++ {
+		// In order to call .String() we need to make sure the AcmeURL pointers
+		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
+		if a[i] == nil || b[i] == nil {
+			// We return false, allowing MergeUpdate to use `other` to overwrite. The
+			// nil value in the Contact slice will be turned into a user-facing error
+			// when the RA validates the contacts post-merge.
+			return false
+		}
+
+		// If the contact's string representation differs at any index they aren't
+		// equal
+		contactA := (*a[i]).String()
+		contactB := (*b[i]).String()
+		if contactA != contactB {
+			return false
+		}
+	}
+
+	// They are equal!
+	return true
+}
+
 // MergeUpdate copies a subset of information from the input Registration
 // into this one. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -169,30 +208,7 @@ func (r *Registration) MergeUpdate(input Registration) bool {
 	// can perform a nil check to differentiate between an empty value and a nil
 	// (e.g. not provided) value
 	if input.Contact != nil {
-		// If there is no existing contact slice, or the contact slice lengths
-		// differ, then the input is new and the base contact is changed
-		if r.Contact == nil || len(*input.Contact) != len(*r.Contact) {
-			r.Contact = input.Contact
-			changed = true
-		}
-
-		// If there is an existing contact slice and it has the same length as the
-		// new contact slice we need to look at each AcmeURL to determine if there
-		// is a change being made
-		a := *input.Contact
-		b := *r.Contact
-		var diff bool
-		for i := 0; i < len(a); i++ {
-			contactA := (*a[i]).String()
-			contactB := (*b[i]).String()
-			if contactA != contactB {
-				diff = true
-				break
-			}
-		}
-		// If there was at least one difference between the two slices, we update
-		// the base Contact slice
-		if diff {
+		if !r.contactsEqual(input) {
 			r.Contact = input.Contact
 			changed = true
 		}
