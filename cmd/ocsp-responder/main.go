@@ -121,8 +121,6 @@ func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSour
 	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId, log)
 }
 
-const clientName = "OCSP Responder"
-
 type config struct {
 	OCSPResponder struct {
 		cmd.ServiceConfig
@@ -169,7 +167,7 @@ func main() {
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString("ocsp-responder"))
 
 	go cmd.ProfileCmd("OCSP", stats)
 
