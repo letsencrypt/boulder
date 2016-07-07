@@ -56,7 +56,7 @@ func writeContacts(contactsList []contact, outfile string) error {
 	if err != nil {
 		return err
 	}
-	data = append(data, "\n"...)
+	data = append(data, '\n')
 
 	if outfile != "" {
 		return ioutil.WriteFile(outfile, data, 0644)
