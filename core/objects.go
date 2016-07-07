@@ -207,11 +207,9 @@ func (r *Registration) MergeUpdate(input Registration) bool {
 	// a registration. Since the field type is a pointer to slice of pointers we
 	// can perform a nil check to differentiate between an empty value and a nil
 	// (e.g. not provided) value
-	if input.Contact != nil {
-		if !r.contactsEqual(input) {
-			r.Contact = input.Contact
-			changed = true
-		}
+	if input.Contact != nil && !r.contactsEqual(input) {
+		r.Contact = input.Contact
+		changed = true
 	}
 
 	// If there is an agreement in the input and it's not the same as the base,
