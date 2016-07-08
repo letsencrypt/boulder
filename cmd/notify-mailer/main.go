@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/mail"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -120,7 +119,7 @@ func (m *mailer) resolveDestinations() ([]string, error) {
 			len(regs))
 	}
 
-	contactMap := make(map[string]struct{}, len(regs))
+	var contactsList []string
 	for _, c := range regs[m.checkpoint.start:m.checkpoint.end] {
 		// Get the email address for the reg ID
 		emails, err := emailsForReg(c.ID, m.dbMap)
@@ -132,17 +131,9 @@ func (m *mailer) resolveDestinations() ([]string, error) {
 			if strings.TrimSpace(email) == "" {
 				continue
 			}
-			// Using the contactMap to deduplicate addresses
-			contactMap[email] = struct{}{}
+			contactsList = append(contactsList, email)
 		}
 	}
-
-	var contactsList []string
-	// Convert the de-dupe'd map back to a slice, sort it
-	for contact := range contactMap {
-		contactsList = append(contactsList, contact)
-	}
-	sort.Strings(contactsList)
 	return contactsList, nil
 }
 

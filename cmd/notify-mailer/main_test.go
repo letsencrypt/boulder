@@ -157,14 +157,14 @@ func TestMailCheckpointing(t *testing.T) {
 	}
 
 	// Run the mailer. Three messages should have been produced, one to
-	// example-example-example@example.com (id 4 of the fake DB), one to
-	// mail@example.com (id 5), and one to youve.got.mail@example.com (id 6).
+	// you've.got.mail@example.com (id 5 of the fake DB), one to
+	// mail@example.com (id 6), and one to example-example-example@example.com (id 4).
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
 	test.AssertEquals(t, len(mc.Messages), 3)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example-example-example@example.com",
+		To:      "youve.got.mail@example.com",
 		Subject: testSubject,
 		Body:    string(testBody),
 	}, mc.Messages[0])
@@ -174,7 +174,7 @@ func TestMailCheckpointing(t *testing.T) {
 		Body:    string(testBody),
 	}, mc.Messages[1])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "youve.got.mail@example.com",
+		To:      "example-example-example@example.com",
 		Subject: testSubject,
 		Body:    string(testBody),
 	}, mc.Messages[2])
