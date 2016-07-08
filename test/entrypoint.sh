@@ -33,10 +33,11 @@ rabbitmq-setup -server amqp://boulder-rabbitmq
 # Configure up SoftHSM
 wait_tcp_port boulder-hsm 5657
 PKCS11_PROXY_SOCKET="tcp://boulder-hsm:5657"
-pkcs11-tool --module=/usr/lib/libpkcs11-proxy.so --init-token --label token_label --so-pin 1234
-pkcs11-tool --module=/usr/lib/libpkcs11-proxy.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+HSM_MODULE="/usr/local/lib/libpkcs11-proxy.so"
+pkcs11-tool --module=$HSM_MODULE --init-token --label token_label --so-pin 1234
+pkcs11-tool --module=$HSM_MODULE --init-pin --label token_label --pin 5678 --login --so-pin 1234
 openssl rsa -in test/test-ca.key -inform pem -out test/test-ca.key.der -outform der
-pkcs11-tool --module=/usr/lib/libpkcs11-proxy.so --write-object test/test-ca.key.der --type privkey --label key_label --pin 5678 --login --so-pin 1234
+pkcs11-tool --module=$HSM_MODULE --write-object test/test-ca.key.der --type privkey --label key_label --pin 5678 --login --so-pin 1234
 
 if [[ $# -eq 0 ]]; then
     exec ./start.py
