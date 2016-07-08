@@ -35,7 +35,7 @@ type interval struct {
 	end   int
 }
 
-type contact struct {
+type regID struct {
 	ID int
 }
 
@@ -101,27 +101,27 @@ func (m *mailer) run() error {
 // Resolves each reg ID to the most up-to-date contact email.
 // The email addresses are returned deduplicated and sorted.
 func (m *mailer) resolveDestinations() ([]string, error) {
-	var contacts []contact
-	err := json.Unmarshal(m.destinations, &contacts)
+	var regs []regID
+	err := json.Unmarshal(m.destinations, &regs)
 	if err != nil {
 		return nil, err
 	}
 
 	// If there is no endpoint specified, use the total # of destinations
-	if m.checkpoint.end == 0 || m.checkpoint.end > len(contacts) {
-		m.checkpoint.end = len(contacts)
+	if m.checkpoint.end == 0 || m.checkpoint.end > len(regs) {
+		m.checkpoint.end = len(regs)
 	}
 
 	// Do not allow a start larger than the # of destinations
-	if m.checkpoint.start > len(contacts) {
+	if m.checkpoint.start > len(regs) {
 		return nil, fmt.Errorf(
 			"interval start value (%d) is greater than number of destinations (%d)",
 			m.checkpoint.start,
-			len(contacts))
+			len(regs))
 	}
 
-	contactMap := make(map[string]struct{}, len(contacts))
-	for _, c := range contacts[m.checkpoint.start:m.checkpoint.end] {
+	contactMap := make(map[string]struct{}, len(regs))
+	for _, c := range regs[m.checkpoint.start:m.checkpoint.end] {
 		// Get the email address for the reg ID
 		emails, err := emailsForReg(c.ID, m.dbMap)
 		if err != nil {

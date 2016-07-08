@@ -349,23 +349,23 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 }
 
 func TestResolveEmails(t *testing.T) {
-	// Start with three contacts. Note: the IDs have been matched with fake
+	// Start with three reg. IDs. Note: the IDs have been matched with fake
 	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
 	// more test cases here you must also add the corresponding DB result in the
 	// mock.
-	contacts := []contact{
-		contact{
+	regs := []regID{
+		regID{
 			ID: 1,
 		},
-		contact{
+		regID{
 			ID: 2,
 		},
-		contact{
+		regID{
 			ID: 3,
 		},
 	}
-	contactsJSON, err := json.Marshal(contacts)
-	test.AssertNotError(t, err, "failed to marshal test contacts")
+	contactsJSON, err := json.Marshal(regs)
+	test.AssertNotError(t, err, "failed to marshal test regs")
 
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
