@@ -29,7 +29,6 @@ boulder:
       - brabbitmq:boulder-rabbitmq
 bhsm:
     image: letsencrypt/boulder-hsm:2016-07-08
-    dockerfile: hsm/Dockerfile
 bmysql:
     image: mariadb:10.1
     net: bridge
