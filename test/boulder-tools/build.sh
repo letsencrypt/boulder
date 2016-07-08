@@ -53,8 +53,15 @@ git clone https://github.com/SUNET/pkcs11-proxy && \
   cmake . && make && make install && \
   cd -
 
+# Setup SoftHSM
+echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
+pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-token --label token_label --so-pin 1234
+pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+
 gem install fpm
 
+# We can't remove libseccomp-dev as it contains a shared object that is required
+# for pkcs11-proxy to run properly
 apt-get autoremove -y build-essential cmake libssl-dev
 apt-get clean -y
 
