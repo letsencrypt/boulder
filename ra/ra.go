@@ -30,17 +30,6 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
-// DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
-// When used with a 90-day cert lifetime, this allows creation of certs that will
-// cover a whole year, plus a grace period of a month.
-// TODO(jsha): Read from a config file.
-const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
-
-// DefaultPendingAuthorizationLifetime is one week.  If you can't respond to a
-// challenge this quickly, then you need to request a new challenge.
-// TODO(rlb): Read from a config file
-const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
-
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
 // initialized with everything else in NewRegistrationAuthority() then multiple
 // invocations of the constructor (e.g from unit tests) will panic with a "Reuse
@@ -89,14 +78,16 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	forceCNFromSAN bool,
 	reuseValidAuthz bool,
+	authorizationLifetime time.Duration,
+	pendingAuthorizationLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		authorizationLifetime:        DefaultAuthorizationLifetime,
-		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
+		authorizationLifetime:        authorizationLifetime,
+		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
