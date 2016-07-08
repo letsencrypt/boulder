@@ -22,6 +22,8 @@ TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 GITHUB_SECRET_FILE="/tmp/github-secret.json"
 
+CERTBOT_COMMIT="031b41a5850682a1a3b9fd47f9da3e0d230d4311"
+
 start_context() {
   CONTEXT="$1"
   printf "[%16s] Starting\n" ${CONTEXT}
@@ -181,9 +183,8 @@ if [[ "$RUN" =~ "integration" ]] ; then
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    run git clone -b v0.8.0 \
-      https://www.github.com/certbot/certbot.git \
-      $CERTBOT_PATH || exit 1
+    run git clone https://www.github.com/certbot/certbot.git $CERTBOT_PATH || exit 1
+    run pushd $CERTBOT_PATH && git checkout $CERTBOT_COMMIT || exit 1 && popd
   fi
 
   if ! type certbot >/dev/null 2>/dev/null; then
