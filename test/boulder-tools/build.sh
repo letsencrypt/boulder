@@ -26,7 +26,8 @@ apt-get install -y --no-install-recommends \
   build-essential \
   cmake \
   libssl-dev \
-  libseccomp-dev &
+  libseccomp-dev \
+  opensc &
 
 # Install port forwarder, database migration tool, and testing tools.
 GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \

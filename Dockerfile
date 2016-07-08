@@ -1,4 +1,4 @@
-FROM letsencrypt/boulder-tools:2016-07-05
+FROM letsencrypt/boulder-tools:2016-07-08
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 8053 8055

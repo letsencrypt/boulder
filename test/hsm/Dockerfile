@@ -1,4 +1,4 @@
-FROM letsencrypt/boulder-tools:2016-07-05
+FROM letsencrypt/boulder-tools:2016-07-08
 MAINTAINER Roland Bracewell Shoemaker <roland@letsencrypt.org>
 
 RUN echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
