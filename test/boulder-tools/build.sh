@@ -44,7 +44,8 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
 
 wait
 
-# Install pkcs11-proxy
+# Install pkcs11-proxy. Checked out commit was master HEAD at time
+# of writing
 git clone https://github.com/SUNET/pkcs11-proxy && \
   cd pkcs11-proxy && \
   git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
