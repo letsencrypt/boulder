@@ -30,7 +30,9 @@ MYSQL_CONTAINER=1 $DIR/create_db.sh
 # Set up rabbitmq exchange
 rabbitmq-setup -server amqp://boulder-rabbitmq
 
-# Make sure SoftHSM container is up and using the correct key
+# Delaying loading private key into SoftHSM container until now so that switching
+# out the signing key doesn't require rebuilding the boulder-tools image. Only
+# convert key to DER once per container.
 wait_tcp_port boulder-hsm 5657
 if [ ! -f test/test-ca.key.der ]; then
     openssl rsa -in test/test-ca.key -inform pem -out test/test-ca.key.der -outform der
