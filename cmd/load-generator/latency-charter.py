@@ -23,37 +23,39 @@ randAx.plot(0, 0, color='red', label='99th quantile')
 handles, labels = randAx.get_legend_handles_labels()
 
 # big ol' plotting method
-def plot_section(data, started, stopped, title, outputPath):
-    h = len(data.keys())
+def plot_section(all_data, title, outputPath):
+    actions = all_data.groupby('action')
+    h = len(actions.groups)
     matplotlib.rcParams['figure.figsize'] = 18, 3 * h
 
     fig, axes = plt.subplots(h, 3)
-    fig.legend(handles, labels, loc=9, ncol=6, fontsize=16, framealpha=0, bbox_to_anchor=[0.5, 0.95])
+    fig.legend(handles, labels, ncol=6, fontsize=16, framealpha=0, loc='lower center')
     fig.suptitle(title, fontsize=20)
-    plt.subplots_adjust(wspace=0.275, hspace=0.5) #, top=0.95, left=0.05, right=0.95, bottom=0.04)
+    plt.subplots_adjust(wspace=0.275, hspace=0.5, bottom=0.01) #, left=0.05, right=0.95, bottom=0.04)
     if h < 3:
         plt.subplots_adjust(top=0.8)
     else:
         plt.subplots_adjust(top=0.92)
 
     # figure out left and right datetime bounds from started and stopped
-    started = pandas.to_datetime(started)
-    stopped = pandas.to_datetime(stopped)
+    started = all_data['sent'].min()
+    stopped = all_data['finished'].max()
 
     i = 0
-    for section in data.keys():
+    for section in actions.groups.keys():
         ax = axes[i][0]
         ax.set_title(section)
         ax.set_xlim(started, stopped)
         ax2 = axes[i][2]
         ax2.set_xlim(started, stopped)
+        ax3 = axes[i][1]
+        ax3.set_xlim(started, stopped)
 
-        calls = pandas.DataFrame(data[section])
-        calls['finished'] = pandas.to_datetime(calls['finished']).astype(datetime.datetime)
-        calls['sent'] = pandas.to_datetime(calls['sent']).astype(datetime.datetime)
-        calls['took'] = calls['took'].divide(1000000)
+        calls = actions.get_group(section)
         tookMax = calls['took'].max()
         ax.set_ylim(0, tookMax+tookMax*0.1)
+        ax2.set_ylim(0, tookMax+tookMax*0.1)
+        ax3.set_ylim(0, tookMax+tookMax*0.1)
 
         groups = calls.groupby('type')
         if groups.groups.get('error', False):
@@ -62,7 +64,7 @@ def plot_section(data, started, stopped, title, outputPath):
 
             bad_rate = bad.set_index('finished')
             bad_rate['rate'] = [0] * len(bad_rate.index)
-            bad_rate = bad_rate.resample('10S', how='count')
+            bad_rate = bad_rate.resample('10S').count()
             bad_rate['rate'] = bad_rate['rate'].divide(10)
             rateMax = bad_rate['rate'].max()
             ax2.plot_date(bad_rate.index, bad_rate['rate'], linestyle='-', marker='', color='red', label='error')
@@ -72,7 +74,7 @@ def plot_section(data, started, stopped, title, outputPath):
 
             good_rate = good.set_index('finished')
             good_rate['rate'] = [0] * len(good_rate.index)
-            good_rate = good_rate.resample('10S', how='count')
+            good_rate = good_rate.resample('10S').count()
             good_rate['rate'] = good_rate['rate'].divide(10)
             rateMax = good_rate['rate'].max()
             ax2.plot_date(good_rate.index, good_rate['rate'], linestyle='-', marker='', color='green', label='good')
@@ -83,7 +85,7 @@ def plot_section(data, started, stopped, title, outputPath):
         sent_rate = pandas.DataFrame(calls['sent'])
         sent_rate = sent_rate.set_index('sent')
         sent_rate['rate'] = [0] * len(sent_rate.index)
-        sent_rate = sent_rate.resample('10S', how='count')
+        sent_rate = sent_rate.resample('10S').count()
         sent_rate['rate'] = sent_rate['rate'].divide(10)
         if sent_rate['rate'].max() > rateMax:
             rateMax = sent_rate['rate'].max()
@@ -92,26 +94,23 @@ def plot_section(data, started, stopped, title, outputPath):
         # ax2.grid(False)
         ax2.set_ylabel('Rate (per second)')
 
-        ax3 = axes[i][1]
-        ax3.set_xlim(started, stopped)
-        ax3.set_ylim(0, tookMax+tookMax*0.1)
-
         calls = calls.set_index('finished')
         calls = calls.sort_index()
         quan = pandas.DataFrame(calls['took'])
-        for q, c in [[50, 'green'], [90, 'orange'], [99, 'red']]:
-            quanN = quan.resample('10S', how=lambda x: np.percentile(x, q=q)).fillna(0)
-            if len(quanN) > 0:
-                ax3.plot(quanN.index, quanN['took'], color=c)
+        for q, c in [[.5, 'green'], [.9, 'orange'], [.99, 'red']]:
+            quanN = quan.rolling(25, center=True).quantile(q)
+            ax3.plot(quanN['took'].index, quanN['took'], color=c)
 
         # ax3.grid(False)
-        ax3.set_ylabel('Latency (ms)')
+        ax3.set_ylabel('Latency quantiles (ms)')
 
         i += 1
 
     for ax in fig.axes:
         matplotlib.pyplot.sca(ax)
         plt.xticks(rotation=30, ha='right')
+        majorFormatter = mpl.dates.DateFormatter('%H:%M:%S')
+        ax.xaxis.set_major_formatter(majorFormatter)
 
     fig.savefig(outputPath)
 
@@ -119,13 +118,17 @@ def plot_section(data, started, stopped, title, outputPath):
 parser = argparse.ArgumentParser()
 parser.add_argument('chartData', type=str, help='Path to file containing JSON chart output from load-generator')
 parser.add_argument('--output', type=str, help='Path to save output to', default='latency-chart.png')
+parser.add_argument('--title', type=str, help='Chart title')
 args = parser.parse_args()
 
-with open(args.chartData) as data_file:
-    stuff = json.load(data_file)
+with open(args.chartDate) as data_file:
+    stuff = []
+    for l in data_file.readlines():
+        stuff.append(json.loads(l))
 
-if not stuff.get('metrics', False) or not stuff.get('started', False) or not stuff.get('stopped', False) or not stuff.get('title', False):
-    print "BAD"
-    os.exit(1)
+df = pandas.DataFrame(stuff)
+df['finished'] = pandas.to_datetime(df['finished']).astype(datetime.datetime)
+df['sent'] = pandas.to_datetime(df['sent']).astype(datetime.datetime)
+df['took'] = df['took'].divide(1000000)
 
-plot_section(stuff['metrics'], stuff['started'], stuff['stopped'], stuff['title'], args.output)
+plot_section(df, args.title, args.outputPath)
