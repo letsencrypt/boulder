@@ -22,6 +22,11 @@ TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 GITHUB_SECRET_FILE="/tmp/github-secret.json"
 
+# The commit hash of the Certbot repo to checkout and use for integration tests.
+
+# Note: This commit is only used to acquire the *tests* - we actually run the
+# `certbot` command installed in the `boulder-tools` docker image from
+# jessie-backports.
 CERTBOT_COMMIT="031b41a5850682a1a3b9fd47f9da3e0d230d4311"
 
 start_context() {
