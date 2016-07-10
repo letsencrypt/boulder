@@ -34,29 +34,6 @@
     }
   },
 
-  "mailer": {
-    "server": "localhost",
-    "port": "9380",
-    "username": "cert-master@example.com",
-    "from": "Expiry bot <test@example.com>",
-    "passwordFile": "test/secrets/smtp_password",
-    "dbConnectFile": "test/secrets/mailer_dburl",
-    "maxDBConns": 10,
-    "messageLimit": 0,
-    "nagTimes": ["24h", "72h", "168h", "336h"],
-    "nagCheckInterval": "24h",
-    "emailTemplate": "test/example-expiration-template",
-    "debugAddr": "localhost:8008",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "common": {
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",

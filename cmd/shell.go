@@ -93,11 +93,6 @@ func (as *AppShell) Run() {
 			config = as.Config(c, config)
 		}
 
-		// Provide default values for each service's AMQP config section.
-		if config.Mailer.AMQP == nil {
-			config.Mailer.AMQP = config.AMQP
-		}
-
 		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
 		logger.Info(as.VersionString())
 
