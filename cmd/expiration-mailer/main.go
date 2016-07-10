@@ -336,9 +336,12 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(clientName)
 
-	// Prefer the command line flag cert_limit
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
+	}
+	// Default to 100 if no certLimit is set
+	if c.Mailer.CertLimit == 0 {
+		c.Mailer.CertLimit = 100
 	}
 
 	// Configure DB
