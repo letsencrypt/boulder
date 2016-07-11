@@ -68,5 +68,5 @@ func (f *File) Add(action string, sent, finished time.Time, pType string) {
 // Close stops f.write() and closes the file, any remaining metrics will be discarded
 func (f *File) Close() {
 	f.die <- struct{}{}
-	f.f.Close()
+	_ = f.f.Close()
 }
