@@ -11,7 +11,7 @@ deb-src https://deb.nodesource.com/node_4.x trusty main
 deb http://ftp.debian.org/debian jessie-backports main
 EOAPT
 apt-get update
-apt-get install -y --no-install-recommends  -t jessie-backports letsencrypt python-letsencrypt-apache
+apt-get install -y --no-install-recommends  -t jessie-backports certbot python-certbot python-certbot-apache python-cffi
 
 apt-get install -y --no-install-recommends \
   libltdl-dev \
@@ -21,8 +21,13 @@ apt-get install -y --no-install-recommends \
   ruby \
   ruby-dev \
   rsyslog \
+  protobuf-compiler \
   softhsm \
-  protobuf-compiler &
+  build-essential \
+  cmake \
+  libssl-dev \
+  libseccomp-dev \
+  opensc &
 
 # Install port forwarder, database migration tool, and testing tools.
 GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
@@ -40,6 +45,24 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
 
 wait
 
+# Install pkcs11-proxy. Checked out commit was master HEAD at time
+# of writing
+git clone https://github.com/SUNET/pkcs11-proxy && \
+  cd pkcs11-proxy && \
+  git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
+  cmake . && make && make install && \
+  cd -
+
+# Setup SoftHSM
+echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
+pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-token --label token_label --so-pin 1234
+pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+
 gem install fpm
+
+# We can't remove libseccomp-dev as it contains a shared object that is required
+# for pkcs11-proxy to run properly
+apt-get autoremove -y build-essential cmake libssl-dev
+apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

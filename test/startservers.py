@@ -44,9 +44,12 @@ def install(race_detection):
     return subprocess.call(cmd, shell=True) == 0
 
 def run(cmd, race_detection):
+    e = os.environ.copy()
+    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
+    e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec ./bin/%s""" % cmd
-    p = subprocess.Popen(cmd, shell=True)
+    cmd = """exec ./bin/%s""" % cmd
+    p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
 
