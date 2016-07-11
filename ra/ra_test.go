@@ -414,6 +414,48 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
+type NoUpdateSA struct {
+	mocks.StorageAuthority
+}
+
+func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ core.Registration) error {
+	return fmt.Errorf("UpdateRegistration() is mocked to always error")
+}
+
+func TestUpdateRegistrationSame(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+
+	// Make a new registration with AccountKeyC and a Contact
+	input := core.Registration{
+		Key:       AccountKeyC,
+		Contact:   &[]*core.AcmeURL{mailto},
+		Agreement: "I agreed",
+		InitialIP: net.ParseIP("5.0.5.0"),
+	}
+	createResult, err := ra.NewRegistration(ctx, input)
+	test.AssertNotError(t, err, "Could not create new registration")
+	id := createResult.ID
+
+	// Switch to a mock SA that will always error if UpdateRegistration() is called
+	ra.SA = &NoUpdateSA{}
+
+	// Make an update to the registration with the same Contact & Agreement values.
+	updateSame := core.Registration{
+		ID:        id,
+		Key:       AccountKeyC,
+		Contact:   &[]*core.AcmeURL{mailto},
+		Agreement: "I agreed",
+	}
+
+	// The update operation should *not* error, even with the NoUpdateSA because
+	// UpdateRegistration() should not be called when the update content doesn't
+	// actually differ from the existing content
+	_, err = ra.UpdateRegistration(ctx, input, updateSame)
+	test.AssertNotError(t, err, "Error updating registration")
+}
+
 func TestNewAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

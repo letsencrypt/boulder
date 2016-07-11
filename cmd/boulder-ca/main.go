@@ -27,13 +27,13 @@ const clientName = "CA"
 type config struct {
 	CA cmd.CAConfig
 
-	*cmd.AllowedSigningAlgos
+	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 
-	cmd.StatsdConfig
+	Statsd cmd.StatsdConfig
 
-	cmd.SyslogConfig
+	Syslog cmd.SyslogConfig
 
 	Common struct {
 		// Path to a PEM-encoded copy of the issuer certificate.
@@ -132,7 +132,7 @@ func main() {
 
 	go cmd.DebugServer(c.CA.DebugAddr)
 
-	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -155,7 +155,7 @@ func main() {
 		clock.Default(),
 		stats,
 		issuers,
-		c.KeyPolicy(),
+		c.AllowedSigningAlgos.KeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa

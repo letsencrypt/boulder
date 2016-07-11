@@ -899,6 +899,75 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
+type FailureRegistrationAuthority struct{}
+
+func (ra *FailureRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
+	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+	return fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
+	return fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func TestEmptyRegistration(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	// Use the FailureRegistrationAuthority to ensure that if any method of the RA
+	// is invoked for this Registration post that the test fails. We explicitly
+	// want to test that the WFE returns for empty reg updates without consulting
+	// the RA or SA.
+	wfe.RA = &FailureRegistrationAuthority{}
+
+	emptyReg := `{"resource":"reg"}`
+	emptyBody, err := signer.Sign([]byte(emptyReg))
+	test.AssertNotError(t, err, "Unable to sign emptyBody")
+
+	// Send a registration update with the trivial body
+	wfe.Registration(
+		ctx,
+		newRequestEvent(),
+		responseWriter,
+		makePostRequestWithPath("1", emptyBody.FullSerialize()))
+
+	// There should be no error, particularly from the FailureRegistrationAuthority
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	// There shouldn't be a Contact or Agreement in the response
+	test.AssertNotContains(t, responseWriter.Body.String(), "Contact")
+	test.AssertNotContains(t, responseWriter.Body.String(), "Agreement")
+	responseWriter.Body.Reset()
+}
+
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()

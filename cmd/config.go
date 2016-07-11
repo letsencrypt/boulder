@@ -54,34 +54,6 @@ type Config struct {
 		EmailTemplate string
 	}
 
-	OCSPResponder struct {
-		ServiceConfig
-		DBConfig
-
-		// Source indicates the source of pre-signed OCSP responses to be used. It
-		// can be a DBConnect string or a file URL. The file URL style is used
-		// when responding from a static file for intermediates and roots.
-		// If DBConfig has non-empty fields, it takes precedence over this.
-		Source string
-
-		Path          string
-		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Control response
-		// header. It is a time.Duration formatted string.
-		MaxAge ConfigDuration
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-	}
-
-	OCSPUpdater OCSPUpdaterConfig
-
-	Publisher struct {
-		ServiceConfig
-		SubmissionTimeout              ConfigDuration
-		MaxConcurrentRPCServerRequests int64
-	}
-
 	PA PAConfig
 
 	Common struct {

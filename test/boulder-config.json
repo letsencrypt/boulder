@@ -35,51 +35,6 @@
     }
   },
 
-  "ocspResponder": {
-    "source": "mysql+tcp://ocsp_resp@boulder-mysql:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
-    "maxDBConns": 10,
-    "path": "/",
-    "listenAddress": "0.0.0.0:4002",
-    "maxAge": "10s",
-    "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
-    "debugAddr": "localhost:8005"
-  },
-
-  "ocspUpdater": {
-    "dbConnectFile": "test/secrets/ocsp_updater_dburl",
-    "maxDBConns": 10,
-    "newCertificateWindow": "1s",
-    "oldOCSPWindow": "2s",
-    "missingSCTWindow": "1m",
-    "revokedCertificateWindow": "1s",
-    "newCertificateBatchSize": 1000,
-    "oldOCSPBatchSize": 5000,
-    "missingSCTBatchSize": 5000,
-    "revokedCertificateBatchSize": 1000,
-    "ocspMinTimeToExpiry": "72h",
-    "oldestIssuedSCT": "72h",
-    "signFailureBackoffFactor": 1.2,
-    "signFailureBackoffMax": "30m",
-    "debugAddr": "localhost:8006",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
   "mailer": {
     "server": "localhost",
     "port": "9380",
@@ -96,21 +51,6 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
-    }
-  },
-
-  "publisher": {
-    "maxConcurrentRPCServerRequests": 16,
-    "submissionTimeout": "5s",
-    "debugAddr": "localhost:8009",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

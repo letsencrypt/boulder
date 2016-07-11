@@ -43,6 +43,18 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
+// Because we don't know when this init will be called with respect to
+// flag.Parse() and other flag definitions, we can't rely on the regular
+// flag mechanism. But this one is fine.
+func init() {
+	for _, v := range os.Args {
+		if v == "--version" || v == "-version" {
+			fmt.Println(Version())
+			os.Exit(0)
+		}
+	}
+}
+
 // AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config, metrics.Statter, blog.Logger)
@@ -96,18 +108,6 @@ func (as *AppShell) Run() {
 		// Provide default values for each service's AMQP config section.
 		if config.Mailer.AMQP == nil {
 			config.Mailer.AMQP = config.AMQP
-		}
-		if config.OCSPUpdater.AMQP == nil {
-			config.OCSPUpdater.AMQP = config.AMQP
-		}
-		if config.OCSPResponder.AMQP == nil {
-			config.OCSPResponder.AMQP = config.AMQP
-		}
-		if config.Publisher.AMQP == nil {
-			config.Publisher.AMQP = config.AMQP
-			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
-				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
-			}
 		}
 
 		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)

@@ -52,13 +52,13 @@ type config struct {
 		ReuseValidAuthz bool
 	}
 
-	*cmd.AllowedSigningAlgos
+	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 
-	cmd.StatsdConfig
+	Statsd cmd.StatsdConfig
 
-	cmd.SyslogConfig
+	Syslog cmd.SyslogConfig
 
 	Common struct {
 		DNSResolver               string
@@ -81,7 +81,7 @@ func main() {
 
 	go cmd.DebugServer(c.RA.DebugAddr)
 
-	stats, logger := cmd.StatsAndLogging(c.StatsdConfig, c.SyslogConfig)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
