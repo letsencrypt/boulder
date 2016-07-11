@@ -36,3 +36,5 @@ _testmain.go
 *.coverprofile
 
 tags
+
+test/test-ca.key.der
