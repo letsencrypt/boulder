@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v74",
+	"GodepVersion": "v69",
 	"Packages": [
 		"./..."
 	],
@@ -165,15 +165,15 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12/internal/rc2",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
