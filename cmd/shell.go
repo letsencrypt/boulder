@@ -42,6 +42,18 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
+// Because we don't know when this init will be called with respect to
+// flag.Parse() and other flag definitions, we can't rely on the regular
+// flag mechanism. But this one is fine.
+func init() {
+	for _, v := range os.Args {
+		if v == "--version" || v == "-version" {
+			fmt.Println(Version())
+			os.Exit(0)
+		}
+	}
+}
+
 // Version returns a string representing the version of boulder running.
 func Version() string {
 	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())

@@ -30,6 +30,15 @@ MYSQL_CONTAINER=1 $DIR/create_db.sh
 # Set up rabbitmq exchange
 rabbitmq-setup -server amqp://boulder-rabbitmq
 
+# Delaying loading private key into SoftHSM container until now so that switching
+# out the signing key doesn't require rebuilding the boulder-tools image. Only
+# convert key to DER once per container.
+wait_tcp_port boulder-hsm 5657
+if [ ! -f test/test-ca.key.der ]; then
+    openssl rsa -in test/test-ca.key -inform pem -out test/test-ca.key.der -outform der
+fi
+PKCS11_PROXY_SOCKET="tcp://boulder-hsm:5657" pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so --write-object test/test-ca.key.der --type privkey --label key_label --pin 5678 --login --so-pin 1234
+
 if [[ $# -eq 0 ]]; then
     exec ./start.py
 fi
