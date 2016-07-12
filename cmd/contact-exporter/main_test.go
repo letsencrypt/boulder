@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"net"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -57,42 +56,53 @@ func TestFindContacts(t *testing.T) {
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	// Run findContacts - since there are two registrations with unexpired certs
-	// we should get exactly two contacts back for RegA and RegC. RegB should
-	// *not* be present since their certificate has already expired. Similarly,
-	// RegD should *not* be present since its only contact is a "tel:" prefixed
-	// ACMEUrl. Since the results are sorted, RegC should be first.
+	// Run findContacts - since there are three registrations with unexpired certs
+	// we should get exactly three contacts back: RegA, RegC and RegD. RegB should
+	// *not* be present since their certificate has already expired. Unlike
+	// previous versions of this test RegD is not filtered out for having a `tel:`
+	// contact field anymore - this is the duty of the notify-mailer.
 	contacts, err = testCtx.c.findContacts()
 	test.AssertNotError(t, err, "findContacts() produced error")
-	test.AssertEquals(t, len(contacts), 2)
-	test.AssertEquals(t, contacts[0], emailCRaw)
-	test.AssertEquals(t, contacts[1], emailARaw)
+	test.AssertEquals(t, len(contacts), 3)
+	test.AssertEquals(t, contacts[0].ID, regA.ID)
+	test.AssertEquals(t, contacts[1].ID, regC.ID)
+	test.AssertEquals(t, contacts[2].ID, regD.ID)
 }
 
-func TestWriteContacts(t *testing.T) {
-	expectedOutput := `
-example@example.com
-test-example@example.com
-test-test-test@example.com
-`
-	contacts := strings.Split(expectedOutput, "\n")
+func exampleContacts() []contact {
+	return []contact{
+		contact{
+			ID: 1,
+		},
+		contact{
+			ID: 2,
+		},
+		contact{
+			ID: 3,
+		},
+	}
+}
 
+func TestWriteOutput(t *testing.T) {
+	expected := `[{"id":1},{"id":2},{"id":3}]`
+
+	contacts := exampleContacts()
 	dir := os.TempDir()
 	f, err := ioutil.TempFile(dir, "contacts_test")
 	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
 
 	// Writing the contacts with no outFile should print to stdout
 	err = writeContacts(contacts, "")
-	test.AssertNotError(t, err, "writeContacts() with no outfile produced error")
+	test.AssertNotError(t, err, "writeContacts with no outfile produced error")
 
 	// Writing the contacts to an outFile should produce the correct results
 	err = writeContacts(contacts, f.Name())
-	test.AssertNotError(t, err, fmt.Sprintf("writeContacts() produced an error writing to %s", f.Name()))
+	test.AssertNotError(t, err, fmt.Sprintf("writeContacts produced an error writing to %s", f.Name()))
 
 	contents, err := ioutil.ReadFile(f.Name())
 	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
 
-	test.AssertEquals(t, string(contents), expectedOutput+"\n")
+	test.AssertEquals(t, string(contents), expected+"\n")
 }
 
 type testCtx struct {

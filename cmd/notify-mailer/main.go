@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
-
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -22,11 +20,11 @@ import (
 type mailer struct {
 	clk           clock.Clock
 	log           blog.Logger
-	dbMap         *gorp.DbMap
+	dbMap         dbSelector
 	mailer        bmail.Mailer
 	subject       string
 	emailTemplate string
-	destinations  []string
+	destinations  []byte
 	checkpoint    interval
 	sleepInterval time.Duration
 }
@@ -34,6 +32,15 @@ type mailer struct {
 type interval struct {
 	start int
 	end   int
+}
+
+type regID struct {
+	ID int
+}
+
+type contactJSON struct {
+	ID      int
+	Contact []byte
 }
 
 func (i *interval) ok() error {
@@ -58,14 +65,6 @@ func (m *mailer) ok() error {
 		return checkpointErr
 	}
 
-	// Do not allow a start larger than the # of destinations
-	if m.checkpoint.start > len(m.destinations) {
-		return fmt.Errorf(
-			"interval start value (%d) is greater than number of destinations (%d)",
-			m.checkpoint.start,
-			len(m.destinations))
-	}
-
 	// Do not allow a negative sleep interval
 	if m.sleepInterval < 0 {
 		return fmt.Errorf(
@@ -79,11 +78,13 @@ func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
 	}
-	// If there is no endpoint specified, use the total # of destinations
-	if m.checkpoint.end == 0 || m.checkpoint.end > len(m.destinations) {
-		m.checkpoint.end = len(m.destinations)
+
+	destinations, err := m.resolveDestinations()
+	if err != nil {
+		return err
 	}
-	for _, dest := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
+
+	for _, dest := range destinations {
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -94,6 +95,81 @@ func (m *mailer) run() error {
 		m.clk.Sleep(m.sleepInterval)
 	}
 	return nil
+}
+
+// Resolves each reg ID to the most up-to-date contact email.
+func (m *mailer) resolveDestinations() ([]string, error) {
+	var regs []regID
+	err := json.Unmarshal(m.destinations, &regs)
+	if err != nil {
+		return nil, err
+	}
+
+	// If there is no endpoint specified, use the total # of destinations
+	if m.checkpoint.end == 0 || m.checkpoint.end > len(regs) {
+		m.checkpoint.end = len(regs)
+	}
+
+	// Do not allow a start larger than the # of destinations
+	if m.checkpoint.start > len(regs) {
+		return nil, fmt.Errorf(
+			"interval start value (%d) is greater than number of destinations (%d)",
+			m.checkpoint.start,
+			len(regs))
+	}
+
+	var contactsList []string
+	for _, c := range regs[m.checkpoint.start:m.checkpoint.end] {
+		// Get the email address for the reg ID
+		emails, err := emailsForReg(c.ID, m.dbMap)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, email := range emails {
+			if strings.TrimSpace(email) == "" {
+				continue
+			}
+			contactsList = append(contactsList, email)
+		}
+	}
+	return contactsList, nil
+}
+
+// Since the only thing we use from gorp is the SelectOne method on the
+// gorp.DbMap object, we just define an interface with that method
+// instead of importing all of gorp. This facilitates mock implementations for
+// unit tests
+type dbSelector interface {
+	SelectOne(holder interface{}, query string, args ...interface{}) error
+}
+
+// Finds the email addresses associated with a reg ID
+func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
+	var contact contactJSON
+	err := dbMap.SelectOne(&contact,
+		`SELECT id, contact
+		FROM registrations
+		WHERE contact != 'null' AND id = :id;`,
+		map[string]interface{}{
+			"id": id,
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	var contactFields []string
+	var addresses []string
+	err = json.Unmarshal(contact.Contact, &contactFields)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range contactFields {
+		if strings.HasPrefix(entry, "mailto:") {
+			addresses = append(addresses, strings.TrimPrefix(entry, "mailto:"))
+		}
+	}
+	return addresses, nil
 }
 
 const usageIntro = `
@@ -210,7 +286,6 @@ func main() {
 
 	toBody, err := ioutil.ReadFile(*toFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *toFile))
-	destinations := strings.Split(string(toBody), "\n")
 
 	checkpointRange := interval{
 		start: *start,
@@ -244,7 +319,7 @@ func main() {
 		dbMap:         dbMap,
 		mailer:        mailClient,
 		subject:       *subject,
-		destinations:  destinations,
+		destinations:  toBody,
 		emailTemplate: string(body),
 		checkpoint:    checkpointRange,
 		sleepInterval: *sleep,
