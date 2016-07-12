@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import datetime
@@ -31,7 +32,7 @@ def plot_section(all_data, title, outputPath):
     fig, axes = plt.subplots(h, 3)
     fig.legend(handles, labels, ncol=6, fontsize=16, framealpha=0, loc='lower center')
     fig.suptitle(title, fontsize=20)
-    plt.subplots_adjust(wspace=0.275, hspace=0.5, bottom=0.01) #, left=0.05, right=0.95, bottom=0.04)
+    plt.subplots_adjust(wspace=0.275, hspace=0.5) #, left=0.05, right=0.95, bottom=0.04)
     if h < 3:
         plt.subplots_adjust(top=0.8)
     else:
@@ -109,7 +110,7 @@ def plot_section(all_data, title, outputPath):
     for ax in fig.axes:
         matplotlib.pyplot.sca(ax)
         plt.xticks(rotation=30, ha='right')
-        majorFormatter = mpl.dates.DateFormatter('%H:%M:%S')
+        majorFormatter = matplotlib.dates.DateFormatter('%H:%M:%S')
         ax.xaxis.set_major_formatter(majorFormatter)
 
     fig.savefig(outputPath)
@@ -121,7 +122,7 @@ parser.add_argument('--output', type=str, help='Path to save output to', default
 parser.add_argument('--title', type=str, help='Chart title')
 args = parser.parse_args()
 
-with open(args.chartDate) as data_file:
+with open(args.chartData) as data_file:
     stuff = []
     for l in data_file.readlines():
         stuff.append(json.loads(l))
@@ -131,4 +132,4 @@ df['finished'] = pandas.to_datetime(df['finished']).astype(datetime.datetime)
 df['sent'] = pandas.to_datetime(df['sent']).astype(datetime.datetime)
 df['took'] = df['took'].divide(1000000)
 
-plot_section(df, args.title, args.outputPath)
+plot_section(df, args.title, args.output)
