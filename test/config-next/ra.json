@@ -9,6 +9,8 @@
     "maxNames": 1000,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
+    "authorizationLifetimeDays": 300,
+    "pendingAuthorizationLifetimeDays": 7,
     "vaService": {
       "serverAddresses": ["boulder:9092"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
