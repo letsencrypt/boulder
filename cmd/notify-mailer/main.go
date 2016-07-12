@@ -98,7 +98,6 @@ func (m *mailer) run() error {
 }
 
 // Resolves each reg ID to the most up-to-date contact email.
-// The email addresses are returned deduplicated and sorted.
 func (m *mailer) resolveDestinations() ([]string, error) {
 	var regs []regID
 	err := json.Unmarshal(m.destinations, &regs)
