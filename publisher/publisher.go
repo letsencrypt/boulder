@@ -28,7 +28,7 @@ func NewLog(uri, b64PK string) (*Log, error) {
 	if strings.HasSuffix(uri, "/") {
 		uri = uri[0 : len(uri)-2]
 	}
-	client := ctClient.New(uri)
+	client := ctClient.New(uri, nil)
 
 	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
