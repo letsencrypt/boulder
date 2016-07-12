@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"math"
 	netmail "net/mail"
+	"os"
 	"sort"
 	"strings"
 	"text/template"
@@ -16,7 +18,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
@@ -292,96 +293,124 @@ func (ds durationSlice) Swap(a, b int) {
 
 const clientName = "ExpirationMailer"
 
+type config struct {
+	Mailer struct {
+		cmd.ServiceConfig
+		cmd.DBConfig
+		cmd.SMTPConfig
+
+		From    string
+		Subject string
+
+		CertLimit int
+		NagTimes  []string
+		// How much earlier (than configured nag intervals) to
+		// send reminders, to account for the expected delay
+		// before the next expiration-mailer invocation.
+		NagCheckInterval string
+		// Path to a text/template email template
+		EmailTemplate string
+	}
+
+	Statsd cmd.StatsdConfig
+
+	Syslog cmd.SyslogConfig
+}
+
 func main() {
-	app := cmd.NewAppShell("expiration-mailer", "Sends certificate expiration emails")
-
-	app.App.Flags = append(app.App.Flags, cli.IntFlag{
-		Name:   "cert_limit",
-		Value:  100,
-		EnvVar: "CERT_LIMIT",
-		Usage:  "Count of certificates to process per expiration period",
-	})
-
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		if c.GlobalInt("cert_limit") > 0 {
-			config.Mailer.CertLimit = c.GlobalInt("cert_limit")
-		}
-		return config
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
-		go cmd.DebugServer(c.Mailer.DebugAddr)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-		// Configure DB
-		dbURL, err := c.Mailer.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
-		cmd.FailOnError(err, "Could not connect to database")
-		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
+	go cmd.DebugServer(c.Mailer.DebugAddr)
 
-		amqpConf := c.Mailer.AMQP
-		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Failed to create SA client")
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	defer logger.AuditPanic()
+	logger.Info(clientName)
 
-		// Load email template
-		emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
-		cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
-		tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
-		cmd.FailOnError(err, "Could not parse email template")
-
-		fromAddress, err := netmail.ParseAddress(c.Mailer.From)
-		cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
-
-		smtpPassword, err := c.Mailer.PasswordConfig.Pass()
-		cmd.FailOnError(err, "Failed to load SMTP password")
-		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
-		err = mailClient.Connect()
-		cmd.FailOnError(err, "Couldn't connect to mail server.")
-		defer func() {
-			_ = mailClient.Close()
-		}()
-
-		nagCheckInterval := defaultNagCheckInterval
-		if s := c.Mailer.NagCheckInterval; s != "" {
-			nagCheckInterval, err = time.ParseDuration(s)
-			if err != nil {
-				logger.AuditErr(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
-				return
-			}
-		}
-
-		var nags durationSlice
-		for _, nagDuration := range c.Mailer.NagTimes {
-			dur, err := time.ParseDuration(nagDuration)
-			if err != nil {
-				logger.AuditErr(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
-				return
-			}
-			nags = append(nags, dur+nagCheckInterval)
-		}
-		// Make sure durations are sorted in increasing order
-		sort.Sort(nags)
-
-		subject := "Certificate expiration notice"
-		if c.Mailer.Subject != "" {
-			subject = c.Mailer.Subject
-		}
-		m := mailer{
-			stats:         stats,
-			subject:       subject,
-			log:           logger,
-			dbMap:         dbMap,
-			rs:            sac,
-			mailer:        mailClient,
-			emailTemplate: tmpl,
-			nagTimes:      nags,
-			limit:         c.Mailer.CertLimit,
-			clk:           cmd.Clock(),
-		}
-
-		err = m.findExpiringCertificates()
-		cmd.FailOnError(err, "expiration-mailer has failed")
+	if *certLimit > 0 {
+		c.Mailer.CertLimit = *certLimit
+	}
+	// Default to 100 if no certLimit is set
+	if c.Mailer.CertLimit == 0 {
+		c.Mailer.CertLimit = 100
 	}
 
-	app.Run()
+	// Configure DB
+	dbURL, err := c.Mailer.DBConfig.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
+	cmd.FailOnError(err, "Could not connect to database")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
+
+	amqpConf := c.Mailer.AMQP
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	cmd.FailOnError(err, "Failed to create SA client")
+
+	// Load email template
+	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
+	cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
+	tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
+	cmd.FailOnError(err, "Could not parse email template")
+
+	fromAddress, err := netmail.ParseAddress(c.Mailer.From)
+	cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
+
+	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
+	cmd.FailOnError(err, "Failed to load SMTP password")
+	mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
+	err = mailClient.Connect()
+	cmd.FailOnError(err, "Couldn't connect to mail server.")
+	defer func() {
+		_ = mailClient.Close()
+	}()
+
+	nagCheckInterval := defaultNagCheckInterval
+	if s := c.Mailer.NagCheckInterval; s != "" {
+		nagCheckInterval, err = time.ParseDuration(s)
+		if err != nil {
+			logger.AuditErr(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+			return
+		}
+	}
+
+	var nags durationSlice
+	for _, nagDuration := range c.Mailer.NagTimes {
+		dur, err := time.ParseDuration(nagDuration)
+		if err != nil {
+			logger.AuditErr(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+			return
+		}
+		nags = append(nags, dur+nagCheckInterval)
+	}
+	// Make sure durations are sorted in increasing order
+	sort.Sort(nags)
+
+	subject := "Certificate expiration notice"
+	if c.Mailer.Subject != "" {
+		subject = c.Mailer.Subject
+	}
+	m := mailer{
+		stats:         stats,
+		subject:       subject,
+		log:           logger,
+		dbMap:         dbMap,
+		rs:            sac,
+		mailer:        mailClient,
+		emailTemplate: tmpl,
+		nagTimes:      nags,
+		limit:         c.Mailer.CertLimit,
+		clk:           cmd.Clock(),
+	}
+
+	err = m.findExpiringCertificates()
+	cmd.FailOnError(err, "expiration-mailer has failed")
 }
