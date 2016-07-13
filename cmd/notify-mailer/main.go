@@ -74,6 +74,18 @@ func (m *mailer) ok() error {
 	return nil
 }
 
+func (m *mailer) printStatus(cur, total int, start time.Time) {
+	// Avoid divide by zero, invalid state
+	if total <= 0 || cur < 0 || cur > total {
+		fmt.Printf("\rnotify-mailer: error - invalid cur (%d) or total (%d)\n", cur, total)
+	}
+	completion := (float32(cur) / total) * 100
+	now := m.clk.Now()
+	elapsed := now.Sub(start)
+	fmt.Printf("\rnotify-mailer: Sending %d of %d [%.2f%%]. Elapsed: %s\n",
+		cur, total, completion, elapsed.String())
+}
+
 func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
@@ -84,7 +96,12 @@ func (m *mailer) run() error {
 		return err
 	}
 
-	for _, dest := range destinations {
+	startTime := m.clk.now()
+
+	for i, dest := range destinations {
+		if !m.quiet {
+			m.printStatus(i, len(destinations), startTime)
+		}
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -240,6 +257,7 @@ func main() {
 	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
 	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
+	quiet := flag.Bool("quiet", false, "Surpress output status line from being printed.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
 	start := flag.Int("start", 0, "Line of input file to start from.")
 	end := flag.Int("end", 99999999, "Line of input file to end before.")
@@ -323,6 +341,7 @@ func main() {
 		emailTemplate: string(body),
 		checkpoint:    checkpointRange,
 		sleepInterval: *sleep,
+		quiet:         *quiet,
 	}
 
 	err = m.run()
