@@ -78,16 +78,17 @@ func (m *mailer) ok() error {
 	return nil
 }
 
-func (m *mailer) printStatus(cur, total int, start time.Time) {
-	// Avoid divide by zero, invalid state
+func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
+	// Should never happen
 	if total <= 0 || cur < 0 || cur > total {
-		fmt.Printf("\rnotify-mailer: error - invalid cur (%d) or total (%d)\n", cur, total)
+		m.log.AuditErr(fmt.Sprintf(
+			"invalid cur (%d) or total (%d)\n", cur, total))
 	}
 	completion := (float32(cur) / float32(total)) * 100
 	now := m.clk.Now()
 	elapsed := now.Sub(start)
-	fmt.Printf("\rnotify-mailer: Sending %d of %d [%.2f%%]. Elapsed: %s\n",
-		cur, total, completion, elapsed.String())
+	m.log.Info("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s\n",
+		to, cur, total, completion, elapsed.String())
 }
 
 func (m *mailer) run() error {
@@ -104,7 +105,7 @@ func (m *mailer) run() error {
 
 	for i, dest := range destinations {
 		if !m.quiet {
-			m.printStatus(i, len(destinations), startTime)
+			m.printStatus(dest, i, len(destinations), startTime)
 		}
 		if strings.TrimSpace(dest) == "" {
 			continue
