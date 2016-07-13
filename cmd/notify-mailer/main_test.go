@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -405,6 +407,44 @@ func TestResolveEmails(t *testing.T) {
 	for i := range expected {
 		test.AssertEquals(t, destinations[i], expected[i])
 	}
+}
+
+func TestStats(t *testing.T) {
+	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
+	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
+
+	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
+	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
+
+	// Use a mock for the mailer stats
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	statter := metrics.NewMockStatter(ctrl)
+
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		stats:         statter,
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "you may have already won!",
+		destinations:  testDestinationsBody,
+		emailTemplate: string(testBody),
+		checkpoint:    interval{start: 0, end: 5},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// We expect the "Sent" stat to be incremented five times, once per message
+	for i := 0; i < 5; i++ {
+		statter.EXPECT().Inc("Mailer.Notifications.Sent", int64(1), float32(1.0))
+	}
+
+	// Run the mailer, five message should have gone out. The mock statter should
+	// be satisfied for all of its EXPECTS()
+	err = m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertEquals(t, len(mc.Messages), 5)
 }
 
 func newFakeClock(t *testing.T) clock.FakeClock {
