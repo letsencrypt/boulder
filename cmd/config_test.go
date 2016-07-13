@@ -17,7 +17,7 @@ func TestDBConfigURL(t *testing.T) {
 			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
-			// Test with a config file that *has* a traoling newline
+			// Test with a config file that *has* a trailing newline
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
 			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
