@@ -10,14 +10,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
 type mailer struct {
+	stats         statsd.Statter
 	clk           clock.Clock
 	log           blog.Logger
 	dbMap         dbSelector
@@ -27,6 +30,7 @@ type mailer struct {
 	destinations  []byte
 	checkpoint    interval
 	sleepInterval time.Duration
+	quiet         bool
 }
 
 type interval struct {
@@ -79,7 +83,7 @@ func (m *mailer) printStatus(cur, total int, start time.Time) {
 	if total <= 0 || cur < 0 || cur > total {
 		fmt.Printf("\rnotify-mailer: error - invalid cur (%d) or total (%d)\n", cur, total)
 	}
-	completion := (float32(cur) / total) * 100
+	completion := (float32(cur) / float32(total)) * 100
 	now := m.clk.Now()
 	elapsed := now.Sub(start)
 	fmt.Printf("\rnotify-mailer: Sending %d of %d [%.2f%%]. Elapsed: %s\n",
@@ -96,7 +100,7 @@ func (m *mailer) run() error {
 		return err
 	}
 
-	startTime := m.clk.now()
+	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
 		if !m.quiet {
@@ -107,8 +111,10 @@ func (m *mailer) run() error {
 		}
 		err := m.mailer.SendMail([]string{dest}, m.subject, m.emailTemplate)
 		if err != nil {
+			m.stats.Inc("Mailer.Notifications.Errors.SendFailure", 1, 1.0)
 			return err
 		}
+		m.stats.Inc("Mailer.Notifications.Sent", 1, 1.0)
 		m.clk.Sleep(m.sleepInterval)
 	}
 	return nil
@@ -267,6 +273,8 @@ func main() {
 			cmd.PasswordConfig
 			cmd.SMTPConfig
 		}
+		Statsd cmd.StatsdConfig
+		Syslog cmd.SyslogConfig
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
@@ -282,18 +290,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
-
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
 
+	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
+	defer log.AuditPanic()
+
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "NotificationMailer"))
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
@@ -332,6 +342,7 @@ func main() {
 	}()
 
 	m := mailer{
+		stats:         stats,
 		clk:           cmd.Clock(),
 		log:           log,
 		dbMap:         dbMap,

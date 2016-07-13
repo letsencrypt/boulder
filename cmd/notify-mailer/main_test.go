@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/mocks"
@@ -52,12 +53,14 @@ func TestSleepInterval(t *testing.T) {
 	const numMessages = 3
 	mc := &mocks.Mailer{}
 	dbMap := mockEmailResolver{}
+	stats, _ := statsd.NewNoopClient(nil)
 
 	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
 	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
 
 	// Set up a mock mailer that sleeps for `sleepLen` seconds
 	m := &mailer{
+		stats:         stats,
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: sleepLen * time.Second,
@@ -78,6 +81,7 @@ func TestSleepInterval(t *testing.T) {
 
 	// Set up a mock mailer that doesn't sleep at all
 	m = &mailer{
+		stats:         stats,
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: 0,
@@ -105,10 +109,12 @@ func TestMailCheckpointing(t *testing.T) {
 	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
 	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
 	mc := &mocks.Mailer{}
+	stats, _ := statsd.NewNoopClient(nil)
 
 	// Create a mailer with a checkpoint interval larger than the number of
 	// destinations
 	m := &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -127,6 +133,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a negative sleep interval
 	m = &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -146,6 +153,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval starting after 4 destinations from
 	// the start of the file
 	m = &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -181,6 +189,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a checkpoint interval ending after 3 destinations
 	m = &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -217,6 +226,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval covering 2 destinations from the
 	// middle of the file
 	m = &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -261,7 +271,9 @@ func TestMessageContent(t *testing.T) {
 
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
+	stats, _ := statsd.NewNoopClient(nil)
 	m := &mailer{
+		stats:         stats,
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
