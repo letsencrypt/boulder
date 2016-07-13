@@ -20,6 +20,12 @@ Or, using docker-compose:
 
     docker-compose up
 
+If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
+images for both the boulder and bhsm containers and re-create them. The quickest way
+to do this is with this command:
+
+    ./docker-rebuild.sh
+
 Slow start
 ----------
 
@@ -36,7 +42,7 @@ install RabbitMQ from https://rabbitmq.com/download.html to get a
 recent version. If you want to save some trouble installing MariaDB and RabbitMQ
 you can run them using Docker:
 
-    docker-compose up -d bmysql brabbitmq
+    docker-compose up -d bmysql brabbitmq bhsm
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
 available in OS repositories, so you will have to install from https://golang.org/dl/.
