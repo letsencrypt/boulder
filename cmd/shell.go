@@ -36,7 +36,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
-	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -55,73 +54,9 @@ func init() {
 	}
 }
 
-// AppShell contains CLI Metadata
-type AppShell struct {
-	Action func(Config, metrics.Statter, blog.Logger)
-	Config func(*cli.Context, Config) Config
-	App    *cli.App
-}
-
 // Version returns a string representing the version of boulder running.
 func Version() string {
 	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
-}
-
-// NewAppShell creates a basic AppShell object containing CLI metadata
-func NewAppShell(name, usage string) (shell *AppShell) {
-	app := cli.NewApp()
-
-	app.Name = name
-	app.Usage = usage
-	app.Version = Version()
-	app.Author = "Boulder contributors"
-	app.Email = "ca-dev@letsencrypt.org"
-
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:   "config",
-			Value:  "config.json",
-			EnvVar: "BOULDER_CONFIG",
-			Usage:  "Path to Config JSON",
-		},
-	}
-
-	return &AppShell{App: app}
-}
-
-// Run begins the application context, reading config and passing
-// control to the default commandline action.
-func (as *AppShell) Run() {
-	as.App.Action = func(c *cli.Context) {
-		configFileName := c.GlobalString("config")
-		configJSON, err := ioutil.ReadFile(configFileName)
-		FailOnError(err, "Unable to read config file")
-
-		var config Config
-		err = json.Unmarshal(configJSON, &config)
-		FailOnError(err, "Failed to read configuration")
-
-		if as.Config != nil {
-			config = as.Config(c, config)
-		}
-
-		// Provide default values for each service's AMQP config section.
-		if config.Mailer.AMQP == nil {
-			config.Mailer.AMQP = config.AMQP
-		}
-
-		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
-		logger.Info(as.VersionString())
-
-		// If as.Action generates a panic, this will log it to syslog.
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer logger.AuditPanic()
-
-		as.Action(config, stats, logger)
-	}
-
-	err := as.App.Run(os.Args)
-	FailOnError(err, "Failed to run application")
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
@@ -173,11 +108,6 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = mysql.SetLogger(mysqlLogger{logger})
 
 	return stats, logger
-}
-
-// VersionString produces a friendly Application version string
-func (as *AppShell) VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", as.App.Name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
@@ -291,8 +221,7 @@ func ReadJSONFile(filename string, out interface{}) error {
 	return nil
 }
 
-// VersionString produces a friendly Application version string. Duplicated
-// from cmd.AppShell, with the exception that it takes a name as an argument.
+// VersionString produces a friendly Application version string.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

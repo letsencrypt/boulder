@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
-	"strings"
 
 	"gopkg.in/gorp.v1"
 
@@ -23,11 +21,16 @@ type contactExporter struct {
 	clk   clock.Clock
 }
 
-func (c contactExporter) findContacts() ([]string, error) {
-	var contactsJSON [][]byte
+type contact struct {
+	ID int64 `json:"id"`
+}
+
+// Find all registration contacts with unexpired certificates.
+func (c contactExporter) findContacts() ([]contact, error) {
+	var contactsList []contact
 	_, err := c.dbMap.Select(
-		&contactsJSON,
-		`SELECT contact AS active_contact
+		&contactsList,
+		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
 			id IN (
@@ -43,40 +46,20 @@ func (c contactExporter) findContacts() ([]string, error) {
 		return nil, err
 	}
 
-	contactMap := make(map[string]struct{}, len(contactsJSON))
-	for _, contactRaw := range contactsJSON {
-		var contactList []string
-		err := json.Unmarshal(contactRaw, &contactList)
-		if err != nil {
-			c.log.AuditErr(
-				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
-					contactRaw, err))
-			continue
-		}
-		for _, entry := range contactList {
-			// Only include email addresses
-			if strings.HasPrefix(entry, "mailto:") {
-				address := strings.TrimPrefix(entry, "mailto:")
-				// Using the contactMap to deduplicate addresses
-				contactMap[address] = struct{}{}
-			}
-		}
-	}
-
-	// Convert the de-dupe'd map back to a slice, sort it
-	var contacts []string
-	for contact := range contactMap {
-		contacts = append(contacts, contact)
-	}
-	sort.Strings(contacts)
-	return contacts, nil
+	return contactsList, nil
 }
 
-func writeContacts(contacts []string, outFile string) error {
-	data := []byte(strings.Join(contacts, "\n") + "\n")
+// The `writeContacts` function produces a file containing JSON serialized
+// contact objects
+func writeContacts(contactsList []contact, outfile string) error {
+	data, err := json.Marshal(contactsList)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
 
-	if outFile != "" {
-		return ioutil.WriteFile(outFile, data, 0644)
+	if outfile != "" {
+		return ioutil.WriteFile(outfile, data, 0644)
 	} else {
 		fmt.Printf("%s", data)
 		return nil
