@@ -279,7 +279,7 @@ func (m *mailer) findExpiringCertificates() error {
 		// 0: https://github.com/letsencrypt/boulder/issues/2002
 		if len(certs) == m.limit {
 			m.log.Info(fmt.Sprintf(
-				"expiration-mailer: nag group %s expiring certificates at configured capacity (cert limit %d)\n",
+				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
 			statName := fmt.Sprintf("Mailer.Expiration.Errors.Nag-%s.AtCapacity", expiresIn.String())
