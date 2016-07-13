@@ -30,7 +30,6 @@ type mailer struct {
 	destinations  []byte
 	checkpoint    interval
 	sleepInterval time.Duration
-	quiet         bool
 }
 
 type interval struct {
@@ -87,8 +86,8 @@ func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 	completion := (float32(cur) / float32(total)) * 100
 	now := m.clk.Now()
 	elapsed := now.Sub(start)
-	m.log.Info("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s\n",
-		to, cur, total, completion, elapsed.String())
+	m.log.Info(fmt.Sprintf("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s\n",
+		to, cur, total, completion, elapsed.String()))
 }
 
 func (m *mailer) run() error {
@@ -104,9 +103,7 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
-		if !m.quiet {
-			m.printStatus(dest, i, len(destinations), startTime)
-		}
+		m.printStatus(dest, i, len(destinations), startTime)
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -264,7 +261,6 @@ func main() {
 	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
 	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
-	quiet := flag.Bool("quiet", false, "Surpress output status line from being printed.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
 	start := flag.Int("start", 0, "Line of input file to start from.")
 	end := flag.Int("end", 99999999, "Line of input file to end before.")
@@ -353,7 +349,6 @@ func main() {
 		emailTemplate: string(body),
 		checkpoint:    checkpointRange,
 		sleepInterval: *sleep,
-		quiet:         *quiet,
 	}
 
 	err = m.run()
