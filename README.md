@@ -10,21 +10,26 @@ Quickstart
 ------
 
 Boulder has a Dockerfile to make it easy to install and set up all its
-dependencies. This approach is most suitable if you just need to set up Boulder
-for the purpose of testing client software against it. To start Boulder
-in a Docker container, run:
+dependencies. This is how the maintainers work on Boulder, and is our main
+recommended way to run it.
 
-    ./test/run-docker.sh
-
-Or, using docker-compose:
+To start Boulder in a Docker container, run:
 
     docker-compose up
+
+To run tests:
+
+    docker-compose run boulder ./test.sh
+
+To run a specific unittest:
+
+    docker-compose run boulder go test ./ra
 
 Slow start
 ----------
 
-This approach is better if you intend to develop on Boulder frequently, because
-it's challenging to develop inside the Docker container.
+If you can't use the Docker setup, you here are instructions for setting up a
+Boulder development environment without it.
 
 We recommend setting git's [fsckObjects
 setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
@@ -77,7 +82,10 @@ Resolve Go-dependencies, set up a database and RabbitMQ:
 user with the default password, so if you have disabled that account
 or changed the password you may have to adjust the file or recreate the commands.
 
-Start each boulder component with test configs (Ctrl-C kills all):
+Edit the "key" section of test/config/ca.json to replace
+"ConfigFile": "test/test-ca.key-pkcs11.json" with "File": "test/test-ca.key".
+
+Start all boulder components with test configs (Ctrl-C kills all):
 
     ./start.py
 
