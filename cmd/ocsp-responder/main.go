@@ -5,12 +5,12 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
@@ -174,24 +174,9 @@ func main() {
 	config := c.OCSPResponder
 	var source cfocsp.Source
 
-	// DBConfig takes precedence over Source, if present.
-	dbConnect, err := config.DBConfig.URL()
-	cmd.FailOnError(err, "Reading DB config")
-	if dbConnect == "" {
-		dbConnect = config.Source
-	}
-	url, err := url.Parse(dbConnect)
-	cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
-
-	if url.Scheme == "mysql+tcp" {
-		logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-		dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
-		cmd.FailOnError(err, "Could not connect to database")
-		sa.SetSQLDebug(dbMap, logger)
-		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
-		source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
-		cmd.FailOnError(err, "Couldn't load OCSP DB")
-	} else if url.Scheme == "file" {
+	if strings.HasPrefix(config.Source, "file:") {
+		url, err := url.Parse(config.Source)
+		cmd.FailOnError(err, "Source was not a URL")
 		filename := url.Path
 		// Go interprets cwd-relative file urls (file:test/foo.txt) as having the
 		// relative part of the path in the 'Opaque' field.
@@ -201,7 +186,19 @@ func main() {
 		source, err = cfocsp.NewSourceFromFile(filename)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
 	} else {
-		cmd.FailOnError(errors.New(`"source" parameter not found in JSON config`), "unable to start ocsp-responder")
+		// For databases, DBConfig takes precedence over Source, if present.
+		dbConnect, err := config.DBConfig.URL()
+		cmd.FailOnError(err, "Reading DB config")
+		if dbConnect == "" {
+			dbConnect = config.Source
+		}
+		logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
+		dbMap, err := sa.NewDbMap(dbConnect, config.DBConfig.MaxDBConns)
+		cmd.FailOnError(err, "Could not connect to database")
+		sa.SetSQLDebug(dbMap, logger)
+		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
+		source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
+		cmd.FailOnError(err, "Couldn't load OCSP DB")
 	}
 
 	stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
