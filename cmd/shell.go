@@ -43,6 +43,18 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
+// Because we don't know when this init will be called with respect to
+// flag.Parse() and other flag definitions, we can't rely on the regular
+// flag mechanism. But this one is fine.
+func init() {
+	for _, v := range os.Args {
+		if v == "--version" || v == "-version" {
+			fmt.Println(Version())
+			os.Exit(0)
+		}
+	}
+}
+
 // AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config, metrics.Statter, blog.Logger)
@@ -94,47 +106,8 @@ func (as *AppShell) Run() {
 		}
 
 		// Provide default values for each service's AMQP config section.
-		if config.WFE.AMQP == nil {
-			config.WFE.AMQP = config.AMQP
-		}
-		if config.CA.AMQP == nil {
-			config.CA.AMQP = config.AMQP
-			if config.CA.AMQP != nil && config.AMQP.CA != nil {
-				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
-			}
-		}
-		if config.RA.AMQP == nil {
-			config.RA.AMQP = config.AMQP
-			if config.RA.AMQP != nil && config.AMQP.RA != nil {
-				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
-			}
-		}
-		if config.SA.AMQP == nil {
-			config.SA.AMQP = config.AMQP
-			if config.SA.AMQP != nil && config.AMQP.SA != nil {
-				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
-			}
-		}
-		if config.VA.AMQP == nil {
-			config.VA.AMQP = config.AMQP
-			if config.VA.AMQP != nil && config.AMQP.VA != nil {
-				config.VA.AMQP.ServiceQueue = config.AMQP.VA.Server
-			}
-		}
 		if config.Mailer.AMQP == nil {
 			config.Mailer.AMQP = config.AMQP
-		}
-		if config.OCSPUpdater.AMQP == nil {
-			config.OCSPUpdater.AMQP = config.AMQP
-		}
-		if config.OCSPResponder.AMQP == nil {
-			config.OCSPResponder.AMQP = config.AMQP
-		}
-		if config.Publisher.AMQP == nil {
-			config.Publisher.AMQP = config.AMQP
-			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
-				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
-			}
 		}
 
 		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
@@ -301,4 +274,25 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
+}
+
+// ReadJSONFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a
+// configuration of a boulder component.
+func ReadJSONFile(filename string, out interface{}) error {
+	configData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(configData, out)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// VersionString produces a friendly Application version string. Duplicated
+// from cmd.AppShell, with the exception that it takes a name as an argument.
+func VersionString(name string) string {
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

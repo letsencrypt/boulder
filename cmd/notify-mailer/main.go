@@ -80,7 +80,7 @@ func (m *mailer) run() error {
 		return err
 	}
 	// If there is no endpoint specified, use the total # of destinations
-	if m.checkpoint.end == 0 {
+	if m.checkpoint.end == 0 || m.checkpoint.end > len(m.destinations) {
 		m.checkpoint.end = len(m.destinations)
 	}
 	for _, dest := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
@@ -95,6 +95,68 @@ func (m *mailer) run() error {
 	}
 	return nil
 }
+
+const usageIntro = `
+Introduction:
+
+The notification mailer exists to send a fixed message to a list of email
+addresses. The attributes of the message (from address, subject, and message
+content) are provided by the command line arguments. The message content is used
+verbatim and must be provided as a path to a plaintext file via the -body
+argument. The list of recipient emails should be provided via the -toFile
+argument as a path to a plaintext file containing one email per line.
+
+To help the operator gain confidence in the mailing run before committing fully
+three safety features are supported: dry runs, checkpointing and a sleep
+interval.
+
+The -dryRun flag will use a mock mailer that prints message content to stdout
+instead of performing an SMTP transaction with a real mailserver. This can be
+used when the initial parameters are being tweaked to ensure no real emails are
+sent.
+
+Checkpointing is supported via the -start and -end arguments. The -start flag
+specifies which line of the -toFile to start processing at. Similarly, the -end
+flag specifies which line of the -toFile to end processing at. In combination
+these can be used to process only a fixed number of recipients at a time, and
+to resume mailing after early termination.
+
+During mailing the -sleep argument is used to space out individual messages.
+This can be used to ensure that the mailing happens at a steady pace with ample
+opportunity for the operator to terminate early in the event of error. The
+-sleep flag honours durations with a unit suffix (e.g. 1m for 1 minute, 10s for
+10 seconds, etc).
+
+Examples:
+  Send an email with subject "Hello!" from the email "hello@goodbye.com" with
+  the contents read from "test_msg_body.txt" to every email listed in
+  "test_msg_recipients.txt", sleeping 10 seconds between each message:
+
+  notify-mailer -config test/config/notify-mailer.json 
+    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
+    -sleep 10s
+
+  Do the same, but only to the first 100 recipients:
+
+  notify-mailer -config test/config/notify-mailer.json 
+    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
+    -sleep 10s -end 100
+
+  Send the message, but start at line 200 of the recipients file, ending after
+  100 recipients, and as a dry-run:
+  notify-mailer -config test/config/notify-mailer.json 
+    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
+    -sleep 10s -start 200 -end 300 -dryRun
+
+Required arguments:
+- body
+- config
+- from
+- subject
+- toFile`
 
 func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
@@ -114,8 +176,14 @@ func main() {
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageIntro)
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
-	if from == nil || subject == nil || bodyFile == nil || configFile == nil {
+	if *from == "" || *subject == "" || *bodyFile == "" || *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -123,7 +191,7 @@ func main() {
 	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *configFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
@@ -135,13 +203,13 @@ func main() {
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *bodyFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *bodyFile))
 
 	address, err := mail.ParseAddress(*from)
-	cmd.FailOnError(err, fmt.Sprintf("Parsing %s", *from))
+	cmd.FailOnError(err, fmt.Sprintf("Parsing %q", *from))
 
 	toBody, err := ioutil.ReadFile(*toFile)
-	cmd.FailOnError(err, fmt.Sprintf("Reading %s", *toFile))
+	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *toFile))
 	destinations := strings.Split(string(toBody), "\n")
 
 	checkpointRange := interval{

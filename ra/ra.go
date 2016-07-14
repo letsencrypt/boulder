@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
-	"github.com/letsencrypt/net/publicsuffix"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -267,7 +267,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	reg = core.Registration{
 		Key: init.Key,
 	}
-	reg.MergeUpdate(init)
+	_ = reg.MergeUpdate(init)
 
 	// This field isn't updatable by the end user, so it isn't copied by
 	// MergeUpdate. But we need to fill it in for new registrations.
@@ -665,19 +665,18 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	domainsMap := make(map[string]struct{}, len(names))
 	var domains []string
 	for _, name := range names {
-		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
+		domain, err := publicsuffix.Domain(name)
 		if err != nil {
 			// The only possible errors are:
-			// (1) publicsuffix.PublicSuffix is giving garbage
-			//     values
+			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
 			//
 			// Assume (2).
-			eTLDPlusOne = name
+			domain = name
 		}
-		if _, ok := domainsMap[eTLDPlusOne]; !ok {
-			domainsMap[eTLDPlusOne] = struct{}{}
-			domains = append(domains, eTLDPlusOne)
+		if _, ok := domainsMap[domain]; !ok {
+			domainsMap[domain] = struct{}{}
+			domains = append(domains, domain)
 		}
 	}
 	return domains, nil
@@ -779,24 +778,29 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 }
 
 // UpdateRegistration updates an existing Registration with new values.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (reg core.Registration, err error) {
-	base.MergeUpdate(update)
-
-	err = ra.validateContacts(ctx, base.Contact)
-	if err != nil {
-		return
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
+	if changed := base.MergeUpdate(update); !changed {
+		// If merging the update didn't actually change the base then our work is
+		// done, we can return before calling ra.SA.UpdateRegistration since theres
+		// nothing for the SA to do
+		return base, nil
 	}
 
-	reg = base
+	err := ra.validateContacts(ctx, base.Contact)
+	if err != nil {
+		return core.Registration{}, err
+	}
+
 	err = ra.SA.UpdateRegistration(ctx, base)
 	if err != nil {
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
+		return core.Registration{}, err
 	}
 
 	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
-	return
+	return base, nil
 }
 
 // UpdateAuthorization updates an authorization with new values.

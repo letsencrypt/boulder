@@ -103,10 +103,19 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		err = fmt.Errorf("unable to unmarshal JsonWebKey in db: %s", err)
 		return core.Registration{}, err
 	}
+	var contact *[]*core.AcmeURL
+	// Contact can be nil when the DB contains the literal string "null". We
+	// prefer to represent this in memory as a pointer to an empty slice rather
+	// than a nil pointer.
+	if rm.Contact == nil {
+		contact = &[]*core.AcmeURL{}
+	} else {
+		contact = &rm.Contact
+	}
 	r := core.Registration{
 		ID:        rm.ID,
 		Key:       *k,
-		Contact:   &rm.Contact,
+		Contact:   contact,
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,

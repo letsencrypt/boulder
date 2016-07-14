@@ -100,20 +100,20 @@ type AcmeIdentifier struct {
 
 // CertificateRequest is just a CSR
 //
-// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
 	CSR   *x509.CertificateRequest // The CSR
 	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
-type rawCertificateRequest struct {
+type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw rawCertificateRequest
+	var raw RawCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawCertificateRequest{
+	return json.Marshal(RawCertificateRequest{
 		CSR: cr.CSR.Raw,
 	})
 }
@@ -157,21 +157,68 @@ type Registration struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+func (r *Registration) contactsEqual(other Registration) bool {
+	// If there is no existing contact slice, or the contact slice lengths
+	// differ, then the other contact is not equal
+	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+		return false
+	}
+
+	// If there is an existing contact slice and it has the same length as the
+	// new contact slice we need to look at each AcmeURL to determine if there
+	// is a change being made
+	//
+	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
+	//            should use `sort.Strings` here to ensure a consistent
+	//            comparison.
+	a := *other.Contact
+	b := *r.Contact
+	for i := 0; i < len(a); i++ {
+		// In order to call .String() we need to make sure the AcmeURL pointers
+		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
+		if a[i] == nil || b[i] == nil {
+			// We return false, allowing MergeUpdate to use `other` to overwrite. The
+			// nil value in the Contact slice will be turned into a user-facing error
+			// when the RA validates the contacts post-merge.
+			return false
+		}
+
+		// If the contact's string representation differs at any index they aren't
+		// equal
+		contactA := (*a[i]).String()
+		contactB := (*b[i]).String()
+		if contactA != contactB {
+			return false
+		}
+	}
+
+	// They are equal!
+	return true
+}
+
 // MergeUpdate copies a subset of information from the input Registration
-// into this one.
-func (r *Registration) MergeUpdate(input Registration) {
+// into this one. It returns true if an update was performed and the base object
+// was changed, and false if no change was made.
+func (r *Registration) MergeUpdate(input Registration) bool {
+	var changed bool
+
 	// Note: we allow input.Contact to overwrite r.Contact even if the former is
 	// empty in order to allow users to remove the contact associated with
 	// a registration. Since the field type is a pointer to slice of pointers we
 	// can perform a nil check to differentiate between an empty value and a nil
 	// (e.g. not provided) value
-	if input.Contact != nil {
+	if input.Contact != nil && !r.contactsEqual(input) {
 		r.Contact = input.Contact
+		changed = true
 	}
 
-	if len(input.Agreement) > 0 {
+	// If there is an agreement in the input and it's not the same as the base,
+	// then we update the base
+	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
 		r.Agreement = input.Agreement
+		changed = true
 	}
+	return changed
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname

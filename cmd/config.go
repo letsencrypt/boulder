@@ -25,89 +25,6 @@ type Config struct {
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
 
-	WFE struct {
-		ServiceConfig
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		SubscriberAgreementURL string
-	}
-
-	CA CAConfig
-
-	RA struct {
-		ServiceConfig
-		HostnamePolicyConfig
-
-		RateLimitPoliciesFilename string
-
-		MaxConcurrentRPCServerRequests int64
-
-		MaxContactsPerRegistration int
-
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries int
-
-		VAService *GRPCClientConfig
-
-		MaxNames     int
-		DoNotForceCN bool
-
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
-	}
-
-	SA struct {
-		ServiceConfig
-		DBConfig
-
-		MaxConcurrentRPCServerRequests int64
-	}
-
-	VA struct {
-		ServiceConfig
-
-		UserAgent string
-
-		IssuerDomain string
-
-		PortConfig PortConfig
-
-		MaxConcurrentRPCServerRequests int64
-
-		LookupIPv6 bool
-
-		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
-
-		CAAService *GRPCClientConfig
-
-		CAADistributedResolver *CAADistributedResolverConfig
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries int
-	}
-
 	Statsd StatsdConfig
 
 	Syslog SyslogConfig
@@ -135,34 +52,6 @@ type Config struct {
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
-	}
-
-	OCSPResponder struct {
-		ServiceConfig
-		DBConfig
-
-		// Source indicates the source of pre-signed OCSP responses to be used. It
-		// can be a DBConnect string or a file URL. The file URL style is used
-		// when responding from a static file for intermediates and roots.
-		// If DBConfig has non-empty fields, it takes precedence over this.
-		Source string
-
-		Path          string
-		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Control response
-		// header. It is a time.Duration formatted string.
-		MaxAge ConfigDuration
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-	}
-
-	OCSPUpdater OCSPUpdaterConfig
-
-	Publisher struct {
-		ServiceConfig
-		SubmissionTimeout              ConfigDuration
-		MaxConcurrentRPCServerRequests int64
 	}
 
 	PA PAConfig
@@ -208,13 +97,13 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-func (config *Config) KeyPolicy() goodkey.KeyPolicy {
-	if config.AllowedSigningAlgos != nil {
+func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
+	if asa != nil {
 		return goodkey.KeyPolicy{
-			AllowRSA:           config.AllowedSigningAlgos.RSA,
-			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
-			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
-			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+			AllowRSA:           asa.RSA,
+			AllowECDSANISTP256: asa.ECDSANISTP256,
+			AllowECDSANISTP384: asa.ECDSANISTP384,
+			AllowECDSANISTP521: asa.ECDSANISTP521,
 		}
 	}
 	return goodkey.KeyPolicy{

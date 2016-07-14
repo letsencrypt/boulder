@@ -683,7 +683,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error unmarshaling certificate request","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -742,6 +742,19 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `INFO: `)
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
+
+	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
+	wfe.CheckMalformedCSR = true
+	mockLog.Clear()
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+      "resource": "new-cert",
+      "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
+    }`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version","status":400}`)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -884,6 +897,75 @@ func TestNewECDSARegistration(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
+}
+
+type FailureRegistrationAuthority struct{}
+
+func (ra *FailureRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
+	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+	return fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func (ra *FailureRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
+	return fmt.Errorf("FailureRegistrationAuthority failed by design")
+}
+
+func TestEmptyRegistration(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	// Use the FailureRegistrationAuthority to ensure that if any method of the RA
+	// is invoked for this Registration post that the test fails. We explicitly
+	// want to test that the WFE returns for empty reg updates without consulting
+	// the RA or SA.
+	wfe.RA = &FailureRegistrationAuthority{}
+
+	emptyReg := `{"resource":"reg"}`
+	emptyBody, err := signer.Sign([]byte(emptyReg))
+	test.AssertNotError(t, err, "Unable to sign emptyBody")
+
+	// Send a registration update with the trivial body
+	wfe.Registration(
+		ctx,
+		newRequestEvent(),
+		responseWriter,
+		makePostRequestWithPath("1", emptyBody.FullSerialize()))
+
+	// There should be no error, particularly from the FailureRegistrationAuthority
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	// There shouldn't be a Contact or Agreement in the response
+	test.AssertNotContains(t, responseWriter.Body.String(), "Contact")
+	test.AssertNotContains(t, responseWriter.Body.String(), "Agreement")
+	responseWriter.Body.Reset()
 }
 
 func TestNewRegistration(t *testing.T) {

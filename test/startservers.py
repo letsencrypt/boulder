@@ -11,11 +11,27 @@ import tempfile
 import threading
 import time
 
+# TODO: remove default_config once all binaries have been migrated from the global config
 default_config = os.environ.get('BOULDER_CONFIG', '')
 if default_config == '':
     default_config = 'test/boulder-config.json'
+
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
 processes = []
 
+def get_config(service):
+    """
+    Returns the path to the configuration file for a service, if it does not
+    exist, it return a path to the default config files, which will
+    eventually be removed completely
+    """
+    path = os.path.join(default_config_dir, service + ".json")
+    if os.path.exists(path):
+        return path
+    return default_config
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -28,9 +44,12 @@ def install(race_detection):
     return subprocess.call(cmd, shell=True) == 0
 
 def run(cmd, race_detection):
+    e = os.environ.copy()
+    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
+    e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec ./bin/%s""" % cmd
-    p = subprocess.Popen(cmd, shell=True)
+    cmd = """exec ./bin/%s""" % cmd
+    p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
 
@@ -44,17 +63,17 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe --config %s' % default_config,
-        'boulder-ra --config %s' % default_config,
-        'boulder-sa --config %s' % default_config,
-        'boulder-ca --config %s' % default_config,
-        'boulder-va --config %s' % default_config,
-        'boulder-publisher --config %s' % default_config,
-        'ocsp-updater --config %s' % default_config,
-        'ocsp-responder --config %s' % default_config,
-        'ct-test-srv --config %s' % default_config,
-        'dns-test-srv --config %s' % default_config,
-        'mail-test-srv --config %s' % default_config,
+        'boulder-wfe --config %s' % get_config('wfe'),
+        'boulder-ra --config %s' % get_config('ra'),
+        'boulder-sa --config %s' % get_config('sa'),
+        'boulder-ca --config %s' % get_config('ca'),
+        'boulder-va --config %s' % get_config('va'),
+        'boulder-publisher --config %s' % get_config('publisher'),
+        'ocsp-updater --config %s' % get_config('ocsp-updater'),
+        'ocsp-responder --config %s' % get_config('ocsp-responder'),
+        'ct-test-srv --config %s' % get_config('ct-test-srv'),
+        'dns-test-srv --config %s' % get_config('dns-test-srv'),
+        'mail-test-srv --config %s' % get_config('mail-test-srv'),
         'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
