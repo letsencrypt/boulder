@@ -105,7 +105,9 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 		m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 		return err
 	}
-	m.stats.TimingDuration("Mailer.Expiration.SendLatency", time.Since(startSending), 1.0)
+	finishSending := m.clk.Now()
+	elapsed := finishSending.Sub(startSending)
+	m.stats.TimingDuration("Mailer.Expiration.SendLatency", elapsed, 1.0)
 	m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	return nil
 }
@@ -269,9 +271,27 @@ func (m *mailer) findExpiringCertificates() error {
 			continue // nothing to do
 		}
 
+		// If the `certs` result was exactly `m.limit` rows we need to increment
+		// a stat indicating that this nag group is at capacity based on the
+		// configured cert limit. If this condition continually occurs across mailer
+		// runs then we will not catch up, resulting in under-sending expiration
+		// mails. The effects of this were initially described in issue #2002[0].
+		//
+		// 0: https://github.com/letsencrypt/boulder/issues/2002
+		if len(certs) == m.limit {
+			m.log.Info(fmt.Sprintf(
+				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
+				expiresIn.String(),
+				m.limit))
+			statName := fmt.Sprintf("Mailer.Expiration.Errors.Nag-%s.AtCapacity", expiresIn.String())
+			m.stats.Inc(statName, 1, 1.0)
+		}
+
 		processingStarted := m.clk.Now()
 		m.processCerts(certs)
-		m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Since(processingStarted), 1.0)
+		processingEnded := m.clk.Now()
+		elapsed := processingEnded.Sub(processingStarted)
+		m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", elapsed, 1.0)
 	}
 
 	return nil
