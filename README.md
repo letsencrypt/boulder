@@ -49,7 +49,7 @@ to do this is with this command:
 Slow start
 ----------
 
-If you can't use the Docker setup, you here are instructions for setting up a
+If you can't use the Docker setup, here are instructions for setting up a
 Boulder development environment without it.
 
 We recommend setting git's [fsckObjects
