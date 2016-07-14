@@ -25,6 +25,21 @@ To run a specific unittest:
 
     docker-compose run boulder go test ./ra
 
+The configuration in docker-compose.yml mounts your
+[`$GOPATH`](https://golang.org/doc/code.html#GOPATH) on top of its own
+`$GOPATH`. So you can edit code on your host and it will be immediately
+reflected inside Docker images run with docker-compose.
+
+By default, Boulder uses a fake DNS resolver that resolves all hostnames to
+127.0.0.1. This is suitable for running integration tests inside the Docker
+container. If you want Boulder to be able to communicate with a client running
+on your host instead, you should find your host's Docker IP with:
+
+    ifconfig | grep -A1 docker0
+
+And edit docker-compose.yml to change the FAKE_DNS environment variable to
+match.
+
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
 to do this is with this command:
@@ -88,8 +103,8 @@ Resolve Go-dependencies, set up a database and RabbitMQ:
 user with the default password, so if you have disabled that account
 or changed the password you may have to adjust the file or recreate the commands.
 
-Edit the "key" section of test/config/ca.json to replace
-"ConfigFile": "test/test-ca.key-pkcs11.json" with "File": "test/test-ca.key".
+Install SoftHSM to store the CA private key in a way that can be accessed using
+PKCS#11. Then run ./test/make-softhsm.sh and follow its instructions.
 
 Start all boulder components with test configs (Ctrl-C kills all):
 
