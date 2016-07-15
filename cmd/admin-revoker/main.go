@@ -129,7 +129,7 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ExitOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	flagSet.Parse(os.Args[2:])
+	_ = flagSet.Parse(os.Args[2:])
 	if *configFile == "" {
 		fmt.Fprintf(os.Stderr, "%s\nargs:", usage)
 		flagSet.PrintDefaults()
