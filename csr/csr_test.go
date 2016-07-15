@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
+	x509csr "github.com/letsencrypt/boulder/x509csr"
 )
 
 var testingPolicy = &goodkey.KeyPolicy{
@@ -38,7 +39,7 @@ func TestVerifyCSR(t *testing.T) {
 	test.AssertNotError(t, err, "error generating test key")
 	signedReqBytes, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{PublicKey: private.PublicKey, SignatureAlgorithm: x509.SHA256WithRSA}, private)
 	test.AssertNotError(t, err, "error generating test CSR")
-	signedReq, err := x509.ParseCertificateRequest(signedReqBytes)
+	signedReq, err := x509csr.ParseCertificateRequest(signedReqBytes)
 	test.AssertNotError(t, err, "error parsing test CSR")
 	brokenSignedReq := new(x509.CertificateRequest)
 	*brokenSignedReq = *signedReq

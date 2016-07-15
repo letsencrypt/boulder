@@ -23,6 +23,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
+	x509csr "github.com/letsencrypt/boulder/x509csr"
 	jose "github.com/square/go-jose"
 )
 
@@ -814,7 +815,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
+	certificateRequest.CSR, err = x509csr.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request"), err)
