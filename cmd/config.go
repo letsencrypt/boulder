@@ -29,13 +29,6 @@ type Config struct {
 
 	Syslog SyslogConfig
 
-	Revoker struct {
-		DBConfig
-		// The revoker isn't a long running service, so doesn't get a full
-		// ServiceConfig, just an AMQPConfig.
-		AMQP *AMQPConfig
-	}
-
 	PA PAConfig
 
 	Common struct {
