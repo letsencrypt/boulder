@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v69",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
@@ -150,7 +150,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
-			"Rev": "333dd2a6356284825db301fbe880c56772faa603"
+			"Rev": "c1e7dca180dc5948d8af317f2fe62baba07769c4"
 		},
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",
