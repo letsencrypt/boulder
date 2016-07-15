@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
+	x509csr "github.com/letsencrypt/boulder/x509csr"
 )
 
 var (
@@ -706,7 +707,7 @@ func TestExtensions(t *testing.T) {
 	unsupportedExtensionCSR, err := x509csr.ParseCertificateRequest(UnsupportedExtensionCSR)
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
-	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
+	sign := func(csr *x509csr.CertificateRequest) *x509.Certificate {
 		coreCert, err := ca.IssueCertificate(ctx, *csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
 		cert, err := x509.ParseCertificate(coreCert.DER)

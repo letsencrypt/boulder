@@ -3,7 +3,6 @@ package csr
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
 	"strings"
@@ -37,25 +36,25 @@ func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 func TestVerifyCSR(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
-	signedReqBytes, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{PublicKey: private.PublicKey, SignatureAlgorithm: x509.SHA256WithRSA}, private)
+	signedReqBytes, err := x509csr.CreateCertificateRequest(rand.Reader, &x509csr.CertificateRequest{PublicKey: private.PublicKey, SignatureAlgorithm: x509csr.SHA256WithRSA}, private)
 	test.AssertNotError(t, err, "error generating test CSR")
 	signedReq, err := x509csr.ParseCertificateRequest(signedReqBytes)
 	test.AssertNotError(t, err, "error parsing test CSR")
-	brokenSignedReq := new(x509.CertificateRequest)
+	brokenSignedReq := new(x509csr.CertificateRequest)
 	*brokenSignedReq = *signedReq
 	brokenSignedReq.Signature = []byte{1, 1, 1, 1}
-	signedReqWithHosts := new(x509.CertificateRequest)
+	signedReqWithHosts := new(x509csr.CertificateRequest)
 	*signedReqWithHosts = *signedReq
 	signedReqWithHosts.DNSNames = []string{"a.com", "b.com"}
-	signedReqWithLongCN := new(x509.CertificateRequest)
+	signedReqWithLongCN := new(x509csr.CertificateRequest)
 	*signedReqWithLongCN = *signedReq
 	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", maxCNLength+1)
-	signedReqWithBadName := new(x509.CertificateRequest)
+	signedReqWithBadName := new(x509csr.CertificateRequest)
 	*signedReqWithBadName = *signedReq
 	signedReqWithBadName.DNSNames = []string{"bad-name.com"}
 
 	cases := []struct {
-		csr           *x509.CertificateRequest
+		csr           *x509csr.CertificateRequest
 		maxNames      int
 		keyPolicy     *goodkey.KeyPolicy
 		pa            core.PolicyAuthority
@@ -63,7 +62,7 @@ func TestVerifyCSR(t *testing.T) {
 		expectedError error
 	}{
 		{
-			&x509.CertificateRequest{},
+			&x509csr.CertificateRequest{},
 			0,
 			testingPolicy,
 			&mockPA{},
@@ -71,7 +70,7 @@ func TestVerifyCSR(t *testing.T) {
 			errors.New("invalid public key in CSR"),
 		},
 		{
-			&x509.CertificateRequest{PublicKey: private.PublicKey},
+			&x509csr.CertificateRequest{PublicKey: private.PublicKey},
 			1,
 			testingPolicy,
 			&mockPA{},
@@ -128,37 +127,37 @@ func TestVerifyCSR(t *testing.T) {
 
 func TestNormalizeCSR(t *testing.T) {
 	cases := []struct {
-		csr           *x509.CertificateRequest
+		csr           *x509csr.CertificateRequest
 		forceCN       bool
 		expectedCN    string
 		expectedNames []string
 	}{
 		{
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
+			&x509csr.CertificateRequest{DNSNames: []string{"a.com"}},
 			true,
 			"a.com",
 			[]string{"a.com"},
 		},
 		{
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
+			&x509csr.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
 			true,
 			"a.com",
 			[]string{"a.com"},
 		},
 		{
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
+			&x509csr.CertificateRequest{DNSNames: []string{"a.com"}},
 			false,
 			"",
 			[]string{"a.com"},
 		},
 		{
-			&x509.CertificateRequest{DNSNames: []string{"a.com", "a.com"}},
+			&x509csr.CertificateRequest{DNSNames: []string{"a.com", "a.com"}},
 			false,
 			"",
 			[]string{"a.com"},
 		},
 		{
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"B.com"}},
+			&x509csr.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"B.com"}},
 			false,
 			"a.com",
 			[]string{"a.com", "b.com"},

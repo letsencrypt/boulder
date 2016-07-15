@@ -116,7 +116,7 @@ var (
 
 	ResponseIndex = 0
 
-	ExampleCSR = &x509.CertificateRequest{}
+	ExampleCSR = &x509csr.CertificateRequest{}
 
 	// These values are populated by the tests as we go
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
