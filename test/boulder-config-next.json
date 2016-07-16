@@ -50,11 +50,6 @@
     }
   },
 
-  "certChecker": {
-    "dbConnectFile": "test/secrets/cert_checker_dburl",
-    "maxDBConns": 10
-  },
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,

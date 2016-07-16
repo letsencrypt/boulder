@@ -53,16 +53,6 @@ type Config struct {
 		}
 	}
 
-	CertChecker struct {
-		DBConfig
-		HostnamePolicyConfig
-
-		Workers             int
-		ReportDirectoryPath string
-		UnexpiredOnly       bool
-		BadResultsOnly      bool
-		CheckPeriod         ConfigDuration
-	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
 	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
