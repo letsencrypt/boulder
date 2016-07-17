@@ -151,11 +151,8 @@ func main() {
 
 	ctx := context.Background()
 	args := flagSet.Args()
-	switch command {
-	case "serial-revoke":
-		if len(args) < 2 {
-			usage()
-		}
+	switch {
+	case command == "serial-revoke" && len(args) == 2:
 		// 1: serial,  2: reasonCode
 		serial := args[0]
 		reasonCode, err := strconv.Atoi(args[1])
@@ -176,10 +173,7 @@ func main() {
 		err = tx.Commit()
 		cmd.FailOnError(err, "Couldn't cleanly close transaction")
 
-	case "reg-revoke":
-		if len(args) < 2 {
-			usage()
-		}
+	case command == "reg-revoke" && len(args) == 2:
 		// 1: registration ID,  2: reasonCode
 		regID, err := strconv.ParseInt(args[0], 10, 64)
 		cmd.FailOnError(err, "Registration ID argument must be an integer")
@@ -208,7 +202,7 @@ func main() {
 		err = tx.Commit()
 		cmd.FailOnError(err, "Couldn't cleanly close transaction")
 
-	case "list-reasons":
+	case command == "list-reasons":
 		var codes revocationCodes
 		for k := range core.RevocationReasons {
 			codes = append(codes, k)
@@ -219,10 +213,7 @@ func main() {
 			fmt.Printf("%d: %s\n", k, core.RevocationReasons[k])
 		}
 
-	case "auth-revoke":
-		if len(args) < 1 {
-			usage()
-		}
+	case command == "auth-revoke" && len(args) == 1:
 		domain := args[0]
 		_, logger, _, sac, stats := setupContext(c)
 		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
