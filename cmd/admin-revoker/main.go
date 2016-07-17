@@ -26,9 +26,12 @@ const clientName = "AdminRevoker"
 
 const usage = `
 usage:
-admin-revoker <command> --config <path> [args]
+admin-revoker serial-revoke --config <path> <serial> <reason-code>
+admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
+admin-revoker list-reasons --config <path>
+admin-revoker auth-revoke --config <path> <domain>
 
-commands:
+command descriptions:
   serial-revoke   Revoke a single certificate by the hex serial number
   reg-revoke      Revoke all certificates associated with a registration ID
   list-reasons    List all revocation reason codes
@@ -127,23 +130,32 @@ func main() {
 	}
 
 	command := os.Args[1]
-	flagSet := flag.NewFlagSet(command, flag.ExitOnError)
+	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	_ = flagSet.Parse(os.Args[2:])
-	if *configFile == "" {
+	err := flagSet.Parse(os.Args[2:])
+	cmd.FailOnError(err, "Error parsing flagset")
+
+	usage := func() {
 		fmt.Fprintf(os.Stderr, "%s\nargs:", usage)
 		flagSet.PrintDefaults()
 		os.Exit(1)
 	}
-	args := flagSet.Args()
+
+	if *configFile == "" {
+		usage()
+	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err = cmd.ReadJSONFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	ctx := context.Background()
+	args := flagSet.Args()
 	switch command {
 	case "serial-revoke":
+		if len(args) < 2 {
+			usage()
+		}
 		// 1: serial,  2: reasonCode
 		serial := args[0]
 		reasonCode, err := strconv.Atoi(args[1])
@@ -165,6 +177,9 @@ func main() {
 		cmd.FailOnError(err, "Couldn't cleanly close transaction")
 
 	case "reg-revoke":
+		if len(args) < 2 {
+			usage()
+		}
 		// 1: registration ID,  2: reasonCode
 		regID, err := strconv.ParseInt(args[0], 10, 64)
 		cmd.FailOnError(err, "Registration ID argument must be an integer")
@@ -205,6 +220,9 @@ func main() {
 		}
 
 	case "auth-revoke":
+		if len(args) < 1 {
+			usage()
+		}
 		domain := args[0]
 		_, logger, _, sac, stats := setupContext(c)
 		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
@@ -219,8 +237,6 @@ func main() {
 		stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
 
 	default:
-		fmt.Fprintf(os.Stderr, "%s\nargs:", usage)
-		flagSet.PrintDefaults()
-		os.Exit(1)
+		usage()
 	}
 }
