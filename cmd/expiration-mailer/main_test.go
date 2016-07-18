@@ -107,6 +107,7 @@ func TestSendNags(t *testing.T) {
 
 	m := mailer{
 		stats:         stats,
+		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		subject:       testEmailSubject,
@@ -166,23 +167,35 @@ var d = bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZk
 var p = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 var q = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 
-var serial1 = big.NewInt(1336)
+var serial1 = big.NewInt(0x1336)
 var serial1String = core.SerialToString(serial1)
-var serial2 = big.NewInt(1337)
+var serial2 = big.NewInt(0x1337)
 var serial2String = core.SerialToString(serial2)
-var serial3 = big.NewInt(1338)
+var serial3 = big.NewInt(0x1338)
 var serial3String = core.SerialToString(serial3)
-var serial4 = big.NewInt(1339)
+var serial4 = big.NewInt(0x1339)
 var serial4String = core.SerialToString(serial4)
-var serial5 = big.NewInt(1340)
+var serial5 = big.NewInt(0x1340)
 var serial5String = core.SerialToString(serial5)
-var serial6 = big.NewInt(1341)
-var serial7 = big.NewInt(1342)
+var serial6 = big.NewInt(0x1341)
+var serial7 = big.NewInt(0x1342)
 
 var testKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
 	D:         d,
 	Primes:    []*big.Int{p, q},
+}
+
+func TestProcessCerts(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	certs := addExpiringCerts(t, testCtx)
+	log.Clear()
+	testCtx.m.processCerts(certs)
+	// Test that the lastExpirationNagSent was updated for the certificate
+	// corresponding to serial4, which is set up as "already renewed" by
+	// addExpiringCerts.
+	test.AssertEquals(t, 1, len(log.GetAllMatching("DEBUG: SQL:  update `certificateStatus` .*\"000000000000000000000000000000001339\".*2006-01-02 15:04:05.999999999")))
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
@@ -223,7 +236,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
 }
 
-func addExpiringCerts(t *testing.T, ctx *testCtx) {
+func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
 	var keyA jose.JsonWebKey
 	var keyB jose.JsonWebKey
@@ -391,6 +404,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) {
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
 	err = setupDBMap.Insert(fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
+	return []core.Certificate{*certA, *certB, *certC, *certD}
 }
 
 func TestFindCertsAtCapacity(t *testing.T) {

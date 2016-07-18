@@ -162,7 +162,9 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 		LIMIT 1`,
 		map[string]interface{}{"serial": serial},
 	)
-	m.log.Debug(fmt.Sprintf("Cert %s is already renewed", serial))
+	if present == 1 {
+		m.log.Debug(fmt.Sprintf("Cert %s is already renewed", serial))
+	}
 	return present == 1, err
 }
 
