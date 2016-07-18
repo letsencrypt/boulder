@@ -80,10 +80,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	// Graceful shutdown settings
-	ShutdownStopTimeout time.Duration
-	ShutdownKillTimeout time.Duration
-
 	// Feature gates
 	CheckMalformedCSR bool
 }
