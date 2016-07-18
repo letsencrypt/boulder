@@ -24,7 +24,7 @@ import (
 
 const clientName = "AdminRevoker"
 
-const usage = `
+const usageString = `
 usage:
 admin-revoker serial-revoke --config <path> <serial> <reason-code>
 admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
@@ -128,7 +128,7 @@ func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
 func main() {
 	usage := func() {
-		fmt.Fprintf(os.Stderr, usage)
+		fmt.Fprintf(os.Stderr, usageString)
 		os.Exit(1)
 	}
 	if len(os.Args) <= 2 {
