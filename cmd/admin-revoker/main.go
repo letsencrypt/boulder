@@ -36,6 +36,9 @@ command descriptions:
   reg-revoke      Revoke all certificates associated with a registration ID
   list-reasons    List all revocation reason codes
   auth-revoke     Revoke all pending/valid authorizations for a domain
+
+args:
+  config    File path to the configuration file for this service
 `
 
 type config struct {
@@ -124,9 +127,12 @@ func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
 func main() {
-	if len(os.Args) <= 2 {
+	usage := func() {
 		fmt.Fprintf(os.Stderr, usage)
 		os.Exit(1)
+	}
+	if len(os.Args) <= 2 {
+		usage()
 	}
 
 	command := os.Args[1]
@@ -134,12 +140,6 @@ func main() {
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
-
-	usage := func() {
-		fmt.Fprintf(os.Stderr, "%s\nargs:", usage)
-		flagSet.PrintDefaults()
-		os.Exit(1)
-	}
 
 	if *configFile == "" {
 		usage()
