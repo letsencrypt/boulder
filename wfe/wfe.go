@@ -817,6 +817,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
+		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565"), err)
 		return
 	}
