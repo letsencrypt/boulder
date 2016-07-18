@@ -75,7 +75,7 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	expiresIn := time.Duration(math.MaxInt64)
 	expDate := m.clk.Now()
 	domains := []string{}
-	var serials []string
+	serials := []string{}
 
 	// Pick out the expiration date that is closest to being hit.
 	for _, cert := range certs {
