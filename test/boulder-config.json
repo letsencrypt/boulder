@@ -34,11 +34,6 @@
     }
   },
 
-  "certChecker": {
-    "dbConnectFile": "test/secrets/cert_checker_dburl",
-    "maxDBConns": 10
-  },
-
   "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {
