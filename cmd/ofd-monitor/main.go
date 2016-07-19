@@ -45,17 +45,20 @@ func main() {
 
 	cBytes, err := ioutil.ReadFile(*cPath)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Failed to read configuration file '%s': %s\n", *cPath, err)
+		os.Exit(1)
 	}
 	var c config
 	err = json.Unmarshal(cBytes, &c)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Failed to parse configuration file '%s': %s\n", *cPath, err)
+		os.Exit(1)
 	}
 
 	m, err := metrics.NewStatter(*statsdAddr, "Boulder")
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Failed to create StatsD client: %s\n", err)
+		os.Exit(1)
 	}
 
 	for n, p := range c.Programs {
@@ -63,12 +66,12 @@ func main() {
 			for {
 				pid, err := readPF(path)
 				if err != nil {
-					// log
+					fmt.Fprintf(os.Stderr, "Failed to read PID file for '%s' at '%s': %s", name, path, err)
 					continue
 				}
 				ofd, err := checkOFD(pid)
 				if err != nil {
-					// log
+					fmt.Fprintf(os.Stderr, "Failed to read FD directory for '%s' with PID '%d': %s", name, pid, err)
 					continue
 				}
 				m.Gauge(fmt.Sprintf("OpenFD.%s.%d", name, pid), int64(ofd), 1.0)
