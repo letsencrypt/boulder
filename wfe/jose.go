@@ -46,7 +46,8 @@ func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (str
 	if jwsAlgorithm != algorithm {
 		return invalidJWSAlgorithm,
 			core.SignatureValidationError(fmt.Sprintf(
-				"algorithm '%s' in JWS header not acceptable", jwsAlgorithm))
+				"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
+				jwsAlgorithm))
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
 		return invalidAlgorithmOnKey,
