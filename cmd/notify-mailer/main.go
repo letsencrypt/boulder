@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -20,7 +19,6 @@ import (
 )
 
 type mailer struct {
-	stats         statsd.Statter
 	clk           clock.Clock
 	log           blog.Logger
 	dbMap         dbSelector
@@ -109,10 +107,8 @@ func (m *mailer) run() error {
 		}
 		err := m.mailer.SendMail([]string{dest}, m.subject, m.emailTemplate)
 		if err != nil {
-			m.stats.Inc("Mailer.Notifications.Errors.SendFailure", 1, 1.0)
 			return err
 		}
-		m.stats.Inc("Mailer.Notifications.Sent", 1, 1.0)
 		m.clk.Sleep(m.sleepInterval)
 	}
 	return nil
@@ -339,7 +335,6 @@ func main() {
 	}()
 
 	m := mailer{
-		stats:         stats,
 		clk:           cmd.Clock(),
 		log:           log,
 		dbMap:         dbMap,
