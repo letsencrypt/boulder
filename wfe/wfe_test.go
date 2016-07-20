@@ -685,7 +685,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
