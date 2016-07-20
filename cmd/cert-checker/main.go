@@ -253,7 +253,7 @@ func main() {
 	workers := flag.Int("workers", runtime.NumCPU(), "The number of concurrent workers used to process certificates")
 	badResultsOnly := flag.Bool("bad-results-only", false, "Only collect and display bad results")
 	connect := flag.String("db-connect", "", "SQL URI if not provided in the configuration file")
-	cp := flag.String("check-period", "2160h", "How far back to check")
+	cp := flag.Duration("check-period", time.Hour*2160, "How far back to check")
 	unexpiredOnly := flag.Bool("unexpired-only", false, "Only check currently unexpired certificates")
 
 	flag.Parse()
@@ -283,10 +283,7 @@ func main() {
 	}
 	config.CertChecker.UnexpiredOnly = *unexpiredOnly
 	config.CertChecker.BadResultsOnly = *badResultsOnly
-	if *cp != "" {
-		config.CertChecker.CheckPeriod.Duration, err = time.ParseDuration(*cp)
-		cmd.FailOnError(err, "Failed to parse check period")
-	}
+	config.CertChecker.CheckPeriod.Duration = *cp
 
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
