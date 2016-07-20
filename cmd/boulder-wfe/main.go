@@ -27,13 +27,13 @@ type config struct {
 
 		AllowOrigins []string
 
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
+		CertCacheDuration           cmd.ConfigDuration
+		CertNoCacheExpirationWindow cmd.ConfigDuration
+		IndexCacheDuration          cmd.ConfigDuration
+		IssuerCacheDuration         cmd.ConfigDuration
 
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
+		ShutdownStopTimeout cmd.ConfigDuration
+		ShutdownKillTimeout cmd.ConfigDuration
 
 		SubscriberAgreementURL string
 
@@ -99,19 +99,10 @@ func main() {
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
 
-	wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
-	cmd.FailOnError(err, "Couldn't parse certificate caching duration")
-	wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
-	cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
-	wfe.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
-	cmd.FailOnError(err, "Couldn't parse index caching duration")
-	wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
-	cmd.FailOnError(err, "Couldn't parse issuer caching duration")
-
-	shutdownStopTimeout, err := time.ParseDuration(c.WFE.ShutdownStopTimeout)
-	cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
-	shutdownKillTimeout, err := time.ParseDuration(c.WFE.ShutdownKillTimeout)
-	cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
+	wfe.CertCacheDuration = c.WFE.CertCacheDuration.Duration
+	wfe.CertNoCacheExpirationWindow = c.WFE.CertNoCacheExpirationWindow.Duration
+	wfe.IndexCacheDuration = c.WFE.IndexCacheDuration.Duration
+	wfe.IssuerCacheDuration = c.WFE.IssuerCacheDuration.Duration
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
@@ -134,8 +125,8 @@ func main() {
 	}
 
 	hd := &httpdown.HTTP{
-		StopTimeout: shutdownStopTimeout,
-		KillTimeout: shutdownKillTimeout,
+		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
+		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
 		Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
 	}
 	err = httpdown.ListenAndServe(srv, hd)
