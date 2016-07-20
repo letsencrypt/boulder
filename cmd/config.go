@@ -29,13 +29,6 @@ type Config struct {
 
 	Syslog SyslogConfig
 
-	Revoker struct {
-		DBConfig
-		// The revoker isn't a long running service, so doesn't get a full
-		// ServiceConfig, just an AMQPConfig.
-		AMQP *AMQPConfig
-	}
-
 	PA PAConfig
 
 	Common struct {
@@ -133,11 +126,12 @@ type DBConfig struct {
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, either
-// loading it from disk or returning a default value.
+// loading it from disk or returning a default value. Leading and trailing
+// whitespace is stripped.
 func (d *DBConfig) URL() (string, error) {
 	if d.DBConnectFile != "" {
 		url, err := ioutil.ReadFile(d.DBConnectFile)
-		return string(url), err
+		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
 }
