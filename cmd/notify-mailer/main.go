@@ -324,7 +324,8 @@ func main() {
 			cfg.NotifyMailer.Port,
 			cfg.NotifyMailer.Username,
 			smtpPassword,
-			*address)
+			*address,
+			stats)
 	}
 	err = mailClient.Connect()
 	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",

@@ -7,11 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/metrics"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -55,14 +53,13 @@ func TestSleepInterval(t *testing.T) {
 	const numMessages = 3
 	mc := &mocks.Mailer{}
 	dbMap := mockEmailResolver{}
-	stats, _ := statsd.NewNoopClient(nil)
 
 	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
 	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
 
 	// Set up a mock mailer that sleeps for `sleepLen` seconds
 	m := &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: sleepLen * time.Second,
@@ -83,7 +80,7 @@ func TestSleepInterval(t *testing.T) {
 
 	// Set up a mock mailer that doesn't sleep at all
 	m = &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: 0,
@@ -111,12 +108,11 @@ func TestMailCheckpointing(t *testing.T) {
 	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
 	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
 	mc := &mocks.Mailer{}
-	stats, _ := statsd.NewNoopClient(nil)
 
 	// Create a mailer with a checkpoint interval larger than the number of
 	// destinations
 	m := &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -135,7 +131,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a negative sleep interval
 	m = &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -155,7 +151,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval starting after 4 destinations from
 	// the start of the file
 	m = &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -191,7 +187,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a checkpoint interval ending after 3 destinations
 	m = &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -228,7 +224,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval covering 2 destinations from the
 	// middle of the file
 	m = &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -273,9 +269,8 @@ func TestMessageContent(t *testing.T) {
 
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
-	stats, _ := statsd.NewNoopClient(nil)
 	m := &mailer{
-		stats:         stats,
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -384,6 +379,7 @@ func TestResolveEmails(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       "Test",
@@ -407,44 +403,6 @@ func TestResolveEmails(t *testing.T) {
 	for i := range expected {
 		test.AssertEquals(t, destinations[i], expected[i])
 	}
-}
-
-func TestStats(t *testing.T) {
-	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
-
-	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
-
-	// Use a mock for the mailer stats
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	statter := metrics.NewMockStatter(ctrl)
-
-	dbMap := mockEmailResolver{}
-	mc := &mocks.Mailer{}
-	m := &mailer{
-		stats:         statter,
-		mailer:        mc,
-		dbMap:         dbMap,
-		subject:       "you may have already won!",
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{start: 0, end: 5},
-		sleepInterval: 0,
-		clk:           newFakeClock(t),
-	}
-
-	// We expect the "Sent" stat to be incremented five times, once per message
-	for i := 0; i < 5; i++ {
-		statter.EXPECT().Inc("Mailer.Notifications.Sent", int64(1), float32(1.0))
-	}
-
-	// Run the mailer, five message should have gone out. The mock statter should
-	// be satisfied for all of its EXPECTS()
-	err = m.run()
-	test.AssertNotError(t, err, "error calling mailer run()")
-	test.AssertEquals(t, len(mc.Messages), 5)
 }
 
 func newFakeClock(t *testing.T) clock.FakeClock {

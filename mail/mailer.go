@@ -17,10 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 type idGenerator interface {
@@ -54,6 +56,7 @@ type MailerImpl struct {
 	client      smtpClient
 	clk         clock.Clock
 	csprgSource idGenerator
+	stats       *metrics.StatsdScope
 }
 
 type dialer interface {
@@ -100,7 +103,7 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password string, from mail.Address) *MailerImpl {
+func New(server, port, username, password string, from mail.Address, stats statsd.Statter) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -111,6 +114,7 @@ func New(server, port, username, password string, from mail.Address) *MailerImpl
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
+		stats:       metrics.NewStatsdScope(stats, "Mailer"),
 	}
 }
 
@@ -212,32 +216,40 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if m.client == nil {
 		return errors.New("call Connect before SendMail")
 	}
+	m.stats.Inc("SendMail.Attempts", 1)
 	body, err := m.generateMessage(to, subject, msg)
 	if err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 	if err = m.client.Mail(m.from.String()); err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 	for _, t := range to {
 		if err = m.client.Rcpt(t); err != nil {
+			m.stats.Inc("SendMail.Errors", 1)
 			return err
 		}
 	}
 	w, err := m.client.Data()
 	if err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 
 	_, err = w.Write(body)
 	if err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 
 	err = w.Close()
 	if err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
+	m.stats.Inc("SendMail.Successes", 1)
 	return nil
 }
 
