@@ -11,11 +11,12 @@ package pkcs11
 // * CK_ULONG never overflows an Go int
 
 /*
+#cgo windows LDFLAGS: -Wl,--no-as-needed -lltdl
+#cgo linux LDFLAGS: -Wl,--no-as-needed -lltdl -ldl
+#cgo darwin CFLAGS: -I/usr/local/share/libtool
+#cgo darwin LDFLAGS: -lltdl -L/usr/local/lib/ -I/usr/local/share/libtool
 #cgo LDFLAGS: -lltdl
 #define CK_PTR *
-#ifndef NULL_PTR
-#define NULL_PTR 0
-#endif
 #define CK_DEFINE_FUNCTION(returnType, name) returnType name
 #define CK_DECLARE_FUNCTION(returnType, name) returnType name
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType (* name)
@@ -114,7 +115,8 @@ CK_RV GetMechanismList(struct ctx * c, CK_ULONG slotID,
 {
 	CK_RV e =
 	    c->sym->C_GetMechanismList((CK_SLOT_ID) slotID, NULL, mechlen);
-	if (e != CKR_OK) {
+	// Gemaltos PKCS11 implementation returns CKR_BUFFER_TOO_SMALL on a NULL ptr instad of CKR_OK as the spec states.
+	if (e != CKR_OK && e != CKR_BUFFER_TOO_SMALL) {
 		return e;
 	}
 	*mech = calloc(*mechlen, sizeof(CK_MECHANISM_TYPE));
@@ -748,6 +750,11 @@ type Ctx struct {
 
 // New creates a new context and initializes the module/library for use.
 func New(module string) *Ctx {
+	// libtool-ltdl will return an assertion error if passed an empty string, so
+	// we check for it explicitly.
+	if module == "" {
+		return nil
+	}
 	c := new(Ctx)
 	mod := C.CString(module)
 	defer C.free(unsafe.Pointer(mod))
@@ -1529,7 +1536,7 @@ func (c *Ctx) UnwrapKey(sh SessionHandle, m []*Mechanism, unwrappingkey ObjectHa
 	return ObjectHandle(key), toError(e)
 }
 
-// DeriveKey derives a key from a base key, creating a new key object. */
+// DeriveKey derives a key from a base key, creating a new key object.
 func (c *Ctx) DeriveKey(sh SessionHandle, m []*Mechanism, basekey ObjectHandle, a []*Attribute) (ObjectHandle, error) {
 	var key C.CK_OBJECT_HANDLE
 	attrarena, ac, aclen := cAttributeList(a)

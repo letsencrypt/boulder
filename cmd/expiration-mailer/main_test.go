@@ -17,12 +17,14 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"github.com/square/go-jose"
 	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -105,6 +107,7 @@ func TestSendNags(t *testing.T) {
 
 	m := mailer{
 		stats:         stats,
+		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		subject:       testEmailSubject,
@@ -164,18 +167,18 @@ var d = bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZk
 var p = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 var q = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 
-var serial1 = big.NewInt(1336)
+var serial1 = big.NewInt(0x1336)
 var serial1String = core.SerialToString(serial1)
-var serial2 = big.NewInt(1337)
+var serial2 = big.NewInt(0x1337)
 var serial2String = core.SerialToString(serial2)
-var serial3 = big.NewInt(1338)
+var serial3 = big.NewInt(0x1338)
 var serial3String = core.SerialToString(serial3)
-var serial4 = big.NewInt(1339)
+var serial4 = big.NewInt(0x1339)
 var serial4String = core.SerialToString(serial4)
-var serial5 = big.NewInt(1340)
+var serial5 = big.NewInt(0x1340)
 var serial5String = core.SerialToString(serial5)
-var serial6 = big.NewInt(1341)
-var serial7 = big.NewInt(1342)
+var serial6 = big.NewInt(0x1341)
+var serial7 = big.NewInt(0x1342)
 
 var testKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
@@ -183,19 +186,62 @@ var testKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
+func TestProcessCerts(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	certs := addExpiringCerts(t, testCtx)
+	log.Clear()
+	testCtx.m.processCerts(certs)
+	// Test that the lastExpirationNagSent was updated for the certificate
+	// corresponding to serial4, which is set up as "already renewed" by
+	// addExpiringCerts.
+	test.AssertEquals(t, 1, len(log.GetAllMatching("DEBUG: SQL:  update `certificateStatus` .*\"000000000000000000000000000000001339\".*2006-01-02 15:04:05.999999999")))
+}
+
 func TestFindExpiringCertificates(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
+
+	addExpiringCerts(t, testCtx)
 
 	log.Clear()
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed on no certificates")
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
+	log.Clear()
+	err = testCtx.m.findExpiringCertificates()
+	test.AssertNotError(t, err, "Failed to find expiring certs")
+	// Should get 001 and 003
+	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
+
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailARaw,
+		Subject: "",
+		Body:    fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)`),
+	}, testCtx.mc.Messages[0])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailBRaw,
+		Subject: "",
+		Body:    fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)`),
+	}, testCtx.mc.Messages[1])
+
+	// Check that regC's only certificate being renewed does not cause a log
+	test.AssertEquals(t, len(log.GetAllMatching("no certs given to send nags for")), 0)
+
+	// A consecutive run shouldn't find anything
+	testCtx.mc.Clear()
+	log.Clear()
+	err = testCtx.m.findExpiringCertificates()
+	test.AssertNotError(t, err, "Failed to find expiring certs")
+	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
+}
+
+func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
 	var keyA jose.JsonWebKey
 	var keyB jose.JsonWebKey
 	var keyC jose.JsonWebKey
-	err = json.Unmarshal(jsonKeyA, &keyA)
+	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(jsonKeyB, &keyB)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -225,15 +271,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Key:       keyC,
 		InitialIP: net.ParseIP("210.3.2.3"),
 	}
-	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
+	bg := context.Background()
+	regA, err = ctx.ssa.NewRegistration(bg, regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
-	regB, err = testCtx.ssa.NewRegistration(ctx, regB)
+	regB, err = ctx.ssa.NewRegistration(bg, regB)
 	if err != nil {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
-	regC, err = testCtx.ssa.NewRegistration(ctx, regC)
+	regC, err = ctx.ssa.NewRegistration(bg, regC)
 	if err != nil {
 		t.Fatalf("Couldn't store regC: %s", err)
 	}
@@ -243,7 +290,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy A",
 		},
-		NotAfter:     testCtx.fc.Now().Add(23 * time.Hour),
+		NotAfter:     ctx.fc.Now().Add(23 * time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
 	}
@@ -256,7 +303,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certStatusA := &core.CertificateStatus{
 		Serial:                serial1String,
-		LastExpirationNagSent: testCtx.fc.Now().AddDate(0, 0, -3),
+		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
 	}
 
@@ -265,7 +312,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy B",
 		},
-		NotAfter:     testCtx.fc.Now().AddDate(0, 0, 3),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: serial2,
 	}
@@ -278,7 +325,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certStatusB := &core.CertificateStatus{
 		Serial:                serial2String,
-		LastExpirationNagSent: testCtx.fc.Now().Add(-36 * time.Hour),
+		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
 	}
 
@@ -287,7 +334,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
-		NotAfter:     testCtx.fc.Now().Add((7*24 + 1) * time.Hour),
+		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: serial3,
 	}
@@ -308,7 +355,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy D",
 		},
-		NotAfter:     testCtx.fc.Now().AddDate(0, 0, 3),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-d.com"},
 		SerialNumber: serial4,
 	}
@@ -326,14 +373,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
 		Serial:  serial4String,
-		Issued:  testCtx.fc.Now().AddDate(0, 0, -87),
-		Expires: testCtx.fc.Now().AddDate(0, 0, 3),
+		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
+		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
 		Serial:  serial5String,
-		Issued:  testCtx.fc.Now().AddDate(0, 0, -3),
-		Expires: testCtx.fc.Now().AddDate(0, 0, 87),
+		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
+		Expires: ctx.fc.Now().AddDate(0, 0, 87),
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -357,28 +404,46 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
 	err = setupDBMap.Insert(fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
+	return []core.Certificate{*certA, *certB, *certC, *certD}
+}
+
+func TestFindCertsAtCapacity(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24})
+
+	addExpiringCerts(t, testCtx)
 
 	log.Clear()
-	err = testCtx.m.findExpiringCertificates()
+
+	// Override the mailer `stats` with a mock
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	statter := metrics.NewMockStatter(ctrl)
+	testCtx.m.stats = statter
+
+	// Set the limit to 1 so we are "at capacity" with one result
+	testCtx.m.limit = 1
+
+	// The mock statter should have had the "48h0m0s" nag capacity stat incremented once.
+	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
+	// * 24 to setup() for the nag duration. This is because all of the nags are
+	// offset by defaultNagCheckInterval, which is 24hrs.
+	statter.EXPECT().Inc("Mailer.Expiration.Errors.Nag-48h0m0s.AtCapacity",
+		int64(1), float32(1.0))
+
+	// findExpiringCertificates() ends up invoking sendNags which calls
+	// TimingDuration so we need to EXPECT that with the mock
+	statter.EXPECT().TimingDuration("Mailer.Expiration.SendLatency", time.Duration(0), float32(1.0))
+	// We should send 1 mail, incrementing the corresponding stat
+	statter.EXPECT().Inc("Mailer.Expiration.Sent", int64(1), float32(1.0))
+	// Similarly, findExpiringCerticates() sends its latency as well
+	statter.EXPECT().TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
+
+	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
-	// Should get 001 and 003
-	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
+	test.AssertEquals(t, len(testCtx.mc.Messages), 1)
 
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailARaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format(time.RFC822Z)),
-	}, testCtx.mc.Messages[0])
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailBRaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format(time.RFC822Z)),
-	}, testCtx.mc.Messages[1])
-
-	// Check that regC's only certificate being renewed does not cause a log
-	test.AssertEquals(t, len(log.GetAllMatching("no certs given to send nags for")), 0)
-
-	// A consecutive run shouldn't find anything
+	// A consecutive run shouldn't find anything - similarly we do not EXPECT()
+	// anything on statter to be called, and if it is then we have a test failure
 	testCtx.mc.Clear()
 	log.Clear()
 	err = testCtx.m.findExpiringCertificates()
