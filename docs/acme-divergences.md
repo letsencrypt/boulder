@@ -17,7 +17,7 @@ does it provide `Link` headers to further documentation on rate-limiting.
 ## [Section 5.6.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-5.6)
 
 Boulder doesn't return errors under the `urn:ietf:params:acme:error:` namespace
-but instead uses the `urn:acme:error:` namespace.
+but instead uses the `urn:acme:error:` namespace from [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4).
 
 Boulder also uses `invalidEmail` in place of the error `invalidContact` defined in
 ACME and doesn't implement the `caa` and `dnssec` errors.
@@ -78,4 +78,5 @@ Boulder does not implement the `oob-01` validation method.
 
 ## [Section 8.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-8.5)
 
-Boulder uses the older `urn:acme:` namespace for errors instead of `urn:ietf:params:acme:`.
+Boulder uses the `urn:acme:` namespace from [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4)
+for errors instead of `urn:ietf:params:acme:`.
