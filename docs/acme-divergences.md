@@ -61,7 +61,7 @@ Boulder does not implement the `reason` field for the `revoke-cert` endpoint, `u
 
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3)
 
-Boulder implements `tls-sni-01` instead of the `tls-sni-02` validation method.
+Boulder implements `tls-sni-01` from [draft-ietf-acme-01 Section 7.3](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3) instead of the `tls-sni-02` validation method.
 
 ## [Section 7.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.5)
 
