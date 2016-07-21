@@ -61,7 +61,7 @@ Boulder does not implement account deactivation.
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3)
 
 Boulder does not implement applications, instead it implements the `new-cert` flow
-from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5)..
+from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
 
 ## [Section 6.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.5)
 
