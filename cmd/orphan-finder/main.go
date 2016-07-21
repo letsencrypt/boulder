@@ -24,7 +24,7 @@ import (
 
 var usageString = `
 name:
-  orphan-finder - Reads orphaned certificates from a boulder-ca log or a der file and add them to the database
+  orphan-finder - Reads orphaned certificates from a boulder-ca log or a der file and adds them to the database
 
 usage:
   orphan-finder parse-ca-log --config <path> --log-file <path>
