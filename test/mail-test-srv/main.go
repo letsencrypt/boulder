@@ -162,6 +162,7 @@ func serveSMTP(l net.Listener) error {
 }
 
 func main() {
+	flag.Parse()
 	l, err := net.Listen("tcp", "0.0.0.0:9380")
 	if err != nil {
 		log.Fatalln("Couldn't bind for SMTP", err)
