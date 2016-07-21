@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/facebookgo/httpdown"
 	"github.com/jmhodges/clock"
