@@ -1116,9 +1116,6 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// serialize the update as JSON to send via AMQP to the RA.
 	update.Key = currReg.Key
 
-	// If the registration doesn't have an agreement set, or any contacts (e.g. it
-	// is the trivial update `{"resource":"reg"}` then do not send it to the RA
-	// for update, there is nothing to save/update.
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
