@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/mail"
@@ -17,6 +18,7 @@ import (
 )
 
 var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
+var closeChance = flag.Uint("closeChance", 70, "% of time the server will close connection after MAIL")
 
 type rcvdMail struct {
 	From string
@@ -91,6 +93,13 @@ func handleConn(conn net.Conn) {
 		case "NOOP":
 			conn.Write(smtpOk250)
 		case "MAIL":
+			roll := uint(rand.Intn(100))
+			if roll <= *closeChance {
+				log.Printf(
+					"mail-test-srv: rolled %d < %d, disconnecting client. Bye!\n",
+					roll, *closeChance)
+				conn.Close()
+			}
 			clearState()
 			matches := mailFromRegex.FindStringSubmatch(line)
 			if matches == nil {
@@ -168,6 +177,10 @@ func main() {
 		log.Fatalln("Couldn't bind for SMTP", err)
 	}
 	defer l.Close()
+
+	if *closeChance > 100 {
+		log.Fatalln(fmt.Sprintf("-closeChance %d invalid. must be in [0,100].", *closeChance))
+	}
 
 	setupHTTP(http.DefaultServeMux)
 	go func() {
