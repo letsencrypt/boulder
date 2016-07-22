@@ -18,7 +18,7 @@ import (
 )
 
 var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
-var closeChance = flag.Uint("closeChance", 70, "% of time the server will close connection after MAIL")
+var closeChance = flag.Uint("closeChance", 0, "% of time the server will close connection after MAIL")
 
 type rcvdMail struct {
 	From string
