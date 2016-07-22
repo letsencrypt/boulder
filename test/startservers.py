@@ -73,7 +73,7 @@ def start(race_detection):
         'ocsp-responder --config %s' % get_config('ocsp-responder'),
         'ct-test-srv --config %s' % get_config('ct-test-srv'),
         'dns-test-srv --config %s' % get_config('dns-test-srv'),
-        'mail-test-srv --config %s' % get_config('mail-test-srv'),
+        'mail-test-srv',
         'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
