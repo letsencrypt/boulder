@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // Log contains the CT client and signature verifier for a particular CT log
@@ -54,17 +55,25 @@ type ctSubmissionRequest struct {
 // Impl defines a Publisher
 type Impl struct {
 	log               blog.Logger
+	stats             metrics.Scope
 	client            *http.Client
 	issuerBundle      []ct.ASN1Cert
 	ctLogs            []*Log
 	submissionTimeout time.Duration
 
-	SA core.StorageAuthority
+	sa core.StorageAuthority
 }
 
 // New creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, logger blog.Logger) *Impl {
+func New(
+	bundle []ct.ASN1Cert,
+	logs []*Log,
+	submissionTimeout time.Duration,
+	logger blog.Logger,
+	stats metrics.Scope,
+	sa core.StorageAuthority,
+) *Impl {
 	if submissionTimeout == 0 {
 		submissionTimeout = time.Hour * 12
 	}
@@ -73,6 +82,8 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 		issuerBundle:      bundle,
 		ctLogs:            logs,
 		log:               logger,
+		stats:             stats,
+		sa:                sa,
 	}
 }
 
@@ -89,43 +100,42 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		sct, err := ctLog.client.AddChainWithContext(localCtx, chain)
+		err := pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-			continue
-		}
-
-		err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
-			Leaf: ct.MerkleTreeLeaf{
-				LeafType: ct.TimestampedEntryLeafType,
-				TimestampedEntry: ct.TimestampedEntry{
-					X509Entry: ct.ASN1Cert(der),
-					EntryType: ct.X509LogEntryType,
-				},
-			},
-		})
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.AuditErr(fmt.Sprintf("Failed to verify SCT receipt: %s", err))
-			continue
-		}
-
-		internalSCT, err := sctToInternal(sct, core.SerialToString(cert.SerialNumber))
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.AuditErr(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
-			continue
-		}
-
-		err = pub.SA.AddSCTReceipt(localCtx, internalSCT)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.AuditErr(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
-			continue
 		}
 	}
+	return nil
+}
 
+func (pub *Impl) singleLogSubmit(ctx context.Context, chain []ct.ASN1Cert, serial string, ctLog *Log) error {
+	sct, err := ctLog.client.AddChainWithContext(ctx, chain)
+	if err != nil {
+		return err
+	}
+
+	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
+		Leaf: ct.MerkleTreeLeaf{
+			LeafType: ct.TimestampedEntryLeafType,
+			TimestampedEntry: ct.TimestampedEntry{
+				X509Entry: chain[0],
+				EntryType: ct.X509LogEntryType,
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	internalSCT, err := sctToInternal(sct, serial)
+	if err != nil {
+		return err
+	}
+
+	err = pub.sa.AddSCTReceipt(ctx, internalSCT)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

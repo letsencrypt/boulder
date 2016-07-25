@@ -25,6 +25,7 @@ import (
 	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -254,9 +255,13 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil, 0, log)
+	pub := New(nil,
+		nil,
+		0,
+		log,
+		metrics.NewNoopScope(),
+		mocks.NewStorageAuthority(clock.NewFake()))
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
-	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
 	leaf, err := x509.ParseCertificate(leafPEM.Bytes)
@@ -399,5 +404,5 @@ func TestBadServer(t *testing.T) {
 	log.Clear()
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to verify SCT receipt")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ecdsa signature")), 1)
 }
