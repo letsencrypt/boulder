@@ -80,10 +80,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	// Graceful shutdown settings
-	ShutdownStopTimeout time.Duration
-	ShutdownKillTimeout time.Duration
-
 	// Feature gates
 	CheckMalformedCSR bool
 }
@@ -817,7 +813,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request"), err)
+		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514
+		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565"), err)
 		return
 	}
 	wfe.logCsr(request, certificateRequest, reg)
@@ -1115,20 +1112,11 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// serialize the update as JSON to send via AMQP to the RA.
 	update.Key = currReg.Key
 
-	// If the registration doesn't have an agreement set, or any contacts (e.g. it
-	// is the trivial update `{"resource":"reg"}` then do not send it to the RA
-	// for update, there is nothing to save/update.
-	var updatedReg core.Registration
-	if len(update.Agreement) > 0 || update.Contact != nil {
-		// Ask the RA to update this authorization.
-		updatedReg, err = wfe.RA.UpdateRegistration(ctx, currReg, update)
-		if err != nil {
-			logEvent.AddError("unable to update registration: %s", err)
-			wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
-			return
-		}
-	} else {
-		updatedReg = update // Return the empty update as-is
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
+	if err != nil {
+		logEvent.AddError("unable to update registration: %s", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		return
 	}
 
 	jsonReply, err := marshalIndent(updatedReg)
