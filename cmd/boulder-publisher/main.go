@@ -75,18 +75,20 @@ func main() {
 	sa, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 
+	scope := metrics.NewStatsdScope(stats, "Publisher")
+
 	pubi := publisher.New(
 		bundle,
 		logs,
 		c.Publisher.SubmissionTimeout.Duration,
 		logger,
-		metrics.NewStatsdScope(stats),
+		scope,
 		sa)
 
 	go cmd.ProfileCmd("Publisher", stats)
 
 	if c.Publisher.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, metrics.NewStatsdScope(stats, "Publisher"))
+		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
 		cmd.FailOnError(err, "Failed to setup gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)

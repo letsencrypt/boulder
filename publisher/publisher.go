@@ -100,9 +100,13 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
+		pub.stats.Inc("Submits", 1)
+		start := time.Now()
 		err := pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
+		pub.stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
 		if err != nil {
 			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+			pub.stats.Inc("Errors", 1)
 		}
 	}
 	return nil
