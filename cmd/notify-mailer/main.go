@@ -175,57 +175,65 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 const usageIntro = `
 Introduction:
 
-The notification mailer exists to send a fixed message to a list of email
-addresses. The attributes of the message (from address, subject, and message
-content) are provided by the command line arguments. The message content is used
-verbatim and must be provided as a path to a plaintext file via the -body
-argument. The list of recipient emails should be provided via the -toFile
-argument as a path to a plaintext file containing one email per line.
+The notification mailer exists to send a fixed message to the contact associated
+with a list of registration IDs. The attributes of the message (from address,
+subject, and message content) are provided by the command line arguments. The
+message content is used verbatim and must be provided as a path to a plaintext
+file via the -body argument. A list of registration IDs should be provided via
+the -toFile argument as a path to a plaintext file containing JSON of the form:
+
+  [
+   { "id": 1 },
+   ...
+   { "id": n }
+  ]
 
 To help the operator gain confidence in the mailing run before committing fully
 three safety features are supported: dry runs, checkpointing and a sleep
 interval.
 
-The -dryRun flag will use a mock mailer that prints message content to stdout
-instead of performing an SMTP transaction with a real mailserver. This can be
-used when the initial parameters are being tweaked to ensure no real emails are
-sent.
+The -dryRun=true flag will use a mock mailer that prints message content to
+stdout instead of performing an SMTP transaction with a real mailserver. This
+can be used when the initial parameters are being tweaked to ensure no real
+emails are sent. Using -dryRun=false will send real email.
 
 Checkpointing is supported via the -start and -end arguments. The -start flag
-specifies which line of the -toFile to start processing at. Similarly, the -end
-flag specifies which line of the -toFile to end processing at. In combination
-these can be used to process only a fixed number of recipients at a time, and
-to resume mailing after early termination.
+specifies which registration ID of the -toFile to start processing at.
+Similarly, the -end flag specifies which registration ID of the -toFile to end
+processing at. In combination these can be used to process only a fixed number
+of recipients at a time, and to resume mailing after early termination.
 
 During mailing the -sleep argument is used to space out individual messages.
 This can be used to ensure that the mailing happens at a steady pace with ample
 opportunity for the operator to terminate early in the event of error. The
 -sleep flag honours durations with a unit suffix (e.g. 1m for 1 minute, 10s for
-10 seconds, etc).
+10 seconds, etc). Using -sleep=0 will disable the sleep and send at full speed.
 
 Examples:
   Send an email with subject "Hello!" from the email "hello@goodbye.com" with
-  the contents read from "test_msg_body.txt" to every email listed in
-  "test_msg_recipients.txt", sleeping 10 seconds between each message:
+  the contents read from "test_msg_body.txt" to every email associated with the
+  registration IDs listed in "test_reg_recipients.json", sleeping 10 seconds
+  between each message:
+
+  notify-mailer -config test/config/notify-mailer.json -body
+    cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.json -subject "Hello!"
+    -sleep 10s -dryRun=false
+
+  Do the same, but only to the first 100 recipient IDs:
+
+  notify-mailer -config test/config/notify-mailer.json
+    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.json -subject "Hello!"
+    -sleep 10s -end 100 -dryRun=false
+
+  Send the message, but start at the 200th ID of the recipients file, ending after
+  100 registration IDs, and as a dry-run:
 
   notify-mailer -config test/config/notify-mailer.json 
     -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
-    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
-    -sleep 10s
-
-  Do the same, but only to the first 100 recipients:
-
-  notify-mailer -config test/config/notify-mailer.json 
-    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
-    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
-    -sleep 10s -end 100
-
-  Send the message, but start at line 200 of the recipients file, ending after
-  100 recipients, and as a dry-run:
-  notify-mailer -config test/config/notify-mailer.json 
-    -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
-    -toFile cmd/notify-mailer/testdata/test_msg_recipients.txt -subject "Hello!"
-    -sleep 10s -start 200 -end 300 -dryRun
+    -toFile cmd/notify-mailer/testdata/test_msg_recipients.json -subject "Hello!"
+    -sleep 10s -start 200 -end 300 -dryRun=true
 
 Required arguments:
 - body
@@ -237,7 +245,7 @@ Required arguments:
 func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
 	subject := flag.String("subject", "", "Subject of emails")
-	toFile := flag.String("toFile", "", "File containing a list of email addresses to send to, one per file.")
+	toFile := flag.String("toFile", "", "File containing a JSON array of registration IDs to send to.")
 	bodyFile := flag.String("body", "", "File containing the email body in plain text format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")

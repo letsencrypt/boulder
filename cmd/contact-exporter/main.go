@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"gopkg.in/gorp.v1"
 
@@ -19,6 +20,7 @@ type contactExporter struct {
 	log   blog.Logger
 	dbMap *gorp.DbMap
 	clk   clock.Clock
+	grace time.Duration
 }
 
 type contact struct {
@@ -39,7 +41,7 @@ func (c contactExporter) findContacts() ([]contact, error) {
 				WHERE expires >= :expireCutoff
 			);`,
 		map[string]interface{}{
-			"expireCutoff": c.clk.Now(),
+			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
 		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
@@ -69,19 +71,38 @@ func writeContacts(contactsList []contact, outfile string) error {
 const usageIntro = `
 Introduction:
 
-The contact exporter exists to retrieve the email addresses of all registered
-users with currently unexpired certificates. This list of email addresses can
+The contact exporter exists to retrieve the IDs of all registered
+users with currently unexpired certificates. This list of registration IDs can
 then be given as input to the notification mailer to send bulk notifications.
 
-The email addresses are deduplicated and sorted prior to being writen to the
-outfile. E.g. if two registrations exist with the contact email
-"example@example.com", this address will only appear once. Registration contacts
-that are *not* email addresses are discarded (e.g. tel:999-999-9999)
+The -grace parameter can be used to allow registrations with certificates that
+have already expired to be included in the export. The argument is a Go duration
+obeying the usual suffix rules (e.g. 24h).
+
+Registration IDs are favoured over email addresses as the intermediate format in
+order to ensure the most up to date contact information is used at the time of
+notification. The notification mailer will resolve the ID to email(s) when the
+mailing is underway, ensuring we use the correct address if a user has updated
+their contact information between the time of export and the time of
+notification.
+
+The contact exporter's registration ID output will be JSON of the form:
+  [
+   { "id": 1 },
+   ...
+   { "id": n }
+  ]
 
 Examples:
-  Export all email addresses to "emails.txt":
+  Export all registration IDs with unexpired certificates to "regs.json":
 
-  contact-exporter -config test/config/contact-exporter.json -outfile emails.txt
+  contact-exporter -config test/config/contact-exporter.json -outfile regs.json
+
+  Export all registration IDs with certificates that are unexpired or expired
+  within the last two days to "regs.json":
+
+  contact-exporter -config test/config/contact-exporter.json -grace 48h -outfile
+    "regs.json"
 
 Required arguments:
 - config
@@ -89,6 +110,7 @@ Required arguments:
 
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -126,6 +148,7 @@ func main() {
 		log:   log,
 		dbMap: dbMap,
 		clk:   cmd.Clock(),
+		grace: *grace,
 	}
 
 	contacts, err := exporter.findContacts()
