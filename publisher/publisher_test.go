@@ -20,12 +20,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	ct "github.com/google/certificate-transparency/go"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -285,6 +287,11 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 func TestBasicSuccessful(t *testing.T) {
 	pub, leaf, k := setup(t)
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	scope := mock_metrics.NewMockScope(ctrl)
+	pub.stats = scope
+
 	server := logSrv(leaf.Raw, k)
 	defer server.Close()
 	port, err := getPort(server)
@@ -292,6 +299,8 @@ func TestBasicSuccessful(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
@@ -299,6 +308,8 @@ func TestBasicSuccessful(t *testing.T) {
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
@@ -322,6 +333,11 @@ func TestGoodRetry(t *testing.T) {
 func TestUnexpectedError(t *testing.T) {
 	pub, leaf, k := setup(t)
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	scope := mock_metrics.NewMockScope(ctrl)
+	pub.stats = scope
+
 	srv := errorLogSrv()
 	defer srv.Close()
 	port, err := getPort(srv)
@@ -329,6 +345,9 @@ func TestUnexpectedError(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().Inc("Errors", int64(1)).Return(nil)
+	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
