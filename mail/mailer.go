@@ -238,6 +238,7 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
+	return nil
 }
 
 // SendMail sends an email to the provided list of recipients. The email body
@@ -245,7 +246,7 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	m.stats.Inc("SendMail.Attempts", 1)
 
-	err := sendOne(to, subject, msg)
+	err := m.sendOne(to, subject, msg)
 	if err != nil {
 		m.stats.Inc("SendMail.Errors", 1)
 		return err
