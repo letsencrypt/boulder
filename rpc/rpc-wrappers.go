@@ -17,7 +17,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,

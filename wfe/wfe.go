@@ -23,7 +23,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 	jose "github.com/square/go-jose"
 )
 

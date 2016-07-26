@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/probs"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 	"github.com/square/go-jose"
 )
 

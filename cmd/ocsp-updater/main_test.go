@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var ctx = context.Background()

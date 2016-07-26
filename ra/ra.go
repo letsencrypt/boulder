@@ -28,7 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or

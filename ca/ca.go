@@ -33,7 +33,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to

@@ -33,7 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 type DummyValidationAuthority struct {

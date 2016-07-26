@@ -10,7 +10,7 @@ import (
 
 	jose "github.com/square/go-jose"
 
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into

@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to

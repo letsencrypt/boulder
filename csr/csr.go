@@ -8,7 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280

@@ -11,7 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
-	x509csr "github.com/letsencrypt/boulder/x509csr"
+	x509csr "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var testingPolicy = &goodkey.KeyPolicy{
