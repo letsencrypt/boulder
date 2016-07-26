@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v69",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
@@ -139,6 +139,21 @@
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
 			"Comment": "2.0.0-10-ga109a23",
 			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509/pkix",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/encoding/asn1",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
