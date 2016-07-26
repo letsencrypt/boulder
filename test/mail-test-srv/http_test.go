@@ -21,29 +21,31 @@ func reqAndRecorder(t testing.TB, method, relativeUrl string, body io.Reader) (*
 }
 
 func TestHTTPClear(t *testing.T) {
+	srv := mailSrv{}
 	w, r := reqAndRecorder(t, "POST", "/clear", nil)
-	allReceivedMail = []rcvdMail{rcvdMail{}}
-	httpClear(w, r)
+	srv.allReceivedMail = []rcvdMail{rcvdMail{}}
+	srv.httpClear(w, r)
 	if w.Code != 200 {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
-	if len(allReceivedMail) != 0 {
+	if len(srv.allReceivedMail) != 0 {
 		t.Error("/clear failed to clear mail buffer")
 	}
 
 	w, r = reqAndRecorder(t, "GET", "/clear", nil)
-	allReceivedMail = []rcvdMail{rcvdMail{}}
-	httpClear(w, r)
+	srv.allReceivedMail = []rcvdMail{rcvdMail{}}
+	srv.httpClear(w, r)
 	if w.Code != 405 {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
-	if len(allReceivedMail) != 1 {
+	if len(srv.allReceivedMail) != 1 {
 		t.Error("GET /clear cleared the mail buffer")
 	}
 }
 
 func TestHTTPCount(t *testing.T) {
-	allReceivedMail = []rcvdMail{
+	srv := mailSrv{}
+	srv.allReceivedMail = []rcvdMail{
 		rcvdMail{From: "a", To: "b"},
 		rcvdMail{From: "a", To: "b"},
 		rcvdMail{From: "a", To: "c"},
@@ -66,7 +68,7 @@ func TestHTTPCount(t *testing.T) {
 		buf.Reset()
 		w.Body = &buf
 
-		httpCount(w, r)
+		srv.httpCount(w, r)
 		if w.Code != 200 {
 			t.Errorf("%s: expected 200, got %d", test.URL, w.Code)
 		}

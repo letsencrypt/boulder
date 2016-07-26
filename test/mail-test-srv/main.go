@@ -49,7 +49,7 @@ var dataRegex = regexp.MustCompile("^DATA\\s*$")
 var smtpErr501 = []byte("501 syntax error in parameters or arguments \r\n")
 var smtpOk250 = []byte("250 OK \r\n")
 
-func (srv mailSrv) handleConn(conn net.Conn) {
+func (srv *mailSrv) handleConn(conn net.Conn) {
 	defer conn.Close()
 	auditlogger := blog.Get()
 	auditlogger.Info(fmt.Sprintf("mail-test-srv: Got connection from %s", conn.RemoteAddr()))
@@ -163,7 +163,7 @@ func (srv mailSrv) handleConn(conn net.Conn) {
 	}
 }
 
-func (srv mailSrv) serveSMTP(l net.Listener) error {
+func (srv *mailSrv) serveSMTP(l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
