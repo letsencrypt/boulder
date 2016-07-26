@@ -17,10 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 type idGenerator interface {
@@ -54,6 +56,7 @@ type MailerImpl struct {
 	client      smtpClient
 	clk         clock.Clock
 	csprgSource idGenerator
+	stats       *metrics.StatsdScope
 }
 
 type dialer interface {
@@ -100,7 +103,7 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password string, from mail.Address) *MailerImpl {
+func New(server, port, username, password string, from mail.Address, stats statsd.Statter) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -111,6 +114,7 @@ func New(server, port, username, password string, from mail.Address) *MailerImpl
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
+		stats:       metrics.NewStatsdScope(stats, "Mailer"),
 	}
 }
 
@@ -206,9 +210,7 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 	return client, nil
 }
 
-// SendMail sends an email to the provided list of recipients. The email body
-// is simple text.
-func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if m.client == nil {
 		return errors.New("call Connect before SendMail")
 	}
@@ -228,16 +230,29 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-
 	_, err = w.Write(body)
 	if err != nil {
 		return err
 	}
-
 	err = w.Close()
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+// SendMail sends an email to the provided list of recipients. The email body
+// is simple text.
+func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+	m.stats.Inc("SendMail.Attempts", 1)
+
+	err := m.sendOne(to, subject, msg)
+	if err != nil {
+		m.stats.Inc("SendMail.Errors", 1)
+		return err
+	}
+
+	m.stats.Inc("SendMail.Successes", 1)
 	return nil
 }
 

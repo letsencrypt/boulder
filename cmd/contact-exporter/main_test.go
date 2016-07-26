@@ -67,6 +67,18 @@ func TestFindContacts(t *testing.T) {
 	test.AssertEquals(t, contacts[0].ID, regA.ID)
 	test.AssertEquals(t, contacts[1].ID, regC.ID)
 	test.AssertEquals(t, contacts[2].ID, regD.ID)
+
+	// Allow a 1 year grace period
+	testCtx.c.grace = 360 * 24 * time.Hour
+	contacts, err = testCtx.c.findContacts()
+	test.AssertNotError(t, err, "findContacts() produced error")
+	// Now all four registration should be returned, including RegB since its
+	// certificate expired within the grace period
+	test.AssertEquals(t, len(contacts), 4)
+	test.AssertEquals(t, contacts[0].ID, regA.ID)
+	test.AssertEquals(t, contacts[1].ID, regB.ID)
+	test.AssertEquals(t, contacts[2].ID, regC.ID)
+	test.AssertEquals(t, contacts[3].ID, regD.ID)
 }
 
 func exampleContacts() []contact {

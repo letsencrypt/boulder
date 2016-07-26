@@ -106,13 +106,11 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	startSending := m.clk.Now()
 	err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
 	if err != nil {
-		m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 		return err
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)
 	m.stats.TimingDuration("Mailer.Expiration.SendLatency", elapsed, 1.0)
-	m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	return nil
 }
 
@@ -398,7 +396,13 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
+	mailClient := mail.New(
+		c.Mailer.Server,
+		c.Mailer.Port,
+		c.Mailer.Username,
+		smtpPassword,
+		*fromAddress,
+		stats)
 	err = mailClient.Connect()
 	cmd.FailOnError(err, "Couldn't connect to mail server.")
 	defer func() {
