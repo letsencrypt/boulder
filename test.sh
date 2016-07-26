@@ -247,4 +247,10 @@ if [[ "$RUN" =~ "generate" ]] ; then
   end_context #"generate"
 fi
 
+if [[ "$RUN" =~ "rpm" ]]; then
+  start_context "rpm"
+  run make rpm
+  end_context #"rpm"
+fi
+
 exit ${FAILURE}
