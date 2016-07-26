@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -58,6 +59,7 @@ func TestSleepInterval(t *testing.T) {
 
 	// Set up a mock mailer that sleeps for `sleepLen` seconds
 	m := &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: sleepLen * time.Second,
@@ -78,6 +80,7 @@ func TestSleepInterval(t *testing.T) {
 
 	// Set up a mock mailer that doesn't sleep at all
 	m = &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: "",
 		sleepInterval: 0,
@@ -109,6 +112,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval larger than the number of
 	// destinations
 	m := &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -127,6 +131,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a negative sleep interval
 	m = &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -146,6 +151,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval starting after 4 destinations from
 	// the start of the file
 	m = &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -181,6 +187,7 @@ func TestMailCheckpointing(t *testing.T) {
 
 	// Create a mailer with a checkpoint interval ending after 3 destinations
 	m = &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -217,6 +224,7 @@ func TestMailCheckpointing(t *testing.T) {
 	// Create a mailer with a checkpoint interval covering 2 destinations from the
 	// middle of the file
 	m = &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -262,6 +270,7 @@ func TestMessageContent(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
@@ -370,6 +379,7 @@ func TestResolveEmails(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
+		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       "Test",

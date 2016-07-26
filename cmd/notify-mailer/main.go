@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -74,6 +75,19 @@ func (m *mailer) ok() error {
 	return nil
 }
 
+func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
+	// Should never happen
+	if total <= 0 || cur < 0 || cur > total {
+		m.log.AuditErr(fmt.Sprintf(
+			"invalid cur (%d) or total (%d)\n", cur, total))
+	}
+	completion := (float32(cur) / float32(total)) * 100
+	now := m.clk.Now()
+	elapsed := now.Sub(start)
+	m.log.Info(fmt.Sprintf("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s\n",
+		to, cur, total, completion, elapsed.String()))
+}
+
 func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
@@ -84,7 +98,10 @@ func (m *mailer) run() error {
 		return err
 	}
 
-	for _, dest := range destinations {
+	startTime := m.clk.Now()
+
+	for i, dest := range destinations {
+		m.printStatus(dest, i, len(destinations), startTime)
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
@@ -257,6 +274,8 @@ func main() {
 			cmd.PasswordConfig
 			cmd.SMTPConfig
 		}
+		Statsd cmd.StatsdConfig
+		Syslog cmd.SyslogConfig
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
@@ -272,18 +291,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, log := cmd.StatsAndLogging(cmd.StatsdConfig{}, cmd.SyslogConfig{StdoutLevel: 7})
-
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
 
+	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
+	defer log.AuditPanic()
+
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "NotificationMailer"))
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
@@ -311,7 +332,8 @@ func main() {
 			cfg.NotifyMailer.Port,
 			cfg.NotifyMailer.Username,
 			smtpPassword,
-			*address)
+			*address,
+			stats)
 	}
 	err = mailClient.Connect()
 	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",

@@ -433,8 +433,6 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
 	statter.EXPECT().TimingDuration("Mailer.Expiration.SendLatency", time.Duration(0), float32(1.0))
-	// We should send 1 mail, incrementing the corresponding stat
-	statter.EXPECT().Inc("Mailer.Expiration.Sent", int64(1), float32(1.0))
 	// Similarly, findExpiringCerticates() sends its latency as well
 	statter.EXPECT().TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
