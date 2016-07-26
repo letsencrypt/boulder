@@ -74,4 +74,4 @@ rpm: build
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
-		test/boulder-config.json sa/_db data/ $(OBJECTS)
+		test/config/ sa/_db data/ $(OBJECTS)
