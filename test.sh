@@ -18,7 +18,7 @@ HARDFAIL=${HARDFAIL:-fmt godep-restore}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | egrep -v '/(vendor/|x509csr)')
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 GITHUB_SECRET_FILE="/tmp/github-secret.json"
 
