@@ -210,45 +210,47 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 	return client, nil
 }
 
-// SendMail sends an email to the provided list of recipients. The email body
-// is simple text.
-func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if m.client == nil {
 		return errors.New("call Connect before SendMail")
 	}
-	m.stats.Inc("SendMail.Attempts", 1)
 	body, err := m.generateMessage(to, subject, msg)
 	if err != nil {
-		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 	if err = m.client.Mail(m.from.String()); err != nil {
-		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
 	for _, t := range to {
 		if err = m.client.Rcpt(t); err != nil {
-			m.stats.Inc("SendMail.Errors", 1)
 			return err
 		}
 	}
 	w, err := m.client.Data()
 	if err != nil {
-		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
-
 	_, err = w.Write(body)
 	if err != nil {
-		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
-
 	err = w.Close()
+	if err != nil {
+		return err
+	}
+}
+
+// SendMail sends an email to the provided list of recipients. The email body
+// is simple text.
+func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+	m.stats.Inc("SendMail.Attempts", 1)
+
+	err := sendOne(to, subject, msg)
 	if err != nil {
 		m.stats.Inc("SendMail.Errors", 1)
 		return err
 	}
+
 	m.stats.Inc("SendMail.Successes", 1)
 	return nil
 }
