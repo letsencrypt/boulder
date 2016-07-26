@@ -671,6 +671,7 @@ func TestProfileSelection(t *testing.T) {
 }
 
 func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
+	oidTLSFeature := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
 	for _, ext := range cert.Extensions {
 		if ext.Id.Equal(oidTLSFeature) {
 			test.Assert(t, !ext.Critical, "Extension was marked critical")

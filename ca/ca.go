@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -34,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	"github.com/letsencrypt/go/src/encoding/asn1"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to

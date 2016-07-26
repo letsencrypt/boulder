@@ -3,7 +3,6 @@ package csr
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509/pkix"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
 	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	"github.com/letsencrypt/go/src/crypto/x509/pkix"
 )
 
 var testingPolicy = &goodkey.KeyPolicy{
