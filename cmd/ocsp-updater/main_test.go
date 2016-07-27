@@ -19,14 +19,14 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var ctx = context.Background()
 
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(_ context.Context, csr x509csr.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *mockCA) IssueCertificate(_ context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 

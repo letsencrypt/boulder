@@ -32,7 +32,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
-	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 	"github.com/letsencrypt/go/src/encoding/asn1"
 )
 
@@ -272,7 +272,7 @@ func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 //                        Any other value will result in an error.
 //
 // Other requested extensions are silently ignored.
-func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509csr.CertificateRequest) ([]signer.Extension, error) {
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *oldx509.CertificateRequest) ([]signer.Extension, error) {
 	extensions := []signer.Extension{}
 
 	extensionSeen := map[string]bool{}
@@ -374,7 +374,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509csr.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {

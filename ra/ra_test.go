@@ -33,7 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 type DummyValidationAuthority struct {
@@ -116,7 +116,7 @@ var (
 
 	ResponseIndex = 0
 
-	ExampleCSR = &x509csr.CertificateRequest{}
+	ExampleCSR = &oldx509.CertificateRequest{}
 
 	// These values are populated by the tests as we go
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
@@ -232,7 +232,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 
 	block, _ := pem.Decode(CSRPEM)
-	ExampleCSR, _ = x509csr.ParseCertificateRequest(block.Bytes)
+	ExampleCSR, _ = oldx509.ParseCertificateRequest(block.Bytes)
 
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
@@ -760,7 +760,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := x509csr.ParseCertificateRequest(csrBytes)
+	parsedCSR, err := oldx509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")

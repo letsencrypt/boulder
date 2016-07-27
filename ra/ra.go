@@ -28,7 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -441,7 +441,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509csr.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return

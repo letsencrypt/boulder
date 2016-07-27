@@ -8,7 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
-	x509csr "github.com/letsencrypt/go/src/crypto/x509"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
@@ -21,19 +21,19 @@ const maxCNLength = 64
 //
 // SHA1WithRSA is allowed because there's still a fair bit of it
 // out there, but we should try to remove it soon.
-var badSignatureAlgorithms = map[x509csr.SignatureAlgorithm]bool{
-	x509csr.UnknownSignatureAlgorithm: true,
-	x509csr.MD2WithRSA:                true,
-	x509csr.MD5WithRSA:                true,
-	x509csr.DSAWithSHA1:               true,
-	x509csr.DSAWithSHA256:             true,
-	x509csr.ECDSAWithSHA1:             true,
+var badSignatureAlgorithms = map[oldx509.SignatureAlgorithm]bool{
+	oldx509.UnknownSignatureAlgorithm: true,
+	oldx509.MD2WithRSA:                true,
+	oldx509.MD5WithRSA:                true,
+	oldx509.DSAWithSHA1:               true,
+	oldx509.DSAWithSHA256:             true,
+	oldx509.ECDSAWithSHA1:             true,
 }
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
 // the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
 // will hoist a DNS name into the CN if it is empty.
-func VerifyCSR(csr *x509csr.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
+func VerifyCSR(csr *oldx509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
 	normalizeCSR(csr, forceCNFromSAN)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -76,7 +76,7 @@ func VerifyCSR(csr *x509csr.CertificateRequest, maxNames int, keyPolicy *goodkey
 
 // normalizeCSR deduplicates and lowers the case of dNSNames and the subject CN.
 // If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
-func normalizeCSR(csr *x509csr.CertificateRequest, forceCNFromSAN bool) {
+func normalizeCSR(csr *oldx509.CertificateRequest, forceCNFromSAN bool) {
 	if forceCNFromSAN && csr.Subject.CommonName == "" {
 		if len(csr.DNSNames) > 0 {
 			csr.Subject.CommonName = csr.DNSNames[0]
