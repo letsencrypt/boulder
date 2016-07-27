@@ -15,53 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
-// Config stores configuration parameters that applications
-// will need.  For simplicity, we just lump them all into
-// one struct, and use encoding/json to read it from a file.
-//
-// Note: NO DEFAULTS are provided.
-type Config struct {
-	// Default AMQPConfig for services that don't specify one.
-	// TODO(jsha): Delete this after a deploy.
-	AMQP *AMQPConfig
-
-	Statsd StatsdConfig
-
-	Syslog SyslogConfig
-
-	PA PAConfig
-
-	Common struct {
-		BaseURL string
-		// Path to a PEM-encoded copy of the issuer certificate.
-		IssuerCert string
-
-		DNSResolver               string
-		DNSTimeout                string
-		DNSAllowLoopbackAddresses bool
-
-		CT struct {
-			Logs                       []LogDescription
-			IntermediateBundleFilename string
-		}
-	}
-
-	CertChecker struct {
-		DBConfig
-		HostnamePolicyConfig
-
-		Workers             int
-		ReportDirectoryPath string
-		UnexpiredOnly       bool
-		BadResultsOnly      bool
-		CheckPeriod         ConfigDuration
-	}
-	AllowedSigningAlgos *AllowedSigningAlgos
-
-	// TODO: remove after production configs use SubscriberAgreementURL in the wfe section
-	SubscriberAgreementURL string
-}
-
 // AllowedSigningAlgos defines which algorithms be used for keys that we will
 // sign.
 type AllowedSigningAlgos struct {

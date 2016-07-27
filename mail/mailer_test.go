@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -24,9 +25,10 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
+	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
-	m := New("", "", "", "", *fromAddress, log)
+	m := New("", "", "", "", *fromAddress, log, stats)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -49,8 +51,9 @@ func TestGenerateMessage(t *testing.T) {
 
 func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
+	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", *fromAddress, log)
+	m := New("", "", "", "", *fromAddress, log, stats)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -113,9 +116,17 @@ func TestConnect(t *testing.T) {
 			}()
 		}
 	}()
+	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("send@email.com")
 	log := blog.UseMock()
-	m := New("localhost", port, "user@example.com", "paswd", *fromAddress, log)
+	m := New(
+		"localhost",
+		port,
+		"user@example.com",
+		"paswd",
+		*fromAddress,
+		log,
+		stats)
 	err = m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)

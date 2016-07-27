@@ -6,5 +6,16 @@
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "maxDBConns": 10
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "network": "",
+    "server": "",
+    "stdoutlevel": 6
   }
 }
