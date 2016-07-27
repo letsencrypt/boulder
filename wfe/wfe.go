@@ -682,7 +682,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	}
 
 	type RevokeRequest struct {
-		CertificateDER core.JSONBuffer `json:"certificate"`
+		CertificateDER core.JSONBuffer      `json:"certificate"`
+		Reason         *core.RevocationCode `json:"reason"`
 	}
 	var revokeRequest RevokeRequest
 	if err := json.Unmarshal(body, &revokeRequest); err != nil {
@@ -740,8 +741,17 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// Use revocation code 0, meaning "unspecified"
-	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, 0, registration.ID)
+	reason := core.RevocationCode(0)
+	if revokeRequest.Reason != nil {
+		if _, present := core.RevocationReasons[*revokeRequest.Reason]; !present {
+			logEvent.AddError("invalid revocation reason code")
+			wfe.sendError(response, logEvent, probs.Malformed("invalid revocation reason code"), nil)
+			return
+		}
+		reason = *revokeRequest.Reason
+	}
+
+	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
 		logEvent.AddError("failed to revoke certificate: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Failed to revoke certificate"), err)

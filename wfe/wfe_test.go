@@ -1080,7 +1080,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-func makeRevokeRequestJSON() ([]byte, error) {
+func makeRevokeRequestJSON(reason *core.RevocationCode) ([]byte, error) {
 	certPemBytes, err := ioutil.ReadFile("test/238.crt")
 	if err != nil {
 		return nil, err
@@ -1090,11 +1090,13 @@ func makeRevokeRequestJSON() ([]byte, error) {
 		return nil, err
 	}
 	revokeRequest := struct {
-		Resource       string          `json:"resource"`
-		CertificateDER core.JSONBuffer `json:"certificate"`
+		Resource       string               `json:"resource"`
+		CertificateDER core.JSONBuffer      `json:"certificate"`
+		Reason         *core.RevocationCode `json:"reason"`
 	}{
 		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
+		Reason:         reason,
 	}
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
 	if err != nil {
@@ -1127,7 +1129,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe, fc := setupWFE(t)
@@ -1145,7 +1147,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 // Valid revocation request for existing, non-revoked cert, signed with account
 // key.
 func TestRevokeCertificateAccountKey(t *testing.T) {
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe, _ := setupWFE(t)
@@ -1176,7 +1178,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 	accountKeySigner2, err := jose.NewSigner("RS256", test2Key)
 	test.AssertNotError(t, err, "Failed to make signer")
 	accountKeySigner2.SetNonceSource(wfe.nonceService)
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
 	result, _ := accountKeySigner2.Sign(revokeRequestJSON)
