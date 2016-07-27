@@ -139,7 +139,9 @@ EeMZ9nWyIM6bktLrE11HnFOnKhAYsM5fZA==
 -----END EC PRIVATE KEY-----`
 )
 
-type MockRegistrationAuthority struct{}
+type MockRegistrationAuthority struct {
+	lastRevocationReason core.RevocationCode
+}
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
 	return reg, nil
@@ -164,6 +166,7 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, au
 }
 
 func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+	ra.lastRevocationReason = reason
 	return nil
 }
 
@@ -1129,10 +1132,13 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	keyComp := core.RevocationCode(1)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe, fc := setupWFE(t)
+	wfe.AcceptRevocationReason = true
+	ra := wfe.RA.(*MockRegistrationAuthority)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
@@ -1142,6 +1148,19 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(1))
+
+	responseWriter = httptest.NewRecorder()
+	revokeRequestJSON, err = makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(0))
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account

@@ -599,9 +599,19 @@ var RevocationReasons = map[RevocationCode]string{
 	5: "cessationOfOperation",
 	6: "certificateHold",
 	// 7 is unused
-	8:  "removeFromCRL", // needed?
+	8:  "removeFromCRL",
 	9:  "privilegeWithdrawn",
 	10: "aAcompromise",
+}
+
+// UserRevocationReasons contains the RevocationCodes which users are allowed
+// to use
+var UserRevocationReasons = map[RevocationCode]struct{}{
+	0: struct{}{}, // unspecified
+	1: struct{}{}, // keyCompromise
+	3: struct{}{}, // affiliationChanged
+	4: struct{}{}, // superseded
+	5: struct{}{}, // cessationOfOperation
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

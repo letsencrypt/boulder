@@ -81,7 +81,8 @@ type WebFrontEndImpl struct {
 	RequestTimeout time.Duration
 
 	// Feature gates
-	CheckMalformedCSR bool
+	CheckMalformedCSR      bool
+	AcceptRevocationReason bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -742,10 +743,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	}
 
 	reason := core.RevocationCode(0)
-	if revokeRequest.Reason != nil {
-		if _, present := core.RevocationReasons[*revokeRequest.Reason]; !present {
-			logEvent.AddError("invalid revocation reason code")
-			wfe.sendError(response, logEvent, probs.Malformed("invalid revocation reason code"), nil)
+	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+		if _, present := core.UserRevocationReasons[*revokeRequest.Reason]; !present {
+			logEvent.AddError("invalid revocation reason code provided")
+			wfe.sendError(response, logEvent, probs.Malformed("invalid revocation reason code provided"), nil)
 			return
 		}
 		reason = *revokeRequest.Reason
