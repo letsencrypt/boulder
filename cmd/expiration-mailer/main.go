@@ -398,7 +398,13 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
+	mailClient := mail.New(
+		c.Mailer.Server,
+		c.Mailer.Port,
+		c.Mailer.Username,
+		smtpPassword,
+		*fromAddress,
+		logger)
 	err = mailClient.Connect()
 	cmd.FailOnError(err, "Couldn't connect to mail server.")
 	defer func() {

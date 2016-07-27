@@ -49,6 +49,7 @@ type Mailer interface {
 // MailerImpl defines a mail transfer agent to use for sending mail. It is not
 // safe for concurrent access.
 type MailerImpl struct {
+	log         blog.Logger
 	dialer      dialer
 	from        mail.Address
 	client      smtpClient
@@ -100,7 +101,13 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password string, from mail.Address) *MailerImpl {
+func New(
+	server,
+	port,
+	username,
+	password string,
+	from mail.Address,
+	logger blog.Logger) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -108,6 +115,7 @@ func New(server, port, username, password string, from mail.Address) *MailerImpl
 			server:   server,
 			port:     port,
 		},
+		log:         logger,
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
@@ -228,7 +236,6 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-
 	_, err = w.Write(body)
 	if err != nil {
 		return err

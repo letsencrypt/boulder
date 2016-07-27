@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -24,7 +25,8 @@ func (f fakeSource) generate() *big.Int {
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
-	m := New("", "", "", "", *fromAddress)
+	log := blog.UseMock()
+	m := New("", "", "", "", *fromAddress, log)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -46,8 +48,9 @@ func TestGenerateMessage(t *testing.T) {
 }
 
 func TestFailNonASCIIAddress(t *testing.T) {
+	log := blog.UseMock()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", *fromAddress)
+	m := New("", "", "", "", *fromAddress, log)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -111,7 +114,8 @@ func TestConnect(t *testing.T) {
 		}
 	}()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("localhost", port, "user@example.com", "paswd", *fromAddress)
+	log := blog.UseMock()
+	m := New("localhost", port, "user@example.com", "paswd", *fromAddress, log)
 	err = m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
