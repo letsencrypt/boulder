@@ -15,30 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
-// AllowedSigningAlgos defines which algorithms be used for keys that we will
-// sign.
-type AllowedSigningAlgos struct {
-	RSA           bool
-	ECDSANISTP256 bool
-	ECDSANISTP384 bool
-	ECDSANISTP521 bool
-}
-
-// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-func (asa *AllowedSigningAlgos) KeyPolicy() goodkey.KeyPolicy {
-	if asa != nil {
-		return goodkey.KeyPolicy{
-			AllowRSA:           asa.RSA,
-			AllowECDSANISTP256: asa.ECDSANISTP256,
-			AllowECDSANISTP384: asa.ECDSANISTP384,
-			AllowECDSANISTP521: asa.ECDSANISTP521,
-		}
-	}
-	return goodkey.KeyPolicy{
-		AllowRSA: true,
-	}
-}
-
 // PasswordConfig either contains a password or the path to a file
 // containing a password
 type PasswordConfig struct {

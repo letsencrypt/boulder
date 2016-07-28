@@ -35,13 +35,23 @@ var (
 	smallPrimes          []*big.Int
 )
 
-// KeyPolicy etermines which types of key may be used with various boulder
+// KeyPolicy determines which types of key may be used with various boulder
 // operations.
 type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
 	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
+}
+
+// NewKeyPolicy creates a hard coded key policy for boulder.
+func NewKeyPolicy() KeyPolicy {
+	return KeyPolicy{
+		AllowRSA:           true,
+		AllowECDSANISTP256: true,
+		AllowECDSANISTP384: false, // TODO: change this back to true once the integration test fails
+		AllowECDSANISTP521: false,
+	}
 }
 
 // GoodKey returns true iff the key is acceptable for both TLS use and account
