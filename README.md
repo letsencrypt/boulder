@@ -44,7 +44,6 @@ Alternatively, you can override the docker-compose.yml default with an environme
 
     docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 
-
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
 to do this is with this command:
