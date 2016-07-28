@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -448,7 +447,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	}
 
 	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM))
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
@@ -458,10 +457,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM,
-		certPEM))
 
 	if len(certPEM) == 0 {
 		err = core.InternalServerError("No certificate returned by server")
@@ -484,12 +479,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 		DER: certDER,
 	}
 
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
+		hex.EncodeToString(certDER)))
+
 	// This is one last check for uncaught errors
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
+			serialHex, hex.EncodeToString(certDER), err))
 		return emptyCert, err
 	}
 
@@ -499,9 +498,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] b64der=[%s] err=[%v], regID=[%d]",
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
 			serialHex,
-			base64.StdEncoding.EncodeToString(certDER),
+			hex.EncodeToString(certDER),
 			err,
 			regID,
 		))
