@@ -40,7 +40,7 @@ on your host instead, you should find your host's Docker IP with:
 And edit docker-compose.yml to change the FAKE_DNS environment variable to
 match.
 
-Alternatively, you don't have to edit your docker-compose.yml file (replace 172.17.0.1 with the IPv4 address found in the command above)
+Alternatively, you can overload the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
 
     docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 
