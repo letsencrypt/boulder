@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/goodkey"
 )
 
 // PasswordConfig either contains a password or the path to a file
