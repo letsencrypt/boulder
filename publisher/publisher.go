@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -20,16 +21,19 @@ import (
 // Log contains the CT client and signature verifier for a particular CT log
 type Log struct {
 	uri      string
+	statName string
 	client   *ctClient.LogClient
 	verifier *ct.SignatureVerifier
 }
 
 // NewLog returns an initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
-	if strings.HasSuffix(uri, "/") {
-		uri = uri[0 : len(uri)-2]
+	url, err := url.Parse(uri)
+	if err != nil {
+		return nil, err
 	}
-	client := ctClient.New(uri, nil)
+	url.Path = strings.TrimSuffix(url.Path, "/")
+	client := ctClient.New(url.String(), nil)
 
 	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
@@ -45,7 +49,16 @@ func NewLog(uri, b64PK string) (*Log, error) {
 		return nil, err
 	}
 
-	return &Log{uri, client, verifier}, nil
+	// Replace slashes with dots for statsd logging
+	sanitizedPath := strings.TrimPrefix(url.Path, "/")
+	sanitizedPath = strings.Replace(sanitizedPath, "/", ".", -1)
+
+	return &Log{
+		uri:      uri,
+		statName: fmt.Sprintf("%s.%s", url.Host, sanitizedPath),
+		client:   client,
+		verifier: verifier,
+	}, nil
 }
 
 type ctSubmissionRequest struct {
@@ -100,13 +113,14 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		pub.stats.Inc("Submits", 1)
+		stats := pub.stats.NewScope(ctLog.statName)
+		stats.Inc("Submits", 1)
 		start := time.Now()
 		err := pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
-		pub.stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
+		stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
 		if err != nil {
 			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-			pub.stats.Inc("Errors", 1)
+			stats.Inc("Errors", 1)
 		}
 	}
 	return nil

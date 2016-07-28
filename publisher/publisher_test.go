@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,7 +184,7 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) string {
 func logSrv(leaf []byte, k *ecdsa.PrivateKey) *httptest.Server {
 	sct := createSignedSCT(leaf, k)
 	m := http.NewServeMux()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		var jsonReq ctSubmissionRequest
 		err := decoder.Decode(&jsonReq)
@@ -203,7 +204,7 @@ func logSrv(leaf []byte, k *ecdsa.PrivateKey) *httptest.Server {
 
 func errorLogSrv() *httptest.Server {
 	m := http.NewServeMux()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 
@@ -216,7 +217,7 @@ func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) 
 	hits := 0
 	sct := createSignedSCT(leaf, k)
 	m := http.NewServeMux()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		if hits >= retries {
 			fmt.Fprint(w, sct)
 		} else {
@@ -236,7 +237,7 @@ func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) 
 
 func badLogSrv() *httptest.Server {
 	m := http.NewServeMux()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		var jsonReq ctSubmissionRequest
 		err := decoder.Decode(&jsonReq)
@@ -276,7 +277,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	uri := fmt.Sprintf("http://localhost:%d", port)
+	uri := fmt.Sprintf("http://localhost:%d/ct", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
@@ -298,7 +299,9 @@ func TestBasicSuccessful(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get test server port")
 	addLog(t, pub, port, &k.PublicKey)
 
+	statName := pub.ctLogs[0].statName
 	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
 	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
 	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
 	err = pub.SubmitToCT(ctx, leaf.Raw)
@@ -308,6 +311,7 @@ func TestBasicSuccessful(t *testing.T) {
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
 	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
 	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
 	err = pub.SubmitToCT(ctx, leaf.Raw)
@@ -327,6 +331,7 @@ func TestGoodRetry(t *testing.T) {
 	log.Clear()
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
+	fmt.Println(strings.Join(log.GetAllMatching(".*"), "\n"))
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
 
@@ -343,8 +348,10 @@ func TestUnexpectedError(t *testing.T) {
 	port, err := getPort(srv)
 	test.AssertNotError(t, err, "Failed to get test server port")
 	addLog(t, pub, port, &k.PublicKey)
+	statName := pub.ctLogs[0].statName
 
 	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
 	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
 	scope.EXPECT().Inc("Errors", int64(1)).Return(nil)
 	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
