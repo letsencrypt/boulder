@@ -479,7 +479,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		DER: certDER,
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] b64csr=[%s] b64pem=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] b64csr=[%s] b64der=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), base64.StdEncoding.EncodeToString(csr.Raw),
 		base64.StdEncoding.EncodeToString(certDER)))
 
