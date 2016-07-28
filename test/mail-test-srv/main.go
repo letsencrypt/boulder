@@ -101,6 +101,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 				log.Printf(
 					"mail-test-srv: rolled %d < %d, disconnecting client. Bye!\n",
 					roll, srv.closeChance)
+				clearState()
 				conn.Close()
 			}
 			clearState()
@@ -176,7 +177,7 @@ func (srv *mailSrv) serveSMTP(l net.Listener) error {
 func main() {
 	var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
 	var listenSMTP = flag.String("smtp", "0.0.0.0:9380", "smtp port to listen on")
-	var closeChance = flag.Uint("closeChance", 100, "% of time the server will close connection after MAIL")
+	var closeChance = flag.Uint("closeChance", 0, "% of time the server will close connection after MAIL")
 
 	flag.Parse()
 	l, err := net.Listen("tcp", *listenSMTP)
