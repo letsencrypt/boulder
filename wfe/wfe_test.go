@@ -1132,6 +1132,33 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	wfe, fc := setupWFE(t)
+	wfe.AcceptRevocationReason = true
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	responseWriter := httptest.NewRecorder()
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ := signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+func TestRevokeCertificateReasons(t *testing.T) {
+	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key, err := jose.LoadPrivateKey(keyPemBytes)
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	// Valid reason
 	keyComp := core.RevocationCode(1)
 	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -1150,6 +1177,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(1))
 
+	// No reason
 	responseWriter = httptest.NewRecorder()
 	revokeRequestJSON, err = makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -1161,6 +1189,19 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(0))
+
+	// Invalid reason
+	responseWriter = httptest.NewRecorder()
+	invalid := core.RevocationCode(100)
+	revokeRequestJSON, err = makeRevokeRequestJSON(&invalid)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 400)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"invalid revocation reason code provided","status":400}`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
