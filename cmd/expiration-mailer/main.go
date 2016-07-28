@@ -349,6 +349,8 @@ type config struct {
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
+	retryBase := flag.Duration("retryBase", 1*time.Second, "Base sleep duration between reconnect attempts")
+	retryMax := flag.Duration("retryMax", 30*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -403,7 +405,8 @@ func main() {
 		smtpPassword,
 		*fromAddress,
 		logger,
-		stats)
+		stats,
+		*retryBase, *retryMax)
 	err = mailClient.Connect()
 	cmd.FailOnError(err, "Couldn't connect to mail server.")
 	defer func() {
