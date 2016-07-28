@@ -270,6 +270,7 @@ func main() {
 	end := flag.Int("end", 99999999, "Line of input file to end before.")
 	retryBase := flag.Duration("retryBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	retryMax := flag.Duration("retryMax", 30*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
+	retryAttempts := flag.Uint("retryAttempts", 100, "Max number of reconnects to attempt before quitting")
 	type config struct {
 		NotifyMailer struct {
 			cmd.DBConfig
@@ -337,7 +338,9 @@ func main() {
 			*address,
 			log,
 			stats,
-			*retryBase, *retryMax)
+			*retryBase,
+			*retryMax,
+			retryAttempts)
 	}
 	err = mailClient.Connect()
 	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",

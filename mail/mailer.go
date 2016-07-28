@@ -60,6 +60,7 @@ type MailerImpl struct {
 	stats            *metrics.StatsdScope
 	retryTimeoutBase time.Duration
 	retryTimeoutMax  time.Duration
+	retryMaxAttempts uint
 }
 
 type dialer interface {
@@ -114,7 +115,8 @@ func New(
 	from mail.Address,
 	logger blog.Logger,
 	stats statsd.Statter,
-	retryBase, retryMax time.Duration) *MailerImpl {
+	retryBase, retryMax time.Duration,
+	retryMaxAttempts uint) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -129,6 +131,7 @@ func New(
 		stats:            metrics.NewStatsdScope(stats, "Mailer"),
 		retryTimeoutBase: retryBase,
 		retryTimeoutMax:  retryMax,
+		retryMaxAttempts: retryMaxAttempts,
 	}
 }
 
@@ -276,6 +279,7 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	m.stats.Inc("SendMail.Attempts", 1)
 
+	var attempt uint
 	for {
 		err := m.sendOne(to, subject, msg)
 		if err == nil {
@@ -285,6 +289,10 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// If the error is an EOF, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
 			m.stats.Inc("SendMail.Errors.EOF", 1)
+			attempt++
+			if attempt >= m.retryMaxAttempts {
+				return err
+			}
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			m.stats.Inc("SendMail.Reconnects", 1)

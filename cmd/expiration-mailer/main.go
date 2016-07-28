@@ -351,6 +351,7 @@ func main() {
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	retryBase := flag.Duration("retryBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	retryMax := flag.Duration("retryMax", 30*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
+	retryAttempts := flag.Uint("retryAttempts", 100, "Max number of reconnects to attempt before quitting")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -406,7 +407,9 @@ func main() {
 		*fromAddress,
 		logger,
 		stats,
-		*retryBase, *retryMax)
+		*retryBase,
+		*retryMax,
+		*retryAttempts)
 	err = mailClient.Connect()
 	cmd.FailOnError(err, "Couldn't connect to mail server.")
 	defer func() {
