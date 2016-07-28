@@ -23,6 +23,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 	jose "github.com/square/go-jose"
 )
 
@@ -810,7 +811,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
+	certificateRequest.CSR, err = oldx509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
 		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514
