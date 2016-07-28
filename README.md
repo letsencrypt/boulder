@@ -35,7 +35,7 @@ By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 container. If you want Boulder to be able to communicate with a client running
 on your host instead, you should find your host's Docker IP with:
 
-    ifconfig | grep -A1 docker0
+    ifconfig docker0 | grep "inet addr:" | cut -d: -f2 | awk '{ print $1}'
 
 And edit docker-compose.yml to change the FAKE_DNS environment variable to
 match.
