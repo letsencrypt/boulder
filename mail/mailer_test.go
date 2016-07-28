@@ -28,7 +28,7 @@ func TestGenerateMessage(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
-	m := New("", "", "", "", *fromAddress, log, stats)
+	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -53,7 +53,7 @@ func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
 	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", *fromAddress, log, stats)
+	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -126,7 +126,8 @@ func TestConnect(t *testing.T) {
 		"paswd",
 		*fromAddress,
 		log,
-		stats)
+		stats,
+		0, 0)
 	err = m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
