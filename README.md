@@ -35,10 +35,14 @@ By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 container. If you want Boulder to be able to communicate with a client running
 on your host instead, you should find your host's Docker IP with:
 
-    ifconfig | grep -A1 docker0
+    ifconfig docker0 | grep "inet addr:" | cut -d: -f2 | awk '{ print $1}'
 
 And edit docker-compose.yml to change the FAKE_DNS environment variable to
 match.
+
+Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
+
+    docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way

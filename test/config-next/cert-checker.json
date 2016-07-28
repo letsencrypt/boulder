@@ -1,0 +1,24 @@
+{
+  "certChecker": {
+    "dbConnectFile": "test/secrets/cert_checker_dburl",
+    "maxDBConns": 10
+  },
+
+  "pa": {
+    "challenges": {
+      "http-01": true,
+      "tls-sni-01": true,
+      "dns-01": true
+    }
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 4
+  }
+}
