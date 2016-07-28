@@ -44,12 +44,12 @@ type KeyPolicy struct {
 	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
 }
 
-// NewKeyPolicy creates a hard coded key policy for boulder.
+// NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
 func NewKeyPolicy() KeyPolicy {
 	return KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
-		AllowECDSANISTP384: false, // TODO: change this back to true once the integration test fails
+		AllowECDSANISTP384: true,
 		AllowECDSANISTP521: false,
 	}
 }
