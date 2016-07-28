@@ -446,8 +446,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] b64csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), base64.StdEncoding.EncodeToString(csr.Raw)))
+	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.Dump(csr.Raw)))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
@@ -479,16 +479,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		DER: certDER,
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] b64csr=[%s] b64der=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), base64.StdEncoding.EncodeToString(csr.Raw),
-		base64.StdEncoding.EncodeToString(certDER)))
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.Dump(csr.Raw),
+		hex.Dump(certDER)))
 
 	// This is one last check for uncaught errors
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] b64der=[%s] err=[%v]",
-			serialHex, base64.StdEncoding.EncodeToString(certDER), err))
+		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
+			serialHex, hex.Dump(certDER), err))
 		return emptyCert, err
 	}
 
@@ -498,9 +498,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] b64der=[%s] err=[%v], regID=[%d]",
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
 			serialHex,
-			base64.StdEncoding.EncodeToString(certDER),
+			hex.Dump(certDER),
 			err,
 			regID,
 		))
