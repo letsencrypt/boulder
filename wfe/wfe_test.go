@@ -1202,6 +1202,19 @@ func TestRevokeCertificateReasons(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"invalid revocation reason code provided","status":400}`)
+
+	// Unsupported reason
+	responseWriter = httptest.NewRecorder()
+	unsupported := core.RevocationCode(2)
+	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 400)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
