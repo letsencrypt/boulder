@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
+
+	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -514,7 +516,7 @@ type CertificateStatus struct {
 	// revokedReason: If status is 'revoked', this is the reason code for the
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
-	RevokedReason RevocationCode `db:"revokedReason"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
@@ -559,7 +561,7 @@ type CRL struct {
 type OCSPSigningRequest struct {
 	CertDER   []byte
 	Status    string
-	Reason    RevocationCode
+	Reason    revocation.Reason
 	RevokedAt time.Time
 }
 
@@ -583,35 +585,6 @@ type SignedCertificateTimestamp struct {
 	CertificateSerial string `db:"certificateSerial"`
 
 	LockCol int64
-}
-
-// RevocationCode is used to specify a certificate revocation reason
-type RevocationCode int
-
-// RevocationReasons provides a map from reason code to string explaining the
-// code
-var RevocationReasons = map[RevocationCode]string{
-	0: "unspecified",
-	1: "keyCompromise",
-	2: "cACompromise",
-	3: "affiliationChanged",
-	4: "superseded",
-	5: "cessationOfOperation",
-	6: "certificateHold",
-	// 7 is unused
-	8:  "removeFromCRL",
-	9:  "privilegeWithdrawn",
-	10: "aAcompromise",
-}
-
-// UserRevocationReasons contains the RevocationCodes which users are allowed
-// to use
-var UserRevocationReasons = map[RevocationCode]struct{}{
-	0: struct{}{}, // unspecified
-	1: struct{}{}, // keyCompromise
-	3: struct{}{}, // affiliationChanged
-	4: struct{}{}, // superseded
-	5: struct{}{}, // cessationOfOperation
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

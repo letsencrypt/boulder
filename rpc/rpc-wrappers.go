@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -122,12 +123,12 @@ type addCertificateRequest struct {
 
 type revokeCertificateRequest struct {
 	Serial     string
-	ReasonCode core.RevocationCode
+	ReasonCode revocation.Reason
 }
 
 type markCertificateRevokedRequest struct {
 	Serial     string
-	ReasonCode core.RevocationCode
+	ReasonCode revocation.Reason
 }
 
 type caaRequest struct {
@@ -331,7 +332,7 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 	rpc.Handle(MethodRevokeCertificateWithReg, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var revReq struct {
 			Cert   []byte
-			Reason core.RevocationCode
+			Reason revocation.Reason
 			RegID  int64
 		}
 		if err = json.Unmarshal(req, &revReq); err != nil {
@@ -352,7 +353,7 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 	rpc.Handle(MethodAdministrativelyRevokeCertificate, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var revReq struct {
 			Cert   []byte
-			Reason core.RevocationCode
+			Reason revocation.Reason
 			User   string
 		}
 		if err = json.Unmarshal(req, &revReq); err != nil {
@@ -475,10 +476,10 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(ctx context.Context, 
 
 // RevokeCertificateWithReg sends a Revoke Certificate request initiated by the
 // WFE
-func (rac RegistrationAuthorityClient) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, regID int64) (err error) {
+func (rac RegistrationAuthorityClient) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason revocation.Reason, regID int64) (err error) {
 	var revReq struct {
 		Cert   []byte
-		Reason core.RevocationCode
+		Reason revocation.Reason
 		RegID  int64
 	}
 	revReq.Cert = cert.Raw
@@ -494,10 +495,10 @@ func (rac RegistrationAuthorityClient) RevokeCertificateWithReg(ctx context.Cont
 
 // AdministrativelyRevokeCertificate sends a Revoke Certificate request initiated by the
 // admin-revoker
-func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) (err error) {
+func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) (err error) {
 	var revReq struct {
 		Cert   []byte
-		Reason core.RevocationCode
+		Reason revocation.Reason
 		User   string
 	}
 	revReq.Cert = cert.Raw
@@ -1229,7 +1230,7 @@ func (cac StorageAuthorityClient) GetCertificateStatus(ctx context.Context, id s
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial

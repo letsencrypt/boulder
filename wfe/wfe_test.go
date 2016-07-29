@@ -20,19 +20,19 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/nonce"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/nonce"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -140,7 +140,7 @@ EeMZ9nWyIM6bktLrE11HnFOnKhAYsM5fZA==
 )
 
 type MockRegistrationAuthority struct {
-	lastRevocationReason core.RevocationCode
+	lastRevocationReason revocation.Reason
 }
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
@@ -165,12 +165,12 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, au
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason revocation.Reason, reg int64) error {
 	ra.lastRevocationReason = reason
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {
 	return nil
 }
 
@@ -1083,7 +1083,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-func makeRevokeRequestJSON(reason *core.RevocationCode) ([]byte, error) {
+func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	certPemBytes, err := ioutil.ReadFile("test/238.crt")
 	if err != nil {
 		return nil, err
@@ -1093,9 +1093,9 @@ func makeRevokeRequestJSON(reason *core.RevocationCode) ([]byte, error) {
 		return nil, err
 	}
 	revokeRequest := struct {
-		Resource       string               `json:"resource"`
-		CertificateDER core.JSONBuffer      `json:"certificate"`
-		Reason         *core.RevocationCode `json:"reason"`
+		Resource       string             `json:"resource"`
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
 	}{
 		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
@@ -1159,7 +1159,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Valid reason
-	keyComp := core.RevocationCode(1)
+	keyComp := revocation.Reason(1)
 	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
@@ -1175,7 +1175,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
-	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(1))
+	test.AssertEquals(t, ra.lastRevocationReason, revocation.Reason(1))
 
 	// No reason
 	responseWriter = httptest.NewRecorder()
@@ -1188,12 +1188,12 @@ func TestRevokeCertificateReasons(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
-	test.AssertEquals(t, ra.lastRevocationReason, core.RevocationCode(0))
+	test.AssertEquals(t, ra.lastRevocationReason, revocation.Reason(0))
 
-	// Invalid reason
+	// Unsupported reason
 	responseWriter = httptest.NewRecorder()
-	invalid := core.RevocationCode(100)
-	revokeRequestJSON, err = makeRevokeRequestJSON(&invalid)
+	unsupported := revocation.Reason(2)
+	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	signer.SetNonceSource(wfe.nonceService)
@@ -1201,11 +1201,10 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"invalid revocation reason code provided","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
 
-	// Unsupported reason
 	responseWriter = httptest.NewRecorder()
-	unsupported := core.RevocationCode(2)
+	unsupported = revocation.Reason(100)
 	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 

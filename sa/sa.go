@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // SQLStorageAuthority defines a Storage Authority
@@ -450,7 +450,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -540,16 +541,15 @@ func TestMarkCertificateRevoked(t *testing.T) {
 
 	fc.Add(1 * time.Hour)
 
-	code := core.RevocationCode(1)
-	err = sa.MarkCertificateRevoked(ctx, serial, code)
+	err = sa.MarkCertificateRevoked(ctx, serial, revocation.KeyCompromise)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
 	afterStatus := certificateStatusObj.(*core.CertificateStatus)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
-	if code != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %v, got %v", code, afterStatus.RevokedReason)
+	if revocation.KeyCompromise != afterStatus.RevokedReason {
+		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, afterStatus.RevokedReason)
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)

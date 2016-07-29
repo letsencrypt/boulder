@@ -19,6 +19,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // StorageAuthority is a mock
@@ -221,7 +222,7 @@ func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.
 }
 
 // MarkCertificateRevoked is a mock
-func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	return
 }
 

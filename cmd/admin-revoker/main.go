@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -73,7 +74,7 @@ func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp
 	return *rac, logger, dbMap, *sac, stats
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode core.RevocationCode, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -98,11 +99,11 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode core.Revocati
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, core.RevocationReasons[reasonCode]))
+	logger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, revocation.ReasonToString[reasonCode]))
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCode, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -120,7 +121,7 @@ func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCod
 }
 
 // This abstraction is needed so that we can use sort.Sort below
-type revocationCodes []core.RevocationCode
+type revocationCodes []revocation.Reason
 
 func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
@@ -165,7 +166,7 @@ func main() {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 		}
 
-		err = revokeBySerial(ctx, serial, core.RevocationCode(reasonCode), cac, logger, tx)
+		err = revokeBySerial(ctx, serial, revocation.Reason(reasonCode), cac, logger, tx)
 		if err != nil {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 		}
@@ -194,7 +195,7 @@ func main() {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}
 
-		err = revokeByReg(ctx, regID, core.RevocationCode(reasonCode), cac, logger, tx)
+		err = revokeByReg(ctx, regID, revocation.Reason(reasonCode), cac, logger, tx)
 		if err != nil {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 		}
@@ -204,13 +205,13 @@ func main() {
 
 	case command == "list-reasons":
 		var codes revocationCodes
-		for k := range core.RevocationReasons {
+		for k := range revocation.ReasonToString {
 			codes = append(codes, k)
 		}
 		sort.Sort(codes)
 		fmt.Printf("Revocation reason codes\n-----------------------\n\n")
 		for _, k := range codes {
-			fmt.Printf("%d: %s\n", k, core.RevocationReasons[k])
+			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
 
 	case command == "auth-revoke" && len(args) == 1:

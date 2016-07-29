@@ -14,16 +14,17 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
-	jose "github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
@@ -683,8 +684,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	}
 
 	type RevokeRequest struct {
-		CertificateDER core.JSONBuffer      `json:"certificate"`
-		Reason         *core.RevocationCode `json:"reason"`
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
 	}
 	var revokeRequest RevokeRequest
 	if err := json.Unmarshal(body, &revokeRequest); err != nil {
@@ -742,14 +743,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	reason := core.RevocationCode(0)
+	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
-		if _, present := core.RevocationReasons[*revokeRequest.Reason]; !present {
-			logEvent.AddError("invalid revocation reason code provided")
-			wfe.sendError(response, logEvent, probs.Malformed("invalid revocation reason code provided"), nil)
-			return
-		}
-		if _, present := core.UserRevocationReasons[*revokeRequest.Reason]; !present {
+		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
 			logEvent.AddError("unsupported revocation reason code provided")
 			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
 			return
