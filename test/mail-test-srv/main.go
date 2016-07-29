@@ -20,8 +20,7 @@ import (
 
 type mailSrv struct {
 	closeChance     uint
-	baseRetry       time.Duration
-	retryMax        time.Duration
+	closeDuration   time.Duration
 	allReceivedMail []rcvdMail
 	allMailMutex    sync.Mutex
 }
