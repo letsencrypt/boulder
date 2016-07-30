@@ -41,7 +41,6 @@ type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
-	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
