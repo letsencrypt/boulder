@@ -26,13 +26,6 @@
     }
   },
 
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
-  },
-
   "statsd": {
     "server": "localhost:8125",
     "prefix": "Boulder"

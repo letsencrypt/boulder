@@ -37,13 +37,6 @@
     }
   },
 
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
-  },
-
   "pa": {
     "challenges": {
       "http-01": true,
