@@ -50,11 +50,10 @@ func NewKeyPolicy() KeyPolicy {
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
-		AllowECDSANISTP521: false,
 	}
 }
 
-// GoodKey returns true iff the key is acceptable for both TLS use and account
+// GoodKey returns true if the key is acceptable for both TLS use and account
 // key use (our requirements are the same for either one), according to basic
 // strength and algorithm checking.
 // TODO: Support JsonWebKeys once go-jose migration is done.
@@ -178,8 +177,6 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	case policy.AllowECDSANISTP256 && params == elliptic.P256().Params():
 		return nil
 	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
-		return nil
-	case policy.AllowECDSANISTP521 && params == elliptic.P521().Params():
 		return nil
 	default:
 		return core.MalformedRequestError(fmt.Sprintf("ECDSA curve %v not allowed", params.Name))
