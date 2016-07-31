@@ -468,8 +468,8 @@ func TestIsPrivateIP(t *testing.T) {
 	test.Assert(t, isPrivateV6(net.ParseIP("ff10::1")), "should be private")
 	test.Assert(t, isPrivateV6(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
 
-	test.Assert(t, !isPrivateV6(net.ParseIP("2002::")), "should not be private")
-	test.Assert(t, !isPrivateV6(net.ParseIP("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should not be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("2002::")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
 	test.Assert(t, isPrivateV6(net.ParseIP("0100::")), "should be private")
 	test.Assert(t, isPrivateV6(net.ParseIP("0100::0000:ffff:ffff:ffff:ffff")), "should be private")
 	test.Assert(t, !isPrivateV6(net.ParseIP("0100::0001:0000:0000:0000:0000")), "should be private")
