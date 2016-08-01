@@ -67,7 +67,7 @@ archive:
 #
 # VERSION=0.1.9 EPOCH=52 MAINTAINER="$(whoami)" ARCHIVEDIR=/tmp make build rpm
 rpm: build
-	fpm -s dir -t rpm --rpm-digest sha256 --name "boulder" \
+	fpm -f -s dir -t rpm --rpm-digest sha256 --name "boulder" \
 		--license "Mozilla Public License v2.0" --vendor "ISRG" \
 		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
 		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \

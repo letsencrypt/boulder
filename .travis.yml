@@ -41,6 +41,7 @@ env:
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
+    - RUN="rpm"
 
 install:
   - ./test/travis-before-install.sh

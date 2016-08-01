@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/probs"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 	"github.com/square/go-jose"
 )
 
@@ -103,8 +103,8 @@ type AcmeIdentifier struct {
 // This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
+	CSR   *oldx509.CertificateRequest // The CSR
+	Bytes []byte                      // The original bytes of the CSR, for logging.
 }
 
 type RawCertificateRequest struct {
@@ -118,7 +118,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
+	csr, err := oldx509.ParseCertificateRequest(raw.CSR)
 	if err != nil {
 		return err
 	}
