@@ -340,7 +340,7 @@ func main() {
 			stats,
 			*retryBase,
 			*retryMax,
-			retryAttempts)
+			*retryAttempts)
 	}
 	err = mailClient.Connect()
 	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",
