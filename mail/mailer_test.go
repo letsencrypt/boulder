@@ -139,18 +139,18 @@ func disconnectHandler(closeFirst int) connHandler {
 			fmt.Printf("Cutting off client early\n")
 			return
 		}
-		conn.Write([]byte("250 Sure. Go on. \r\n"))
+		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
 
 		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
 			return
 		}
-		conn.Write([]byte("250 Tell Me More \r\n"))
+		_, _ = conn.Write([]byte("250 Tell Me More \r\n"))
 
 		if err := expect(t, buf, "DATA"); err != nil {
 			return
 		}
-		conn.Write([]byte("354 Cool Data\r\n"))
-		conn.Write([]byte("250 Peace Out\r\n"))
+		_, _ = conn.Write([]byte("354 Cool Data\r\n"))
+		_, _ = conn.Write([]byte("250 Peace Out\r\n"))
 	}
 }
 
