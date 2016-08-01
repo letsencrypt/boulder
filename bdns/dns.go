@@ -133,6 +133,11 @@ var (
 		parseCidr("fc00::/7", "RFC 4193: Unique-Local"),
 		parseCidr("fe80::/10", "RFC 4291: Section 2.5.6 Link-Scoped Unicast"),
 		parseCidr("ff00::/8", "RFC 4291: Section 2.7"),
+		// We disable validations to IPs under the 6to4 anycase prefix because
+		// there's too much risk of a malicious actor advertising the prefix and
+		// answering validations for a 6to4 host they do not control.
+		// https://community.letsencrypt.org/t/problems-validating-ipv6-against-host-running-6to4/18312/9
+		parseCidr("2002::/16", "RFC 7526: 6to4 anycast prefix deprecated"),
 	}
 )
 
