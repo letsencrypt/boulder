@@ -7,8 +7,6 @@
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
-    "doNotForceCN": true,
-    "reuseValidAuthz": true,
     "authorizationLifetimeDays": 300,
     "pendingAuthorizationLifetimeDays": 7,
     "vaService": {
@@ -58,6 +56,11 @@
   "common": {
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
-    "dnsAllowLoopbackAddresses": true
+  },
+
+  "features": {
+    "DnsAllowLoopbackAddresses": true,
+    "DoNotForceCN": true,
+    "ReuseValidAuthz": true
   }
 }

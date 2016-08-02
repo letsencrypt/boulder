@@ -227,7 +227,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 		return err
 	}
 	if f.Features != nil {
-		if err = features.Set(f.Features); err != nil {
+		if err = features.Set(*f.Features); err != nil {
 			return err
 		}
 	}

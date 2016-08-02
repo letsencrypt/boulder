@@ -8,12 +8,12 @@ import (
 
 func TestFeatures(t *testing.T) {
 	features = map[FeatureFlag]bool{
-		NewVARPC: false,
+		unused: false,
 	}
-	test.Assert(t, !Enabled(NewVARPC), "'NewVARPC' shouldn't be enabled")
-	err := Set(map[string]bool{"NewVARPC": true})
+	test.Assert(t, !Enabled(unused), "'unused' shouldn't be enabled")
+	err := Set(map[string]bool{"unused": true})
 	test.AssertNotError(t, err, "Set shouldn't have failed setting existing features")
-	test.Assert(t, Enabled(NewVARPC), "'NewVARPC' should be enabled")
+	test.Assert(t, Enabled(unused), "'unused' should be enabled")
 	err = Set(map[string]bool{"non-existent": true})
 	test.AssertError(t, err, "Set should've failed trying to enable a non-existent feature")
 }

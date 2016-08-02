@@ -365,7 +365,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	if ra.reuseValidAuthz {
+	if ra.reuseValidAuthz || features.Enabled(features.ReuseValidAuthz) {
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
 			outErr := core.InternalServerError(
@@ -460,7 +460,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
+	if (!ra.forceCNFromSAN || features.Enabled(features.DoNotForceCN)) && len(csr.Subject.CommonName) > 0 &&
 		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
@@ -824,7 +824,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// case we don't need to process the challenge update. It wouldn't be helpful,
 	// the overall authorization is already good! We increment a stat for this
 	// case and return early.
-	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+	if (ra.reuseValidAuthz || features.Enabled(features.ReuseValidAuthz)) && authz.Status == core.StatusValid {
 		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
 		return
 	}

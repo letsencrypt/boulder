@@ -492,7 +492,9 @@ func TestReuseAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Turn on AuthZ Reuse
-	ra.reuseValidAuthz = true
+	err := features.Set(map[string]bool{"ReuseValidAuthz": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
+	defer features.Reset()
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
@@ -501,7 +503,7 @@ func TestReuseAuthorization(t *testing.T) {
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
-	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	finalAuthz, err = sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
@@ -552,9 +554,6 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Turn *off* AuthZ Reuse
-	ra.reuseValidAuthz = false
-
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
 	finalAuthz.Status = "valid"
@@ -586,7 +585,9 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Turn on AuthZ Reuse
-	ra.reuseValidAuthz = true
+	err := features.Set(map[string]bool{"ReuseValidAuthz": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
+	defer features.Reset()
 
 	// Create one finalized authorization that expires in 12 hours from now
 	expiringAuth := AuthzInitial
@@ -595,7 +596,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 	expiringAuth.Expires = &exp
 	expiringAuth.Challenges[0].Status = "valid"
 	expiringAuth.RegistrationID = Registration.ID
-	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
+	expiringAuth, err = sa.NewPendingAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	err = sa.FinalizeAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")

@@ -19,6 +19,7 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
@@ -790,7 +791,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling certificate request"), err)
 		return
 	}
-	if wfe.CheckMalformedCSR {
+	if wfe.CheckMalformedCSR || features.Enabled(features.CheckMalformedCSR) {
 		// Assuming a properly formatted CSR there should be two four byte SEQUENCE
 		// declarations then a two byte integer declaration which defines the version
 		// of the CSR. If those two bytes (at offset 8 and 9) and equal to 2 and 0

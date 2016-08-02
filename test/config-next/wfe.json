@@ -10,7 +10,6 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "checkMalformedCSR": true,
     "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
@@ -39,5 +38,9 @@
   "common": {
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053"
+  },
+
+  "features": {
+    "CheckMalformedCSR": true
   }
 }

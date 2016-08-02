@@ -5,24 +5,38 @@ package features
 import (
 	"expvar"
 	"fmt"
+	"sync"
 )
 
 type FeatureFlag int
 
 const (
-	NewVARPC FeatureFlag = iota
+	unused                    FeatureFlag = iota
+	DNSAllowLoopbackAddresses             // Common
+	CheckMalformedCSR                     // WFE
+	DoNotForceCN                          // RA
+	ReuseValidAuthz                       // RA
 )
 
 // List of features and their default value
 var features = map[FeatureFlag]bool{
-	NewVARPC: false,
+	unused: false,
+	DNSAllowLoopbackAddresses: false,
+	CheckMalformedCSR:         false,
+	DoNotForceCN:              false,
+	ReuseValidAuthz:           false,
 }
+
+var fMu = new(sync.RWMutex)
+
+var initial = map[FeatureFlag]bool{}
 
 var nameToFeature = make(map[string]FeatureFlag, len(features))
 
 func init() {
-	for f := range features {
+	for f, v := range features {
 		nameToFeature[f.String()] = f
+		initial[f] = v
 	}
 }
 
@@ -35,6 +49,8 @@ func (b boolVar) String() string { return fmt.Sprintf("%t", b) }
 // be enabled or disabled, it will return a error if passed
 // a feature name that it doesn't know
 func Set(featureSet map[string]bool) error {
+	fMu.Lock()
+	defer fMu.Unlock()
 	for n, v := range featureSet {
 		f, present := nameToFeature[n]
 		if !present {
@@ -48,6 +64,8 @@ func Set(featureSet map[string]bool) error {
 // Export populates a expvar.Map with the state of all
 // of the features.
 func Export(m *expvar.Map) {
+	fMu.RLock()
+	defer fMu.RUnlock()
 	for f, v := range features {
 		m.Set(f.String(), boolVar(v))
 	}
@@ -57,9 +75,18 @@ func Export(m *expvar.Map) {
 // if it isn't, it will panic if passed a feature that it
 // doesn't know.
 func Enabled(n FeatureFlag) bool {
+	fMu.RLock()
+	defer fMu.RUnlock()
 	v, present := features[n]
 	if !present {
 		panic(fmt.Sprintf("feature '%s' doesn't exist", n))
 	}
 	return v
+}
+
+// Reset resets the features to their initial state
+func Reset() {
+	fMu.Lock()
+	defer fMu.Unlock()
+	features = initial
 }
