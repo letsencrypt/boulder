@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -180,7 +181,6 @@ func setup(t *testing.T) *testCtx {
 		Expiry:       "8760h",
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
-		DoNotForceCN: true,
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
@@ -275,6 +275,9 @@ func TestFailNoSerial(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
+	err := features.Set(map[string]bool{"DoNotForceCN": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
+	defer features.Reset()
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -548,6 +551,9 @@ func TestShortKey(t *testing.T) {
 }
 
 func TestAllowNoCN(t *testing.T) {
+	err := features.Set(map[string]bool{"DoNotForceCN": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
+	defer features.Reset()
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -683,6 +689,8 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 }
 
 func TestExtensions(t *testing.T) {
+	features.Set(map[string]bool{"DoNotForceCN": true})
+	defer features.Reset()
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
 	ca, err := NewCertificateAuthorityImpl(
@@ -716,14 +724,15 @@ func TestExtensions(t *testing.T) {
 		return cert
 	}
 
-	// With enableMustStaple = false, should issue successfully and not add
+	// With features.EnableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	noStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
-	// With enableMustStaple = true, a TLS feature extension should put a must-staple
+	// With features.EnableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
-	ca.enableMustStaple = true
+	features.Set(map[string]bool{"EnableMustStaple": true})
+	defer features.Reset()
 	singleStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionTLSFeature], int64(2))

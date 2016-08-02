@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 func parseCidr(network string, comment string) net.IPNet {
@@ -375,14 +377,16 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 
 	for _, answer := range recordsA {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) ||
+				(dnsResolver.allowRestrictedAddresses || features.Enabled(features.DNSAllowLoopbackAddresses))) {
 				addrs = append(addrs, a.A)
 			}
 		}
 	}
 	for _, answer := range recordsAAAA {
 		if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) ||
+				(dnsResolver.allowRestrictedAddresses || features.Enabled(features.DNSAllowLoopbackAddresses))) {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

@@ -59,7 +59,7 @@
   },
 
   "features": {
-    "DnsAllowLoopbackAddresses": true,
+    "DNSAllowLoopbackAddresses": true,
     "DoNotForceCN": true,
     "ReuseValidAuthz": true
   }

@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
@@ -304,7 +305,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *oldx509.CertificateRe
 						return nil, core.MalformedRequestError(msg)
 					}
 
-					if ca.enableMustStaple {
+					if ca.enableMustStaple || features.Enabled(features.EnableMustStaple) {
 						extensions = append(extensions, mustStapleExtension)
 					}
 				case ext.Type.Equal(oidAuthorityInfoAccess),
@@ -376,7 +377,15 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
+	err := csrlib.VerifyCSR(
+		&csr,
+		ca.maxNames,
+		&ca.keyPolicy,
+		ca.PA,
+		(ca.forceCNFromSAN && !features.Enabled(features.DoNotForceCN)),
+		regID,
+	)
+	if err != nil {
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err.Error())
 		return emptyCert, core.MalformedRequestError(err.Error())
@@ -442,7 +451,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 		Serial:     serialBigInt,
 		Extensions: requestedExtensions,
 	}
-	if !ca.forceCNFromSAN {
+	if !ca.forceCNFromSAN || features.Enabled(features.DoNotForceCN) {
 		req.Subject.SerialNumber = serialHex
 	}
 

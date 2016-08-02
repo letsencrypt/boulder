@@ -14,8 +14,9 @@ const (
 	unused                    FeatureFlag = iota
 	DNSAllowLoopbackAddresses             // Common
 	CheckMalformedCSR                     // WFE
-	DoNotForceCN                          // RA
+	DoNotForceCN                          // RA, CA
 	ReuseValidAuthz                       // RA
+	EnableMustStaple                      // CA
 )
 
 // List of features and their default value
@@ -25,6 +26,7 @@ var features = map[FeatureFlag]bool{
 	CheckMalformedCSR:         false,
 	DoNotForceCN:              false,
 	ReuseValidAuthz:           false,
+	EnableMustStaple:          false,
 }
 
 var fMu = new(sync.RWMutex)
