@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package publisher
 
 import (
@@ -25,10 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	ct "github.com/google/certificate-transparency/go"
 	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -275,11 +269,12 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	uri := fmt.Sprintf("http://localhost:%d", port)
+	uri := fmt.Sprintf("http://localhost:%d/", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
 	test.AssertNotError(t, err, "Couldn't create log")
+	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 
@@ -363,7 +358,8 @@ func TestRetryAfterContext(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get test server port")
 	addLog(t, pub, port, &k.PublicKey)
 
-	pub.submissionTimeout = time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	s := time.Now()
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Failed to submit to CT")

@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -27,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
@@ -136,11 +132,7 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	case SignatureValidationError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case RateLimitedError:
-		return &probs.ProblemDetails{
-			Type:       probs.RateLimitedProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: statusTooManyRequests,
-		}
+		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case BadNonceError:
 		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
@@ -412,4 +404,15 @@ func RetryBackoff(retries int, base, max time.Duration, factor float64) time.Dur
 	// the same time, they won't operate in lockstep.
 	backoff *= (1 - retryJitter) + 2*retryJitter*mrand.Float64()
 	return time.Duration(backoff)
+}
+
+// IsASCII determines if every character in a string is encoded in
+// the ASCII character set.
+func IsASCII(str string) bool {
+	for _, r := range str {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
 }

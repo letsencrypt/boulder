@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package bdns
 
 import (
@@ -65,13 +60,7 @@ const detailServerFailure = "server failure at resolver"
 // record type and domain given.
 func ProblemDetailsFromDNSError(err error) *probs.ProblemDetails {
 	if dnsErr, ok := err.(*DNSError); ok {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: dnsErr.Error(),
-		}
+		return probs.ConnectionFailure(dnsErr.Error())
 	}
-	return &probs.ProblemDetails{
-		Type:   probs.ConnectionProblem,
-		Detail: detailServerFailure,
-	}
+	return probs.ConnectionFailure(detailServerFailure)
 }

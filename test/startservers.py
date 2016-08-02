@@ -11,11 +11,11 @@ import tempfile
 import threading
 import time
 
-default_config = os.environ.get('BOULDER_CONFIG')
-if default_config is None:
-    default_config = 'test/boulder-config.json'
-processes = []
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
 
+processes = []
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -27,12 +27,14 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(binary, race_detection, config=default_config):
+def run(cmd, race_detection):
+    e = os.environ.copy()
+    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
+    e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec ./bin/%s --config %s""" % (binary, config)
-    p = subprocess.Popen(cmd, shell=True)
+    cmd = """exec ./bin/%s""" % cmd
+    p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
-    print('started %s with pid %d' % (p.cmd, p.pid))
     return p
 
 def start(race_detection):
@@ -45,17 +47,19 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe',
-        'boulder-ra',
-        'boulder-sa',
-        'boulder-ca',
-        'boulder-va',
-        'boulder-publisher',
-        'ocsp-updater',
-        'ocsp-responder',
+        'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
+        'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
+        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
+        'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
+        'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
+        'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
+        'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
+        'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv'
+        'mail-test-srv',
+        'ocsp-responder --config test/issuer-ocsp-responder.json',
+        'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
     if not install(race_detection):
         return False
@@ -69,25 +73,11 @@ def start(race_detection):
             # Don't keep building stuff if a server has already died.
             return False
 
-    # Additionally run the issuer-ocsp-responder, which is not amenable to the
-    # above `run` pattern because it uses a different config file.
-    try:
-        processes.append(run('ocsp-responder', race_detection, 'test/issuer-ocsp-responder.json'))
-    except Exception as e:
-        print(e)
-        return False
-    # And the separate CAA checking service.
-    try:
-        processes.append(run('caa-checker', race_detection, 'cmd/caa-checker/test-config.yml'))
-    except Exception as e:
-        print(e)
-        return False
-
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
-    # seconds.
     while True:
         try:
+            time.sleep(0.3)
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
@@ -102,7 +92,6 @@ def start(race_detection):
                 print "Waiting for debug port %d" % debug_port
             else:
                 raise
-        time.sleep(1)
 
     # Some servers emit extra text after their debug server is open. Sleep 1
     # second so the "servers running" message comes last.

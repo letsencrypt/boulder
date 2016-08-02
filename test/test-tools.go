@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package test
 
 import (
@@ -62,7 +57,7 @@ func AssertError(t *testing.T, err error, message string) {
 // AssertEquals uses the equality operator (==) to measure one and two
 func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	if one != two {
-		fatalf(t, "%s [%v] != [%v]", caller(), one, two)
+		fatalf(t, "%s %#v != %#v", caller(), one, two)
 	}
 }
 
@@ -90,7 +85,7 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 // are different
 func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
 	if one == two {
-		fatalf(t, "%s [%v] == [%v]", caller(), one, two)
+		fatalf(t, "%s %#v == %#v", caller(), one, two)
 	}
 }
 

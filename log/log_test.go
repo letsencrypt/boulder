@@ -1,15 +1,10 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package log
 
 import (
-	"errors"
 	"fmt"
 	"log/syslog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +13,7 @@ import (
 )
 
 const stdoutLevel = 7
+const syslogLevel = 7
 
 func setup(t *testing.T) *impl {
 	// Write all logs to UDP on a high port so as to not bother the system
@@ -25,7 +21,7 @@ func setup(t *testing.T) *impl {
 	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	logger, err := New(writer, stdoutLevel)
+	logger, err := New(writer, stdoutLevel, syslogLevel)
 	test.AssertNotError(t, err, "Could not construct syslog object")
 	impl, ok := logger.(*impl)
 	if !ok {
@@ -66,7 +62,7 @@ func TestSingleton(t *testing.T) {
 
 func TestConstructionNil(t *testing.T) {
 	t.Parallel()
-	_, err := New(nil, stdoutLevel)
+	_, err := New(nil, stdoutLevel, syslogLevel)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
@@ -93,7 +89,7 @@ func ExampleLogger() {
 		return
 	}
 	bw.clk = clock.NewFake()
-	impl.AuditErr(errors.New("Error Audit"))
+	impl.AuditErr("Error Audit")
 	impl.Warning("Warning Audit")
 	// Output:
 	// [31m[1mE000000 log.test [AUDIT] Error Audit[0m
@@ -105,7 +101,7 @@ func TestSyslogMethods(t *testing.T) {
 	impl := setup(t)
 
 	impl.AuditInfo("audit-logger_test.go: audit-info")
-	impl.AuditErr(errors.New("audit-logger_test.go: audit-err"))
+	impl.AuditErr("audit-logger_test.go: audit-err")
 	impl.Debug("audit-logger_test.go: debug")
 	impl.Err("audit-logger_test.go: err")
 	impl.Info("audit-logger_test.go: info")
@@ -177,7 +173,7 @@ func TestTransmission(t *testing.T) {
 	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
-	impl, err := New(writer, stdoutLevel)
+	impl, err := New(writer, stdoutLevel, syslogLevel)
 	test.AssertNotError(t, err, "Failed to construct audit logger")
 
 	data := make([]byte, 128)
@@ -186,7 +182,7 @@ func TestTransmission(t *testing.T) {
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
-	impl.AuditErr(errors.New("audit-logger_test.go: audit-err"))
+	impl.AuditErr("audit-logger_test.go: audit-err")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
@@ -205,6 +201,44 @@ func TestTransmission(t *testing.T) {
 	impl.Warning("audit-logger_test.go: warning")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
+}
+
+func TestSyslogLevels(t *testing.T) {
+	t.Parallel()
+
+	l, err := newUDPListener("127.0.0.1:0")
+	test.AssertNotError(t, err, "Failed to open log server")
+	defer func() {
+		err = l.Close()
+		test.AssertNotError(t, err, "listener.Close returned error")
+	}()
+
+	fmt.Printf("Going to %s\n", l.LocalAddr().String())
+	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	test.AssertNotError(t, err, "Failed to find connect to log server")
+
+	// create a logger with syslog level debug
+	impl, err := New(writer, stdoutLevel, int(syslog.LOG_DEBUG))
+	test.AssertNotError(t, err, "Failed to construct audit logger")
+
+	data := make([]byte, 512)
+
+	// debug messages should be sent to the logger
+	impl.Debug("log_test.go: debug")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+	test.Assert(t, strings.Contains(string(data), "log_test.go: debug"), "Failed to find log message")
+
+	// create a logger with syslog level info
+	impl, err = New(writer, stdoutLevel, int(syslog.LOG_INFO))
+	test.AssertNotError(t, err, "Failed to construct audit logger")
+
+	// debug messages should not be sent to the logger
+	impl.Debug("log_test.go: debug")
+	n, _, err := l.ReadFrom(data)
+	if n != 0 && err == nil {
+		t.Error("Failed to withhold debug log message")
+	}
 }
 
 func newUDPListener(addr string) (*net.UDPConn, error) {

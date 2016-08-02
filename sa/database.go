@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -10,11 +5,14 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
+	gorp "gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	gorp "gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
@@ -68,6 +66,10 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
+	_, err = dbmap.Exec("SET sql_mode = 'STRICT_ALL_TABLES';")
+	if err != nil {
+		return nil, err
+	}
 
 	return dbmap, err
 }
@@ -150,6 +152,14 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debug(fmt.Sprintf(format, v...))
 }
 
+func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
+	db := dbMap.Db
+	for {
+		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
+		time.Sleep(1 * time.Second)
+	}
+}
+
 // initTables constructs the table map for the ORM.
 // NOTE: For tables with an auto-increment primary key (SetKeys(true, ...)),
 // it is very important to declare them as a such here. It produces a side
@@ -169,7 +179,6 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 }

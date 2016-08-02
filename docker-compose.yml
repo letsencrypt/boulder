@@ -1,27 +1,51 @@
 boulder:
     build: .
     dockerfile: Dockerfile
+    environment:
+        FAKE_DNS: 127.0.0.1
+    volumes:
+      - $GOPATH:/go/
+      - /tmp:/tmp
     net: bridge
+    extra_hosts:
+      - le.wtf:127.0.0.1
+      - boulder:127.0.0.1
     ports:
-      - 4000:4000
-      - 4002:4002
-      - 4003:4003
+      - 4000:4000 # ACME
+      - 4002:4002 # OCSP
+      - 4003:4003 # OCSP
+      - 4500:4500 # ct-test-srv
+      - 8000:8000 # debug ports
+      - 8001:8001
+      - 8002:8002
+      - 8003:8003
+      - 8004:8004
+      - 8055:8055 # dns-test-srv updates
+      - 9380:9380 # mail-test-srv
+      - 9381:9381 # mail-test-srv
     links:
+      - bhsm:boulder-hsm
       - bmysql:boulder-mysql
       - brabbitmq:boulder-rabbitmq
-    extra_hosts:
-      - boulder:127.0.0.1
+bhsm:
+    # To minimize the fetching of various layers this should match
+    # the FROM image and tag in boulder/Dockerfile
+    image: letsencrypt/boulder-tools:2016-07-08
+    environment:
+        PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
+    command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so
+    expose:
+      - 5657
 bmysql:
-    container_name: boulder-mysql
-    image: mariadb:10.0
+    image: mariadb:10.1
     net: bridge
     environment:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     command: mysqld --bind-address=0.0.0.0
+    log_driver: none
 brabbitmq:
-    container_name: boulder-rabbitmq
     image: rabbitmq:3
     net: bridge
     environment:
         RABBITMQ_NODE_IP_ADDRESS: "0.0.0.0"
-    log_driver: "none"
+    log_driver: none

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/x509"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -19,13 +19,14 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var ctx = context.Background()
 
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *mockCA) IssueCertificate(_ context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -89,6 +90,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		},
 		0,
 		"",
+		blog.NewMock(),
 	)
 
 	return updater, sa, dbMap, fc, cleanUp
@@ -102,7 +104,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Couldn't get the core.CertificateStatus from the database")
@@ -157,7 +159,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)
@@ -185,7 +187,7 @@ func TestGetCertificatesWithMissingResponses(t *testing.T) {
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	statuses, err := updater.getCertificatesWithMissingResponses(10)
 	test.AssertNotError(t, err, "Couldn't get status")
@@ -200,7 +202,7 @@ func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	statuses, err := updater.findRevokedCertificatesToUpdate(10)
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
@@ -222,7 +224,7 @@ func TestNewCertificateTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	prev := fc.Now().Add(-time.Hour)
 	err = updater.newCertificateTick(ctx, 10)
@@ -241,7 +243,7 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
 	err = updater.oldOCSPResponsesTick(ctx, 10)
@@ -261,7 +263,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	fc.Set(parsedCert.NotBefore.Add(time.Minute))
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.numLogs = 1
 	updater.oldestIssuedSCT = 2 * time.Hour
@@ -284,6 +286,55 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 }
 
+/*
+ * https://github.com/letsencrypt/boulder/issues/1872 identified that the
+ * `getSerialsIssuedSince` function may never terminate if there are always new
+ * serials added between iterations of the SQL query loop. In order to unit test
+ * the fix we require a `ocspDB` implementation that will forever return
+ * a serial when queried.
+ */
+type inexhaustibleDB struct{}
+
+func (s inexhaustibleDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+	outputPtr, _ := output.(*[]string)
+	// Always return one serial regardless of the query
+	*outputPtr = []string{"1234"}
+	return nil, nil
+}
+
+func (s inexhaustibleDB) Exec(_ string, _ ...interface{}) (sql.Result, error) {
+	return nil, nil // NOP - we don't use this selector anywhere Exec is called
+}
+
+func (s inexhaustibleDB) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+	return nil // NOP - we don't use this selector anywhere SelectOne is called
+}
+
+func TestMissingReceiptsTickTerminate(t *testing.T) {
+	updater, _, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	// Replace the dbMap with the inexhaustibleDB to ensure the
+	// conditions that cause the termination bug described in
+	// https://github.com/letsencrypt/boulder/issues/1872 are met
+	updater.dbMap = inexhaustibleDB{}
+	updater.numLogs = 1
+	updater.oldestIssuedSCT = 2 * time.Hour
+
+	// Note: Must use a batch size larger than the # of rows returned by
+	// inexhaustibleDB or `updater.getSerialsIssuedSince` will never
+	// return
+	batchSize := 5
+
+	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), batchSize)
+	test.AssertNotError(t, err, "Failed to retrieve serials")
+	// Even though the inexhaustibleDB returns 1 result for every
+	// query, since we abort when results < batchSize the expected behaviour is to
+	// terminate with 1 result, the first fake serial returned for the first
+	// query. No subsequent results are evaluated.
+	test.AssertEquals(t, len(serials), 1)
+}
+
 func TestRevokedCertificatesTick(t *testing.T) {
 	updater, sa, _, _, cleanUp := setup(t)
 	defer cleanUp()
@@ -292,7 +343,7 @@ func TestRevokedCertificatesTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
 	test.AssertNotError(t, err, "Failed to revoke certificate")
@@ -318,7 +369,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")

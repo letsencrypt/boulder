@@ -1,0 +1,35 @@
+syntax = "proto2";
+
+package va;
+option go_package = "proto";
+
+import "core/proto/core.proto";
+
+service VA {
+	rpc IsSafeDomain(IsSafeDomainRequest) returns (IsDomainSafe) {}
+	rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
+}
+
+message IsSafeDomainRequest {
+	optional string domain = 1;
+}
+
+message IsDomainSafe {
+	optional bool isSafe = 1;
+}
+
+message PerformValidationRequest {
+	optional string domain = 1;
+	optional core.Challenge challenge = 2;
+	optional AuthzMeta authz = 3;
+}
+
+message AuthzMeta {
+	optional string id = 1;
+	optional int64 regID = 2;
+}
+
+message ValidationResult {
+	repeated core.ValidationRecord records = 1;
+	optional core.ProblemDetails problems = 2;
+}

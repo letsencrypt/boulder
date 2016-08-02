@@ -1,9 +1,4 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-//go:generate mockgen -package metrics -destination ./mock_statsd_test.go github.com/cactus/go-statsd-client/statsd Statter
+//go:generate mockgen -package metrics -destination ./mock_statsd.go github.com/cactus/go-statsd-client/statsd Statter
 
 package metrics
 

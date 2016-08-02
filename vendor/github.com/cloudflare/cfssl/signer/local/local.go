@@ -96,7 +96,11 @@ func NewSignerFromFile(caFile, caKeyFile string, policy *config.Signing) (*Signe
 }
 
 func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile) (cert []byte, err error) {
+	var distPoints = template.CRLDistributionPoints
 	err = signer.FillTemplate(template, s.policy.Default, profile)
+	if distPoints != nil && len(distPoints) > 0 {
+		template.CRLDistributionPoints = distPoints
+	}
 	if err != nil {
 		return
 	}
@@ -111,10 +115,7 @@ func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile
 		template.EmailAddresses = nil
 		s.ca = template
 		initRoot = true
-		template.MaxPathLen = signer.MaxPathLen
-		template.MaxPathLenZero = signer.MaxPathLenZero
 	} else if template.IsCA {
-		template.MaxPathLen = 1
 		template.DNSNames = nil
 		template.EmailAddresses = nil
 	}
@@ -244,6 +245,26 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		}
 	}
 
+	if req.CRLOverride != "" {
+		safeTemplate.CRLDistributionPoints = []string{req.CRLOverride}
+	}
+
+	if safeTemplate.IsCA {
+		if !profile.CA {
+			return nil, cferr.New(cferr.CertificateError, cferr.InvalidRequest)
+		}
+
+		if s.ca != nil && s.ca.MaxPathLen > 0 {
+			if safeTemplate.MaxPathLen >= s.ca.MaxPathLen {
+				// do not sign a cert with pathlen > current
+				return nil, cferr.New(cferr.CertificateError, cferr.InvalidRequest)
+			}
+		} else if s.ca != nil && s.ca.MaxPathLen == 0 && s.ca.MaxPathLenZero {
+			// signer has pathlen of 0, do not sign more intermediate CAs
+			return nil, cferr.New(cferr.CertificateError, cferr.InvalidRequest)
+		}
+	}
+
 	OverrideHosts(&safeTemplate, req.Hosts)
 	safeTemplate.Subject = PopulateSubjectFromCSR(req.Subject, safeTemplate.Subject)
 
@@ -331,7 +352,7 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 
 		for _, server := range profile.CTLogServers {
 			log.Infof("submitting poisoned precertificate to %s", server)
-			var ctclient = client.New(server)
+			var ctclient = client.New(server, nil)
 			var resp *ct.SignedCertificateTimestamp
 			resp, err = ctclient.AddPreChain(prechain)
 			if err != nil {

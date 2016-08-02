@@ -131,8 +131,7 @@ func initialize(modulePath string) (ctx, error) {
 		return module, nil
 	}
 
-	newModule := ctx(pkcs11.New(modulePath))
-
+	newModule := pkcs11.New(modulePath)
 	if newModule == nil {
 		return nil, fmt.Errorf("unable to load PKCS#11 module")
 	}
@@ -142,9 +141,9 @@ func initialize(modulePath string) (ctx, error) {
 		return nil, err
 	}
 
-	modules[modulePath] = newModule
+	modules[modulePath] = ctx(newModule)
 
-	return newModule, nil
+	return ctx(newModule), nil
 }
 
 // New instantiates a new handle to a PKCS #11-backed key.
@@ -242,7 +241,7 @@ func (ps *Key) getPrivateKey(module ctx, session pkcs11.SessionHandle, label str
 
 // Get the public key matching an RSA private key
 func getRSAPublicKey(module ctx, session pkcs11.SessionHandle, privateKeyHandle pkcs11.ObjectHandle) (crypto.PublicKey, error) {
-	var noKey interface{}
+	var noKey crypto.PublicKey
 	template := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
@@ -282,7 +281,7 @@ func getRSAPublicKey(module ctx, session pkcs11.SessionHandle, privateKeyHandle 
 
 // Get the public key matching an Elliptic Curve private key
 func getECPublicKey(module ctx, session pkcs11.SessionHandle, privateKeyHandle pkcs11.ObjectHandle) (crypto.PublicKey, error) {
-	var noKey interface{}
+	var noKey crypto.PublicKey
 
 	// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html#_Toc416960012
 	template := []*pkcs11.Attribute{

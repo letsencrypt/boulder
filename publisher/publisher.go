@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package publisher
 
 import (
@@ -31,9 +26,9 @@ type Log struct {
 // NewLog returns an initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
 	if strings.HasSuffix(uri, "/") {
-		uri = uri[0 : len(uri)-2]
+		uri = uri[0 : len(uri)-1]
 	}
-	client := ctClient.New(uri)
+	client := ctClient.New(uri, nil)
 
 	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
@@ -82,22 +77,22 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs
+// logs configured in pub.CT.Logs (AMQP RPC method).
 func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		pub.log.Err(fmt.Sprintf("Failed to parse certificate: %s", err))
+		pub.log.AuditErr(fmt.Sprintf("Failed to parse certificate: %s", err))
 		return err
 	}
 
+	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
+	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		ctx, cancel := context.WithTimeout(context.Background(), pub.submissionTimeout)
-		defer cancel()
-		sct, err := ctLog.client.AddChainWithContext(ctx, chain)
+		sct, err := ctLog.client.AddChainWithContext(localCtx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Err(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
 			continue
 		}
 
@@ -112,21 +107,21 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 		})
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Err(fmt.Sprintf("Failed to verify SCT receipt: %s", err))
+			pub.log.AuditErr(fmt.Sprintf("Failed to verify SCT receipt: %s", err))
 			continue
 		}
 
 		internalSCT, err := sctToInternal(sct, core.SerialToString(cert.SerialNumber))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Err(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
+			pub.log.AuditErr(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
 			continue
 		}
 
-		err = pub.SA.AddSCTReceipt(ctx, internalSCT)
+		err = pub.SA.AddSCTReceipt(localCtx, internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Err(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
+			pub.log.AuditErr(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
 			continue
 		}
 	}

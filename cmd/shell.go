@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 // This package provides utilities that underlie the specific commands.
 // The idea is to make the specific command files very small, e.g.:
 //
@@ -41,7 +36,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
-	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -49,115 +43,21 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-// AppShell contains CLI Metadata
-type AppShell struct {
-	Action func(Config, metrics.Statter, blog.Logger)
-	Config func(*cli.Context, Config) Config
-	App    *cli.App
+// Because we don't know when this init will be called with respect to
+// flag.Parse() and other flag definitions, we can't rely on the regular
+// flag mechanism. But this one is fine.
+func init() {
+	for _, v := range os.Args {
+		if v == "--version" || v == "-version" {
+			fmt.Println(Version())
+			os.Exit(0)
+		}
+	}
 }
 
 // Version returns a string representing the version of boulder running.
 func Version() string {
 	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
-}
-
-// NewAppShell creates a basic AppShell object containing CLI metadata
-func NewAppShell(name, usage string) (shell *AppShell) {
-	app := cli.NewApp()
-
-	app.Name = name
-	app.Usage = usage
-	app.Version = Version()
-	app.Author = "Boulder contributors"
-	app.Email = "ca-dev@letsencrypt.org"
-
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:   "config",
-			Value:  "config.json",
-			EnvVar: "BOULDER_CONFIG",
-			Usage:  "Path to Config JSON",
-		},
-	}
-
-	return &AppShell{App: app}
-}
-
-// Run begins the application context, reading config and passing
-// control to the default commandline action.
-func (as *AppShell) Run() {
-	as.App.Action = func(c *cli.Context) {
-		configFileName := c.GlobalString("config")
-		configJSON, err := ioutil.ReadFile(configFileName)
-		FailOnError(err, "Unable to read config file")
-
-		var config Config
-		err = json.Unmarshal(configJSON, &config)
-		FailOnError(err, "Failed to read configuration")
-
-		if as.Config != nil {
-			config = as.Config(c, config)
-		}
-
-		err = features.Set(config.Features)
-		FailOnError(err, "Failed to set feature flags")
-
-		// Provide default values for each service's AMQP config section.
-		if config.WFE.AMQP == nil {
-			config.WFE.AMQP = config.AMQP
-		}
-		if config.CA.AMQP == nil {
-			config.CA.AMQP = config.AMQP
-			if config.CA.AMQP != nil && config.AMQP.CA != nil {
-				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
-			}
-		}
-		if config.RA.AMQP == nil {
-			config.RA.AMQP = config.AMQP
-			if config.RA.AMQP != nil && config.AMQP.RA != nil {
-				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
-			}
-		}
-		if config.SA.AMQP == nil {
-			config.SA.AMQP = config.AMQP
-			if config.SA.AMQP != nil && config.AMQP.SA != nil {
-				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
-			}
-		}
-		if config.VA.AMQP == nil {
-			config.VA.AMQP = config.AMQP
-			if config.VA.AMQP != nil && config.AMQP.VA != nil {
-				config.VA.AMQP.ServiceQueue = config.AMQP.VA.Server
-			}
-		}
-		if config.Mailer.AMQP == nil {
-			config.Mailer.AMQP = config.AMQP
-		}
-		if config.OCSPUpdater.AMQP == nil {
-			config.OCSPUpdater.AMQP = config.AMQP
-		}
-		if config.OCSPResponder.AMQP == nil {
-			config.OCSPResponder.AMQP = config.AMQP
-		}
-		if config.Publisher.AMQP == nil {
-			config.Publisher.AMQP = config.AMQP
-			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
-				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
-			}
-		}
-
-		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
-		logger.Info(as.VersionString())
-
-		// If as.Action generates a panic, this will log it to syslog.
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer logger.AuditPanic()
-
-		as.Action(config, stats, logger)
-	}
-
-	err := as.App.Run(os.Args)
-	FailOnError(err, "Failed to run application")
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
@@ -166,7 +66,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...interface{}) {
-	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
+	m.AuditErr(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
 }
 
 // cfsslLogger provides two additional methods that are expected by CFSSL's
@@ -176,11 +76,11 @@ type cfsslLogger struct {
 }
 
 func (cl cfsslLogger) Crit(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 func (cl cfsslLogger) Emerg(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
@@ -192,16 +92,16 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
-		logConf.Network,
-		logConf.Server,
-		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
+		"",
+		"",
+		syslog.LOG_INFO, // default, not actually used
 		tag)
 	FailOnError(err, "Could not connect to Syslog")
-	level := int(syslog.LOG_DEBUG)
-	if logConf.StdoutLevel != nil {
-		level = *logConf.StdoutLevel
+	syslogLevel := int(syslog.LOG_INFO)
+	if logConf.SyslogLevel != 0 {
+		syslogLevel = logConf.SyslogLevel
 	}
-	logger, err := blog.New(syslogger, level)
+	logger, err := blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
@@ -211,17 +111,12 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	return stats, logger
 }
 
-// VersionString produces a friendly Application version string
-func (as *AppShell) VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", as.App.Name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
-}
-
 // FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		logger := blog.Get()
-		logger.Err(fmt.Sprintf("%s: %s", msg, err))
+		logger.AuditErr(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}
@@ -312,4 +207,38 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
+}
+
+// ReadConfigFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a
+// configuration of a boulder component. If the file contains a
+// "Features" field it will try to initialize the features
+// package
+func ReadConfigFile(filename string, out interface{}) error {
+	configData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	var f struct {
+		Features *map[string]bool
+	}
+	err = json.Unmarshal(configData, &f)
+	if err != nil {
+		return err
+	}
+	if f.Features != nil {
+		if err = features.Set(f.Features); err != nil {
+			return err
+		}
+	}
+	err = json.Unmarshal(configData, out)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// VersionString produces a friendly Application version string.
+func VersionString(name string) string {
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }

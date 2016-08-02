@@ -28,7 +28,7 @@ func TestRejectsNone(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'none'")
 	}
-	if prob.Detail != "algorithm 'none' in JWS header not acceptable" {
+	if prob.Detail != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
 		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: %#v", prob)
 	}
 }
@@ -52,7 +52,7 @@ func TestRejectsHS256(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'HS256'")
 	}
-	expected := "algorithm 'HS256' in JWS header not acceptable"
+	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
 	if prob.Detail != expected {
 		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", prob, expected)
 	}
@@ -86,7 +86,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"algorithm 'HS256' in JWS header not acceptable",
+			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 			"WFE.Errors.InvalidJWSAlgorithm",
 		},
 		{
@@ -103,7 +103,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"algorithm 'HS256' in JWS header not acceptable",
+			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 			"WFE.Errors.InvalidJWSAlgorithm",
 		},
 		{

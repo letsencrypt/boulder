@@ -19,9 +19,6 @@ fi
 # to the format we use in production, MIXED.
 mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 
-# Drop all users to get a fresh start
-mysql $dbconn < test/drop_users.sql
-
 for dbenv in $DBENVS; do
   (
   db="boulder_sa_${dbenv}"

@@ -28,10 +28,20 @@ wait_tcp_port boulder-rabbitmq 5672
 MYSQL_CONTAINER=1 $DIR/create_db.sh
 
 # Set up rabbitmq exchange
-go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq
+rabbitmq-setup -server amqp://boulder-rabbitmq
+
+# Delaying loading private key into SoftHSM container until now so that switching
+# out the signing key doesn't require rebuilding the boulder-tools image. Only
+# convert key to DER once per container.
+wait_tcp_port boulder-hsm 5657
+PKCS11_PROXY_SOCKET="tcp://boulder-hsm:5657" pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so --write-object test/test-ca.key.der --type privkey --label key_label --pin 5678 --login --so-pin 1234
 
 if [[ $# -eq 0 ]]; then
     exec ./start.py
 fi
 
+# TODO(jsha): Change to an unprivileged user before running commands. Currently,
+# running as an unprivileged user causes the certbot integration test to fail
+# during the test of the manual plugin. There's a call to killpg in there that
+# kills the whole test, but only when run under `su buser -c "..."`
 exec $@

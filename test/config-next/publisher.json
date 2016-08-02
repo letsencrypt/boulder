@@ -1,0 +1,44 @@
+{
+  "publisher": {
+    "maxConcurrentRPCServerRequests": 16,
+    "submissionTimeout": "5s",
+    "debugAddr": "localhost:8009",
+    "grpc": {
+      "address": "boulder:9091",
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem"
+    },
+    "amqp": {
+      "serverURLFile": "test/secrets/amqp_url",
+      "insecure": true,
+      "serviceQueue": "Publisher.server",
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "15s"
+      }
+    }
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 4
+  },
+
+  "common": {
+    "ct": {
+      "logs": [
+        {
+          "uri": "http://127.0.0.1:4500",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
+        }
+      ],
+      "intermediateBundleFilename": "test/test-ca.pem"
+    }
+  }
+}

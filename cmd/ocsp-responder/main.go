@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -10,10 +5,12 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
-	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
@@ -93,7 +90,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil && err != sql.ErrNoRows {
-		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
+		src.log.AuditErr(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
 	}
 	if err != nil {
 		return nil, false
@@ -124,65 +121,103 @@ func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSour
 	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId, log)
 }
 
+type config struct {
+	OCSPResponder struct {
+		cmd.ServiceConfig
+		cmd.DBConfig
+
+		// Source indicates the source of pre-signed OCSP responses to be used. It
+		// can be a DBConnect string or a file URL. The file URL style is used
+		// when responding from a static file for intermediates and roots.
+		// If DBConfig has non-empty fields, it takes precedence over this.
+		Source string
+
+		Path          string
+		ListenAddress string
+		// MaxAge is the max-age to set in the Cache-Control response
+		// header. It is a time.Duration formatted string.
+		MaxAge cmd.ConfigDuration
+
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
+	}
+
+	Statsd cmd.StatsdConfig
+
+	Syslog cmd.SyslogConfig
+
+	Common struct {
+		IssuerCert string
+	}
+}
+
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
-	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
-		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
-		go cmd.ProfileCmd("OCSP", stats)
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-		config := c.OCSPResponder
-		var source cfocsp.Source
+	go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
-		// DBConfig takes precedence over Source, if present.
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString("ocsp-responder"))
+
+	go cmd.ProfileCmd("OCSP", stats)
+
+	config := c.OCSPResponder
+	var source cfocsp.Source
+
+	if strings.HasPrefix(config.Source, "file:") {
+		url, err := url.Parse(config.Source)
+		cmd.FailOnError(err, "Source was not a URL")
+		filename := url.Path
+		// Go interprets cwd-relative file urls (file:test/foo.txt) as having the
+		// relative part of the path in the 'Opaque' field.
+		if filename == "" {
+			filename = url.Opaque
+		}
+		source, err = cfocsp.NewSourceFromFile(filename)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
+	} else {
+		// For databases, DBConfig takes precedence over Source, if present.
 		dbConnect, err := config.DBConfig.URL()
 		cmd.FailOnError(err, "Reading DB config")
 		if dbConnect == "" {
 			dbConnect = config.Source
 		}
-		url, err := url.Parse(dbConnect)
-		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
-
-		if url.Scheme == "mysql+tcp" {
-			logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-			dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
-			cmd.FailOnError(err, "Could not connect to database")
-			sa.SetSQLDebug(dbMap, logger)
-			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
-			cmd.FailOnError(err, "Couldn't load OCSP DB")
-		} else if url.Scheme == "file" {
-			filename := url.Path
-			// Go interprets cwd-relative file urls (file:test/foo.txt) as having the
-			// relative part of the path in the 'Opaque' field.
-			if filename == "" {
-				filename = url.Opaque
-			}
-			source, err = cfocsp.NewSourceFromFile(filename)
-			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
-		} else {
-			cmd.FailOnError(errors.New(`"source" parameter not found in JSON config`), "unable to start ocsp-responder")
-		}
-
-		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
-		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
-		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
-		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-		m := mux(stats, c.OCSPResponder.Path, source)
-		srv := &http.Server{
-			Addr:    c.OCSPResponder.ListenAddress,
-			Handler: m,
-		}
-
-		hd := &httpdown.HTTP{
-			StopTimeout: stopTimeout,
-			KillTimeout: killTimeout,
-			Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
-		}
-		err = httpdown.ListenAndServe(srv, hd)
-		cmd.FailOnError(err, "Error starting HTTP server")
+		logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
+		dbMap, err := sa.NewDbMap(dbConnect, config.DBConfig.MaxDBConns)
+		cmd.FailOnError(err, "Could not connect to database")
+		sa.SetSQLDebug(dbMap, logger)
+		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
+		source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
+		cmd.FailOnError(err, "Couldn't load OCSP DB")
 	}
 
-	app.Run()
+	stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
+	cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+	killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
+	cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
+	m := mux(stats, c.OCSPResponder.Path, source)
+	srv := &http.Server{
+		Addr:    c.OCSPResponder.ListenAddress,
+		Handler: m,
+	}
+
+	hd := &httpdown.HTTP{
+		StopTimeout: stopTimeout,
+		KillTimeout: killTimeout,
+		Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
+	}
+	err = httpdown.ListenAndServe(srv, hd)
+	cmd.FailOnError(err, "Error starting HTTP server")
 }
 
 func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.Handler {

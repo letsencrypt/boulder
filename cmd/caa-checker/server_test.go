@@ -3,11 +3,14 @@ package main
 import (
 	"testing"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"golang.org/x/net/context"
+
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -42,7 +45,7 @@ func TestChecking(t *testing.T) {
 		{"unsatisfiable.com", true, false},
 	}
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 	ccs := &caaCheckerServer{&bdns.MockDNSResolver{}, stats}
 	issuerDomain := "letsencrypt.org"
 
@@ -66,8 +69,16 @@ func TestChecking(t *testing.T) {
 	result, err := ccs.ValidForIssuance(ctx, &pb.Check{Name: &servfail, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, result == nil, "result should be nil")
+	test.AssertEquals(t, grpc.Code(err), bgrpc.DNSError)
 
 	result, err = ccs.ValidForIssuance(ctx, &pb.Check{Name: &servfailPresent, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, result == nil, "result should be nil")
+	test.AssertEquals(t, grpc.Code(err), bgrpc.DNSError)
+
+	timeout := "caa-timeout.com"
+	result, err = ccs.ValidForIssuance(ctx, &pb.Check{Name: &timeout, IssuerDomain: &issuerDomain})
+	test.AssertError(t, err, "timeout.com")
+	test.Assert(t, result == nil, "result should be nil")
+	test.AssertEquals(t, grpc.Code(err), bgrpc.DNSQueryTimeout)
 }

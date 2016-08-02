@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -47,14 +42,15 @@ type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
 
-	Type             string          `db:"type"`
-	Status           core.AcmeStatus `db:"status"`
-	Error            []byte          `db:"error"`
-	Validated        *time.Time      `db:"validated"`
-	Token            string          `db:"token"`
-	KeyAuthorization string          `db:"keyAuthorization"`
-	ValidationRecord []byte          `db:"validationRecord"`
-	AccountKey       []byte          `db:"accountKey"`
+	Type   string          `db:"type"`
+	Status core.AcmeStatus `db:"status"`
+	Error  []byte          `db:"error"`
+	// This field is unused, but is kept temporarily to avoid a database migration.
+	// TODO(#1818): remove
+	Validated        *time.Time `db:"validated"`
+	Token            string     `db:"token"`
+	KeyAuthorization string     `db:"keyAuthorization"`
+	ValidationRecord []byte     `db:"validationRecord"`
 
 	LockCol int64
 
@@ -63,6 +59,13 @@ type challModel struct {
 	// its private.
 	ObsoleteTLS *bool `db:"tls"`
 }
+
+// getChallengesQuery fetches exactly the fields in challModel from the
+// challenges table.
+const getChallengesQuery = `
+	SELECT id, authorizationID, type, status, error, validated, token,
+		keyAuthorization, validationRecord, tls
+	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration
 func registrationToModel(r *core.Registration) (*regModel, error) {
@@ -78,11 +81,14 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	if r.InitialIP == nil {
 		return nil, fmt.Errorf("initialIP was nil")
 	}
+	if r.Contact == nil {
+		r.Contact = &[]*core.AcmeURL{}
+	}
 	rm := &regModel{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
-		Contact:   r.Contact,
+		Contact:   *r.Contact,
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
@@ -97,10 +103,19 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		err = fmt.Errorf("unable to unmarshal JsonWebKey in db: %s", err)
 		return core.Registration{}, err
 	}
+	var contact *[]*core.AcmeURL
+	// Contact can be nil when the DB contains the literal string "null". We
+	// prefer to represent this in memory as a pointer to an empty slice rather
+	// than a nil pointer.
+	if rm.Contact == nil {
+		contact = &[]*core.AcmeURL{}
+	} else {
+		contact = &rm.Contact
+	}
 	r := core.Registration{
 		ID:        rm.ID,
 		Key:       *k,
-		Contact:   rm.Contact,
+		Contact:   contact,
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
@@ -114,7 +129,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		AuthorizationID:  authID,
 		Type:             c.Type,
 		Status:           c.Status,
-		Validated:        c.Validated,
 		Token:            c.Token,
 		KeyAuthorization: c.ProvidedKeyAuthorization,
 	}
@@ -138,26 +152,15 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		}
 		cm.ValidationRecord = vrJSON
 	}
-	if c.AccountKey != nil {
-		akJSON, err := json.Marshal(c.AccountKey)
-		if err != nil {
-			return nil, err
-		}
-		if len(akJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Account key object is too large to store in the database")
-		}
-		cm.AccountKey = akJSON
-	}
 	return &cm, nil
 }
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:        cm.ID,
-		Type:      cm.Type,
-		Status:    cm.Status,
-		Validated: cm.Validated,
-		Token:     cm.Token,
+		ID:     cm.ID,
+		Type:   cm.Type,
+		Status: cm.Status,
+		Token:  cm.Token,
 		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {
@@ -175,14 +178,6 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 			return core.Challenge{}, err
 		}
 		c.ValidationRecord = vr
-	}
-	if len(cm.AccountKey) > 0 {
-		var ak jose.JsonWebKey
-		err := json.Unmarshal(cm.AccountKey, &ak)
-		if err != nil {
-			return core.Challenge{}, err
-		}
-		c.AccountKey = &ak
 	}
 	return c, nil
 }

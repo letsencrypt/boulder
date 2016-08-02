@@ -14,6 +14,19 @@
 -- drop command will fail. So we grant the dummy `USAGE` privilege to make sure
 -- the user exists and then drop the user.
 
+
+-- These lines require MariaDB 10.1
+CREATE USER IF NOT EXISTS 'policy'@'localhost';
+CREATE USER IF NOT EXISTS 'sa'@'localhost';
+CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
+CREATE USER IF NOT EXISTS 'revoker'@'localhost';
+CREATE USER IF NOT EXISTS 'importer'@'localhost';
+CREATE USER IF NOT EXISTS 'mailer'@'localhost';
+CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
+CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
+CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
+CREATE USER IF NOT EXISTS 'purger'@'localhost';
+
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'localhost';
@@ -22,7 +35,6 @@ GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'localhost';
 GRANT INSERT ON ocspResponses TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
@@ -41,7 +53,6 @@ GRANT SELECT ON sctReceipts TO 'ocsp_update'@'localhost';
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';
 GRANT SELECT ON certificates TO 'revoker'@'localhost';
-GRANT SELECT,INSERT ON deniedCSRs TO 'revoker'@'localhost';
 
 -- External Cert Importer
 GRANT SELECT,INSERT,UPDATE,DELETE ON identifierData TO 'importer'@'localhost';
@@ -49,15 +60,15 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'localhost';
 
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'localhost';
+GRANT SELECT ON registrations TO 'mailer'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
 GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
--- Name set table backfiller
-GRANT SELECT ON certificates to 'backfiller'@'localhost';
-GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
+-- Expired authorization purger
+GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

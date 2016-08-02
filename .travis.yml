@@ -9,23 +9,11 @@ addons:
     - boulder
     - boulder-mysql
     - boulder-rabbitmq
-  apt:
-    packages:
-      - lsb-release
-      - python-dev
-      - python-virtualenv
-      - gcc
-      - libaugeas0
-      - libssl-dev
-      - libffi-dev
-      - ca-certificates
-      - rsyslog
-  mariadb: "10.0"
 
-sudo: false
+sudo: required
 
 services:
-  - rabbitmq
+  - docker
 
 matrix:
   fast_finish: true
@@ -43,13 +31,6 @@ branches:
     - release
     - /^test-.*$/
 
-# By providing our own install command we avoid Travis' default Go install
-# command, which runs `go get`. We specifically want to avoid that because we
-# want to ensure all our dependencies are vendored.
-install:
-  - travis_retry test/travis-before-install.sh
-  - cd $GOPATH/src/github.com/letsencrypt/boulder
-
 env:
   global:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
@@ -58,9 +39,15 @@ env:
     - RUN="vet fmt migrations integration godep-restore errcheck generate"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
+    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
+    - RUN="rpm"
+
+install:
+  - ./test/travis-before-install.sh
+  - docker-compose pull
+  - docker pull letsencrypt/boulder-tools
+  - docker-compose build
 
 script:
-  - bash test.sh
-
+  - docker-compose run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder  ./test.sh

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package va
 
 import (
@@ -15,7 +10,8 @@ import (
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 func TestIsSafeDomain(t *testing.T) {
@@ -34,45 +30,77 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		sbc,
+		nil,
+		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		stats,
+		clock.NewFake(),
+		blog.NewMock())
 
-	resp, err := va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "good.com"})
+	domain := "good.com"
+	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("good.com: want no error, got '%s'", err)
 	}
-	if !resp.IsSafe {
-		t.Errorf("good.com: want true, got %t", resp.IsSafe)
+	if !resp.GetIsSafe() {
+		t.Errorf("good.com: want true, got %t", resp.GetIsSafe())
 	}
-	resp, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "bad.com"})
+
+	domain = "bad.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("bad.com: want no error, got '%s'", err)
 	}
-	if resp.IsSafe {
-		t.Errorf("bad.com: want false, got %t", resp.IsSafe)
+	if resp.GetIsSafe() {
+		t.Errorf("bad.com: want false, got %t", resp.GetIsSafe())
 	}
-	_, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "errorful.com"})
+
+	domain = "errorful.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err == nil {
 		t.Errorf("errorful.com: want error, got none")
 	}
-	resp, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "outofdate.com"})
+	if resp != nil {
+		t.Errorf("errorful.com: want resp == nil, got %v", resp)
+	}
+
+	domain = "outofdate.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("outofdate.com: want no error, got '%s'", err)
 	}
-	if !resp.IsSafe {
+	if !resp.GetIsSafe() {
 		t.Errorf("outofdate.com: IsSafeDomain should fail open on out of date hashes")
 	}
 }
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		nil,
+		nil,
+		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		stats,
+		clock.NewFake(),
+		blog.NewMock())
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
-	resp, err := va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "example.com"})
+	domain := "example.com"
+	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("nil SafeBrowsing, unexpected error: %s", err)
-	} else if !resp.IsSafe {
+	}
+	if !resp.GetIsSafe() {
 		t.Errorf("nil Safebrowsing, should fail open but failed closed")
 	}
 }

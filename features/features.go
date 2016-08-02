@@ -33,7 +33,7 @@ func (b boolVar) String() string { return fmt.Sprintf("%t", b) }
 
 // Set accepts a list of features and whether they should
 // be enabled or disabled, it will return a error if passed
-// a feature name that it doesn't know. It also
+// a feature name that it doesn't know
 func Set(featureSet map[string]bool) error {
 	for n, v := range featureSet {
 		f, present := nameToFeature[n]
@@ -54,8 +54,8 @@ func Export(m *expvar.Map) {
 }
 
 // Enabled returns true if the feature is enabled or false
-// if it isn't, it will panic if passed a feature name that
-// it doesn't know.
+// if it isn't, it will panic if passed a feature that it
+// doesn't know.
 func Enabled(n FeatureFlag) bool {
 	v, present := features[n]
 	if !present {

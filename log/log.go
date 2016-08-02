@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package log
 
 import (
@@ -30,7 +25,7 @@ type Logger interface {
 	AuditPanic()
 	AuditInfo(string)
 	AuditObject(string, interface{})
-	AuditErr(error)
+	AuditErr(string)
 }
 
 // impl implements Logger.
@@ -51,12 +46,12 @@ var _Singleton singleton
 const auditTag = "[AUDIT]"
 
 // New returns a new Logger that uses the given syslog.Writer as a backend.
-func New(log *syslog.Writer, stdoutLogLevel int) (Logger, error) {
+func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, clock.Default()},
+		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.Default()},
 	}, nil
 }
 
@@ -69,7 +64,7 @@ func initialize() {
 	if err != nil {
 		panic(err)
 	}
-	logger, err := New(syslogger, int(syslog.LOG_DEBUG))
+	logger, err := New(syslogger, int(syslog.LOG_DEBUG), int(syslog.LOG_DEBUG))
 	if err != nil {
 		panic(err)
 	}
@@ -112,6 +107,7 @@ type writer interface {
 type bothWriter struct {
 	*syslog.Writer
 	stdoutLevel int
+	syslogLevel int
 	clk         clock.Clock
 }
 
@@ -124,18 +120,26 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
 
-	switch level {
+	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
-		err = w.Err(msg)
+		if syslogAllowed {
+			err = w.Err(msg)
+		}
 		prefix = red + "E"
 	case syslog.LOG_WARNING:
-		err = w.Warning(msg)
+		if syslogAllowed {
+			err = w.Warning(msg)
+		}
 		prefix = yellow + "W"
 	case syslog.LOG_INFO:
-		err = w.Info(msg)
+		if syslogAllowed {
+			err = w.Info(msg)
+		}
 		prefix = "I"
 	case syslog.LOG_DEBUG:
-		err = w.Debug(msg)
+		if syslogAllowed {
+			err = w.Debug(msg)
+		}
 		prefix = "D"
 	default:
 		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
@@ -181,10 +185,10 @@ func caller(level int) string {
 func (log *impl) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.AuditErr(fmt.Errorf("Panic caused by err: %s", err))
+		log.AuditErr(fmt.Sprintf("Panic caused by err: %s", err))
 
 		runtime.Stack(buf, false)
-		log.AuditErr(fmt.Errorf("Stack Trace (Current frame) %s", buf))
+		log.AuditErr(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
 
 		runtime.Stack(buf, true)
 		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
@@ -233,6 +237,6 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 
 // AuditErr can format an error for auditing; it does so at ERR level.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-func (log *impl) AuditErr(msg error) {
-	log.auditAtLevel(syslog.LOG_ERR, msg.Error())
+func (log *impl) AuditErr(msg string) {
+	log.auditAtLevel(syslog.LOG_ERR, msg)
 }

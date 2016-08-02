@@ -1,0 +1,32 @@
+syntax = "proto2";
+
+package core;
+
+option go_package = "proto";
+
+message Challenge {
+	optional int64 id = 1;
+	optional string type = 2;
+	optional string status = 6;
+	optional string uri = 9;
+	optional string token = 3;
+	optional string keyAuthorization = 5;
+	repeated ValidationRecord validationrecords = 10;
+	optional ProblemDetails error = 7;
+}
+
+message ValidationRecord {
+        optional string hostname = 1;
+        optional string port = 2;
+        repeated bytes addressesResolved = 3; // net.IP.MarshalText()
+        optional bytes addressUsed = 4; // net.IP.MarshalText()
+
+        repeated string authorities = 5;
+        optional string url = 6;
+}
+
+message ProblemDetails {
+	optional string problemType = 1;
+	optional string detail = 2;
+	optional int32 httpStatus = 3;
+}

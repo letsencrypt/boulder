@@ -1,20 +1,14 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
 	"crypto/x509"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
-	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
 
-	"github.com/codegangsta/cli"
 	"github.com/letsencrypt/pkcs11key"
 	"golang.org/x/crypto/ocsp"
 )
@@ -28,9 +22,52 @@ type PKCS11Config struct {
 	PIN             string
 }
 
-func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11 PKCS11Config, err error) {
+const usage = `
+name:
+  single-ocsp - Creates a single OCSP response
+
+usage:
+  single-ocsp [args]
+
+description:
+  According to the BRs, the OCSP responses for intermediate certificate must
+  be issued once per year.  So there's a need to issue OCSP responses for
+  these certificates, but it doesn't make sense to use all the infrastructure
+  that the "ocsp-updater" tool requires.  This tool allows an administrator
+  to manually generate an OCSP response for an intermediate certificate.
+`
+
+const templateUsage = `
+OCSP template file (JSON), e.g.:
+
+{
+  "Status": 0, // Good
+  "ThisUpdate": "2015-08-26T00:00:00Z",
+  "NextUpdate": "2016-08-26T00:00:00Z"
+}
+
+{
+  "Status": 1, // Revoked
+  "ThisUpdate": "2015-08-26T00:00:00Z",
+  "NextUpdate": "2016-08-26T00:00:00Z",
+  "RevokedAt": "2015-08-20T00:00:00Z",
+  "RevocationReason": 1 // Key compromise
+}
+`
+
+const pkcs11Usage = `
+PKCS#11 configuration (JSON), e.g.:
+
+{
+  "Module": "/Library/OpenSC/lib/opensc-pkcs11.so",
+  "Token": "Yubico Yubikey NEO CCID",
+  "Label": "PIV AUTH key",
+  "PIN": "123456"
+}
+`
+
+func readFiles(issuerFileName, responderFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11 PKCS11Config, err error) {
 	// Issuer certificate
-	issuerFileName := c.GlobalString("issuer")
 	issuerBytes, err := ioutil.ReadFile(issuerFileName)
 	if err != nil {
 		return
@@ -42,7 +79,6 @@ func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, tem
 	}
 
 	// Responder certificate
-	responderFileName := c.GlobalString("responder")
 	responderBytes, err := ioutil.ReadFile(responderFileName)
 	if err != nil {
 		return
@@ -54,7 +90,6 @@ func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, tem
 	}
 
 	// Target certificate
-	targetFileName := c.GlobalString("target")
 	targetBytes, err := ioutil.ReadFile(targetFileName)
 	if err != nil {
 		return
@@ -66,7 +101,6 @@ func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, tem
 	}
 
 	// OCSP template
-	templateFileName := c.GlobalString("template")
 	templateBytes, err := ioutil.ReadFile(templateFileName)
 	if err != nil {
 		return
@@ -78,7 +112,6 @@ func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, tem
 	}
 
 	// PKCS#11 config
-	pkcs11FileName := c.GlobalString("pkcs11")
 	pkcs11Bytes, err := ioutil.ReadFile(pkcs11FileName)
 	if err != nil {
 		return
@@ -89,95 +122,33 @@ func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, tem
 }
 
 func main() {
-	app := cli.NewApp()
-	app.Name = "single-ocsp"
-	app.Usage = `Creates a single OCSP response.
+	issuerFile := flag.String("issuer", "", "Issuer certificate (DER)")
+	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
+	targetFile := flag.String("target", "", "Certificate whose status is being reported (DER)")
+	templateFile := flag.String("template", "", templateUsage)
+	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
+	outFile := flag.String("out", "", "File to which the OCSP response will be written")
+	flag.Parse()
 
-   According to the BRs, the OCSP responses for intermediate certificate must
-   be issued once per year.  So there's a need to issue OCSP responses for
-   these certificates, but it doesn't make sense to use all the infrastructure
-   that the "ocsp-updater" tool requires.  This tool allows an administrator
-   to manually generate an OCSP response for an intermediate certificate.
-`
-	app.Version = cmd.Version()
-	app.Author = "Boulder contributors"
-	app.Email = "ca-dev@letsencrypt.org"
+	issuer, responder, target, template, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *templateFile, *pkcs11File)
+	cmd.FailOnError(err, "Failed to read files")
 
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "issuer",
-			Usage: "Issuer certificate (DER)",
-		},
-		cli.StringFlag{
-			Name:  "responder",
-			Usage: "OCSP responder certificate (DER)",
-		},
-		cli.StringFlag{
-			Name:  "target",
-			Usage: "Certificate whose status is being reported (DER)",
-		},
-		cli.StringFlag{
-			Name: "template",
-			Usage: `OCSP template file (JSON), e.g.:
+	// Instantiate the private key from PKCS11
+	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)
+	cmd.FailOnError(err, "Failed to load PKCS#11 key")
 
-                {
-                  "Status": 0, // Good
-                  "ThisUpdate": "2015-08-26T00:00:00Z",
-                  "NextUpdate": "2016-08-26T00:00:00Z"
-                }
+	// Populate the remaining fields in the template
+	template.SerialNumber = target.SerialNumber
+	template.Certificate = responder
 
-                {
-                  "Status": 1, // Revoked
-                  "ThisUpdate": "2015-08-26T00:00:00Z",
-                  "NextUpdate": "2016-08-26T00:00:00Z",
-                  "RevokedAt": "2015-08-20T00:00:00Z",
-                  "RevocationReason": 1 // Key compromise
-                }
-`,
-		},
-		cli.StringFlag{
-			Name: "pkcs11",
-			Usage: `PKCS#11 configuration (JSON), e.g.:
+	// Sign the OCSP response
+	responseBytes, err := ocsp.CreateResponse(issuer, responder, template, priv)
+	cmd.FailOnError(err, "Failed to sign OCSP response")
 
-                {
-                  "Module": "/Library/OpenSC/lib/opensc-pkcs11.so",
-                  "Token": "Yubico Yubikey NEO CCID",
-                  "Label": "PIV AUTH key",
-                  "PIN": "123456"
-                }
-`,
-		},
-		cli.StringFlag{
-			Name:  "out",
-			Usage: "File to which the OCSP response will be written",
-		},
+	// Write the OCSP response to stdout
+	if len(*outFile) == 0 {
+		cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 	}
-
-	app.Action = func(c *cli.Context) {
-		issuer, responder, target, template, pkcs11, err := readFiles(c)
-		cmd.FailOnError(err, "Failed to read files")
-
-		// Instantiate the private key from PKCS11
-		priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)
-		cmd.FailOnError(err, "Failed to load PKCS#11 key")
-
-		// Populate the remaining fields in the template
-		template.SerialNumber = target.SerialNumber
-		template.Certificate = responder
-
-		// Sign the OCSP response
-		responseBytes, err := ocsp.CreateResponse(issuer, responder, template, priv)
-		cmd.FailOnError(err, "Failed to sign OCSP response")
-
-		// Write the OCSP response to stdout
-		outFile := c.GlobalString("out")
-		if len(outFile) == 0 {
-			cmd.FailOnError(fmt.Errorf(""), "No output file provided")
-		}
-		err = ioutil.WriteFile(outFile, responseBytes, 0666)
-		cmd.FailOnError(err, "Failed to write output file")
-	}
-
-	err := app.Run(os.Args)
-	cmd.FailOnError(err, "Failed to run application")
+	err = ioutil.WriteFile(*outFile, responseBytes, 0666)
+	cmd.FailOnError(err, "Failed to write output file")
 }
