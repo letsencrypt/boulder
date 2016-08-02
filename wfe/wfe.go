@@ -1100,7 +1100,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
+	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement && update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
