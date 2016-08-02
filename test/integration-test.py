@@ -204,7 +204,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     try:
         urllib2.urlopen("http://localhost:9381/clear", data='')
         if subprocess.Popen(
-                (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/config/expiration-mailer.json && ' * 3) + 'true') %
+                (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer -config test/config/expiration-mailer.json -reconnectBase=1s -reconnectMax=5m && ' * 3) + 'true') %
                 (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
                 cwd='../..', shell=True).wait() != 0:
             print("\nExpiry mailer failed")
