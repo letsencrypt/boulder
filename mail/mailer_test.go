@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"net/mail"
@@ -30,7 +29,7 @@ func TestGenerateMessage(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
-	m := New("", "", "", "", *fromAddress, log, stats, 0, 0, 0)
+	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -55,7 +54,7 @@ func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
 	stats, _ := statsd.NewNoopClient(nil)
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", *fromAddress, log, stats, 0, 0, 0)
+	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -168,7 +167,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		*fromAddress,
 		log,
 		stats,
-		time.Second*2, time.Second*10, 100)
+		time.Second*2, time.Second*10)
 
 	l, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -199,29 +198,6 @@ func TestConnect(t *testing.T) {
 	}
 }
 
-func TestReconnectFailure(t *testing.T) {
-	m, l, cleanUp := setup(t)
-	defer cleanUp()
-	const closedConns = 5
-
-	// Configure a test server that will disconnect the first `closedConns`
-	// connections after the MAIL cmd
-	go listenForever(l, t, disconnectHandler(closedConns))
-
-	// With a mailer client that has a max attempt < `closedConns` we expect an
-	// EOF error. The client should give up before the server stops closing its
-	// connections.
-	m.retryMaxAttempts = closedConns - 1
-	err := m.Connect()
-	if err != nil {
-		t.Errorf("Failed to connect: %s", err)
-	}
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
-	if err != io.EOF {
-		t.Errorf("Expected SendMail() to fail with EOF err, got %s", err)
-	}
-}
-
 func TestReconnectSuccess(t *testing.T) {
 	m, l, cleanUp := setup(t)
 	defer cleanUp()
@@ -234,7 +210,6 @@ func TestReconnectSuccess(t *testing.T) {
 	// With a mailer client that has a max attempt > `closedConns` we expect no
 	// error. The message should be delivered after `closedConns` reconnect
 	// attempts.
-	m.retryMaxAttempts = closedConns + 1
 	err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)

@@ -51,16 +51,15 @@ type Mailer interface {
 // MailerImpl defines a mail transfer agent to use for sending mail. It is not
 // safe for concurrent access.
 type MailerImpl struct {
-	log              blog.Logger
-	dialer           dialer
-	from             mail.Address
-	client           smtpClient
-	clk              clock.Clock
-	csprgSource      idGenerator
-	stats            *metrics.StatsdScope
-	retryTimeoutBase time.Duration
-	retryTimeoutMax  time.Duration
-	retryMaxAttempts uint
+	log           blog.Logger
+	dialer        dialer
+	from          mail.Address
+	client        smtpClient
+	clk           clock.Clock
+	csprgSource   idGenerator
+	stats         *metrics.StatsdScope
+	reconnectBase time.Duration
+	reconnectMax  time.Duration
 }
 
 type dialer interface {
@@ -115,8 +114,8 @@ func New(
 	from mail.Address,
 	logger blog.Logger,
 	stats statsd.Statter,
-	retryBase, retryMax time.Duration,
-	retryMaxAttempts uint) *MailerImpl {
+	reconnectBase time.Duration,
+	reconnectMax time.Duration) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -124,14 +123,13 @@ func New(
 			server:   server,
 			port:     port,
 		},
-		log:              logger,
-		from:             from,
-		clk:              clock.Default(),
-		csprgSource:      realSource{},
-		stats:            metrics.NewStatsdScope(stats, "Mailer"),
-		retryTimeoutBase: retryBase,
-		retryTimeoutMax:  retryMax,
-		retryMaxAttempts: retryMaxAttempts,
+		log:           logger,
+		from:          from,
+		clk:           clock.Default(),
+		csprgSource:   realSource{},
+		stats:         metrics.NewStatsdScope(stats, "Mailer"),
+		reconnectBase: reconnectBase,
+		reconnectMax:  reconnectMax,
 	}
 }
 
@@ -189,7 +187,7 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 
 func (m *MailerImpl) reconnect() {
 	for i := 0; ; i++ {
-		sleepDuration := core.RetryBackoff(i, m.retryTimeoutBase, m.retryTimeoutMax, 2)
+		sleepDuration := core.RetryBackoff(i, m.reconnectBase, m.reconnectMax, 2)
 		m.log.Info(fmt.Sprintf("sleeping for %s before reconnecting mailer", sleepDuration))
 		m.clk.Sleep(sleepDuration)
 		m.log.Info("attempting to reconnect mailer")
@@ -279,7 +277,6 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	m.stats.Inc("SendMail.Attempts", 1)
 
-	var attempt uint
 	for {
 		err := m.sendOne(to, subject, msg)
 		if err == nil {
@@ -289,10 +286,6 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// If the error is an EOF, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
 			m.stats.Inc("SendMail.Errors.EOF", 1)
-			attempt++
-			if attempt >= m.retryMaxAttempts {
-				return err
-			}
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			m.stats.Inc("SendMail.Reconnects", 1)
