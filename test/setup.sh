@@ -17,7 +17,7 @@ go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cover &
+  golang.org/x/tools/cover
 
 # Create the database and roles
 ./test/create_db.sh &
