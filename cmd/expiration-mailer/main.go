@@ -351,6 +351,9 @@ func main() {
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
+
+	flag.Parse()
+
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
