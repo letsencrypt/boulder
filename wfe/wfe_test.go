@@ -746,7 +746,8 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
 	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
-	features.Set(map[string]bool{"CheckMalformedCSR": true})
+	err = features.Set(map[string]bool{"CheckMalformedCSR": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
 	defer features.Reset()
 
 	mockLog.Clear()

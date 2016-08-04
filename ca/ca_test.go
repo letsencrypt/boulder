@@ -689,7 +689,8 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 }
 
 func TestExtensions(t *testing.T) {
-	features.Set(map[string]bool{"DoNotForceCN": true})
+	err := features.Set(map[string]bool{"DoNotForceCN": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
 	defer features.Reset()
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
@@ -731,7 +732,8 @@ func TestExtensions(t *testing.T) {
 
 	// With features.EnableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
-	features.Set(map[string]bool{"EnableMustStaple": true})
+	err = features.Set(map[string]bool{"EnableMustStaple": true})
+	test.AssertNotError(t, err, "Failed to set required feature flags")
 	defer features.Reset()
 	singleStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
