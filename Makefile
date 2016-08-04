@@ -39,7 +39,6 @@ $(OBJDIR):
 $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
-	export GO15VENDOREXPERIMENT=1
 	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
 
 clean:
