@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v69",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
@@ -82,11 +82,6 @@
 			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
-			"ImportPath": "github.com/codegangsta/cli",
-			"Comment": "1.2.0-64-ge1712f3",
-			"Rev": "e1712f381785e32046927f64a7c86fe569203196"
-		},
-		{
 			"ImportPath": "github.com/facebookgo/clock",
 			"Rev": "600d898af40aa09a7a93ecb9265d87b0504b6f03"
 		},
@@ -141,8 +136,23 @@
 			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
 		},
 		{
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509/pkix",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/encoding/asn1",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
-			"Rev": "2c364245d9f3b4f744ed6f8b37c3b27107f3a72a"
+			"Rev": "bda7cf218ae2225f745ead23f9b65901dfebbf45"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
@@ -150,7 +160,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
-			"Rev": "df8ae6ca730422dba20c768ff38ef7d79077a59f"
+			"Rev": "c1e7dca180dc5948d8af317f2fe62baba07769c4"
 		},
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",

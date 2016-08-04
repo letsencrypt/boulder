@@ -75,10 +75,12 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	expiresIn := time.Duration(math.MaxInt64)
 	expDate := m.clk.Now()
 	domains := []string{}
+	serials := []string{}
 
 	// Pick out the expiration date that is closest to being hit.
 	for _, cert := range certs {
 		domains = append(domains, cert.DNSNames...)
+		serials = append(serials, core.SerialToString(cert.SerialNumber))
 		possible := cert.NotAfter.Sub(m.clk.Now())
 		if possible < expiresIn {
 			expiresIn = possible
@@ -87,6 +89,8 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
+
+	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
 
 	email := emailContent{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
@@ -102,13 +106,11 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	startSending := m.clk.Now()
 	err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
 	if err != nil {
-		m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 		return err
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)
 	m.stats.TimingDuration("Mailer.Expiration.SendLatency", elapsed, 1.0)
-	m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	return nil
 }
 
@@ -131,12 +133,14 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 		LIMIT 1`,
 		map[string]interface{}{"serial": serial},
 	)
+	if present == 1 {
+		m.log.Debug(fmt.Sprintf("Cert %s is already renewed", serial))
+	}
 	return present == 1, err
 }
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
 	ctx := context.Background()
-	m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(allCerts)))
 
 	regIDToCerts := make(map[int64][]core.Certificate)
 
@@ -170,6 +174,10 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				// assume not renewed
 			} else if renewed {
 				m.stats.Inc("Mailer.Expiration.Renewed", 1, 1.0)
+				if err := m.updateCertStatus(cert.Serial); err != nil {
+					m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
+					m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
+				}
 				continue
 			}
 
@@ -200,7 +208,6 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			}
 		}
 	}
-	m.log.Info("expiration-mailer: Finished sending messages")
 	return
 }
 
@@ -239,6 +246,8 @@ func (m *mailer) findExpiringCertificates() error {
 			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			return err // fatal
 		}
+		m.log.Info(fmt.Sprintf("Found %d certificates expiring between %s and %s", len(certs),
+			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04")))
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -341,6 +350,7 @@ func main() {
 	dbURL, err := c.Mailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
+	sa.SetSQLDebug(dbMap, logger)
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
 
@@ -359,7 +369,13 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, *fromAddress)
+	mailClient := mail.New(
+		c.Mailer.Server,
+		c.Mailer.Port,
+		c.Mailer.Username,
+		smtpPassword,
+		*fromAddress,
+		stats)
 	err = mailClient.Connect()
 	cmd.FailOnError(err, "Couldn't connect to mail server.")
 	defer func() {
