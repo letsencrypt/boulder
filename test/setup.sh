@@ -17,10 +17,7 @@ go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cover
-
-# Create the database and roles
-./test/create_db.sh &
+  golang.org/x/tools/cover &
 
 (curl -sL https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
  tar -xzv &&
@@ -31,3 +28,6 @@ go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
 # Wait for all the background commands to finish.
 wait
+
+# Create the database and roles
+./test/create_db.sh
