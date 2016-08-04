@@ -115,10 +115,9 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 }
 
 func (m *mailer) updateCertStatus(serial string) error {
-	_, err := m.dbMap.Exec(`
-		UPDATE certificateStatus SET lastExpirationNagSent = ?
-		WHERE serial = ?
-	`, m.clk.Now(), serial)
+	_, err := m.dbMap.Exec(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ?  WHERE serial = ?",
+		m.clk.Now(), serial)
 	return err
 }
 
