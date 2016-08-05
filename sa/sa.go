@@ -22,8 +22,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC"
-
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap

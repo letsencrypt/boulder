@@ -30,11 +30,11 @@ var idPKIXOCSPBasic = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 5, 5, 7, 48, 1, 1}
 type ResponseStatus int
 
 const (
-	Success           ResponseStatus = 0
-	Malformed         ResponseStatus = 1
-	InternalError     ResponseStatus = 2
-	TryLater          ResponseStatus = 3
-	// Status code four is ununsed in OCSP. See
+	Success       ResponseStatus = 0
+	Malformed     ResponseStatus = 1
+	InternalError ResponseStatus = 2
+	TryLater      ResponseStatus = 3
+	// Status code four is unused in OCSP. See
 	// https://tools.ietf.org/html/rfc6960#section-4.2.1
 	SignatureRequired ResponseStatus = 5
 	Unauthorized      ResponseStatus = 6
@@ -114,7 +114,7 @@ type basicResponse struct {
 
 type responseData struct {
 	Raw              asn1.RawContent
-	Version          int           `asn1:"optional,default:1,explicit,tag:0"`
+	Version          int           `asn1:"optional,default:0,explicit,tag:0"`
 	RawResponderName asn1.RawValue `asn1:"optional,explicit,tag:1"`
 	KeyHash          []byte        `asn1:"optional,explicit,tag:2"`
 	ProducedAt       time.Time     `asn1:"generalized"`
@@ -144,7 +144,7 @@ var (
 	oidSignatureSHA384WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 12}
 	oidSignatureSHA512WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 13}
 	oidSignatureDSAWithSHA1     = asn1.ObjectIdentifier{1, 2, 840, 10040, 4, 3}
-	oidSignatureDSAWithSHA256   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 4, 3, 2}
+	oidSignatureDSAWithSHA256   = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 2}
 	oidSignatureECDSAWithSHA1   = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 1}
 	oidSignatureECDSAWithSHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
 	oidSignatureECDSAWithSHA384 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}

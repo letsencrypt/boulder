@@ -69,7 +69,7 @@ func TestAddRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to parse contact link: %s", err)
 	}
-	contacts := []*core.AcmeURL{contact}
+	contacts := &[]*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jwk,
 		Contact:   contacts,
@@ -101,7 +101,7 @@ func TestAddRegistration(t *testing.T) {
 	newReg := core.Registration{
 		ID:        reg.ID,
 		Key:       jwk,
-		Contact:   []*core.AcmeURL{u},
+		Contact:   &[]*core.AcmeURL{u},
 		InitialIP: net.ParseIP("72.72.72.72"),
 		Agreement: "yes",
 	}
@@ -596,19 +596,19 @@ func TestCountRegistrationsByIP(t *testing.T) {
 
 	_, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		Contact:   []*core.AcmeURL{&contact},
+		Contact:   &[]*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
-		Contact:   []*core.AcmeURL{&contact},
+		Contact:   &[]*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
-		Contact:   []*core.AcmeURL{&contact},
+		Contact:   &[]*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/probs"
@@ -21,11 +22,18 @@ const (
 // a Boulder ProblemType
 func CodeToProblem(c codes.Code) probs.ProblemType {
 	switch c {
-	case DNSQueryTimeout:
-		return probs.ConnectionProblem
-	case DNSError:
+	case DNSQueryTimeout, DNSError:
 		return probs.ConnectionProblem
 	default:
 		return probs.ServerInternalProblem
+	}
+}
+
+// ErrorToProb converts a error returned by a gRPC call to a
+// probs.ProblemDetails
+func ErrorToProb(err error) *probs.ProblemDetails {
+	return &probs.ProblemDetails{
+		Type:   CodeToProblem(grpc.Code(err)),
+		Detail: grpc.ErrorDesc(err),
 	}
 }

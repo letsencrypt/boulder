@@ -2,8 +2,6 @@ package core
 
 import (
 	"crypto"
-	"crypto/subtle"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/probs"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 	"github.com/square/go-jose"
 )
 
@@ -101,25 +100,25 @@ type AcmeIdentifier struct {
 
 // CertificateRequest is just a CSR
 //
-// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
+	CSR   *oldx509.CertificateRequest // The CSR
+	Bytes []byte                      // The original bytes of the CSR, for logging.
 }
 
-type rawCertificateRequest struct {
+type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw rawCertificateRequest
+	var raw RawCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
+	csr, err := oldx509.ParseCertificateRequest(raw.CSR)
 	if err != nil {
 		return err
 	}
@@ -131,7 +130,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawCertificateRequest{
+	return json.Marshal(RawCertificateRequest{
 		CSR: cr.CSR.Raw,
 	})
 }
@@ -146,7 +145,7 @@ type Registration struct {
 	Key jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
-	Contact []*AcmeURL `json:"contact,omitempty"`
+	Contact *[]*AcmeURL `json:"contact,omitempty"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
@@ -158,16 +157,68 @@ type Registration struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// MergeUpdate copies a subset of information from the input Registration
-// into this one.
-func (r *Registration) MergeUpdate(input Registration) {
-	if len(input.Contact) > 0 {
-		r.Contact = input.Contact
+func (r *Registration) contactsEqual(other Registration) bool {
+	// If there is no existing contact slice, or the contact slice lengths
+	// differ, then the other contact is not equal
+	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+		return false
 	}
 
-	if len(input.Agreement) > 0 {
-		r.Agreement = input.Agreement
+	// If there is an existing contact slice and it has the same length as the
+	// new contact slice we need to look at each AcmeURL to determine if there
+	// is a change being made
+	//
+	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
+	//            should use `sort.Strings` here to ensure a consistent
+	//            comparison.
+	a := *other.Contact
+	b := *r.Contact
+	for i := 0; i < len(a); i++ {
+		// In order to call .String() we need to make sure the AcmeURL pointers
+		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
+		if a[i] == nil || b[i] == nil {
+			// We return false, allowing MergeUpdate to use `other` to overwrite. The
+			// nil value in the Contact slice will be turned into a user-facing error
+			// when the RA validates the contacts post-merge.
+			return false
+		}
+
+		// If the contact's string representation differs at any index they aren't
+		// equal
+		contactA := (*a[i]).String()
+		contactB := (*b[i]).String()
+		if contactA != contactB {
+			return false
+		}
 	}
+
+	// They are equal!
+	return true
+}
+
+// MergeUpdate copies a subset of information from the input Registration
+// into this one. It returns true if an update was performed and the base object
+// was changed, and false if no change was made.
+func (r *Registration) MergeUpdate(input Registration) bool {
+	var changed bool
+
+	// Note: we allow input.Contact to overwrite r.Contact even if the former is
+	// empty in order to allow users to remove the contact associated with
+	// a registration. Since the field type is a pointer to slice of pointers we
+	// can perform a nil check to differentiate between an empty value and a nil
+	// (e.g. not provided) value
+	if input.Contact != nil && !r.contactsEqual(input) {
+		r.Contact = input.Contact
+		changed = true
+	}
+
+	// If there is an agreement in the input and it's not the same as the base,
+	// then we update the base
+	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
+		r.Agreement = input.Agreement
+		changed = true
+	}
+	return changed
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
@@ -186,66 +237,7 @@ type ValidationRecord struct {
 	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
-// KeyAuthorization represents a domain holder's authorization for a
-// specific account key to satisfy a specific challenge.
-type KeyAuthorization struct {
-	Token      string
-	Thumbprint string
-}
-
-// NewKeyAuthorization computes the thumbprint and assembles the object
-func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, error) {
-	if key == nil {
-		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
-	}
-
-	thumbprint, err := key.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return KeyAuthorization{}, err
-	}
-
-	return KeyAuthorization{
-		Token:      token,
-		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprint),
-	}, nil
-}
-
-// String produces the string representation of a key authorization
-func (ka KeyAuthorization) String() string {
-	return ka.Token + "." + ka.Thumbprint
-}
-
-// Match determines whether this KeyAuthorization matches the given token and key
-func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
-	if key == nil {
-		return false
-	}
-
-	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return false
-	}
-	thumbprint := base64.RawURLEncoding.EncodeToString(thumbprintBytes)
-
-	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
-	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
-
-	return tokensEqual == 1 && thumbprintsEqual == 1
-}
-
-// MarshalJSON packs a key authorization into its string representation
-func (ka KeyAuthorization) MarshalJSON() (result []byte, err error) {
-	return json.Marshal(ka.String())
-}
-
-// UnmarshalJSON unpacks a key authorization from a string
-func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
-	var str string
-	err = json.Unmarshal(data, &str)
-	if err != nil {
-		return err
-	}
-
+func looksLikeKeyAuthorization(str string) error {
 	parts := strings.Split(str, ".")
 	if len(parts) != 2 {
 		return fmt.Errorf("Invalid key authorization: does not look like a key authorization")
@@ -256,10 +248,7 @@ func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
 		// Both are base64-encoded and 32 octets
 		return fmt.Errorf("Invalid key authorization: malformed key thumbprint")
 	}
-
-	ka.Token = parts[0]
-	ka.Thumbprint = parts[1]
-	return
+	return nil
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
@@ -296,26 +285,21 @@ type Challenge struct {
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
-
-	// The account key used to create this challenge.  This is not part of the
-	// spec, but clients are required to ignore unknown fields, so it's harmless
-	// to include.
-	//
-	// Boulder needs to remember what key was used to create a challenge in order
-	// to prevent an attacker from re-using a validation signature with a different,
-	// unauthorized key. See:
-	//   https://mailarchive.ietf.org/arch/msg/acme/F71iz6qq1o_QPVhJCV4dqWf-4Yc
-	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
 }
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for
 // the challenge.
-func (ch Challenge) ExpectedKeyAuthorization() (string, error) {
-	expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+func (ch Challenge) ExpectedKeyAuthorization(key *jose.JsonWebKey) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("Cannot authorize a nil key")
+	}
+
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return "", err
 	}
-	return expectedKA.String(), nil
+
+	return ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint), nil
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
@@ -382,8 +366,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// There always needs to be an account key and token
-	if ch.AccountKey == nil || !LooksLikeAToken(ch.Token) {
+	// There always needs to be a token
+	if !LooksLikeAToken(ch.Token) {
 		return false
 	}
 
@@ -392,20 +376,9 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// If the challenge is completed, then there should be a key authorization,
-	// and it should match the challenge.
-	if completed {
-		if ch.ProvidedKeyAuthorization == "" {
-			return false
-		}
-
-		expectedKA, err := ch.ExpectedKeyAuthorization()
-		if err != nil {
-			return false
-		}
-		if ch.ProvidedKeyAuthorization != expectedKA {
-			return false
-		}
+	// If the challenge is completed, then there should be a key authorization
+	if completed && looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization) != nil {
+		return false
 	}
 
 	return true

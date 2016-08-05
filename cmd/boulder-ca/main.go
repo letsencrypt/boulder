@@ -4,8 +4,10 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
@@ -14,9 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
@@ -24,7 +25,22 @@ import (
 
 const clientName = "CA"
 
-func loadIssuers(c cmd.Config) ([]ca.Issuer, error) {
+type config struct {
+	CA cmd.CAConfig
+
+	PA cmd.PAConfig
+
+	Statsd cmd.StatsdConfig
+
+	Syslog cmd.SyslogConfig
+
+	Common struct {
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+	}
+}
+
+func loadIssuers(c config) ([]ca.Issuer, error) {
 	if c.CA.Key != nil {
 		issuerConfig := *c.CA.Key
 		issuerConfig.CertFile = c.Common.IssuerCert
@@ -102,58 +118,67 @@ func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
-	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
-		// Validate PA config and set defaults if needed
-		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-
-		go cmd.DebugServer(c.CA.DebugAddr)
-
-		pa, err := policy.New(c.PA.Challenges)
-		cmd.FailOnError(err, "Couldn't create PA")
-
-		if c.CA.HostnamePolicyFile == "" {
-			cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
-		}
-		err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
-		cmd.FailOnError(err, "Couldn't load hostname policy file")
-
-		issuers, err := loadIssuers(c)
-		cmd.FailOnError(err, "Couldn't load issuers")
-
-		cai, err := ca.NewCertificateAuthorityImpl(
-			c.CA,
-			clock.Default(),
-			stats,
-			issuers,
-			c.KeyPolicy(),
-			logger)
-		cmd.FailOnError(err, "Failed to create CA impl")
-		cai.PA = pa
-
-		go cmd.ProfileCmd("CA", stats)
-
-		amqpConf := c.CA.AMQP
-		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Failed to create SA client")
-
-		if c.CA.PublisherService != nil {
-			conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
-			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-			cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
-		} else {
-			cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
-			cmd.FailOnError(err, "Failed to create Publisher client")
-		}
-
-		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
-		cmd.FailOnError(err, "Unable to create CA RPC server")
-		err = rpc.NewCertificateAuthorityServer(cas, cai)
-		cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
-
-		err = cas.Start(amqpConf)
-		cmd.FailOnError(err, "Unable to run CA RPC server")
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	app.Run()
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	go cmd.DebugServer(c.CA.DebugAddr)
+
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString(clientName))
+
+	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+
+	pa, err := policy.New(c.PA.Challenges)
+	cmd.FailOnError(err, "Couldn't create PA")
+
+	if c.CA.HostnamePolicyFile == "" {
+		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
+	}
+	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+	cmd.FailOnError(err, "Couldn't load hostname policy file")
+
+	issuers, err := loadIssuers(c)
+	cmd.FailOnError(err, "Couldn't load issuers")
+
+	cai, err := ca.NewCertificateAuthorityImpl(
+		c.CA,
+		clock.Default(),
+		stats,
+		issuers,
+		goodkey.NewKeyPolicy(),
+		logger)
+	cmd.FailOnError(err, "Failed to create CA impl")
+	cai.PA = pa
+
+	go cmd.ProfileCmd("CA", stats)
+
+	amqpConf := c.CA.AMQP
+	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	cmd.FailOnError(err, "Failed to create SA client")
+
+	if c.CA.PublisherService != nil {
+		conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
+		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+	} else {
+		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Failed to create Publisher client")
+	}
+
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
+	cmd.FailOnError(err, "Unable to create CA RPC server")
+	err = rpc.NewCertificateAuthorityServer(cas, cai)
+	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
+
+	err = cas.Start(amqpConf)
+	cmd.FailOnError(err, "Unable to run CA RPC server")
 }

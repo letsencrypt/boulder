@@ -10,21 +10,51 @@ Quickstart
 ------
 
 Boulder has a Dockerfile to make it easy to install and set up all its
-dependencies. This approach is most suitable if you just need to set up Boulder
-for the purpose of testing client software against it. To start Boulder
-in a Docker container, run:
+dependencies. This is how the maintainers work on Boulder, and is our main
+recommended way to run it.
 
-    ./test/run-docker.sh
-
-Or, using docker-compose:
+To start Boulder in a Docker container, run:
 
     docker-compose up
+
+To run tests:
+
+    docker-compose run boulder ./test.sh
+
+To run a specific unittest:
+
+    docker-compose run boulder go test ./ra
+
+The configuration in docker-compose.yml mounts your
+[`$GOPATH`](https://golang.org/doc/code.html#GOPATH) on top of its own
+`$GOPATH`. So you can edit code on your host and it will be immediately
+reflected inside Docker images run with docker-compose.
+
+By default, Boulder uses a fake DNS resolver that resolves all hostnames to
+127.0.0.1. This is suitable for running integration tests inside the Docker
+container. If you want Boulder to be able to communicate with a client running
+on your host instead, you should find your host's Docker IP with:
+
+    ifconfig docker0 | grep "inet addr:" | cut -d: -f2 | awk '{ print $1}'
+
+And edit docker-compose.yml to change the FAKE_DNS environment variable to
+match.
+
+Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
+
+    docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
+
+If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
+images for both the boulder and bhsm containers and re-create them. The quickest way
+to do this is with this command:
+
+    ./docker-rebuild.sh
 
 Slow start
 ----------
 
-This approach is better if you intend to develop on Boulder frequently, because
-it's challenging to develop inside the Docker container.
+If you can't use the Docker setup, here are instructions for setting up a
+Boulder development environment without it.
 
 We recommend setting git's [fsckObjects
 setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
@@ -36,7 +66,7 @@ install RabbitMQ from https://rabbitmq.com/download.html to get a
 recent version. If you want to save some trouble installing MariaDB and RabbitMQ
 you can run them using Docker:
 
-    docker-compose up -d bmysql brabbitmq
+    docker-compose up -d bmysql brabbitmq bhsm
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
 available in OS repositories, so you will have to install from https://golang.org/dl/.
@@ -77,7 +107,10 @@ Resolve Go-dependencies, set up a database and RabbitMQ:
 user with the default password, so if you have disabled that account
 or changed the password you may have to adjust the file or recreate the commands.
 
-Start each boulder component with test configs (Ctrl-C kills all):
+Install SoftHSM to store the CA private key in a way that can be accessed using
+PKCS#11. Then run ./test/make-softhsm.sh and follow its instructions.
+
+Start all boulder components with test configs (Ctrl-C kills all):
 
     ./start.py
 
@@ -87,9 +120,9 @@ Run tests:
 
 Working with a client:
 
-Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
+Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for certbot (`certbot_test`) that has all those flags:
 
-    source ~/letsencrypt/tests/integration/_common.sh
+    source ~/certbot/tests/integration/_common.sh
     certbot_test certonly -a standalone -d example.com
 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for

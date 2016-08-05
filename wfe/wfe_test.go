@@ -177,11 +177,11 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
@@ -513,7 +513,7 @@ func TestIndex(t *testing.T) {
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
 	test.Assert(t, strings.Contains(responseWriter.Body.String(), directoryPath),
 		"directory path not found")
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 
 	responseWriter.Body.Reset()
 	responseWriter.Header().Del("Cache-Control")
@@ -622,7 +622,10 @@ func TestIssueCertificate(t *testing.T) {
 		0,
 		testKeyPolicy,
 		0,
-		true)
+		true,
+		false,
+		300*24*time.Hour,
+		7*24*time.Hour)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
@@ -682,7 +685,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error unmarshaling certificate request","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -741,6 +744,19 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `INFO: `)
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
+
+	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
+	wfe.CheckMalformedCSR = true
+	mockLog.Clear()
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+      "resource": "new-cert",
+      "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
+    }`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version","status":400}`)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -859,8 +875,8 @@ func TestNewECDSARegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -883,6 +899,51 @@ func TestNewECDSARegistration(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
+}
+
+// Test that the WFE handling of the "empty update" POST is correct. The ACME
+// spec describes how when clients wish to query the server for information
+// about a registration an empty registration update should be sent, and
+// a populated reg object will be returned.
+func TestEmptyRegistration(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
+	// return a populated registration for GetRegistrationByKey when test key 1 is
+	// used.
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	emptyReg := `{"resource":"reg"}`
+	emptyBody, err := signer.Sign([]byte(emptyReg))
+	test.AssertNotError(t, err, "Unable to sign emptyBody")
+
+	// Send a registration update with the trivial body
+	wfe.Registration(
+		ctx,
+		newRequestEvent(),
+		responseWriter,
+		makePostRequestWithPath("1", emptyBody.FullSerialize()))
+
+	// There should be no error
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+
+	// We should get back a populated Registration
+	var reg core.Registration
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
+	responseWriter.Body.Reset()
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -979,8 +1040,8 @@ func TestNewRegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -1391,7 +1452,6 @@ func TestIssuer(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert) == 0, "Incorrect bytes returned")
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 }
 
 func TestGetCertificate(t *testing.T) {
@@ -1415,7 +1475,7 @@ func TestGetCertificate(t *testing.T) {
 	req.RemoteAddr = "192.168.0.1"
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 

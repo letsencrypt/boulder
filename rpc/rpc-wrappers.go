@@ -17,6 +17,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -261,20 +262,17 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 	})
 
 	rpc.Handle(MethodNewCertificate, func(ctx context.Context, req []byte) (response []byte, err error) {
-		log.Info(fmt.Sprintf(" [.] Entering MethodNewCertificate"))
 		var cr certificateRequest
 		if err = json.Unmarshal(req, &cr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewCertificate, err, req)
 			return
 		}
-		log.Info(fmt.Sprintf(" [.] No problem unmarshaling request"))
 
 		cert, err := impl.NewCertificate(ctx, cr.Req, cr.RegID)
 		if err != nil {
 			return
 		}
-		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
 
 		response, err = json.Marshal(cert)
 		if err != nil {
@@ -652,7 +650,7 @@ func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (
 			return
 		}
 
-		csr, err := x509.ParseCertificateRequest(icReq.Bytes)
+		csr, err := oldx509.ParseCertificateRequest(icReq.Bytes)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIssueCertificate, err, req)
@@ -706,7 +704,7 @@ func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, 
 }
 
 // IssueCertificate sends a request to issue a certificate
-func (cac CertificateAuthorityClient) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	var icReq issueCertificateRequest
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID

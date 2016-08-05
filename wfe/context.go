@@ -23,7 +23,7 @@ type requestEvent struct {
 	ResponseTime  time.Time `json:",omitempty"`
 	Errors        []string
 	Requester     int64                  `json:",omitempty"`
-	Contacts      []*core.AcmeURL        `json:",omitempty"`
+	Contacts      *[]*core.AcmeURL       `json:",omitempty"`
 	RequestNonce  string                 `json:",omitempty"`
 	ResponseNonce string                 `json:",omitempty"`
 	UserAgent     string                 `json:",omitempty"`

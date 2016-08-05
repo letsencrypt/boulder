@@ -10,7 +10,6 @@ message Challenge {
 	optional string status = 6;
 	optional string uri = 9;
 	optional string token = 3;
-	optional bytes accountKey = 4; // jose.JsonWebKey.MarshalJSON()
 	optional string keyAuthorization = 5;
 	repeated ValidationRecord validationrecords = 10;
 	optional ProblemDetails error = 7;

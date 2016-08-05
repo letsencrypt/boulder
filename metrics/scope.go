@@ -1,4 +1,4 @@
-//go:generate mockgen -package metrics -destination ./mock_statsd_test.go github.com/cactus/go-statsd-client/statsd Statter
+//go:generate mockgen -package metrics -destination ./mock_statsd.go github.com/cactus/go-statsd-client/statsd Statter
 
 package metrics
 

@@ -1,0 +1,26 @@
+{
+  "ocspResponder": {
+    "dbConnectFile": "test/secrets/ocsp_responder_dburl",
+    "maxDBConns": 10,
+    "path": "/",
+    "listenAddress": "0.0.0.0:4002",
+    "maxAge": "10s",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
+    "debugAddr": "localhost:8005"
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+   "stdoutlevel": 6,
+   "sysloglevel": 4
+ },
+
+  "common": {
+    "issuerCert": "test/test-ca.pem"
+  }
+}

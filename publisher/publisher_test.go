@@ -269,11 +269,12 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	uri := fmt.Sprintf("http://localhost:%d", port)
+	uri := fmt.Sprintf("http://localhost:%d/", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
 	test.AssertNotError(t, err, "Couldn't create log")
+	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 

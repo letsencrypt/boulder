@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v67",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
@@ -13,64 +13,73 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers/derhelpers",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp/config",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer/local",
-			"Rev": "31c7d21b04cb891fbe30e001a093addbb37c8192"
-		},
-		{
-			"ImportPath": "github.com/codegangsta/cli",
-			"Comment": "1.2.0-64-ge1712f3",
-			"Rev": "e1712f381785e32046927f64a7c86fe569203196"
+			"Comment": "1.2.0-70-gdeed6ed",
+			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
 			"ImportPath": "github.com/facebookgo/clock",
@@ -95,27 +104,27 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "8d92cf5fc15a4382f8964b08e1f42a75c0591aa3"
+			"Rev": "78b168c14fc28c8c711844d210f7ab845083e3b1"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
-			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
+			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/asn1",
-			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
+			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/client",
-			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
+			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509",
-			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
+			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509/pkix",
-			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
+			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
@@ -127,12 +136,23 @@
 			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "0a8bc7afe9edcfb0ed73c794b730500f61701a07"
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/crypto/x509/pkix",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go/src/encoding/asn1",
+			"Comment": "go1.5.4-1-g1d5f6a7",
+			"Rev": "1d5f6a765da3eb45fc195fcdb2f2a5e872d6cbb2"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
-			"Rev": "2c364245d9f3b4f744ed6f8b37c3b27107f3a72a"
+			"Rev": "bda7cf218ae2225f745ead23f9b65901dfebbf45"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
@@ -140,7 +160,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
-			"Rev": "df8ae6ca730422dba20c768ff38ef7d79077a59f"
+			"Rev": "c1e7dca180dc5948d8af317f2fe62baba07769c4"
 		},
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",
@@ -163,16 +183,21 @@
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 		},
 		{
+			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
+			"Comment": "v0.1.0-9-g0b5cb57",
+			"Rev": "0b5cb57be67e35018bf72d61e315718bb723ec04"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12/internal/rc2",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
@@ -200,39 +225,39 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/codes",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/credentials",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/grpclog",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/internal",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/metadata",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/naming",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/peer",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/transport",
-			"Rev": "dd828651e45229541896bc41cd9cf2f89ac7002a"
+			"Rev": "5c7e717663448ccc1c9ff4d9ce75cdb1cca28121"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",

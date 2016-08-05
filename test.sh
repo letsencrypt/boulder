@@ -181,9 +181,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    run git clone -b v0.6.0 \
-      https://www.github.com/certbot/certbot.git \
-      $CERTBOT_PATH || exit 1
+    run git clone https://www.github.com/certbot/certbot.git $CERTBOT_PATH || exit 1
   fi
 
   if ! type certbot >/dev/null 2>/dev/null; then
@@ -247,6 +245,12 @@ if [[ "$RUN" =~ "generate" ]] ; then
   run_and_comment go generate ${TESTPATHS}
   run_and_comment git diff --exit-code $(ls | grep -v Godeps)
   end_context #"generate"
+fi
+
+if [[ "$RUN" =~ "rpm" ]]; then
+  start_context "rpm"
+  run make rpm
+  end_context #"rpm"
 fi
 
 exit ${FAILURE}

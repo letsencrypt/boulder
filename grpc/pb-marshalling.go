@@ -86,17 +86,12 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 }
 
 func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
-	accountKey, err := challenge.AccountKey.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
 	st := string(challenge.Status)
 	return &corepb.Challenge{
 		Id:               &challenge.ID,
 		Type:             &challenge.Type,
 		Status:           &st,
 		Token:            &challenge.Token,
-		AccountKey:       accountKey,
 		KeyAuthorization: &challenge.ProvidedKeyAuthorization,
 	}, nil
 }
@@ -105,20 +100,14 @@ func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error)
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
+	if in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	jwk := new(jose.JsonWebKey)
-	err = jwk.UnmarshalJSON(in.AccountKey)
-	if err != nil {
-		return
-	}
 	return core.Challenge{
-		ID:                       *in.Id,
-		Type:                     *in.Type,
-		Status:                   core.AcmeStatus(*in.Status),
-		Token:                    *in.Token,
-		AccountKey:               jwk,
+		ID:     *in.Id,
+		Type:   *in.Type,
+		Status: core.AcmeStatus(*in.Status),
+		Token:  *in.Token,
 		ProvidedKeyAuthorization: *in.KeyAuthorization,
 	}, nil
 }

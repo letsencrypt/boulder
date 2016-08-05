@@ -28,3 +28,6 @@ go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
 # Wait for all the background commands to finish.
 wait
+
+# Create the database and roles
+./test/create_db.sh

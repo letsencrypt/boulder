@@ -11,11 +11,11 @@ import tempfile
 import threading
 import time
 
-default_config = os.environ.get('BOULDER_CONFIG')
-if default_config is None:
-    default_config = 'test/boulder-config.json'
-processes = []
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
 
+processes = []
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -28,9 +28,12 @@ def install(race_detection):
     return subprocess.call(cmd, shell=True) == 0
 
 def run(cmd, race_detection):
+    e = os.environ.copy()
+    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
+    e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec ./bin/%s""" % cmd
-    p = subprocess.Popen(cmd, shell=True)
+    cmd = """exec ./bin/%s""" % cmd
+    p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
 
@@ -44,17 +47,17 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe --config %s' % default_config,
-        'boulder-ra --config %s' % default_config,
-        'boulder-sa --config %s' % default_config,
-        'boulder-ca --config %s' % default_config,
-        'boulder-va --config %s' % default_config,
-        'boulder-publisher --config %s' % default_config,
-        'ocsp-updater --config %s' % default_config,
-        'ocsp-responder --config %s' % default_config,
-        'ct-test-srv --config %s' % default_config,
-        'dns-test-srv --config %s' % default_config,
-        'mail-test-srv --config %s' % default_config,
+        'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
+        'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
+        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
+        'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
+        'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
+        'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
+        'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
+        'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
+        'ct-test-srv',
+        'dns-test-srv',
+        'mail-test-srv',
         'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]

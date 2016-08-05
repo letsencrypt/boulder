@@ -16,66 +16,10 @@ var crypto = require("crypto");
 var child_process = require('child_process');
 var fs = require('fs');
 var http = require('http');
-var inquirer = require("inquirer");
 var request = require('request');
 var url = require('url');
 var util = require("./acme-util");
 var Acme = require("./acme");
-
-var questions = {
-  email: [{
-    type: "input",
-    name: "email",
-    message: "Please enter your email address (for recovery purposes)",
-    validate: function(value) {
-      var pass = value.match(/[\w.+-]+@[\w.-]+/i);
-      if (pass) {
-        return true;
-      } else {
-        return "Please enter a valid email address";
-      }
-    }
-  }],
-
-  domain: [{
-    type: "input",
-    name: "domain",
-    message: "Please enter the domain name for the certificate",
-    validate: function(value) {
-      var pass = value.match(/[\w.-]+/i);
-      if (pass) {
-        return true;
-      } else {
-        return "Please enter a valid domain name";
-      }
-    }
-  }],
-
-  anotherDomain: [{
-    type: "confirm",
-    name: "anotherDomain",
-    message: "Any more domains to validate?",
-    default: true,
-  }],
-
-  readyToValidate: [{
-    type: "input",
-    name: "noop",
-    message: "Press enter to when you're ready to proceed",
-  }],
-
-  files: [{
-    type: "input",
-    name: "keyFile",
-    message: "Name for key file",
-    default: "key.pem",
-  },{
-    type: "input",
-    name: "certFile",
-    message: "Name for certificate file",
-    default: "cert.der",
-  }],
-};
 
 var cliOptions = cli.parse({
   // To test against the demo instance, pass --newReg "https://www.letsencrypt-demo.org/acme/new-reg"
@@ -97,7 +41,6 @@ var state = {
   newRegistrationURL: cliOptions.newReg,
   registrationURL: "",
 
-  haveCLIDomains: !!(cliOptions.domains),
   domains: cliOptions.domains && cliOptions.domains.replace(/\s/g, "").split(/[^\w.-]+/),
   validatedDomains: [],
   validAuthorizationURLs: [],
@@ -150,7 +93,7 @@ var post = function(url, body, callback) {
 
 The asynchronous nature of node.js libraries makes the control flow a
 little hard to follow here, but it pretty much goes straight down the
-page, with detours through the `inquirer` and `http` libraries.
+page.
 
 main
   |
@@ -197,7 +140,7 @@ function makeKeyPair() {
   });
 }
 
-function makeAccountKeyPair(answers) {
+function makeAccountKeyPair() {
   console.log("Generating account key pair...");
   child_process.exec("openssl genrsa -out account-key.pem 2048", function (error, stdout, stderr) {
     if (error) {
@@ -207,22 +150,19 @@ function makeAccountKeyPair(answers) {
     state.accountKeyPair = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
     state.acme = new Acme(state.accountKeyPair);
 
-    console.log();
-    if (cliOptions.email) {
-      register({email: cliOptions.email});
-    } else {
-      inquirer.prompt(questions.email, register)
-    }
+    register();
   });
 }
 
-function register(answers) {
-  var email = answers.email;
-
+function register() {
+  var contact = [];
+  if (cliOptions.email) {
+    contact.push("mailto:" + cliOptions.email);
+  }
   // Register public key
   post(state.newRegistrationURL, {
     resource: "new-reg",
-    contact: [ "mailto:" + email ],
+    contact: contact
   }, getTerms);
 }
 
@@ -260,17 +200,13 @@ function sendAgreement(termsURL) {
         console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
       } else {
-        if (!state.domains || state.domains.length == 0) {
-          inquirer.prompt(questions.domain, getChallenges);
-        } else {
-          getChallenges({domain: state.domains.pop()});
-        }
+        getChallenges({domain: state.domains.pop()});
       }
     });
 }
 
-function getChallenges(answers) {
-  state.domain = answers.domain;
+function getChallenges(params) {
+  state.domain = params.domain;
 
   // Register public key
   post(state.newAuthorizationURL, {
@@ -413,23 +349,12 @@ function ensureValidation(err, resp, body) {
     state.validatedDomains.push(state.domain);
     state.validAuthorizationURLs.push(state.authorizationURL);
 
-    if (state.haveCLIDomains) {
-      console.log("have CLI domains: ");
-      console.log(state.domains);
-      if (state.haveCLIDomains && state.domains.length > 0) {
-        getChallenges({domain: state.domains.pop()});
-        return;
-      } else {
-        getCertificate();
-      }
+    console.log("have CLI domains: ");
+    console.log(state.domains);
+    if (state.domains.length > 0) {
+      getChallenges({domain: state.domains.pop()});
     } else {
-      inquirer.prompt(questions.anotherDomain, function(answers) {
-        if (answers.anotherDomain) {
-          inquirer.prompt(questions.domain, getChallenges);
-        } else {
-          getCertificate();
-        }
-      });
+      getCertificate();
     }
   } else if (authz.status == "invalid") {
     console.log("The CA was unable to validate the file you provisioned:");
@@ -490,13 +415,13 @@ function downloadCertificate(err, resp, body) {
   });
 }
 
-function saveFiles(answers) {
+function saveFiles() {
   fs.writeFileSync(state.certFile, state.certificate);
 
   console.log("Done!")
-  console.log("To try it out:");
-  console.log("openssl s_server -accept 8080 -www -certform der -key "+
-              state.keyFile +" -cert "+ state.certFile);
+  console.log("Key:", state.keyFile);
+  console.log("Cert:", state.certFile);
+  console.log("Account Key: account-key.pem");
 
   // XXX: Explicitly exit, since something's tenacious here
   process.exit(0);

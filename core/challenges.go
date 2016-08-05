@@ -1,29 +1,24 @@
 package core
 
-import (
-	"github.com/square/go-jose"
-)
-
-func newChallenge(challengeType string, accountKey *jose.JsonWebKey) Challenge {
+func newChallenge(challengeType string) Challenge {
 	return Challenge{
-		Type:       challengeType,
-		Status:     StatusPending,
-		AccountKey: accountKey,
-		Token:      NewToken(),
+		Type:   challengeType,
+		Status: StatusPending,
+		Token:  NewToken(),
 	}
 }
 
 // HTTPChallenge01 constructs a random http-01 challenge
-func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
-	return newChallenge(ChallengeTypeHTTP01, accountKey)
+func HTTPChallenge01() Challenge {
+	return newChallenge(ChallengeTypeHTTP01)
 }
 
 // TLSSNIChallenge01 constructs a random tls-sni-00 challenge
-func TLSSNIChallenge01(accountKey *jose.JsonWebKey) Challenge {
-	return newChallenge(ChallengeTypeTLSSNI01, accountKey)
+func TLSSNIChallenge01() Challenge {
+	return newChallenge(ChallengeTypeTLSSNI01)
 }
 
 // DNSChallenge01 constructs a random DNS challenge
-func DNSChallenge01(accountKey *jose.JsonWebKey) Challenge {
-	return newChallenge(ChallengeTypeDNS01, accountKey)
+func DNSChallenge01() Challenge {
+	return newChallenge(ChallengeTypeDNS01)
 }

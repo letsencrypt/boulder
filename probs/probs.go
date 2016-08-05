@@ -7,15 +7,17 @@ import (
 
 // Error types that can be used in ACME payloads
 const (
-	ConnectionProblem     = ProblemType("urn:acme:error:connection")
-	MalformedProblem      = ProblemType("urn:acme:error:malformed")
-	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
-	TLSProblem            = ProblemType("urn:acme:error:tls")
-	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
-	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
-	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
-	BadNonceProblem       = ProblemType("urn:acme:error:badNonce")
-	InvalidEmailProblem   = ProblemType("urn:acme:error:invalidEmail")
+	ConnectionProblem            = ProblemType("urn:acme:error:connection")
+	MalformedProblem             = ProblemType("urn:acme:error:malformed")
+	ServerInternalProblem        = ProblemType("urn:acme:error:serverInternal")
+	TLSProblem                   = ProblemType("urn:acme:error:tls")
+	UnauthorizedProblem          = ProblemType("urn:acme:error:unauthorized")
+	UnknownHostProblem           = ProblemType("urn:acme:error:unknownHost")
+	RateLimitedProblem           = ProblemType("urn:acme:error:rateLimited")
+	BadNonceProblem              = ProblemType("urn:acme:error:badNonce")
+	InvalidEmailProblem          = ProblemType("urn:acme:error:invalidEmail")
+	RejectedIdentifierProblem    = ProblemType("urn:acme:error:rejectedIdentifier")
+	UnsupportedIdentifierProblem = ProblemType("urn:acme:error:unsupportedIdentifier")
 )
 
 // ProblemType defines the error types in the ACME protocol
@@ -47,7 +49,7 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return prob.HTTPStatus
 	}
 	switch prob.Type {
-	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem:
+	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem, RejectedIdentifierProblem, UnsupportedIdentifierProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
@@ -65,6 +67,26 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 func BadNonce(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadNonceProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
+// Request status code.
+func RejectedIdentifier(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RejectedIdentifierProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// UnsupportedIdentifier returns a ProblemDetails with a UnsupportedIdentifierProblem and a 400 Bad
+// Request status code.
+func UnsupportedIdentifier(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnsupportedIdentifierProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

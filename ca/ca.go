@@ -7,8 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/asn1"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -33,6 +31,8 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
+	"github.com/letsencrypt/go/src/encoding/asn1"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -271,7 +271,7 @@ func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 //                        Any other value will result in an error.
 //
 // Other requested extensions are silently ignored.
-func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) ([]signer.Extension, error) {
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *oldx509.CertificateRequest) ([]signer.Extension, error) {
 	extensions := []signer.Extension{}
 
 	extensionSeen := map[string]bool{}
@@ -373,7 +373,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
@@ -447,7 +447,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM))
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
@@ -457,10 +457,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM,
-		certPEM))
 
 	if len(certPEM) == 0 {
 		err = core.InternalServerError("No certificate returned by server")
@@ -483,12 +479,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		DER: certDER,
 	}
 
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
+		hex.EncodeToString(certDER)))
+
 	// This is one last check for uncaught errors
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
+			serialHex, hex.EncodeToString(certDER), err))
 		return emptyCert, err
 	}
 
@@ -498,9 +498,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] b64der=[%s] err=[%v], regID=[%d]",
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
 			serialHex,
-			base64.StdEncoding.EncodeToString(certDER),
+			hex.EncodeToString(certDER),
 			err,
 			regID,
 		))

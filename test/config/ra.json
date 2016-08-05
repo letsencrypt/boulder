@@ -1,0 +1,61 @@
+{
+  "ra": {
+    "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
+    "maxConcurrentRPCServerRequests": 16,
+    "maxContactsPerRegistration": 100,
+    "dnsTries": 3,
+    "debugAddr": "localhost:8002",
+    "hostnamePolicyFile": "test/hostname-policy.json",
+    "maxNames": 1000,
+    "doNotForceCN": true,
+    "amqp": {
+      "serverURLFile": "test/secrets/amqp_url",
+      "insecure": true,
+      "serviceQueue": "RA.server",
+      "VA": {
+        "server": "VA.server",
+        "rpcTimeout": "60s"
+      },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "15s"
+      },
+      "CA": {
+        "server": "CA.server",
+        "rpcTimeout": "15s"
+      }
+    }
+  },
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  },
+
+  "pa": {
+    "challenges": {
+      "http-01": true,
+      "tls-sni-01": true,
+      "dns-01": true
+    }
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "network": "",
+    "server": "",
+    "stdoutlevel": 6
+  },
+
+  "common": {
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s",
+    "dnsAllowLoopbackAddresses": true
+  }
+}
