@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/mail"
@@ -19,10 +18,12 @@ import (
 )
 
 type mailSrv struct {
-	closeChance     uint
+	closeFirst      uint
 	closeDuration   time.Duration
 	allReceivedMail []rcvdMail
 	allMailMutex    sync.Mutex
+	connNumber      uint
+	connNumberMutex sync.RWMutex
 }
 
 type rcvdMail struct {
@@ -50,6 +51,9 @@ var smtpOk250 = []byte("250 OK \r\n")
 
 func (srv *mailSrv) handleConn(conn net.Conn) {
 	defer conn.Close()
+	srv.connNumberMutex.Lock()
+	srv.connNumber++
+	srv.connNumberMutex.Unlock()
 	auditlogger := blog.Get()
 	auditlogger.Info(fmt.Sprintf("mail-test-srv: Got connection from %s", conn.RemoteAddr()))
 
@@ -95,14 +99,15 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 		case "NOOP":
 			conn.Write(smtpOk250)
 		case "MAIL":
-			roll := uint(rand.Intn(100))
-			if roll <= srv.closeChance {
+			srv.connNumberMutex.RLock()
+			if srv.connNumber <= srv.closeFirst {
 				log.Printf(
-					"mail-test-srv: rolled %d < %d, disconnecting client. Bye!\n",
-					roll, srv.closeChance)
+					"mail-test-srv: connection # %d < -closeFirst parameter %d, disconnecting client. Bye!\n",
+					srv.connNumber, srv.closeFirst)
 				clearState()
 				conn.Close()
 			}
+			srv.connNumberMutex.RUnlock()
 			clearState()
 			matches := mailFromRegex.FindStringSubmatch(line)
 			if matches == nil {
@@ -176,7 +181,7 @@ func (srv *mailSrv) serveSMTP(l net.Listener) error {
 func main() {
 	var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
 	var listenSMTP = flag.String("smtp", "0.0.0.0:9380", "smtp port to listen on")
-	var closeChance = flag.Uint("closeChance", 0, "% of time the server will close connection after MAIL")
+	var closeFirst = flag.Uint("closeFirst", 0, "close first n connections after MAIL for reconnection tests")
 
 	flag.Parse()
 	l, err := net.Listen("tcp", *listenSMTP)
@@ -185,12 +190,8 @@ func main() {
 	}
 	defer l.Close()
 
-	if *closeChance > 100 {
-		log.Fatalln(fmt.Sprintf("-closeChance %d invalid. must be in [0,100].", *closeChance))
-	}
-
 	srv := mailSrv{
-		closeChance: *closeChance,
+		closeFirst: *closeFirst,
 	}
 
 	srv.setupHTTP(http.DefaultServeMux)

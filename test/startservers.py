@@ -57,7 +57,7 @@ def start(race_detection):
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv --closeChance 35',
+        'mail-test-srv --closeFirst 5',
         'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
