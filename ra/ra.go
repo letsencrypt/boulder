@@ -27,6 +27,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
@@ -903,19 +904,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	return
 }
 
-func revokeEvent(state, serial, cn string, names []string, revocationCode core.RevocationCode) string {
+func revokeEvent(state, serial, cn string, names []string, revocationCode revocation.Reason) string {
 	return fmt.Sprintf(
 		"Revocation - State: %s, Serial: %s, CN: %s, DNS Names: %s, Reason: %s",
 		state,
 		serial,
 		cn,
 		names,
-		core.RevocationReasons[revocationCode],
+		revocation.ReasonToString[revocationCode],
 	)
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
@@ -948,7 +949,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
