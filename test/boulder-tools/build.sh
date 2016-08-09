@@ -41,7 +41,8 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cover &
+  golang.org/x/tools/cover \
+  golang.org/x/tools/cmd/stringer &
 
 wait
 
