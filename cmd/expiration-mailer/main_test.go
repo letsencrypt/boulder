@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"text/template"
 	"time"
@@ -195,7 +196,10 @@ func TestProcessCerts(t *testing.T) {
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
-	test.AssertEquals(t, 1, len(log.GetAllMatching("DEBUG: SQL:  update `certificateStatus` .*\"000000000000000000000000000000001339\".*2006-01-02 15:04:05.999999999")))
+	if len(log.GetAllMatching("DEBUG: SQL:  UPDATE certificateStatus .*2006-01-02 15:04:05.999999999.*\"000000000000000000000000000000001339\"")) != 1 {
+		t.Errorf("Expected an update to certificateStatus, got these log lines:\n%s",
+			strings.Join(log.GetAllMatching(".*"), "\n"))
+	}
 }
 
 func TestFindExpiringCertificates(t *testing.T) {

@@ -37,7 +37,8 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		CheckMalformedCSR bool
+		CheckMalformedCSR      bool
+		AcceptRevocationReason bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -96,6 +97,7 @@ func main() {
 
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
+	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 
 	wfe.CertCacheDuration = c.WFE.CertCacheDuration.Duration
 	wfe.CertNoCacheExpirationWindow = c.WFE.CertNoCacheExpirationWindow.Duration

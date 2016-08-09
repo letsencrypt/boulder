@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
@@ -260,7 +261,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	reg = core.Registration{
 		Key: init.Key,
 	}
-	_ = reg.MergeUpdate(init)
+	_ = mergeUpdate(&reg, init)
 
 	// This field isn't updatable by the end user, so it isn't copied by
 	// MergeUpdate. But we need to fill it in for new registrations.
@@ -772,7 +773,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 
 // UpdateRegistration updates an existing Registration with new values.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
-	if changed := base.MergeUpdate(update); !changed {
+	if changed := mergeUpdate(&base, update); !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since theres
 		// nothing for the SA to do
@@ -794,6 +795,70 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 
 	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
 	return base, nil
+}
+
+func contactsEqual(r *core.Registration, other core.Registration) bool {
+	// If there is no existing contact slice, or the contact slice lengths
+	// differ, then the other contact is not equal
+	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+		return false
+	}
+
+	// If there is an existing contact slice and it has the same length as the
+	// new contact slice we need to look at each AcmeURL to determine if there
+	// is a change being made
+	//
+	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
+	//            should use `sort.Strings` here to ensure a consistent
+	//            comparison.
+	a := *other.Contact
+	b := *r.Contact
+	for i := 0; i < len(a); i++ {
+		// In order to call .String() we need to make sure the AcmeURL pointers
+		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
+		if a[i] == nil || b[i] == nil {
+			// We return false, allowing MergeUpdate to use `other` to overwrite. The
+			// nil value in the Contact slice will be turned into a user-facing error
+			// when the RA validates the contacts post-merge.
+			return false
+		}
+
+		// If the contact's string representation differs at any index they aren't
+		// equal
+		contactA := (*a[i]).String()
+		contactB := (*b[i]).String()
+		if contactA != contactB {
+			return false
+		}
+	}
+
+	// They are equal!
+	return true
+}
+
+// MergeUpdate copies a subset of information from the input Registration
+// into the Registration r. It returns true if an update was performed and the base object
+// was changed, and false if no change was made.
+func mergeUpdate(r *core.Registration, input core.Registration) bool {
+	var changed bool
+
+	// Note: we allow input.Contact to overwrite r.Contact even if the former is
+	// empty in order to allow users to remove the contact associated with
+	// a registration. Since the field type is a pointer to slice of pointers we
+	// can perform a nil check to differentiate between an empty value and a nil
+	// (e.g. not provided) value
+	if input.Contact != nil && !contactsEqual(r, input) {
+		r.Contact = input.Contact
+		changed = true
+	}
+
+	// If there is an agreement in the input and it's not the same as the base,
+	// then we update the base
+	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
+		r.Agreement = input.Agreement
+		changed = true
+	}
+	return changed
 }
 
 // UpdateAuthorization updates an authorization with new values.
@@ -904,19 +969,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	return
 }
 
-func revokeEvent(state, serial, cn string, names []string, revocationCode core.RevocationCode) string {
+func revokeEvent(state, serial, cn string, names []string, revocationCode revocation.Reason) string {
 	return fmt.Sprintf(
 		"Revocation - State: %s, Serial: %s, CN: %s, DNS Names: %s, Reason: %s",
 		state,
 		serial,
 		cn,
 		names,
-		core.RevocationReasons[revocationCode],
+		revocation.ReasonToString[revocationCode],
 	)
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
@@ -949,7 +1014,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 

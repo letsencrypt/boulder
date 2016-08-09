@@ -41,6 +41,7 @@
   },
 
   "features": {
-    "CheckMalformedCSR": true
+    "CheckMalformedCSR": true,
+    "AcceptRevocationReason": true
   }
 }

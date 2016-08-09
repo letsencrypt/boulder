@@ -1089,6 +1089,87 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 }
 
+func TestRegistrationUpdate(t *testing.T) {
+	oldURL, _ := core.ParseAcmeURL("http://old.invalid")
+	newURL, _ := core.ParseAcmeURL("http://new.invalid")
+	reg := core.Registration{
+		ID:        1,
+		Contact:   &[]*core.AcmeURL{oldURL},
+		Agreement: "",
+	}
+	update := core.Registration{
+		Contact:   &[]*core.AcmeURL{newURL},
+		Agreement: "totally!",
+	}
+
+	changed := mergeUpdate(&reg, update)
+	test.AssertEquals(t, changed, true)
+	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
+	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+
+	// Make sure that a `MergeUpdate` call with a nil entry doesn't produce an
+	// error and results in a change to the base reg.
+	nilUpdate := core.Registration{
+		Contact:   &[]*core.AcmeURL{nil},
+		Agreement: "totally!",
+	}
+	changed = mergeUpdate(&reg, nilUpdate)
+	test.AssertEquals(t, changed, true)
+}
+
+func TestRegistrationContactUpdate(t *testing.T) {
+	contactURL, _ := core.ParseAcmeURL("mailto://example@example.com")
+	fullReg := core.Registration{
+		ID:        1,
+		Contact:   &[]*core.AcmeURL{contactURL},
+		Agreement: "totally!",
+	}
+
+	// Test that a registration contact can be removed by updating with an empty
+	// Contact slice.
+	reg := fullReg
+	var contactRemoveUpdate core.Registration
+	contactRemoveJSON := []byte(`
+	{
+		"key": {
+			"e": "AQAB",
+			"kty": "RSA",
+			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
+		},
+		"id": 1,
+		"contact": [],
+		"agreement": "totally!"
+	}
+	`)
+	err := json.Unmarshal(contactRemoveJSON, &contactRemoveUpdate)
+	test.AssertNotError(t, err, "Failed to unmarshal contactRemoveJSON")
+	changed := mergeUpdate(&reg, contactRemoveUpdate)
+	test.AssertEquals(t, changed, true)
+	test.Assert(t, len(*reg.Contact) == 0, "Contact was not deleted in update")
+
+	// Test that a registration contact isn't changed when an update is performed
+	// with no Contact field
+	reg = fullReg
+	var contactSameUpdate core.Registration
+	contactSameJSON := []byte(`
+	{
+		"key": {
+			"e": "AQAB",
+			"kty": "RSA",
+			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
+		},
+		"id": 1,
+		"agreement": "totally!"
+	}
+	`)
+	err = json.Unmarshal(contactSameJSON, &contactSameUpdate)
+	test.AssertNotError(t, err, "Failed to unmarshal contactSameJSON")
+	changed = mergeUpdate(&reg, contactSameUpdate)
+	test.AssertEquals(t, changed, false)
+	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
+	test.Assert(t, (*reg.Contact)[0].String() == "mailto://example@example.com", "Contact was changed unexpectedly")
+}
+
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
 // CountCertificatesByName as well as FQDNSetExists. This allows testing
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.

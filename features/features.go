@@ -17,6 +17,7 @@ const (
 	DoNotForceCN                          // RA, CA
 	ReuseValidAuthz                       // RA
 	EnableMustStaple                      // CA
+	AcceptRevocationReason                // WFE
 )
 
 // List of features and their default value
@@ -27,6 +28,7 @@ var features = map[FeatureFlag]bool{
 	DoNotForceCN:              false,
 	ReuseValidAuthz:           false,
 	EnableMustStaple:          false,
+	AcceptRevocationReason:    false,
 }
 
 var fMu = new(sync.RWMutex)
