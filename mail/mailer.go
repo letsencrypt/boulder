@@ -121,11 +121,14 @@ func New(server, port, username, password string, from mail.Address, stats stats
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
+	statter, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewStatsdScope(statter, "Mailer")
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
+		stats:       stats,
 	}
 }
 
