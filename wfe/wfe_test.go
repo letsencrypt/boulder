@@ -879,7 +879,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -944,7 +944,7 @@ func TestEmptyRegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	responseWriter.Body.Reset()
 }
@@ -1044,7 +1044,7 @@ func TestNewRegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 

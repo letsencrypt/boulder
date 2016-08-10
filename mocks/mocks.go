@@ -114,8 +114,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 		panic(err)
 	}
 
-	contactURL, _ := core.ParseAcmeURL("mailto:person@mail.com")
-	contacts := []*core.AcmeURL{contactURL}
+	contacts := []string{"mailto:person@mail.com"}
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts}, nil

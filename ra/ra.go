@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
+	"net/url"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -283,7 +284,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
 	}
@@ -293,20 +294,24 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	}
 
 	for _, contact := range *contacts {
-		if contact == nil {
+		if contact == "" {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		if contact.Scheme != "mailto" {
-			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+		parsedContact, err := url.Parse(contact)
+		if err != nil {
+			return core.MalformedRequestError(fmt.Sprintf("Invalid contact URI"))
 		}
-		if !core.IsASCII(contact.String()) {
+		if parsedContact.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsedContact.Scheme))
+		}
+		if !core.IsASCII(contact) {
 			return core.MalformedRequestError(
-				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact.String()))
+				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact))
 		}
 
 		start := ra.clk.Now()
 		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+		problem := validateEmail(ctx, parsedContact.Opaque, ra.DNSResolver)
 		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
 		if problem != nil {
 			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
@@ -804,29 +809,17 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	}
 
 	// If there is an existing contact slice and it has the same length as the
-	// new contact slice we need to look at each AcmeURL to determine if there
-	// is a change being made
-	//
-	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
-	//            should use `sort.Strings` here to ensure a consistent
-	//            comparison.
+	// new contact slice we need to look at each contact to determine if there
+	// is a change being made. Use `sort.Strings` here to ensure a consistent
+	// comparison
 	a := *other.Contact
 	b := *r.Contact
+	sort.Strings(a)
+	sort.Strings(b)
 	for i := 0; i < len(a); i++ {
-		// In order to call .String() we need to make sure the AcmeURL pointers
-		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
-		if a[i] == nil || b[i] == nil {
-			// We return false, allowing MergeUpdate to use `other` to overwrite. The
-			// nil value in the Contact slice will be turned into a user-facing error
-			// when the RA validates the contacts post-merge.
-			return false
-		}
-
 		// If the contact's string representation differs at any index they aren't
 		// equal
-		contactA := (*a[i]).String()
-		contactB := (*b[i]).String()
-		if contactA != contactB {
+		if a[i] != b[i] {
 			return false
 		}
 	}
