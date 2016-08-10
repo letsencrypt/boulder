@@ -1252,6 +1252,23 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
+func TestDeactivateAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	fmt.Println(authz)
+	err = ra.DeactivateAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization wtih ID "+authz.ID)
+	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b

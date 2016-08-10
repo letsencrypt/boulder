@@ -178,6 +178,10 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 	return nil
 }
 
+func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context, authz core.Authorization) error {
+	return nil
+}
+
 type mockPA struct{}
 
 func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
@@ -1767,4 +1771,37 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
+}
+
+func TestDeactivateAuthorization(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.AllowAuthzDeactivation = true
+	responseWriter := httptest.NewRecorder()
+
+	responseWriter.Body.Reset()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("valid", signRequest(t, `{"resource":"authz","status":""}`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{"type": "urn:acme:error:malformed","detail": "Invalid status value","status": 400}`)
+
+	responseWriter.Body.Reset()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("valid", signRequest(t, `{"resource":"authz","status":"deactivated"}`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "identifier": {
+		    "type": "dns",
+		    "value": "not-an-example.com"
+		  },
+		  "status": "deactivated",
+		  "expires": "2070-01-01T00:00:00Z",
+		  "challenges": [
+		    {
+		      "type": "dns",
+		      "uri": "http://localhost/acme/challenge/valid/23"
+		    }
+		  ]
+		}`)
 }

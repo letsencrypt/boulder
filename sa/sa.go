@@ -919,6 +919,6 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 
 // UpdateAuthz attempts to update the provided authorization
 func (ssa *SQLStorageAuthority) UpdateAuthz(ctx context.Context, auth core.Authorization) error {
-	_, err := ssa.dbMap.Update(&auth)
+	_, err := ssa.dbMap.Update(&authzModel{auth})
 	return err
 }

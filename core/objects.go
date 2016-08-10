@@ -55,6 +55,7 @@ const (
 	ResourceRevokeCert   = AcmeResource("revoke-cert")
 	ResourceRegistration = AcmeResource("reg")
 	ResourceChallenge    = AcmeResource("challenge")
+	ResourceAuthz        = AcmeResource("authz")
 )
 
 // These status are the states of OCSP

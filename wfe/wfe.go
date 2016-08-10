@@ -1175,29 +1175,38 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		return
 	}
 
-	if wfe.AllowAuthzDeactivation {
-		body, err := ioutil.ReadAll(request.Body)
-		if err != nil {
-			//
-		}
-		if len(body) > 0 {
-			var req struct {
-				Status core.AcmeStatus
-			}
-			err = json.Unmarshal(body, &req)
-			if err != nil {
-				//
-			}
-			if req.Status != core.StatusDeactivated {
-				//
-			}
-			err = wfe.RA.DeactivateAuthorization(ctx, authz)
-			if err != nil {
-				//
-			}
-			response.WriteHeader(http.StatusOK)
+	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
+		body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceAuthz)
+		addRequesterHeader(response, logEvent.Requester)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
 			return
 		}
+		if reg.ID != authz.RegistrationID {
+			logEvent.AddError("registration ID doesn't match ID for authorization")
+			wfe.sendError(response, logEvent, probs.Unauthorized("Registration ID doesn't match ID for authorization"), nil)
+			return
+		}
+		var req struct {
+			Status core.AcmeStatus
+		}
+		err = json.Unmarshal(body, &req)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+			return
+		}
+		if req.Status != core.StatusDeactivated {
+			logEvent.AddError("invalid status value")
+			wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
+			return
+		}
+		err = wfe.RA.DeactivateAuthorization(ctx, authz)
+		if err != nil {
+			logEvent.AddError("unable to deactivate authorization", err)
+			wfe.sendError(response, logEvent, probs.Malformed("Error deactivating authorization"), err)
+			return
+		}
+		authz.Status = core.StatusDeactivated
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
