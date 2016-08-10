@@ -70,6 +70,9 @@ type RegistrationAuthority interface {
 	// [WebFrontEnd]
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
+	// [WebFrontEnd]
+	DeactivateAuthorization(ctx context.Context, auth Authorization) error
+
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
@@ -115,6 +118,7 @@ type StorageAdder interface {
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
+	UpdateAuthz(ctx context.Context, auth Authorization) error
 }
 
 // StorageAuthority interface represents a simple key/value

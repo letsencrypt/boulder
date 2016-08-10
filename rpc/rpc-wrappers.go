@@ -70,6 +70,8 @@ const (
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
+	MethodUpdateAuthz                       = "UpdateAuthz"                       // SA
+	MethodDeactivateAuthorization           = "DeactivateAuthorization"           // RA
 )
 
 // Request structs
@@ -372,6 +374,23 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 		return
 	})
 
+	rpc.Handle(MethodDeactivateAuthorization, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var authz core.Authorization
+		err = json.Unmarshal(req, &authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodDeactivateAuthorization, err, req)
+			return
+		}
+		err = impl.DeactivateAuthorization(ctx, authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodDeactivateAuthorization, err, req)
+			return
+		}
+		return
+	})
+
 	return nil
 }
 
@@ -511,6 +530,16 @@ func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx con
 	}
 	_, err = rac.rpc.DispatchSync(MethodAdministrativelyRevokeCertificate, data)
 	return
+}
+
+// DeactivateAuthorization deactivates a currently valid authorization
+func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Context, authz core.Authorization) error {
+	data, err := json.Marshal(authz)
+	if err != nil {
+		return err
+	}
+	_, err = rac.rpc.DispatchSync(MethodDeactivateAuthorization, data)
+	return err
 }
 
 // NewValidationAuthorityServer constructs an RPC server
@@ -1125,6 +1154,23 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodUpdateAuthz, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var authz core.Authorization
+		err = json.Unmarshal(req, &authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodUpdateAuthz, err, req)
+			return
+		}
+		err = impl.UpdateAuthz(ctx, authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodUpdateAuthz, err, req)
+			return
+		}
+		return
+	})
+
 	return nil
 }
 
@@ -1489,4 +1535,14 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 	var exists fqdnSetExistsResponse
 	err = json.Unmarshal(response, &exists)
 	return exists.Exists, err
+}
+
+// UpdateAuthz updates the provided authorization or returns an error
+func (cac StorageAuthorityClient) UpdateAuthz(ctx context.Context, authz core.Authorization) error {
+	data, err := json.Marshal(authz)
+	if err != nil {
+		return err
+	}
+	_, err = cac.rpc.DispatchSync(MethodUpdateAuthz, data)
+	return err
 }

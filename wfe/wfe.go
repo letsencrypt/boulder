@@ -85,6 +85,7 @@ type WebFrontEndImpl struct {
 	// Feature gates
 	CheckMalformedCSR      bool
 	AcceptRevocationReason bool
+	AllowAuthzDeactivation bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -254,7 +255,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, newAuthzPath, wfe.NewAuthorization, "POST")
 	wfe.HandleFunc(m, newCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, regPath, wfe.Registration, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
@@ -1172,6 +1173,31 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
+	}
+
+	if wfe.AllowAuthzDeactivation {
+		body, err := ioutil.ReadAll(request.Body)
+		if err != nil {
+			//
+		}
+		if len(body) > 0 {
+			var req struct {
+				Status core.AcmeStatus
+			}
+			err = json.Unmarshal(body, &req)
+			if err != nil {
+				//
+			}
+			if req.Status != core.StatusDeactivated {
+				//
+			}
+			err = wfe.RA.DeactivateAuthorization(ctx, authz)
+			if err != nil {
+				//
+			}
+			response.WriteHeader(http.StatusOK)
+			return
+		}
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
