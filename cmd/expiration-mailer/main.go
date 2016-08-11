@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	"net/url"
 )
 
 const defaultNagCheckInterval = 24 * time.Hour
@@ -55,7 +56,7 @@ type mailer struct {
 	clk           clock.Clock
 }
 
-func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) error {
+func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	if len(contacts) == 0 {
 		return nil
 	}
@@ -64,8 +65,12 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	}
 	emails := []string{}
 	for _, contact := range contacts {
-		if contact.Scheme == "mailto" {
-			emails = append(emails, contact.Opaque)
+		parsed, err := url.Parse(contact)
+		if err != nil {
+			continue
+		}
+		if parsed.Scheme == "mailto" {
+			emails = append(emails, parsed.Opaque)
 		}
 	}
 	if len(emails) == 0 {

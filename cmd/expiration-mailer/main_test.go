@@ -77,9 +77,9 @@ const emailARaw = "rolandshoemaker@gmail.com"
 const emailBRaw = "test@gmail.com"
 
 var (
-	emailA, _ = core.ParseAcmeURL("mailto:" + emailARaw)
-	emailB, _ = core.ParseAcmeURL("mailto:" + emailBRaw)
-	jsonKeyA  = []byte(`{
+	emailA   = "mailto:" + emailARaw
+	emailB   = "mailto:" + emailBRaw
+	jsonKeyA = []byte(`{
   "kty":"RSA",
   "n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
   "e":"AQAB"
@@ -123,7 +123,7 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	err := m.sendNags([]*core.AcmeURL{emailA}, []*x509.Certificate{cert})
+	err := m.sendNags([]string{emailA}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -133,7 +133,7 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags([]*core.AcmeURL{emailA, emailB}, []*x509.Certificate{cert})
+	err = m.sendNags([]string{emailA, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -148,7 +148,7 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags([]*core.AcmeURL{}, []*x509.Certificate{cert})
+	err = m.sendNags([]string{}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
@@ -249,7 +249,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -257,7 +257,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	regB := core.Registration{
 		ID: 2,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailB,
 		},
 		Key:       keyB,
@@ -265,7 +265,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	regC := core.Registration{
 		ID: 3,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailB,
 		},
 		Key:       keyC,
@@ -591,7 +591,7 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -692,11 +692,11 @@ func TestDontFindRevokedCert(t *testing.T) {
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
-	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+	emailA := "mailto:one@mail.com"
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -752,7 +752,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
