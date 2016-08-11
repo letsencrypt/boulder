@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math"
 	netmail "net/mail"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -28,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
-	"net/url"
 )
 
 const defaultNagCheckInterval = 24 * time.Hour
