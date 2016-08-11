@@ -103,7 +103,7 @@ func TestOCSPStatus(t *testing.T) {
 	test.AssertMarshaledEquals(t, os, out)
 }
 
-func TestAcmeURLSlice(t *testing.T) {
+func TestStringSlice(t *testing.T) {
 	tc := BoulderTypeConverter{}
 	var au, out []string
 
