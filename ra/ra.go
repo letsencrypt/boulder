@@ -295,14 +295,14 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 	for _, contact := range *contacts {
 		if contact == "" {
+			return core.MalformedRequestError("Empty contact")
+		}
+		parsed, err := url.Parse(contact)
+		if err != nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		parsedContact, err := url.Parse(contact)
-		if err != nil {
-			return core.MalformedRequestError(fmt.Sprintf("Invalid contact URI"))
-		}
-		if parsedContact.Scheme != "mailto" {
-			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsedContact.Scheme))
+		if parsed.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsed.Scheme))
 		}
 		if !core.IsASCII(contact) {
 			return core.MalformedRequestError(
@@ -311,7 +311,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 		start := ra.clk.Now()
 		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-		problem := validateEmail(ctx, parsedContact.Opaque, ra.DNSResolver)
+		problem := validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
 		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
 		if problem != nil {
 			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)

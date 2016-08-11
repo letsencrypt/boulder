@@ -67,6 +67,8 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	for _, contact := range contacts {
 		parsed, err := url.Parse(contact)
 		if err != nil {
+			m.log.AuditErr(fmt.Sprintf("parsing contact email %s: %s",
+				contact, err))
 			continue
 		}
 		if parsed.Scheme == "mailto" {
