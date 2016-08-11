@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -30,7 +31,6 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
-	"net/url"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
