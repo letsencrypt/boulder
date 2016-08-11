@@ -191,8 +191,8 @@ func (c testCtx) addRegistrations(t *testing.T) {
 	}
 	// Reg D has a `tel:` contact ACME URL
 	regD = core.Registration{
-		ID:        4,
-		Contact:   &[]string{
+		ID: 4,
+		Contact: &[]string{
 			tel,
 		},
 		Key:       keyD,
