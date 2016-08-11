@@ -147,7 +147,7 @@ type Registration struct {
 	Key jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
-	Contact *[]*AcmeURL `json:"contact,omitempty"`
+	Contact *[]string `json:"contact,omitempty"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`

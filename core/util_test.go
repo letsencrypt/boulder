@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"net/url"
 	"reflect"
 	"sort"
 	"testing"
@@ -106,25 +105,10 @@ func TestKeyDigestEquals(t *testing.T) {
 	test.Assert(t, !KeyDigestEquals(struct{}{}, struct{}{}), "Unknown key types should not match anything")
 }
 
-func TestAcmeURL(t *testing.T) {
-	s := "http://example.invalid"
-	u, _ := url.Parse(s)
-	a := (*AcmeURL)(u)
-	test.AssertEquals(t, s, a.String())
-}
-
 func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
-}
-
-func TestUnmarshalAcmeURL(t *testing.T) {
-	var u AcmeURL
-	err := u.UnmarshalJSON([]byte(`":"`))
-	if err == nil {
-		t.Errorf("Expected error parsing ':', but got nil err.")
-	}
 }
 
 func TestProblemDetailsFromError(t *testing.T) {

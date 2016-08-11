@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -129,40 +128,5 @@ func TestFingerprint(t *testing.T) {
 	digest := Fingerprint256(in)
 	if digest != base64.RawURLEncoding.EncodeToString(out) {
 		t.Errorf("Incorrect SHA-256 fingerprint: %v", digest)
-	}
-}
-
-func TestURL(t *testing.T) {
-	scheme := "https"
-	host := "example.com"
-	path := "/acme/test"
-	query := "foo"
-	jsonURL := fmt.Sprintf(`{"URL":"%s://%s%s?%s"}`, scheme, host, path, query)
-	badJSON := `{"URL":666}`
-
-	url := struct{ URL *AcmeURL }{URL: &AcmeURL{}}
-	err := json.Unmarshal([]byte(jsonURL), &url)
-	if err != nil {
-		t.Errorf("Error in json unmarshal: %v", err)
-	}
-	if url.URL.Scheme != scheme || url.URL.Host != host ||
-		url.URL.Path != path || url.URL.RawQuery != query {
-		t.Errorf("Improper URL contents: %v", url.URL)
-	}
-	if s := url.URL.PathSegments(); len(s) != 2 {
-		t.Errorf("Path segments failed to parse properly: %v", s)
-	}
-
-	err = json.Unmarshal([]byte(badJSON), &url)
-	if err == nil {
-		t.Errorf("Failed to catch bad JSON")
-	}
-
-	marshaledURL, err := json.Marshal(url)
-	if err != nil {
-		t.Errorf("Error in json marshal: %v", err)
-	}
-	if string(marshaledURL) != jsonURL {
-		t.Errorf("Expected marshaled url %#v, got %#v", jsonURL, string(marshaledURL))
 	}
 }

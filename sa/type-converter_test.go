@@ -103,9 +103,9 @@ func TestOCSPStatus(t *testing.T) {
 	test.AssertMarshaledEquals(t, os, out)
 }
 
-func TestAcmeURLSlice(t *testing.T) {
+func TestStringSlice(t *testing.T) {
 	tc := BoulderTypeConverter{}
-	var au, out []*core.AcmeURL
+	var au, out []string
 
 	marshaledI, err := tc.ToDb(au)
 	test.AssertNotError(t, err, "Could not ToDb")
