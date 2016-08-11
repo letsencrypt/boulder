@@ -306,7 +306,7 @@ func TestValidateContacts(t *testing.T) {
 	test.AssertError(t, err, "Unknown scheme")
 
 	err = ra.validateContacts(context.Background(), &[]string{""})
-	test.AssertError(t, err, "Nil AcmeURL")
+	test.AssertError(t, err, "Empty URL")
 
 	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
@@ -1104,13 +1104,13 @@ func TestRegistrationUpdate(t *testing.T) {
 	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
 
-	// Make sure that a `MergeUpdate` call with a nil entry doesn't produce an
+	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
 	// error and results in a change to the base reg.
-	nilUpdate := core.Registration{
+	emptyUpdate := core.Registration{
 		Contact:   &[]string{""},
 		Agreement: "totally!",
 	}
-	changed = mergeUpdate(&reg, nilUpdate)
+	changed = mergeUpdate(&reg, emptyUpdate)
 	test.AssertEquals(t, changed, true)
 }
 

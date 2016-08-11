@@ -93,12 +93,10 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
-	u := "test.com"
-
 	newReg := core.Registration{
 		ID:        reg.ID,
 		Key:       jwk,
-		Contact:   &[]string{u},
+		Contact:   &[]string{"test.com"},
 		InitialIP: net.ParseIP("72.72.72.72"),
 		Agreement: "yes",
 	}
