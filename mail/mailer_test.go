@@ -118,7 +118,12 @@ func normalHandler(connID int, t *testing.T, conn net.Conn) {
 	authenticateClient(t, conn)
 }
 
-// The disconnectHandler authenticates the client like the normalHandler but additionally processes an email flow (e.g. MAIL, RCPT and DATA commands). When the connID is < maxConnects
+// The disconnectHandler authenticates the client like the normalHandler but
+// additionally processes an email flow (e.g. MAIL, RCPT and DATA commands).
+// When the `connID` is <= `closeFirst` the connection is closed immediately
+// after the MAIL command is received and prior to issuing a 250 response. In
+// this way the first `closeFirst` connections will not complete normally and
+// can be tested for reconnection logic.
 func disconnectHandler(closeFirst int) connHandler {
 	return func(connID int, t *testing.T, conn net.Conn) {
 		defer func() {
