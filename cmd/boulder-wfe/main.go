@@ -10,6 +10,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -36,10 +37,9 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		CheckMalformedCSR bool
+		CheckMalformedCSR      bool
+		AcceptRevocationReason bool
 	}
-
-	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	Statsd cmd.StatsdConfig
 
@@ -82,7 +82,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.AllowedSigningAlgos.KeyPolicy(), logger)
+	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), goodkey.NewKeyPolicy(), logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(c, logger, stats)
 	wfe.RA = rac
@@ -97,6 +97,7 @@ func main() {
 
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
+	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 
 	wfe.CertCacheDuration = c.WFE.CertCacheDuration.Duration
 	wfe.CertNoCacheExpirationWindow = c.WFE.CertNoCacheExpirationWindow.Duration
@@ -106,7 +107,7 @@ func main() {
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-	logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.AllowedSigningAlgos.KeyPolicy()))
+	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
 
 	go cmd.ProfileCmd("WFE", stats)
 

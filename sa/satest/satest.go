@@ -40,11 +40,8 @@ func GoodJWK() jose.JsonWebKey {
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
 func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registration {
-	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
-	if err != nil {
-		t.Fatalf("unable to parse contact link: %s", err)
-	}
-	contacts := &[]*core.AcmeURL{contact}
+	contact := "mailto:foo@example.com"
+	contacts := &[]string{contact}
 	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       GoodJWK(),
 		Contact:   contacts,

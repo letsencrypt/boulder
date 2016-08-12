@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math"
 	netmail "net/mail"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -55,7 +56,7 @@ type mailer struct {
 	clk           clock.Clock
 }
 
-func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) error {
+func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	if len(contacts) == 0 {
 		return nil
 	}
@@ -64,8 +65,14 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 	}
 	emails := []string{}
 	for _, contact := range contacts {
-		if contact.Scheme == "mailto" {
-			emails = append(emails, contact.Opaque)
+		parsed, err := url.Parse(contact)
+		if err != nil {
+			m.log.AuditErr(fmt.Sprintf("parsing contact email %s: %s",
+				contact, err))
+			continue
+		}
+		if parsed.Scheme == "mailto" {
+			emails = append(emails, parsed.Opaque)
 		}
 	}
 	if len(emails) == 0 {
@@ -115,38 +122,10 @@ func (m *mailer) sendNags(contacts []*core.AcmeURL, certs []*x509.Certificate) e
 }
 
 func (m *mailer) updateCertStatus(serial string) error {
-	// Update CertificateStatus object
-	tx, err := m.dbMap.Begin()
-	if err != nil {
-		err = sa.Rollback(tx, err)
-		m.log.AuditErr(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
-		return err
-	}
-
-	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
-	if err != nil {
-		err = sa.Rollback(tx, err)
-		m.log.AuditErr(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
-		return err
-	}
-	certStatus := csObj.(*core.CertificateStatus)
-	certStatus.LastExpirationNagSent = m.clk.Now()
-
-	_, err = tx.Update(certStatus)
-	if err != nil {
-		err = sa.Rollback(tx, err)
-		m.log.AuditErr(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
-		return err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		err = sa.Rollback(tx, err)
-		m.log.AuditErr(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
-		return err
-	}
-
-	return nil
+	_, err := m.dbMap.Exec(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ?  WHERE serial = ?",
+		m.clk.Now(), serial)
+	return err
 }
 
 func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {

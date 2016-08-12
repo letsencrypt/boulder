@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,8 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
+
+	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -103,8 +105,8 @@ type AcmeIdentifier struct {
 // This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
+	CSR   *oldx509.CertificateRequest // The CSR
+	Bytes []byte                      // The original bytes of the CSR, for logging.
 }
 
 type RawCertificateRequest struct {
@@ -118,7 +120,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
+	csr, err := oldx509.ParseCertificateRequest(raw.CSR)
 	if err != nil {
 		return err
 	}
@@ -145,7 +147,7 @@ type Registration struct {
 	Key jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
-	Contact *[]*AcmeURL `json:"contact,omitempty"`
+	Contact *[]string `json:"contact,omitempty"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
@@ -155,70 +157,6 @@ type Registration struct {
 
 	// CreatedAt is the time the registration was created.
 	CreatedAt time.Time `json:"createdAt"`
-}
-
-func (r *Registration) contactsEqual(other Registration) bool {
-	// If there is no existing contact slice, or the contact slice lengths
-	// differ, then the other contact is not equal
-	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
-		return false
-	}
-
-	// If there is an existing contact slice and it has the same length as the
-	// new contact slice we need to look at each AcmeURL to determine if there
-	// is a change being made
-	//
-	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
-	//            should use `sort.Strings` here to ensure a consistent
-	//            comparison.
-	a := *other.Contact
-	b := *r.Contact
-	for i := 0; i < len(a); i++ {
-		// In order to call .String() we need to make sure the AcmeURL pointers
-		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
-		if a[i] == nil || b[i] == nil {
-			// We return false, allowing MergeUpdate to use `other` to overwrite. The
-			// nil value in the Contact slice will be turned into a user-facing error
-			// when the RA validates the contacts post-merge.
-			return false
-		}
-
-		// If the contact's string representation differs at any index they aren't
-		// equal
-		contactA := (*a[i]).String()
-		contactB := (*b[i]).String()
-		if contactA != contactB {
-			return false
-		}
-	}
-
-	// They are equal!
-	return true
-}
-
-// MergeUpdate copies a subset of information from the input Registration
-// into this one. It returns true if an update was performed and the base object
-// was changed, and false if no change was made.
-func (r *Registration) MergeUpdate(input Registration) bool {
-	var changed bool
-
-	// Note: we allow input.Contact to overwrite r.Contact even if the former is
-	// empty in order to allow users to remove the contact associated with
-	// a registration. Since the field type is a pointer to slice of pointers we
-	// can perform a nil check to differentiate between an empty value and a nil
-	// (e.g. not provided) value
-	if input.Contact != nil && !r.contactsEqual(input) {
-		r.Contact = input.Contact
-		changed = true
-	}
-
-	// If there is an agreement in the input and it's not the same as the base,
-	// then we update the base
-	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
-		r.Agreement = input.Agreement
-		changed = true
-	}
-	return changed
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
@@ -514,7 +452,7 @@ type CertificateStatus struct {
 	// revokedReason: If status is 'revoked', this is the reason code for the
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
-	RevokedReason RevocationCode `db:"revokedReason"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
@@ -559,7 +497,7 @@ type CRL struct {
 type OCSPSigningRequest struct {
 	CertDER   []byte
 	Status    string
-	Reason    RevocationCode
+	Reason    revocation.Reason
 	RevokedAt time.Time
 }
 
@@ -583,25 +521,6 @@ type SignedCertificateTimestamp struct {
 	CertificateSerial string `db:"certificateSerial"`
 
 	LockCol int64
-}
-
-// RevocationCode is used to specify a certificate revocation reason
-type RevocationCode int
-
-// RevocationReasons provides a map from reason code to string explaining the
-// code
-var RevocationReasons = map[RevocationCode]string{
-	0: "unspecified",
-	1: "keyCompromise",
-	2: "cACompromise",
-	3: "affiliationChanged",
-	4: "superseded",
-	5: "cessationOfOperation",
-	6: "certificateHold",
-	// 7 is unused
-	8:  "removeFromCRL", // needed?
-	9:  "privilegeWithdrawn",
-	10: "aAcompromise",
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

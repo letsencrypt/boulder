@@ -137,7 +137,7 @@ func New(
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	statter, _ := statsd.NewNoopClient(nil)
-	stats := metrics.NewStatsdScope(statter, "Mailer")
+	stats := metrics.NewStatsdScope(statter)
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,

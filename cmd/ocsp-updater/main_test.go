@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/x509"
 	"database/sql"
 	"errors"
 	"testing"
@@ -16,17 +15,19 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var ctx = context.Background()
 
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *mockCA) IssueCertificate(_ context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -208,7 +209,7 @@ func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 0)
 
-	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(cert.SerialNumber), core.RevocationCode(1))
+	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(cert.SerialNumber), revocation.KeyCompromise)
 	test.AssertNotError(t, err, "Failed to revoke certificate")
 
 	statuses, err = updater.findRevokedCertificatesToUpdate(10)
@@ -345,7 +346,7 @@ func TestRevokedCertificatesTick(t *testing.T) {
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
+	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), revocation.KeyCompromise)
 	test.AssertNotError(t, err, "Failed to revoke certificate")
 
 	statuses, err := updater.findRevokedCertificatesToUpdate(10)

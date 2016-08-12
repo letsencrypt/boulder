@@ -35,16 +35,24 @@ var (
 	smallPrimes          []*big.Int
 )
 
-// KeyPolicy etermines which types of key may be used with various boulder
+// KeyPolicy determines which types of key may be used with various boulder
 // operations.
 type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
-	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
 }
 
-// GoodKey returns true iff the key is acceptable for both TLS use and account
+// NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
+func NewKeyPolicy() KeyPolicy {
+	return KeyPolicy{
+		AllowRSA:           true,
+		AllowECDSANISTP256: true,
+		AllowECDSANISTP384: true,
+	}
+}
+
+// GoodKey returns true if the key is acceptable for both TLS use and account
 // key use (our requirements are the same for either one), according to basic
 // strength and algorithm checking.
 // TODO: Support JsonWebKeys once go-jose migration is done.
@@ -168,8 +176,6 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	case policy.AllowECDSANISTP256 && params == elliptic.P256().Params():
 		return nil
 	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
-		return nil
-	case policy.AllowECDSANISTP521 && params == elliptic.P521().Params():
 		return nil
 	default:
 		return core.MalformedRequestError(fmt.Sprintf("ECDSA curve %v not allowed", params.Name))

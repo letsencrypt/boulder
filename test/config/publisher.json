@@ -33,7 +33,7 @@
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],
-      "intermediateBundleFilename": "test/test-ca.pem"
+      "intermediateBundleFilename": "test/test-ca2.pem"
     }
   }
 }
