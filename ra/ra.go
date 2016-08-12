@@ -1093,5 +1093,8 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		return core.MalformedRequestError("Only valid authorizations can be deactivated")
 	}
 	auth.Status = core.StatusDeactivated
-	return ra.SA.UpdateAuthz(ctx, auth)
+	err := ra.SA.UpdateAuthz(ctx, auth)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
 }

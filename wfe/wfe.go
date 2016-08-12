@@ -1203,9 +1203,12 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		err = wfe.RA.DeactivateAuthorization(ctx, authz)
 		if err != nil {
 			logEvent.AddError("unable to deactivate authorization", err)
-			wfe.sendError(response, logEvent, probs.Malformed("Error deactivating authorization"), err)
+			wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 			return
 		}
+		// Since the authorization passed to DeactivateAuthorization isn't
+		// mutated locally by the function we must manually set the status
+		// here before displaying the authorization to the user
 		authz.Status = core.StatusDeactivated
 	}
 
