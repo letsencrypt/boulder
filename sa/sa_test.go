@@ -798,7 +798,14 @@ func TestUpdateAuthz(t *testing.T) {
 
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
-	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp, Combinations: combos}
+	newPa := core.Authorization{
+		ID:             PA.ID,
+		Identifier:     identifier,
+		RegistrationID: reg.ID,
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Combinations:   combos,
+	}
 	err = sa.UpdatePendingAuthorization(ctx, newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 

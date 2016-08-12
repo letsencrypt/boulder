@@ -1261,7 +1261,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 	authz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
-	fmt.Println(authz)
 	err = ra.DeactivateAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization(ctx, authz.ID)
