@@ -1,0 +1,18 @@
+package csr
+
+import (
+	"encoding/base64"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
+	"testing"
+)
+
+func TestBadCSR(t *testing.T) {
+	bytes, err := base64.RawURLEncoding.DecodeString("MIICezCCAWMCADASMRAwDgYDVQQDDAdsZTEud3RmMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAudlK0_EdJd594GYOB1xgs4euFSIkeidEKAuXWjew2myNS32NF-qC7Qmgg-uDfPavY91eYTndeK1GC_dJb0tFjJempeZ5UVu6CdXgVmTzSXy4YChj-DWzxIMLEV_iLYC3w675G6xxp4LdFowAD_PQC_x-NNrLSV8gRBoWbqvsbgKJ0ddziPsxaZ1sMD8tIaswT-QGZbBU9sNY514WSn8gicf6MdxjspxgMAIhXfC2RmafcR9UQXoaBUHrAaJiD1U0GWKJ9Jjm2flOK6Q7Yzv8nhiOjSfjDnqvAwnasSENHNp049Ejv6hHr5JtEKrtYKSGVO-s0-VJVe174CpwSbQ-CQIDAQABoCUwIwYJKoZIhvcNAQkOMRYwFDASBgNVHREECzAJggdsZTEud3RmMA0GCSqGSIb3DQEBCwUAA4IBAQCoxaJT3_v4XesyBeL3MN-BqUT8zeUPgGhXsVT2BTgCwW7qkAl-mSsaAvl4dpZvMUPAC0GP-P8pdW7PrEmq5iKQ7Iopi1eF02VAJCwdMUdJtUOtwULf8l6EiLeI5FtyFBJI-7RuJyOo9Xi0dTfPMKLgKUFlXyCFxkBBEQmTG9UnL2GiVY_BWUqgrS5-8OKjG0rCPT6sbkahYntdZYIXwm2dQPq_SpZOQBisEyZLJiRmxmMEbxG2pWvYRyl6IAZhvvCnHSEjsru6BuBaMb2I34k_3sKJA5Qnx8eB2nvOaHZLw8yZOna-APrQPfDkeL7DYVTC8gv9O-aInIJQ9fKtznhw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = oldx509.ParseCertificateRequest(bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
