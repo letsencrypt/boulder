@@ -282,7 +282,7 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
 	test.AssertNotError(t, err, "Couldn't create log")
-	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
+	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d/ct", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 
