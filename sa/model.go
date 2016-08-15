@@ -23,11 +23,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database.
 type regModel struct {
-	ID        int64           `db:"id"`
-	Key       []byte          `db:"jwk"`
-	KeySHA256 string          `db:"jwk_sha256"`
-	Contact   []*core.AcmeURL `db:"contact"`
-	Agreement string          `db:"agreement"`
+	ID        int64    `db:"id"`
+	Key       []byte   `db:"jwk"`
+	KeySHA256 string   `db:"jwk_sha256"`
+	Contact   []string `db:"contact"`
+	Agreement string   `db:"agreement"`
 	// InitialIP is stored as sixteen binary bytes, regardless of whether it
 	// represents a v4 or v6 IP address.
 	InitialIP []byte    `db:"initialIp"`
@@ -82,7 +82,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		return nil, fmt.Errorf("initialIP was nil")
 	}
 	if r.Contact == nil {
-		r.Contact = &[]*core.AcmeURL{}
+		r.Contact = &[]string{}
 	}
 	rm := &regModel{
 		ID:        r.ID,
@@ -103,12 +103,12 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		err = fmt.Errorf("unable to unmarshal JsonWebKey in db: %s", err)
 		return core.Registration{}, err
 	}
-	var contact *[]*core.AcmeURL
+	var contact *[]string
 	// Contact can be nil when the DB contains the literal string "null". We
 	// prefer to represent this in memory as a pointer to an empty slice rather
 	// than a nil pointer.
 	if rm.Contact == nil {
-		contact = &[]*core.AcmeURL{}
+		contact = &[]string{}
 	} else {
 		contact = &rm.Contact
 	}

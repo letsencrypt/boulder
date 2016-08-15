@@ -422,6 +422,10 @@ func TestTLSSNI(t *testing.T) {
 		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
+		t.Errorf("Didn't get log message with validated certificate. Instead got:\n%s",
+			strings.Join(log.GetAllMatching(".*"), "\n"))
+	}
 
 	log.Clear()
 	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{

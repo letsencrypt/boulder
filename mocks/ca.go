@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
@@ -38,6 +39,6 @@ func (ca *MockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequ
 }
 
 // RevokeCertificate is a mock
-func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	return
 }

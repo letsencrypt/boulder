@@ -14,17 +14,18 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
-	jose "github.com/square/go-jose"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
@@ -82,7 +83,8 @@ type WebFrontEndImpl struct {
 	RequestTimeout time.Duration
 
 	// Feature gates
-	CheckMalformedCSR bool
+	CheckMalformedCSR      bool
+	AcceptRevocationReason bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -683,7 +685,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	}
 
 	type RevokeRequest struct {
-		CertificateDER core.JSONBuffer `json:"certificate"`
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
 	}
 	var revokeRequest RevokeRequest
 	if err := json.Unmarshal(body, &revokeRequest); err != nil {
@@ -741,8 +744,17 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// Use revocation code 0, meaning "unspecified"
-	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, 0, registration.ID)
+	reason := revocation.Reason(0)
+	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
+			logEvent.AddError("unsupported revocation reason code provided")
+			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
+			return
+		}
+		reason = *revokeRequest.Reason
+	}
+
+	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
 		logEvent.AddError("failed to revoke certificate: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
@@ -1100,7 +1112,16 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
+	// If a user POSTs their registration object including a previously valid
+	// agreement URL but that URL has since changed we will fail out here
+	// since the update agreement URL doesn't match the current URL. To fix that we
+	// only fail if the sent URL doesn't match the currently valid agreement URL
+	// and it doesn't match the URL currently stored in the registration
+	// in the database. The RA understands the user isn't actually trying to
+	// update the agreement but since we do an early check here in order to prevent
+	// extraneous requests to the RA we have to add this bypass.
+	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
+		update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
