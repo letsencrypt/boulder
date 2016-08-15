@@ -378,13 +378,11 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 		var authz core.Authorization
 		err = json.Unmarshal(req, &authz)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodDeactivateAuthorization, err, req)
 			return
 		}
 		err = impl.DeactivateAuthorization(ctx, authz)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodDeactivateAuthorization, err, req)
 			return
 		}
