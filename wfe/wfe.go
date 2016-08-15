@@ -1112,7 +1112,16 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
+	// If a user POSTs their registration object including a previously valid
+	// agreement URL but that URL has since changed we will fail out here
+	// since the update agreement URL doesn't match the current URL. To fix that we
+	// only fail if the sent URL doesn't match the currently valid agreement URL
+	// and it doesn't match the URL currently stored in the registration
+	// in the database. The RA understands the user isn't actually trying to
+	// update the agreement but since we do an early check here in order to prevent
+	// extraneous requests to the RA we have to add this bypass.
+	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
+		update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)

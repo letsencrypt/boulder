@@ -1497,6 +1497,19 @@ func TestRegistration(t *testing.T) {
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
 	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with registration up in the mock (with old agreement URL)
+	responseWriter.HeaderMap = http.Header{}
+	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Couldn't sign")
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", result.FullSerialize()))
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	links = responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
+	responseWriter.Body.Reset()
 }
 
 func TestTermsRedirect(t *testing.T) {
