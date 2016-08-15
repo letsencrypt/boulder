@@ -917,8 +917,13 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
-// UpdateAuthz attempts to update the provided authorization
-func (ssa *SQLStorageAuthority) UpdateAuthz(ctx context.Context, auth core.Authorization) error {
-	_, err := ssa.dbMap.Update(&authzModel{auth})
+// DeactivateAuthorization deactivates a currently valid authorization
+func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id string) error {
+	_, err := ssa.dbMap.Exec(
+		`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
+		string(core.StatusDeactivated),
+		id,
+		string(core.StatusValid),
+	)
 	return err
 }

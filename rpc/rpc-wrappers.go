@@ -70,7 +70,7 @@ const (
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
-	MethodUpdateAuthz                       = "UpdateAuthz"                       // SA
+	MethodDeactivateAuthorizationSA         = "DeactivateAuthorizationSA"         // SA
 	MethodDeactivateAuthorization           = "DeactivateAuthorization"           // RA
 )
 
@@ -1154,18 +1154,10 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodUpdateAuthz, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var authz core.Authorization
-		err = json.Unmarshal(req, &authz)
+	rpc.Handle(MethodDeactivateAuthorizationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
+		err = impl.DeactivateAuthorization(ctx, string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateAuthz, err, req)
-			return
-		}
-		err = impl.UpdateAuthz(ctx, authz)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateAuthz, err, req)
+			errorCondition(MethodDeactivateAuthorizationSA, err, req)
 			return
 		}
 		return
@@ -1537,12 +1529,8 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 	return exists.Exists, err
 }
 
-// UpdateAuthz updates the provided authorization or returns an error
-func (cac StorageAuthorityClient) UpdateAuthz(ctx context.Context, authz core.Authorization) error {
-	data, err := json.Marshal(authz)
-	if err != nil {
-		return err
-	}
-	_, err = cac.rpc.DispatchSync(MethodUpdateAuthz, data)
+// DeactivateAuthorization deactivates a currently valid authorization
+func (cac StorageAuthorityClient) DeactivateAuthorization(ctx context.Context, id string) error {
+	_, err := cac.rpc.DispatchSync(MethodDeactivateAuthorizationSA, []byte(id))
 	return err
 }

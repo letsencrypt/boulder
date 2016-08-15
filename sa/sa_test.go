@@ -775,7 +775,7 @@ func TestAddIssuedNames(t *testing.T) {
 	}
 }
 
-func TestUpdateAuthz(t *testing.T) {
+func TestDeactivateAuthorization(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -816,9 +816,8 @@ func TestUpdateAuthz(t *testing.T) {
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 
-	dbPa.Status = core.StatusDeactivated
-	err = sa.UpdateAuthz(ctx, dbPa)
-	test.AssertNotError(t, err, "Couldn't update authorization with ID "+PA.ID)
+	err = sa.DeactivateAuthorization(ctx, dbPa.ID)
+	test.AssertNotError(t, err, "Couldn't deactivate authorization with ID "+PA.ID)
 
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)

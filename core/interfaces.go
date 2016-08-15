@@ -118,7 +118,7 @@ type StorageAdder interface {
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
-	UpdateAuthz(ctx context.Context, auth Authorization) error
+	DeactivateAuthorization(ctx context.Context, id string) error
 }
 
 // StorageAuthority interface represents a simple key/value
