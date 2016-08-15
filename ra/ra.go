@@ -1097,4 +1097,5 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	if err != nil {
 		return core.InternalServerError(err.Error())
 	}
+	return nil
 }
