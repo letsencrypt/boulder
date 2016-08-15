@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
@@ -26,8 +27,6 @@ const clientName = "CA"
 
 type config struct {
 	CA cmd.CAConfig
-
-	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 
@@ -155,7 +154,7 @@ func main() {
 		clock.Default(),
 		stats,
 		issuers,
-		c.AllowedSigningAlgos.KeyPolicy(),
+		goodkey.NewKeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa

@@ -2,8 +2,6 @@ package sa
 
 import (
 	"testing"
-
-	"github.com/letsencrypt/boulder/core"
 )
 
 func TestModelToRegistrationNilContact(t *testing.T) {
@@ -25,7 +23,7 @@ func TestModelToRegistrationNilContact(t *testing.T) {
 func TestModelToRegistrationNonNilContact(t *testing.T) {
 	reg, err := modelToRegistration(&regModel{
 		Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
-		Contact: []*core.AcmeURL{},
+		Contact: []string{},
 	})
 	if err != nil {
 		t.Errorf("Got error from modelToRegistration: %s", err)

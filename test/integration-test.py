@@ -188,7 +188,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    wait_for_ocsp_good(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
+    wait_for_ocsp_good(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
@@ -225,7 +225,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
         print("\nRevoking failed")
         return REVOCATION_FAILED
 
-    wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
+    wait_for_ocsp_revoked(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
     return 0
 
 def run_custom(cmd, cwd=None):

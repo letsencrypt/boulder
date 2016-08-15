@@ -100,7 +100,6 @@ Edit /etc/hosts to add this line:
 
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
-    export GO15VENDOREXPERIMENT=1
     ./test/setup.sh
 
 **Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB
@@ -120,9 +119,9 @@ Run tests:
 
 Working with a client:
 
-Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
+Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for certbot (`certbot_test`) that has all those flags:
 
-    source ~/letsencrypt/tests/integration/_common.sh
+    source ~/certbot/tests/integration/_common.sh
     certbot_test certonly -a standalone -d example.com
 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for

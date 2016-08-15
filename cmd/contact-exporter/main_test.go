@@ -124,10 +124,10 @@ type testCtx struct {
 }
 
 func (c testCtx) addRegistrations(t *testing.T) {
-	emailA, _ := core.ParseAcmeURL("mailto:" + emailARaw)
-	emailB, _ := core.ParseAcmeURL("mailto:" + emailBRaw)
-	emailC, _ := core.ParseAcmeURL("mailto:" + emailCRaw)
-	tel, _ := core.ParseAcmeURL("tel:" + telNum)
+	emailA := "mailto:" + emailARaw
+	emailB := "mailto:" + emailBRaw
+	emailC := "mailto:" + emailCRaw
+	tel := "tel:" + telNum
 
 	// Every registration needs a unique JOSE key
 	jsonKeyA := []byte(`{
@@ -167,7 +167,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 	// Regs A through C have `mailto:` contact ACME URL's
 	regA = core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -175,7 +175,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 	}
 	regB = core.Registration{
 		ID: 2,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailB,
 		},
 		Key:       keyB,
@@ -183,7 +183,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 	}
 	regC = core.Registration{
 		ID: 3,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailC,
 		},
 		Key:       keyC,
@@ -192,7 +192,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 	// Reg D has a `tel:` contact ACME URL
 	regD = core.Registration{
 		ID: 4,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			tel,
 		},
 		Key:       keyD,

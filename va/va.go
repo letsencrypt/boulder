@@ -330,8 +330,12 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		va.log.Info(fmt.Sprintf("TLS-01 challenge for %s resulted in no certificates", identifier))
+		va.log.Info(fmt.Sprintf("TLS-SNI-01 challenge for %s resulted in no certificates", identifier.Value))
 		return validationRecords, probs.Unauthorized("No certs presented for TLS SNI challenge")
+	}
+	for i, cert := range certs {
+		va.log.AuditInfo(fmt.Sprintf("TLS-SNI-01 challenge for %s received certificate (%d of %d): cert=[%s]",
+			identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {

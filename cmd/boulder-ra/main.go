@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -62,8 +63,6 @@ type config struct {
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
 	}
-
-	AllowedSigningAlgos *cmd.AllowedSigningAlgos
 
 	PA cmd.PAConfig
 
@@ -144,7 +143,7 @@ func main() {
 		logger,
 		stats,
 		c.RA.MaxContactsPerRegistration,
-		c.AllowedSigningAlgos.KeyPolicy(),
+		goodkey.NewKeyPolicy(),
 		c.RA.MaxNames,
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,
