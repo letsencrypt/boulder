@@ -3,6 +3,7 @@ package wfe
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -767,11 +768,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
 		ClientAddr   string
-		CsrBase64    []byte
+		CSR          string
 		Registration core.Registration
 	}{
 		ClientAddr:   getClientAddr(request),
-		CsrBase64:    cr.Bytes,
+		CSR:          hex.EncodeToString(cr.Bytes),
 		Registration: registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
