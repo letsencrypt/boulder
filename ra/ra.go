@@ -1079,3 +1079,8 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 	ra.stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
 	return nil
 }
+
+// DeactivateRegistration deactivates a registration
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, id int64) error {
+	return ra.SA.DeactivateRegistration(ctx, id)
+}

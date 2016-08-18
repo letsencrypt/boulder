@@ -84,8 +84,9 @@ type WebFrontEndImpl struct {
 	RequestTimeout time.Duration
 
 	// Feature gates
-	CheckMalformedCSR      bool
-	AcceptRevocationReason bool
+	CheckMalformedCSR        bool
+	AcceptRevocationReason   bool
+	AllowAccountDeactivation bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -449,6 +450,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		key = &reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
+	}
+
+	if wfe.AllowAccountDeactivation && reg.Status != core.StatusValid {
+		return nil, nil, reg, probs.UnauthorizedProblem("Cannot use a non-valid registration")
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -1113,6 +1118,11 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
+	if wfe.AllowAccountDeactivation && update.Status == core.StatusDeactivated {
+		wfe.deactivateRegistration(currReg)
+		return
+	}
+
 	// If a user POSTs their registration object including a previously valid
 	// agreement URL but that URL has since changed we will fail out here
 	// since the update agreement URL doesn't match the current URL. To fix that we
@@ -1322,4 +1332,27 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+func (wfe *WebFrontEndImpl) deactivateRegistration(reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
+	if reg.Status != core.StatusValid {
+		wfe.sendError(response, logEvent, probs.MalformedProblem("Only valid registrations can be deactivated"), nil)
+		return
+	}
+	err := wfe.RA.DeactivateRegistration(ctx, reg.ID)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternalProblem("Failed to deactivate registration"), err)
+		return
+	}
+	currReg.Status = core.StatusDeactivated
+	jsonReply, err := marshalIndent(currReg)
+	if err != nil {
+		// ServerInternal because registration is from DB and should be fine
+		logEvent.AddError("unable to marshal updated registration: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	response.Write(jsonReply)
 }

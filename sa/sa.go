@@ -916,3 +916,14 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	)
 	return count > 0, err
 }
+
+// DeactivateRegistration deactivates a currently valid registration
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx conext.Context, id int64) error {
+	_, err := ssa.dbMap.Exec(
+		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
+		core.StatusDeactivated,
+		core.StatusValid,
+		id,
+	)
+	return err
+}

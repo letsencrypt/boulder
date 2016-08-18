@@ -32,6 +32,7 @@ type regModel struct {
 	// represents a v4 or v6 IP address.
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
+	Status    string    `db:"status"`
 	LockCol   int64
 }
 
@@ -92,6 +93,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
+		Stats:     string(r.Status),
 	}
 	return rm, nil
 }
@@ -119,6 +121,7 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
+		Status:    core.AcmeStatus(rm.Status),
 	}
 	return r, nil
 }
