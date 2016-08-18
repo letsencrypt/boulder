@@ -460,6 +460,14 @@ type CertificateStatus struct {
 	OCSPResponse []byte `db:"ocspResponse"`
 
 	LockCol int64 `json:"-"`
+
+	// For performance reasons[0] we duplicate the `Expires` field of the
+	// `Certificates` object/table in `CertificateStatus` to avoid a costly `JOIN`
+	// later on just to retreive this `Time` value. This helps both the OCSP
+	// updater and the expiration-mailer stay performant.
+	//
+	// [0]: https://github.com/letsencrypt/boulder/issues/1864
+	NotAfter time.Time `db:"notAfter"`
 }
 
 // OCSPResponse is a (large) table of OCSP responses. This contains all
