@@ -46,7 +46,6 @@ func (b backfiller) printStatus(
 			serial, notAfter, cur+1, total, completion, elapsed.String()))
 }
 
-// Finds the email addresses associated with a reg ID
 func (b backfiller) backfill(certStatus core.CertificateStatus) error {
 	updated, err := b.dbMap.Update(&certStatus)
 	if err != nil {
