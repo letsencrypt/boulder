@@ -27,7 +27,7 @@ type backfiller struct {
 	clk        clock.Clock
 	dryRun     bool
 	batchSize  uint
-	batchLimit uint
+	numBatches uint
 	sleep      time.Duration
 }
 
@@ -133,8 +133,8 @@ func (b backfiller) processForever() error {
 			break
 		}
 		batchNum++
-		if batchNum >= b.batchLimit {
-			b.log.Info(fmt.Sprintf("Reached the batchLimit (%d). Terminating.", b.batchLimit))
+		if batchNum >= b.numBatches {
+			b.log.Info(fmt.Sprintf("Reached numBatches (%d). Terminating.", b.numBatches))
 			break
 		}
 		b.log.Info(fmt.Sprintf("Sleeping for %s before next batch", b.sleep))
@@ -162,7 +162,7 @@ func main() {
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
 	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between batches.")
 	batchSize := flag.Uint("batchSize", 1000, "Number of certificates to process between sleeps.")
-	batchLimit := flag.Uint("batchLimit", 999999, "Stop processing after N batches.")
+	numBatches := flag.Uint("numBatches", 999999, "Stop processing after N batches.")
 	type config struct {
 		NotAfterBackFiller struct {
 			cmd.DBConfig
@@ -205,7 +205,7 @@ func main() {
 		clk:        cmd.Clock(),
 		dryRun:     *dryRun,
 		batchSize:  *batchSize,
-		batchLimit: *batchLimit,
+		numBatches: *numBatches,
 		sleep:      *sleep,
 	}
 
