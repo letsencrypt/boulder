@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	mrand "math/rand"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 )
+
+var plainReg = []byte(`{"resource":"new-reg"}`)
 
 func (s *State) newRegistration(_ *registration) {
 	signKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -34,7 +38,12 @@ func (s *State) newRegistration(_ *registration) {
 	signer.SetNonceSource(s)
 
 	// create the registration object
-	regStr := []byte(`{"resource":"new-reg","contact":["mailto:roland@bracewel.net"]}`)
+	var regStr []byte
+	if s.email != "" {
+		regStr = []byte(fmt.Sprintf(`{"resource":"new-reg","contact":["mailto:%s"]}`, s.email))
+	} else {
+		regStr = plainReg
+	}
 	// build the JWS object
 	requestPayload, err := s.signWithNonce("/acme/new-reg", true, regStr, signer)
 	if err != nil {
@@ -64,8 +73,18 @@ func (s *State) newRegistration(_ *registration) {
 		return
 	}
 
+	// get terms
+	links := resp.Header[http.CanonicalHeaderKey("link")]
+	terms := ""
+	for _, l := range links {
+		if strings.HasSuffix(l, ">;rel=\"terms-of-service\"") {
+			terms = l[1 : len(l)-len(">;rel=\"terms-of-service\"")]
+			break
+		}
+	}
+
 	// agree to terms
-	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, s.termsURL))
+	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, terms))
 
 	// build the JWS object
 	requestPayload, err = s.signWithNonce("/acme/reg", false, regStr, signer)

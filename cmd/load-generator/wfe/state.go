@@ -42,12 +42,11 @@ type registration struct {
 
 // State holds *all* the stuff
 type State struct {
-	rMu      *sync.RWMutex
-	regs     []*registration
-	maxRegs  int
-	client   *http.Client
-	apiBase  string
-	termsURL string
+	rMu     *sync.RWMutex
+	regs    []*registration
+	maxRegs int
+	client  *http.Client
+	apiBase string
 
 	warmupRegs    int
 	warmupWorkers int
@@ -63,6 +62,7 @@ type State struct {
 
 	certKey    *rsa.PrivateKey
 	domainBase string
+	email      string
 
 	callLatency *latency.File
 
@@ -87,6 +87,7 @@ type snapshot struct {
 
 // Snapshot will save out generated registrations and certs (ignoring authorizations)
 func (s *State) Snapshot(filename string) error {
+	fmt.Printf("[+] Saving registrations to %s\n", filename)
 	s.rMu.Lock()
 	defer s.rMu.Unlock()
 	snap := snapshot{}
@@ -106,6 +107,7 @@ func (s *State) Snapshot(filename string) error {
 
 // Restore previously generated registrations and certs
 func (s *State) Restore(filename string) error {
+	fmt.Printf("[+] Loading registrations from %s\n", filename)
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -140,7 +142,7 @@ func (s *State) Restore(filename string) error {
 }
 
 // New returns a pointer to a new State struct, or an error
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int, latencyPath string) (*State, error) {
+func New(rpcAddr string, apiBase string, keySize int, domainBase string, runtime time.Duration, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int, latencyPath string, userEmail string) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -167,31 +169,33 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		challRPCAddr:  rpcAddr,
 		client:        client,
 		apiBase:       apiBase,
-		throughput:    int64(rate),
 		certKey:       certKey,
 		domainBase:    domainBase,
 		callLatency:   latencyFile,
 		runtime:       runtime,
-		termsURL:      termsURL,
 		wg:            new(sync.WaitGroup),
 		realIP:        realIP,
 		runPlan:       runPlan,
 		maxRegs:       maxRegs,
 		warmupWorkers: warmupWorkers,
 		warmupRegs:    warmupRegs,
+		email:         userEmail,
 	}, nil
 }
 
-func (s *State) executePlan() {
-	for _, p := range s.runPlan {
+func (s *State) executePlan(wait chan struct{}) {
+	for i, p := range s.runPlan {
 		atomic.StoreInt64(&s.throughput, p.Rate)
-		fmt.Printf("Set base action rate to %d/s for %s\n", p.Rate, p.For)
+		fmt.Printf("[+] Set base action rate to %d/s for %s\n", p.Rate, p.For)
+		if i == 0 {
+			wait <- struct{}{}
+		}
 		time.Sleep(p.For)
 	}
 }
 
 func (s *State) warmup() {
-	fmt.Printf("Beginning warmup, generating ~%d registrations with %d workers\n", s.warmupRegs, s.warmupWorkers)
+	fmt.Printf("[+] Beginning warmup, generating ~%d registrations with %d workers\n", s.warmupRegs, s.warmupWorkers)
 	wg := new(sync.WaitGroup)
 	for i := 0; i < s.warmupWorkers; i++ {
 		wg.Add(1)
@@ -229,7 +233,7 @@ func (s *State) warmup() {
 	}()
 	wg.Wait()
 	stopProg <- true
-	fmt.Println("\nFinished warming up")
+	fmt.Println("[+] Finished warming up")
 }
 
 // Run runs the WFE load-generator for either the specified runtime/rate or the execution plan
@@ -241,7 +245,10 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 
 	// Start chall server process
 	if !dontRunChallSrv {
-		cmd := exec.Command(binName, "chall-srv", "--rpcAddr="+s.challRPCAddr, "--httpOneAddr="+httpOneAddr)
+		fmt.Printf("[+] Running challenge server [bin: '%s', addr: '%s', http-01 addr: '%s']\n", binName, s.challRPCAddr, httpOneAddr)
+		cmd := exec.Command(binName, "challSrv", "--rpcAddr="+s.challRPCAddr, "--httpOneAddr="+httpOneAddr)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 		err := cmd.Start()
 		if err != nil {
 			return err
@@ -249,11 +256,11 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 		s.challSrvProc = cmd.Process
 	}
 
-	// If there is a run plan execute it
-	if len(s.runPlan) > 0 {
-		go s.executePlan()
-	}
+	fmt.Println("[+] Beginning execution plan")
+	wait := make(chan struct{}, 1)
+	go s.executePlan(wait)
 
+	<-wait
 	// Run sending loop
 	stop := make(chan bool, 1)
 	sigs := make(chan os.Signal, 1)
@@ -273,19 +280,20 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 
 	select {
 	case <-time.After(s.runtime):
-		fmt.Println("SLEEP END")
+		fmt.Println("[+] Execution plan finished")
 	case sig := <-sigs:
-		fmt.Printf("SIG CAUGHT [%s], ENDING\n", sig.String())
+		fmt.Printf("[!] Execution plan interrupted: %s caught\n", sig.String())
 	}
 	stop <- true
-	fmt.Println("SENT STOP")
+	fmt.Println("[+] Waiting for pending flows to finish before killing challenge server")
 	s.wg.Wait()
-	fmt.Println("KILLING CHALL SERVER")
-	err := s.challSrvProc.Kill()
-	if err != nil {
-		fmt.Printf("Error killing challenge server: %s\n", err)
+	if !dontRunChallSrv {
+		fmt.Println("[+] Killing challenge server")
+		err := s.challSrvProc.Kill()
+		if err != nil {
+			fmt.Printf("[!] Error killing challenge server: %s\n", err)
+		}
 	}
-	fmt.Println("ALL DONE")
 	return nil
 }
 
@@ -314,10 +322,6 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 // required for JWS
 
 func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, signer jose.Signer) ([]byte, error) {
-	// nonce, err := s.getNonce(endpoint, alwaysNew)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	jws, err := signer.Sign(payload)
 	if err != nil {
 		return nil, err

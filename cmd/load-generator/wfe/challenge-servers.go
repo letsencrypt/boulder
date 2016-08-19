@@ -34,14 +34,14 @@ func (s *ChallSrv) Run() {
 	go func() {
 		err := s.httpOneServer()
 		if err != nil {
-			fmt.Printf("Failed to run http-0 challenge server: %s\n", err)
+			fmt.Printf("[+] http-0 server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
 	go func() {
 		err := s.rpcServer()
 		if err != nil {
-			fmt.Printf("Failed to run RPC server: %s\n", err)
+			fmt.Printf("[+] RPC server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
@@ -83,6 +83,7 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ChallSrv) httpOneServer() error {
+	fmt.Println("[+] Starting http-01 server")
 	srv := &http.Server{
 		Addr:         s.httpOneAddr,
 		Handler:      s,
@@ -96,7 +97,7 @@ func (s *ChallSrv) httpOneServer() error {
 func (s *ChallSrv) hoRPC(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println("BADD RPC CALL")
+		fmt.Printf("[!] Failed to read RPC body: %s\n", err)
 		w.WriteHeader(400)
 		return
 	}
@@ -106,6 +107,7 @@ func (s *ChallSrv) hoRPC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ChallSrv) rpcServer() error {
+	fmt.Println("[+] Starting challenge RPC server")
 	http.HandleFunc("/ho", s.hoRPC)
 	return http.ListenAndServe(s.rpcAddr, nil)
 }

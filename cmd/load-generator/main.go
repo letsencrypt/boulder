@@ -1,14 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/cmd/load-generator/responder"
@@ -44,229 +43,126 @@ func eventParser(description string) ([]wfe.RatePeriod, time.Duration, error) {
 	return periods, runtime, nil
 }
 
+func usage(fs []*flag.FlagSet) {
+	fmt.Fprintln(os.Stdout, "Usage:")
+	for _, s := range fs {
+		fmt.Fprint(os.Stderr, "\t[Section]\n")
+		s.PrintDefaults()
+	}
+}
+
 func main() {
-	app := cli.NewApp()
-	app.Name = "load-generator"
-	app.Usage = "Load generating tool for boulders publicly facing services"
-	app.Version = cmd.Version()
-	app.Author = "Boulder contributors"
-	app.Email = "ca-dev@letsencrypt.org"
+	wfeArgs := flag.NewFlagSet("wfe", flag.ExitOnError)
+	wfeAPIBase := wfeArgs.String("apiBase", "http://localhost:4000", "The base URI of boulder-wfe")
+	wfeCertKeySize := wfeArgs.Int("certKeySize", 2048, "Bit size of the private key to sign certificates with")
+	wfeDomainBase := wfeArgs.String("domainBase", "com", "Base label for randomly generated domains")
+	wfeResultsPath := wfeArgs.String("results", "", "Path to write results file to")
+	wfeChallRPCAddr := wfeArgs.String("challRPCAddr", "localhost:6060", "Address to send challenge RPC calls to")
+	wfeHTTPOneAddr := wfeArgs.String("httpOneAddr", "localhost:5002", "Address for the http-01 challenge server to listen one")
+	wfeDontRunChallSrv := wfeArgs.Bool("dontRunChallSrv", false, "Don't manage spawning and killing of the challenge server")
+	wfeRealIP := wfeArgs.String("realIP", "", "Vale for the X-REAL-IP header")
+	wfePlan := wfeArgs.String("plan", "", "Execution plan for WFE generator,  Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '1,10m' or '2,5m:3,5m:4,5m:5,5m'")
+	wfeWarmupRegs := wfeArgs.Int("warmupRegs", 0, "Number of registrations to create as a warmup")
+	wfeWarmupRegWorkers := wfeArgs.Int("warmupRegWorkers", 1, "Number of workers to use to create warmup registrations")
+	wfeMaxRegs := wfeArgs.Int("maxRegs", 0, "Maximum number of registrations to create during the run")
+	wfeLoadRegsPath := wfeArgs.String("loadRegs", "", "Path to load existing registration definitions from")
+	wfeSaveRegsPath := wfeArgs.String("saveRegs", "", "Path to save existing/generated registration definitions to")
+	wfeUserEmail := wfeArgs.String("userEmail", "test@example.com", "Email to user in the registration 'contacts' field, if empty no contacts are sent")
 
-	app.Commands = []cli.Command{
-		{
-			Name:  "wfe",
-			Usage: "WFE generator",
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "apiBase",
-					Usage: "The base URI of boulder-wfe",
-					Value: "http://boulder:4000",
-				},
-				cli.IntFlag{
-					Name:  "rate",
-					Usage: "The base rate (per second) at which to perform API actions",
-					Value: 1,
-				},
-				cli.IntFlag{
-					Name:  "certKeySize",
-					Usage: "Bit size of the key to sign certificates with",
-					Value: 2048,
-				},
-				cli.StringFlag{
-					Name:  "domainBase",
-					Usage: "Base label for randomly generated domains",
-					Value: "com",
-				},
-				cli.StringFlag{
-					Name:  "runtime",
-					Usage: "",
-				},
-				cli.StringFlag{
-					Name:  "latencyDataPath",
-					Usage: "Filename of latency chart data to save",
-				},
-				cli.StringFlag{
-					Name:  "termsURL",
-					Usage: "The terms URL to agree too",
-					Value: "http://boulder:4000/terms/v1",
-				},
-				cli.StringFlag{
-					Name:  "challRPCAddr",
-					Usage: "Address to send RPC calls",
-					Value: "localhost:6060",
-				},
-				cli.StringFlag{
-					Name:  "httpOneAddr",
-					Usage: "Address for the http-0 challenge server to listen on",
-					Value: "localhost:5002",
-				},
-				cli.BoolFlag{
-					Name:  "dontRunChallSrv",
-					Usage: "Don't manage spawning and killing of the challenge server",
-				},
-				cli.StringFlag{
-					Name:  "realIP",
-					Usage: "IP to set X-Real-IP header to",
-				},
-				cli.StringFlag{
-					Name:  "plan",
-					Usage: "Alternative to --rate and --runtime, allows definition of a test where the base action rate changes. Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '2,5m:3,5m:4,5m:5,5m'",
-				},
-				cli.IntFlag{
-					Name:  "warmupRegs",
-					Usage: "",
-				},
-				cli.IntFlag{
-					Name:  "warmupWorkers",
-					Usage: "",
-					Value: 1,
-				},
-				cli.IntFlag{
-					Name:  "maxRegs",
-					Usage: "",
-				},
-				cli.StringFlag{
-					Name: "loadRegsPath",
-				},
-				cli.StringFlag{
-					Name: "saveRegsPath",
-				},
-			},
-			Action: func(c *cli.Context) {
-				var runtime time.Duration
-				var rate int
-				var runPlan []wfe.RatePeriod
-				var err error
-				if c.String("runtime") != "" && c.Int("rate") != 0 || c.String("plan") != "" {
-					if c.String("plan") != "" {
-						rate = 1
-						runPlan, runtime, err = eventParser(c.String("plan"))
-						cmd.FailOnError(err, "Failed to parse plan")
-					} else {
-						rate = c.Int("rate")
-						runtime, err = time.ParseDuration(c.String("runtime"))
-						cmd.FailOnError(err, "Failed to parse runtime")
-					}
-				} else {
-					fmt.Println("Either (--runtime and --rate) or --plan is required")
-					os.Exit(1)
-				}
+	ocspArgs := flag.NewFlagSet("ocsp", flag.ExitOnError)
+	ocspBase := ocspArgs.String("ocspBase", "http://localhost:4000", "The base URI of the OCSP responder")
+	ocspGetPlan := ocspArgs.String("getPlan", "", "Execution plan for OCSP GET generator,  Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '1,10m' or '2,5m:3,5m:4,5m:5,5m'")
+	ocspPostPlan := ocspArgs.String("postPlan", "", "Execution plan for OCSP GET generator,  Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '1,10m' or '2,5m:3,5m:4,5m:5,5m'")
+	ocspIssuer := ocspArgs.String("issuer", "", "Path to issuer to use to generate OCSP requests")
+	ocspResultsPath := ocspArgs.String("results", "", "Path to write results file to")
+	ocspSerialsPath := ocspArgs.String("serials", "", "Path to CSV file of serial numbers of use")
 
-				s, err := wfe.New(
-					c.String("challRPCAddr"),
-					c.String("apiBase"),
-					rate,
-					c.Int("certKeySize"),
-					c.String("domainBase"),
-					runtime,
-					c.String("termsURL"),
-					c.String("realIP"),
-					runPlan,
-					c.Int("maxRegs"),
-					c.Int("warmupRegs"),
-					c.Int("warmupWorkers"),
-					c.String("latencyDataPath"),
-				)
-				cmd.FailOnError(err, "Failed to create WFE generator")
+	challSrvArgs := flag.NewFlagSet("challSrv", flag.ExitOnError)
+	challSrvRPCAddr := challSrvArgs.String("rpcAddr", "localhost:6060", "Address to listen on for RPC calls from WFE load-generator")
+	challSrvHTTPOneAddr := challSrvArgs.String("httpOneAddr", "localhost:5002", "Address for the http-01 challenge server to listen on")
 
-				if c.String("loadRegsPath") != "" {
-					err = s.Restore(c.String("loadRegsPath"))
-					cmd.FailOnError(err, "Failed to load registration snapshot")
-				}
-
-				// go cmd.DebugServer("localhost:7003")
-
-				err = s.Run(os.Args[0], c.Bool("dontRunChallSrv"), c.String("httpOneAddr"))
-				cmd.FailOnError(err, "Failed to run WFE load generator")
-
-				if c.String("saveRegsPath") != "" {
-					err = s.Snapshot(c.String("saveRegsPath"))
-					cmd.FailOnError(err, "Failed to save registration snapshot")
-				}
-			},
-		},
-		{
-			Name:  "ocsp-responder",
-			Usage: "OCSP-Responder generator",
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "ocspBase",
-					Usage: "The base URI of ocsp responder",
-					Value: "http://localhost:4000",
-				},
-				cli.Float64Flag{
-					Name:  "getRate",
-					Usage: "",
-				},
-				cli.Float64Flag{
-					Name:  "postRate",
-					Usage: "",
-				},
-				cli.StringFlag{
-					Name:  "issuerPath",
-					Usage: "",
-				},
-				cli.StringFlag{
-					Name:  "runtime",
-					Usage: "",
-				},
-				cli.StringFlag{
-					Name:  "latencyDataPath",
-					Usage: "Filename of latency chart data to save",
-				},
-				cli.StringFlag{
-					Name:  "serialsPath",
-					Usage: "Filename of serial CSV file to load",
-				},
-			},
-			Action: func(c *cli.Context) {
-				runtime, err := time.ParseDuration(c.String("runtime"))
-				cmd.FailOnError(err, "Failed to parse runtime")
-
-				cont, err := ioutil.ReadFile(c.String("serialsPath"))
-				cmd.FailOnError(err, "Failed to read serial CSV file")
-				serials := strings.Split(string(cont), "\n")
-
-				s, err := responder.New(
-					c.String("ocspBase"),
-					c.Float64("getRate"),
-					c.Float64("postRate"),
-					c.String("issuerPath"),
-					c.String("latencyDataPath"),
-					runtime,
-					serials,
-				)
-				cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
-
-				// go cmd.DebugServer("localhost:7002")
-
-				s.Run()
-			},
-		},
-		{
-			Name:  "chall-srv",
-			Usage: "The challenge server for WFE mode",
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "rpcAddr",
-					Usage: "Address to listen for RPC calls from WFE load-generator",
-					Value: "localhost:6060",
-				},
-				cli.StringFlag{
-					Name:  "httpOneAddr",
-					Usage: "Address for the http-0 challenge server to listen on",
-					Value: "localhost:5002",
-				},
-			},
-			Action: func(c *cli.Context) {
-				// go cmd.DebugServer("localhost:7001")
-
-				srv := wfe.NewChallSrv(c.String("httpOneAddr"), c.String("rpcAddr"))
-				srv.Run()
-			},
-		},
+	if len(os.Args) <= 1 {
+		fmt.Fprint(os.Stderr, "A sub-command is required\n\n")
+		usage([]*flag.FlagSet{wfeArgs, ocspArgs, challSrvArgs})
+		os.Exit(1)
 	}
 
-	err := app.Run(os.Args)
-	cmd.FailOnError(err, "Failed to run load-generator")
+	switch os.Args[1] {
+	case "wfe":
+		wfeArgs.Parse(os.Args[2:])
+
+		if *wfePlan == "" {
+			fmt.Fprint(os.Stderr, "--plan is required\n\n")
+			usage([]*flag.FlagSet{wfeArgs})
+			os.Exit(1)
+		}
+		runPlan, runtime, err := eventParser(*wfePlan)
+		cmd.FailOnError(err, "Failed to parse plan")
+
+		s, err := wfe.New(
+			*wfeChallRPCAddr,
+			*wfeAPIBase,
+			*wfeCertKeySize,
+			*wfeDomainBase,
+			runtime,
+			*wfeRealIP,
+			runPlan,
+			*wfeMaxRegs,
+			*wfeWarmupRegs,
+			*wfeWarmupRegWorkers,
+			*wfeResultsPath,
+			*wfeUserEmail,
+		)
+		cmd.FailOnError(err, "Failed to create WFE generator")
+
+		if *wfeLoadRegsPath != "" {
+			err = s.Restore(*wfeLoadRegsPath)
+			cmd.FailOnError(err, "Failed to load registration snapshot")
+		}
+
+		err = s.Run(os.Args[0], *wfeDontRunChallSrv, *wfeHTTPOneAddr)
+		cmd.FailOnError(err, "Failed to run WFE load generator")
+
+		if *wfeSaveRegsPath != "" {
+			err = s.Snapshot(*wfeSaveRegsPath)
+			cmd.FailOnError(err, "Failed to save registration snapshot")
+		}
+	case "ocsp":
+		ocspArgs.Parse(os.Args[2:])
+
+		getPlan, getRuntime, err := eventParser(*ocspGetPlan)
+		postPlan, postRuntime, err := eventParser(*ocspPostPlan)
+		var runtime time.Duration
+		if getRuntime < postRuntime {
+			runtime = postRuntime
+		} else {
+			runtime = getRuntime
+		}
+
+		cont, err := ioutil.ReadFile(*ocspSerialsPath)
+		cmd.FailOnError(err, "Failed to read serials file")
+		serials := strings.Split(string(cont), "\n")
+
+		s, err := responder.New(
+			*ocspBase,
+			getPlan,
+			postPlan,
+			*ocspIssuer,
+			*ocspResultsPath,
+			runtime,
+			serials,
+		)
+		cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
+
+		s.Run()
+	case "challSrv":
+		challSrvArgs.Parse(os.Args[2:])
+		srv := wfe.NewChallSrv(*challSrvHTTPOneAddr, *challSrvRPCAddr)
+		srv.Run()
+	default:
+		fmt.Fprintf(os.Stderr, "%s is a invalid command\n\n", os.Args[1])
+		usage([]*flag.FlagSet{wfeArgs, ocspArgs, challSrvArgs})
+		os.Exit(1)
+	}
+	fmt.Println("[+] All done, bye bye ^_^")
 }

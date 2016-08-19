@@ -2,6 +2,7 @@ package latency
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 )
@@ -23,6 +24,7 @@ type File struct {
 
 // New returns a new latency metrics file
 func New(filename string) (*File, error) {
+	fmt.Printf("[+] Opening results file %s\n", filename)
 	file, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		return nil, err

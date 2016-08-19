@@ -8,8 +8,6 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
-	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
-	"github.com/letsencrypt/boulder/core"
 	"io/ioutil"
 	"math/big"
 	"math/rand"
@@ -21,7 +19,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unsafe"
+
+	"github.com/letsencrypt/boulder/core"
+
+	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
+	"github.com/letsencrypt/boulder/cmd/load-generator/wfe"
 )
 
 // State holds all the good stuff
@@ -30,8 +32,10 @@ type State struct {
 	numRequests int
 	maxRequests int
 	ocspBase    string
-	getRate     float64
-	postRate    float64
+	getPlan     []wfe.RatePeriod
+	getRate     int64
+	postPlan    []wfe.RatePeriod
+	postRate    int64
 	dbURI       string
 	runtime     time.Duration
 	client      *http.Client
@@ -40,7 +44,7 @@ type State struct {
 }
 
 // New returns a pointer to a new State struct, or an error
-func New(ocspBase string, getRate, postRate float64, issuerPath, latencyPath string, runtime time.Duration, serials []string) (*State, error) {
+func New(ocspBase string, getPlan, postPlan []wfe.RatePeriod, issuerPath, latencyPath string, runtime time.Duration, serials []string) (*State, error) {
 	issuer, err := core.LoadCert(issuerPath)
 	if err != nil {
 		return nil, err
@@ -54,22 +58,38 @@ func New(ocspBase string, getRate, postRate float64, issuerPath, latencyPath str
 	}
 	s := &State{
 		ocspBase:    ocspBase,
-		getRate:     getRate,
-		postRate:    postRate,
+		getPlan:     getPlan,
+		postPlan:    postPlan,
 		runtime:     runtime,
 		client:      new(http.Client),
 		callLatency: latencyFile,
 		wg:          new(sync.WaitGroup),
 	}
 
-	fmt.Println("warming up")
+	fmt.Println("[+] Generating requests to use")
 	err = s.warmup(serials, issuer)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("finished warm up")
+	fmt.Println("[+] Finished request generation")
 
 	return s, nil
+}
+
+func (s *State) executeGETPlan() {
+	for _, p := range s.getPlan {
+		atomic.StoreInt64(&s.getRate, p.Rate)
+		fmt.Printf("[+] Set GET rate to %d/s for %s\n", p.Rate, p.For)
+		time.Sleep(p.For)
+	}
+}
+
+func (s *State) executePOSTPlan() {
+	for _, p := range s.postPlan {
+		atomic.StoreInt64(&s.postRate, p.Rate)
+		fmt.Printf("[+] Set POST rate to %d/s for %s\n", p.Rate, p.For)
+		time.Sleep(p.For)
+	}
 }
 
 // Run runs the OCSP-Responder load generator for the configured runtime/rate
@@ -77,30 +97,28 @@ func (s *State) Run() {
 	stop := make(chan bool, 2)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	if s.getRate > 0 {
+	if len(s.getPlan) > 0 {
+		go s.executeGETPlan()
 		go func() {
 			for {
-				up := unsafe.Pointer(&s.getRate)
-				gr := (*float64)(atomic.LoadPointer(&up))
 				select {
 				case <-stop:
 					return
-				case <-time.After(time.Duration(float64(time.Second.Nanoseconds()) / *gr)):
+				case <-time.After(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.getRate))):
 					s.wg.Add(1)
 					go s.sendGET()
 				}
 			}
 		}()
 	}
-	if s.postRate > 0 {
+	if len(s.postPlan) > 0 {
+		go s.executePOSTPlan()
 		go func() {
 			for {
-				up := unsafe.Pointer(&s.postRate)
-				pr := (*float64)(atomic.LoadPointer(&up))
 				select {
 				case <-stop:
 					return
-				case <-time.After(time.Duration(float64(time.Second.Nanoseconds()) / *pr)):
+				case <-time.After(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.postRate))):
 					s.wg.Add(1)
 					go s.sendPOST()
 				}
@@ -110,15 +128,14 @@ func (s *State) Run() {
 
 	select {
 	case <-time.After(s.runtime):
-		fmt.Println("SLEEP END")
+		fmt.Println("[+] Execution plans finished")
 	case sig := <-sigs:
-		fmt.Printf("SIG CAUGHT [%s], ENDING\n", sig.String())
+		fmt.Printf("[!] Execution plans interrupted: %s caught\n", sig.String())
 	}
 	stop <- true
 	stop <- true
-	fmt.Println("sent stop signals, waiting")
+	fmt.Println("[+] Waiting for pending requests to finish")
 	s.wg.Wait()
-	fmt.Println("all calls finished")
 }
 
 func (s *State) warmup(serials []string, issuer *x509.Certificate) error {
