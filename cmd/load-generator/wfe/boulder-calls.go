@@ -198,6 +198,81 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			break
 		}
 		if newAuthz.Status == "invalid" {
+			fmt.Printf("[FAILED] http-01 failed: %s\n", string(body))
+			break
+		}
+		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
+	}
+	if ident == "" {
+		return nil
+	}
+	reg.iMu.Lock()
+	reg.auths = append(reg.auths, ident)
+	reg.iMu.Unlock()
+	return nil
+}
+
+func (s *State) solveTLSOne(reg *registration, chall core.Challenge, signer jose.Signer, authURI string) error {
+	jwk := &jose.JsonWebKey{Key: &reg.key.PublicKey}
+	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return err
+	}
+	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
+
+	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
+	requestPayload, err := s.signWithNonce("/acme/challenge", false, []byte(update), signer)
+	if err != nil {
+		return err
+	}
+
+	cStarted := time.Now()
+	resp, err := s.post(chall.URI, requestPayload)
+	cFinished := time.Now()
+	cState := "good"
+	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
+	if err != nil {
+		cState = "error"
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 202 {
+		cState = "error"
+		return fmt.Errorf("Unexpected error code")
+	}
+	// Sit and spin until status valid or invalid
+	ident := ""
+	for i := 0; i < 3; i++ {
+		aStarted := time.Now()
+		resp, err = s.client.Get(authURI)
+		aFinished := time.Now()
+		aState := "good"
+		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
+		if err != nil {
+			fmt.Printf("[FAILED] authzer: %s\n", err)
+			aState = "error"
+			return err
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			// just fail
+			aState = "error"
+			return err
+		}
+		var newAuthz core.Authorization
+		err = json.Unmarshal(body, &newAuthz)
+		if err != nil {
+			fmt.Printf("[FAILED] authz: %s\n", string(body))
+			aState = "error"
+			return err
+		}
+		if newAuthz.Status == "valid" {
+			ident = newAuthz.Identifier.Value
+			break
+		}
+		if newAuthz.Status == "invalid" {
+			fmt.Printf("[FAILED] tls-sni-01 failed: %s\n", string(body))
 			break
 		}
 		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
@@ -278,13 +353,19 @@ func (s *State) newAuthorization(reg *registration) {
 
 	for _, c := range authz.Challenges {
 		switch c.Type {
-		case "http-01":
-			err = s.solveHTTPOne(reg, c, reg.signer, location)
+		// case "http-01":
+		// 	err = s.solveHTTPOne(reg, c, reg.signer, location)
+		// 	if err != nil {
+		// 		fmt.Printf("Failed to solve http-01 challenge: %s\n", err)
+		// 		return
+		// 	}
+		case "tls-sni-01":
+			err = s.solveTLSOne(reg, c, reg.signer, location)
 			if err != nil {
-				fmt.Printf("Failed to solve http-0 challenge: %s\n", err)
+				fmt.Printf("Failed to solve tls-sni-01 challenge: %s\n", err)
 				return
 			}
-			// case "tls-sni-02":
+			//case "tls-sni-02":
 			// case "dns-01":
 		}
 	}

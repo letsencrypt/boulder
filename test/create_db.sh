@@ -11,7 +11,7 @@ fi
 
 if mysql $dbconn -e 'show databases;' | grep boulder_sa_integration > /dev/null; then
   echo "Databases already created."
-  exit 0
+#  exit 0
 fi
 
 # MariaDB sets the default binlog_format to STATEMENT,

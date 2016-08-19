@@ -1,6 +1,10 @@
 package wfe
 
 import (
+	rand "crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,9 +16,15 @@ import (
 
 // ChallSrv wraps a tiny challenge webserver
 type ChallSrv struct {
-	hoMu        *sync.RWMutex
+	hoMu        sync.RWMutex
 	httpOne     map[string]string
 	httpOneAddr string
+
+	tlsOneAddr string
+
+	doMu       sync.RWMutex
+	dnsOne     map[string]string
+	dnsOneAddr string
 
 	rpcAddr string
 }
@@ -22,9 +32,9 @@ type ChallSrv struct {
 // NewChallSrv returns a pointer to a new ChallSrv
 func NewChallSrv(hoAddr, rpcAddr string) *ChallSrv {
 	return &ChallSrv{
-		hoMu:        new(sync.RWMutex),
 		httpOne:     make(map[string]string),
 		httpOneAddr: hoAddr,
+		tlsOneAddr:  "127.0.0.1:5001",
 		rpcAddr:     rpcAddr,
 	}
 }
@@ -34,14 +44,21 @@ func (s *ChallSrv) Run() {
 	go func() {
 		err := s.httpOneServer()
 		if err != nil {
-			fmt.Printf("[+] http-0 server failed: %s\n", err)
+			fmt.Printf("[!] http-0 server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
 	go func() {
 		err := s.rpcServer()
 		if err != nil {
-			fmt.Printf("[+] RPC server failed: %s\n", err)
+			fmt.Printf("[!] RPC server failed: %s\n", err)
+			os.Exit(1)
+		}
+	}()
+	go func() {
+		err := s.tlsOneServer()
+		if err != nil {
+			fmt.Printf("[!] tls-sni-01 server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
@@ -106,8 +123,51 @@ func (s *ChallSrv) hoRPC(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
+func (s *ChallSrv) tlsOneServer() error {
+	fmt.Println("[+] Starting tls-sni-01 server")
+
+	tinyKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	l, err := tls.Listen("tcp", s.tlsOneAddr, &tls.Config{
+		ClientAuth: tls.NoClientCert,
+		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			n := time.Now()
+			t := &x509.Certificate{
+				DNSNames: []string{clientHello.ServerName},
+			}
+			inner, err := x509.CreateCertificate(rand.Reader, t, t, tinyKey.Public(), tinyKey)
+			if err != nil {
+				fmt.Printf("[!] Failed to sign test certificate: %s\n", err)
+				return nil, nil
+			}
+			return &tls.Certificate{Certificate: [][]byte{inner}, PrivateKey: tinyKey}, nil
+		},
+		NextProtos: []string{"http/1.1"},
+	})
+	if err != nil {
+		return err
+	}
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Printf("[!] TLS connection failed: %s\n", err)
+			continue
+		}
+		defer conn.Close()
+		tlsConn := conn.(*tls.Conn)
+		err = tlsConn.Handshake()
+		if err != nil {
+			fmt.Printf("[!] TLS handshake failed: %s\n", err)
+			continue
+		}
+	}
+}
+
 func (s *ChallSrv) rpcServer() error {
 	fmt.Println("[+] Starting challenge RPC server")
-	http.HandleFunc("/ho", s.hoRPC)
+	http.HandleFunc("/http-01", s.hoRPC)
 	return http.ListenAndServe(s.rpcAddr, nil)
 }

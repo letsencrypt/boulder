@@ -76,18 +76,24 @@ func New(ocspBase string, getPlan, postPlan []wfe.RatePeriod, issuerPath, latenc
 	return s, nil
 }
 
-func (s *State) executeGETPlan() {
-	for _, p := range s.getPlan {
+func (s *State) executeGETPlan(wait chan struct{}) {
+	for i, p := range s.getPlan {
 		atomic.StoreInt64(&s.getRate, p.Rate)
 		fmt.Printf("[+] Set GET rate to %d/s for %s\n", p.Rate, p.For)
+		if i == 0 {
+			wait <- struct{}{}
+		}
 		time.Sleep(p.For)
 	}
 }
 
-func (s *State) executePOSTPlan() {
-	for _, p := range s.postPlan {
+func (s *State) executePOSTPlan(wait chan struct{}) {
+	for i, p := range s.postPlan {
 		atomic.StoreInt64(&s.postRate, p.Rate)
 		fmt.Printf("[+] Set POST rate to %d/s for %s\n", p.Rate, p.For)
+		if i == 0 {
+			wait <- struct{}{}
+		}
 		time.Sleep(p.For)
 	}
 }
@@ -98,8 +104,10 @@ func (s *State) Run() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	if len(s.getPlan) > 0 {
-		go s.executeGETPlan()
+		wait := make(chan struct{})
+		go s.executeGETPlan(wait)
 		go func() {
+			<-wait
 			for {
 				select {
 				case <-stop:
@@ -112,8 +120,10 @@ func (s *State) Run() {
 		}()
 	}
 	if len(s.postPlan) > 0 {
-		go s.executePOSTPlan()
+		wait := make(chan struct{})
+		go s.executePOSTPlan(wait)
 		go func() {
+			<-wait
 			for {
 				select {
 				case <-stop:

@@ -2,6 +2,7 @@
 
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 import numpy as np
 import datetime
 import json
@@ -26,17 +27,14 @@ handles, labels = randAx.get_legend_handles_labels()
 # big ol' plotting method
 def plot_section(all_data, title, outputPath):
     actions = all_data.groupby('action')
-    h = len(actions.groups)
-    matplotlib.rcParams['figure.figsize'] = 18, 3 * h
+    h = len(actions.groups.keys())
+    matplotlib.rcParams['figure.figsize'] = 20, 3 * h
 
-    fig, axes = plt.subplots(h, 3)
-    fig.legend(handles, labels, ncol=6, fontsize=16, framealpha=0, loc='lower center')
-    fig.suptitle(title, fontsize=20)
-    plt.subplots_adjust(wspace=0.275, hspace=0.5) #, left=0.05, right=0.95, bottom=0.04)
-    if h < 3:
-        plt.subplots_adjust(top=0.8)
-    else:
-        plt.subplots_adjust(top=0.92)
+    fig = plt.figure()
+    fig.legend(handles, labels, ncol=6, fontsize=16, framealpha=0, loc='upper center')
+    if title is not None:
+        fig.suptitle(title, fontsize=20, y=0.93)
+    gs = gridspec.GridSpec(h, 3)
 
     # figure out left and right datetime bounds from started and stopped
     started = all_data['sent'].min()
@@ -44,12 +42,15 @@ def plot_section(all_data, title, outputPath):
 
     i = 0
     for section in actions.groups.keys():
-        ax = axes[i][0]
+        # ax = axes[i][0]
+        ax = fig.add_subplot(gs[i, 0])
         ax.set_title(section)
         ax.set_xlim(started, stopped)
-        ax2 = axes[i][2]
+        # ax2 = axes[i][2]
+        ax2 = fig.add_subplot(gs[i, 2])
         ax2.set_xlim(started, stopped)
-        ax3 = axes[i][1]
+        # ax3 = axes[i][1]
+        ax3 = fig.add_subplot(gs[i, 1])
         ax3.set_xlim(started, stopped)
 
         calls = actions.get_group(section)
@@ -113,7 +114,9 @@ def plot_section(all_data, title, outputPath):
         majorFormatter = matplotlib.dates.DateFormatter('%H:%M:%S')
         ax.xaxis.set_major_formatter(majorFormatter)
 
-    fig.savefig(outputPath)
+    # fig = plct.gcf()
+    gs.update(wspace=0.275, hspace=0.5)
+    fig.savefig(outputPath, bbox_inches='tight')
 
 # and the main event
 parser = argparse.ArgumentParser()
