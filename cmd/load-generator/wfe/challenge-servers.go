@@ -134,7 +134,6 @@ func (s *ChallSrv) tlsOneServer() error {
 	l, err := tls.Listen("tcp", s.tlsOneAddr, &tls.Config{
 		ClientAuth: tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			n := time.Now()
 			t := &x509.Certificate{
 				DNSNames: []string{clientHello.ServerName},
 			}
