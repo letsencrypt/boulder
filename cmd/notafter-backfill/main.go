@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,7 +19,7 @@ import (
 
 type dbAccess interface {
 	Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error)
-	Update(list ...interface{}) (int64, error)
+	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 type backfiller struct {
@@ -47,12 +48,20 @@ func (b backfiller) printStatus(
 }
 
 func (b backfiller) backfill(certStatus core.CertificateStatus) error {
-	updated, err := b.dbMap.Update(&certStatus)
+	// We explicit use `Exec` over `Update` to avoid contention on the
+	// `LockCol` field that Gorp uses for optimistic locking. With an
+	// `ocsp-updater` running at the same time as a backfill there is a pretty
+	// good chance they would clobber each others `LockCol` values if we used
+	// `Update()` instead of a raw `Exec()`.
+	_, err := b.dbMap.Exec(
+		`UPDATE certificateStatus
+		 SET notAfter=?
+		 WHERE serial=?`,
+		certStatus.NotAfter,
+		certStatus.Serial,
+	)
 	if err != nil {
 		return err
-	}
-	if updated != 1 {
-		return fmt.Errorf("backfill Update() did not change exactly 1 row")
 	}
 	return nil
 }
