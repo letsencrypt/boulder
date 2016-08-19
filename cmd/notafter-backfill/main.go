@@ -143,19 +143,39 @@ func (b backfiller) processForever() error {
 	return nil
 }
 
-//TODO(cpu): Write a usage intro!
 const usageIntro = `
 Introduction:
 
-<Foo>
+The "20160817143417_AddCertStatusNotAfter.sql" db migration adds a "notAfter"
+column to the certificateStatus database table. This field duplicates the
+contents of the certificates table "expires" column. This enables performance
+improvements[0] for both the ocsp-updater and the expiration-mailer utilities.  
+
+Since existing rows will have a NULL value in the new field he notafter-backfill
+utility exists to perform a one-time update of the existing certificateStatus
+rows to set their notAfter column based on the data that exists in the
+certificates table.
+
+[0] https://github.com/letsencrypt/boulder/issues/1864
 
 Examples:
 
-<Foo>
+  Process 50 certificates at a time, printing the updates but not performing
+  them:
+
+  notafter-backfill -config test/config/notafter-backfiller.json -batchSize=50
+    -dryRun=true
+
+  Process 1000 certificates at a time, quitting after 5 batches (5000
+  certificates) and sleeping 10 minutes between batches:
+
+  notafter-backfill -config test/config/notafter-backfiller.json -batchSize=1000
+    -numBatches=5 -sleep=5m -dryRun=false
 
 Required arguments:
 
-<Foo>
+- config
+
 `
 
 func main() {
