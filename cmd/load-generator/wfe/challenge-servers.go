@@ -5,8 +5,10 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -135,7 +137,9 @@ func (s *ChallSrv) tlsOneServer() error {
 		ClientAuth: tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			t := &x509.Certificate{
-				DNSNames: []string{clientHello.ServerName},
+				SerialNumber: big.NewInt(1),
+				DNSNames:     []string{clientHello.ServerName},
+				Subject:      pkix.Name{CommonName: "test"},
 			}
 			inner, err := x509.CreateCertificate(rand.Reader, t, t, tinyKey.Public(), tinyKey)
 			if err != nil {
