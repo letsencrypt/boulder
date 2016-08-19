@@ -8,6 +8,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to
@@ -17,7 +19,7 @@ type MockCA struct {
 }
 
 // IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
 	if ca.PEM == nil {
 		return core.Certificate{}, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -37,6 +39,6 @@ func (ca *MockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequ
 }
 
 // RevokeCertificate is a mock
-func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	return
 }

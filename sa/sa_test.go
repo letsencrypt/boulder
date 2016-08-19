@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"net/url"
 	"reflect"
 	"testing"
 	"time"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -65,11 +65,8 @@ func TestAddRegistration(t *testing.T) {
 
 	jwk := satest.GoodJWK()
 
-	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
-	if err != nil {
-		t.Fatalf("unable to parse contact link: %s", err)
-	}
-	contacts := &[]*core.AcmeURL{contact}
+	contact := "mailto:foo@example.com"
+	contacts := &[]string{contact}
 	reg, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jwk,
 		Contact:   contacts,
@@ -96,12 +93,10 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
-	u, _ := core.ParseAcmeURL("test.com")
-
 	newReg := core.Registration{
 		ID:        reg.ID,
 		Key:       jwk,
-		Contact:   &[]*core.AcmeURL{u},
+		Contact:   &[]string{"test.com"},
 		InitialIP: net.ParseIP("72.72.72.72"),
 		Agreement: "yes",
 	}
@@ -540,16 +535,15 @@ func TestMarkCertificateRevoked(t *testing.T) {
 
 	fc.Add(1 * time.Hour)
 
-	code := core.RevocationCode(1)
-	err = sa.MarkCertificateRevoked(ctx, serial, code)
+	err = sa.MarkCertificateRevoked(ctx, serial, revocation.KeyCompromise)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
 	afterStatus := certificateStatusObj.(*core.CertificateStatus)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
-	if code != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %v, got %v", code, afterStatus.RevokedReason)
+	if revocation.KeyCompromise != afterStatus.RevokedReason {
+		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, afterStatus.RevokedReason)
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
@@ -589,26 +583,23 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	contact := core.AcmeURL(url.URL{
-		Scheme: "mailto",
-		Opaque: "foo@example.com",
-	})
+	contact := "mailto:foo@example.com"
 
 	_, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		Contact:   &[]*core.AcmeURL{&contact},
+		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
-		Contact:   &[]*core.AcmeURL{&contact},
+		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
-		Contact:   &[]*core.AcmeURL{&contact},
+		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")

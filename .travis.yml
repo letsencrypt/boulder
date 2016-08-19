@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.5.3
+  - 1.6.3
 
 addons:
   hosts:
@@ -34,13 +34,13 @@ branches:
 env:
   global:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
-    - GO15VENDOREXPERIMENT=1
   matrix:
     - RUN="vet fmt migrations integration godep-restore errcheck generate"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json" BOULDER_CONFIG_DIR="test/config-next"
+    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
+    - RUN="rpm"
 
 install:
   - ./test/travis-before-install.sh
@@ -49,4 +49,4 @@ install:
   - docker-compose build
 
 script:
-  - docker-compose run -e BOULDER_CONFIG="${BOULDER_CONFIG}" -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder  ./test.sh
+  - docker-compose run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder  ./test.sh

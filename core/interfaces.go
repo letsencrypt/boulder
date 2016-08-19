@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
 
-	jose "github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/revocation"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -66,16 +68,16 @@ type RegistrationAuthority interface {
 	UpdateAuthorization(ctx context.Context, authz Authorization, challengeIndex int, response Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code RevocationCode, regID int64) error
+	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
 	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
+	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
+	IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (Certificate, error)
 	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 
@@ -109,7 +111,7 @@ type StorageAdder interface {
 	NewPendingAuthorization(ctx context.Context, authz Authorization) (Authorization, error)
 	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
-	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode RevocationCode) error
+	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)

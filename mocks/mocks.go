@@ -19,6 +19,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // StorageAuthority is a mock
@@ -113,8 +114,10 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 		panic(err)
 	}
 
+	contacts := []string{"mailto:person@mail.com"}
+
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
+		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -218,7 +221,7 @@ func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.
 }
 
 // MarkCertificateRevoked is a mock
-func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	return
 }
 

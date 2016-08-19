@@ -4,9 +4,13 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": "localhost:8001",
-    "Key": {
-      "File": "test/test-ca.key"
-    },
+    "Issuers": [{
+      "ConfigFile": "test/test-ca.key-pkcs11.json",
+      "CertFile": "test/test-ca2.pem"
+    }, {
+      "ConfigFile": "test/test-ca.key-pkcs11.json",
+      "CertFile": "test/test-ca.pem"
+    }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
     "maxNames": 1000,
@@ -117,13 +121,6 @@
         "rpcTimeout": "15s"
       }
     }
-  },
-
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
   },
 
   "pa": {

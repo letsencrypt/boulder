@@ -20,19 +20,19 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/nonce"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/nonce"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -139,7 +139,9 @@ EeMZ9nWyIM6bktLrE11HnFOnKhAYsM5fZA==
 -----END EC PRIVATE KEY-----`
 )
 
-type MockRegistrationAuthority struct{}
+type MockRegistrationAuthority struct {
+	lastRevocationReason revocation.Reason
+}
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
 	return reg, nil
@@ -163,11 +165,12 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, au
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason revocation.Reason, reg int64) error {
+	ra.lastRevocationReason = reason
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {
 	return nil
 }
 
@@ -623,7 +626,9 @@ func TestIssueCertificate(t *testing.T) {
 		testKeyPolicy,
 		0,
 		true,
-		false)
+		false,
+		300*24*time.Hour,
+		7*24*time.Hour)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
@@ -683,7 +688,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -874,7 +879,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -899,42 +904,19 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-type FailureRegistrationAuthority struct{}
-
-func (ra *FailureRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
-	return core.Registration{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
-	return core.Authorization{}, fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
-	return fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
-func (ra *FailureRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
-	return fmt.Errorf("FailureRegistrationAuthority failed by design")
-}
-
+// Test that the WFE handling of the "empty update" POST is correct. The ACME
+// spec describes how when clients wish to query the server for information
+// about a registration an empty registration update should be sent, and
+// a populated reg object will be returned.
 func TestEmptyRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	responseWriter := httptest.NewRecorder()
 
+	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
+	// return a populated registration for GetRegistrationByKey when test key 1 is
+	// used.
 	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	rsaKey, ok := key.(*rsa.PrivateKey)
@@ -942,12 +924,6 @@ func TestEmptyRegistration(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 	signer.SetNonceSource(wfe.nonceService)
-
-	// Use the FailureRegistrationAuthority to ensure that if any method of the RA
-	// is invoked for this Registration post that the test fails. We explicitly
-	// want to test that the WFE returns for empty reg updates without consulting
-	// the RA or SA.
-	wfe.RA = &FailureRegistrationAuthority{}
 
 	emptyReg := `{"resource":"reg"}`
 	emptyBody, err := signer.Sign([]byte(emptyReg))
@@ -960,11 +936,16 @@ func TestEmptyRegistration(t *testing.T) {
 		responseWriter,
 		makePostRequestWithPath("1", emptyBody.FullSerialize()))
 
-	// There should be no error, particularly from the FailureRegistrationAuthority
+	// There should be no error
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
-	// There shouldn't be a Contact or Agreement in the response
-	test.AssertNotContains(t, responseWriter.Body.String(), "Contact")
-	test.AssertNotContains(t, responseWriter.Body.String(), "Agreement")
+
+	// We should get back a populated Registration
+	var reg core.Registration
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
+	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	responseWriter.Body.Reset()
 }
 
@@ -1063,7 +1044,7 @@ func TestNewRegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0].String(), "mailto:person@mail.com")
+	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -1102,7 +1083,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-func makeRevokeRequestJSON() ([]byte, error) {
+func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	certPemBytes, err := ioutil.ReadFile("test/238.crt")
 	if err != nil {
 		return nil, err
@@ -1112,11 +1093,13 @@ func makeRevokeRequestJSON() ([]byte, error) {
 		return nil, err
 	}
 	revokeRequest := struct {
-		Resource       string          `json:"resource"`
-		CertificateDER core.JSONBuffer `json:"certificate"`
+		Resource       string             `json:"resource"`
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
 	}{
 		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
+		Reason:         reason,
 	}
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
 	if err != nil {
@@ -1149,10 +1132,11 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe, fc := setupWFE(t)
+	wfe.AcceptRevocationReason = true
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
@@ -1164,10 +1148,78 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
+func TestRevokeCertificateReasons(t *testing.T) {
+	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key, err := jose.LoadPrivateKey(keyPemBytes)
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	// Valid reason
+	keyComp := revocation.Reason(1)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	wfe, fc := setupWFE(t)
+	wfe.AcceptRevocationReason = true
+	ra := wfe.RA.(*MockRegistrationAuthority)
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	responseWriter := httptest.NewRecorder()
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ := signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, ra.lastRevocationReason, revocation.Reason(1))
+
+	// No reason
+	responseWriter = httptest.NewRecorder()
+	revokeRequestJSON, err = makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, ra.lastRevocationReason, revocation.Reason(0))
+
+	// Unsupported reason
+	responseWriter = httptest.NewRecorder()
+	unsupported := revocation.Reason(2)
+	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 400)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
+
+	responseWriter = httptest.NewRecorder()
+	unsupported = revocation.Reason(100)
+	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	signer.SetNonceSource(wfe.nonceService)
+	result, _ = signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 400)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
+}
+
 // Valid revocation request for existing, non-revoked cert, signed with account
 // key.
 func TestRevokeCertificateAccountKey(t *testing.T) {
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe, _ := setupWFE(t)
@@ -1198,7 +1250,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 	accountKeySigner2, err := jose.NewSigner("RS256", test2Key)
 	test.AssertNotError(t, err, "Failed to make signer")
 	accountKeySigner2.SetNonceSource(wfe.nonceService)
-	revokeRequestJSON, err := makeRevokeRequestJSON()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
 	result, _ := accountKeySigner2.Sign(revokeRequestJSON)
@@ -1445,6 +1497,19 @@ func TestRegistration(t *testing.T) {
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
 	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with registration up in the mock (with old agreement URL)
+	responseWriter.HeaderMap = http.Header{}
+	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Couldn't sign")
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", result.FullSerialize()))
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	links = responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
+	responseWriter.Body.Reset()
 }
 
 func TestTermsRedirect(t *testing.T) {
@@ -1641,6 +1706,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 
 	mux, _ := wfe.Handler()
 	s := httptest.NewServer(mux)
+	defer s.Close()
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

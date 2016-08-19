@@ -9,8 +9,11 @@ your certificate before then, or visitors to your website will encounter errors.
 For any questions or support, please visit https://community.letsencrypt.org/.
 Unfortunately, we can't provide support by email.
 
+For details about when we send these emails, please visit
+https://letsencrypt.org/docs/expiration-emails/.
+
 If you want to stop receiving all email from this address, click
-|UNSUB:https://mandrillapp.com/unsub|.
+|UNSUB:https://mandrillapp.com/unsub|
 
 Regards,
 The Let's Encrypt Team

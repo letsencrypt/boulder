@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
-	"strings"
+	"time"
 
 	"gopkg.in/gorp.v1"
 
@@ -21,13 +20,19 @@ type contactExporter struct {
 	log   blog.Logger
 	dbMap *gorp.DbMap
 	clk   clock.Clock
+	grace time.Duration
 }
 
-func (c contactExporter) findContacts() ([]string, error) {
-	var contactsJSON [][]byte
+type contact struct {
+	ID int64 `json:"id"`
+}
+
+// Find all registration contacts with unexpired certificates.
+func (c contactExporter) findContacts() ([]contact, error) {
+	var contactsList []contact
 	_, err := c.dbMap.Select(
-		&contactsJSON,
-		`SELECT contact AS active_contact
+		&contactsList,
+		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
 			id IN (
@@ -36,47 +41,27 @@ func (c contactExporter) findContacts() ([]string, error) {
 				WHERE expires >= :expireCutoff
 			);`,
 		map[string]interface{}{
-			"expireCutoff": c.clk.Now(),
+			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
 		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
 		return nil, err
 	}
 
-	contactMap := make(map[string]struct{}, len(contactsJSON))
-	for _, contactRaw := range contactsJSON {
-		var contactList []string
-		err := json.Unmarshal(contactRaw, &contactList)
-		if err != nil {
-			c.log.AuditErr(
-				fmt.Sprintf("couldn't unmarshal contact JSON %#v: %s\n",
-					contactRaw, err))
-			continue
-		}
-		for _, entry := range contactList {
-			// Only include email addresses
-			if strings.HasPrefix(entry, "mailto:") {
-				address := strings.TrimPrefix(entry, "mailto:")
-				// Using the contactMap to deduplicate addresses
-				contactMap[address] = struct{}{}
-			}
-		}
-	}
-
-	// Convert the de-dupe'd map back to a slice, sort it
-	var contacts []string
-	for contact := range contactMap {
-		contacts = append(contacts, contact)
-	}
-	sort.Strings(contacts)
-	return contacts, nil
+	return contactsList, nil
 }
 
-func writeContacts(contacts []string, outFile string) error {
-	data := []byte(strings.Join(contacts, "\n") + "\n")
+// The `writeContacts` function produces a file containing JSON serialized
+// contact objects
+func writeContacts(contactsList []contact, outfile string) error {
+	data, err := json.Marshal(contactsList)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
 
-	if outFile != "" {
-		return ioutil.WriteFile(outFile, data, 0644)
+	if outfile != "" {
+		return ioutil.WriteFile(outfile, data, 0644)
 	} else {
 		fmt.Printf("%s", data)
 		return nil
@@ -86,19 +71,38 @@ func writeContacts(contacts []string, outFile string) error {
 const usageIntro = `
 Introduction:
 
-The contact exporter exists to retrieve the email addresses of all registered
-users with currently unexpired certificates. This list of email addresses can
+The contact exporter exists to retrieve the IDs of all registered
+users with currently unexpired certificates. This list of registration IDs can
 then be given as input to the notification mailer to send bulk notifications.
 
-The email addresses are deduplicated and sorted prior to being writen to the
-outfile. E.g. if two registrations exist with the contact email
-"example@example.com", this address will only appear once. Registration contacts
-that are *not* email addresses are discarded (e.g. tel:999-999-9999)
+The -grace parameter can be used to allow registrations with certificates that
+have already expired to be included in the export. The argument is a Go duration
+obeying the usual suffix rules (e.g. 24h).
+
+Registration IDs are favoured over email addresses as the intermediate format in
+order to ensure the most up to date contact information is used at the time of
+notification. The notification mailer will resolve the ID to email(s) when the
+mailing is underway, ensuring we use the correct address if a user has updated
+their contact information between the time of export and the time of
+notification.
+
+The contact exporter's registration ID output will be JSON of the form:
+  [
+   { "id": 1 },
+   ...
+   { "id": n }
+  ]
 
 Examples:
-  Export all email addresses to "emails.txt":
+  Export all registration IDs with unexpired certificates to "regs.json":
 
-  contact-exporter -config test/config/contact-exporter.json -outfile emails.txt
+  contact-exporter -config test/config/contact-exporter.json -outfile regs.json
+
+  Export all registration IDs with certificates that are unexpired or expired
+  within the last two days to "regs.json":
+
+  contact-exporter -config test/config/contact-exporter.json -grace 48h -outfile
+    "regs.json"
 
 Required arguments:
 - config
@@ -106,6 +110,7 @@ Required arguments:
 
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
+	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -143,6 +148,7 @@ func main() {
 		log:   log,
 		dbMap: dbMap,
 		clk:   cmd.Clock(),
+		grace: *grace,
 	}
 
 	contacts, err := exporter.findContacts()

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -27,19 +28,10 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
-
-// DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
-// When used with a 90-day cert lifetime, this allows creation of certs that will
-// cover a whole year, plus a grace period of a month.
-// TODO(jsha): Read from a config file.
-const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
-
-// DefaultPendingAuthorizationLifetime is one week.  If you can't respond to a
-// challenge this quickly, then you need to request a new challenge.
-// TODO(rlb): Read from a config file
-const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
 // initialized with everything else in NewRegistrationAuthority() then multiple
@@ -89,14 +81,16 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	forceCNFromSAN bool,
 	reuseValidAuthz bool,
+	authorizationLifetime time.Duration,
+	pendingAuthorizationLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		authorizationLifetime:        DefaultAuthorizationLifetime,
-		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
+		authorizationLifetime:        authorizationLifetime,
+		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
@@ -267,7 +261,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	reg = core.Registration{
 		Key: init.Key,
 	}
-	_ = reg.MergeUpdate(init)
+	_ = mergeUpdate(&reg, init)
 
 	// This field isn't updatable by the end user, so it isn't copied by
 	// MergeUpdate. But we need to fill it in for new registrations.
@@ -290,7 +284,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
 	}
@@ -300,20 +294,24 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	}
 
 	for _, contact := range *contacts {
-		if contact == nil {
+		if contact == "" {
+			return core.MalformedRequestError("Empty contact")
+		}
+		parsed, err := url.Parse(contact)
+		if err != nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		if contact.Scheme != "mailto" {
-			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+		if parsed.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsed.Scheme))
 		}
-		if !core.IsASCII(contact.String()) {
+		if !core.IsASCII(contact) {
 			return core.MalformedRequestError(
-				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact.String()))
+				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact))
 		}
 
 		start := ra.clk.Now()
 		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+		problem := validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
 		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
 		if problem != nil {
 			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
@@ -449,7 +447,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -779,7 +777,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 
 // UpdateRegistration updates an existing Registration with new values.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
-	if changed := base.MergeUpdate(update); !changed {
+	if changed := mergeUpdate(&base, update); !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since theres
 		// nothing for the SA to do
@@ -801,6 +799,58 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 
 	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
 	return base, nil
+}
+
+func contactsEqual(r *core.Registration, other core.Registration) bool {
+	// If there is no existing contact slice, or the contact slice lengths
+	// differ, then the other contact is not equal
+	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+		return false
+	}
+
+	// If there is an existing contact slice and it has the same length as the
+	// new contact slice we need to look at each contact to determine if there
+	// is a change being made. Use `sort.Strings` here to ensure a consistent
+	// comparison
+	a := *other.Contact
+	b := *r.Contact
+	sort.Strings(a)
+	sort.Strings(b)
+	for i := 0; i < len(a); i++ {
+		// If the contact's string representation differs at any index they aren't
+		// equal
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	// They are equal!
+	return true
+}
+
+// MergeUpdate copies a subset of information from the input Registration
+// into the Registration r. It returns true if an update was performed and the base object
+// was changed, and false if no change was made.
+func mergeUpdate(r *core.Registration, input core.Registration) bool {
+	var changed bool
+
+	// Note: we allow input.Contact to overwrite r.Contact even if the former is
+	// empty in order to allow users to remove the contact associated with
+	// a registration. Since the field type is a pointer to slice of pointers we
+	// can perform a nil check to differentiate between an empty value and a nil
+	// (e.g. not provided) value
+	if input.Contact != nil && !contactsEqual(r, input) {
+		r.Contact = input.Contact
+		changed = true
+	}
+
+	// If there is an agreement in the input and it's not the same as the base,
+	// then we update the base
+	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
+		r.Agreement = input.Agreement
+		changed = true
+	}
+	return changed
 }
 
 // UpdateAuthorization updates an authorization with new values.
@@ -911,19 +961,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	return
 }
 
-func revokeEvent(state, serial, cn string, names []string, revocationCode core.RevocationCode) string {
+func revokeEvent(state, serial, cn string, names []string, revocationCode revocation.Reason) string {
 	return fmt.Sprintf(
 		"Revocation - State: %s, Serial: %s, CN: %s, DNS Names: %s, Reason: %s",
 		state,
 		serial,
 		cn,
 		names,
-		core.RevocationReasons[revocationCode],
+		revocation.ReasonToString[revocationCode],
 	)
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
@@ -956,7 +1006,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 

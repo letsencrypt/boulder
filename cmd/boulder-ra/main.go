@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -50,9 +51,18 @@ type config struct {
 		// instructs the RA to reuse the previously created authz in lieu of
 		// creating another.
 		ReuseValidAuthz bool
-	}
 
-	AllowedSigningAlgos *cmd.AllowedSigningAlgos
+		// AuthorizationLifetimeDays defines how long authorizations will be
+		// considered valid for. Given a value of 300 days when used with a 90-day
+		// cert lifetime, this allows creation of certs that will cover a whole
+		// year, plus a grace period of a month.
+		AuthorizationLifetimeDays int
+
+		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
+		// the pending state. If you can't respond to a challenge this quickly, then
+		// you need to request a new challenge.
+		PendingAuthorizationLifetimeDays int
+	}
 
 	PA cmd.PAConfig
 
@@ -116,15 +126,29 @@ func main() {
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 
+	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
+	authorizationLifetime := 300 * 24 * time.Hour
+	if c.RA.AuthorizationLifetimeDays != 0 {
+		authorizationLifetime = time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour
+	}
+
+	// TODO(patf): remove once RA.pendingAuthorizationLifetimeDays is deployed
+	pendingAuthorizationLifetime := 7 * 24 * time.Hour
+	if c.RA.PendingAuthorizationLifetimeDays != 0 {
+		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
+	}
+
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
 		stats,
 		c.RA.MaxContactsPerRegistration,
-		c.AllowedSigningAlgos.KeyPolicy(),
+		goodkey.NewKeyPolicy(),
 		c.RA.MaxNames,
 		c.RA.DoNotForceCN,
-		c.RA.ReuseValidAuthz)
+		c.RA.ReuseValidAuthz,
+		authorizationLifetime,
+		pendingAuthorizationLifetime)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
