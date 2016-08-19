@@ -89,7 +89,8 @@ func main() {
 
 	switch os.Args[1] {
 	case "wfe":
-		wfeArgs.Parse(os.Args[2:])
+		err := wfeArgs.Parse(os.Args[2:])
+		cmd.FailOnError(err, "Failed to parse arguments")
 
 		if *wfePlan == "" {
 			fmt.Fprint(os.Stderr, "--plan is required\n\n")
@@ -128,7 +129,8 @@ func main() {
 			cmd.FailOnError(err, "Failed to save registration snapshot")
 		}
 	case "ocsp":
-		ocspArgs.Parse(os.Args[2:])
+		err := ocspArgs.Parse(os.Args[2:])
+		cmd.FailOnError(err, "Failed to parse arguments")
 
 		getPlan, getRuntime, err := eventParser(*ocspGetPlan)
 		postPlan, postRuntime, err := eventParser(*ocspPostPlan)
@@ -156,7 +158,8 @@ func main() {
 
 		s.Run()
 	case "challSrv":
-		challSrvArgs.Parse(os.Args[2:])
+		err := challSrvArgs.Parse(os.Args[2:])
+		cmd.FailOnError(err, "Failed to parse arguments")
 		srv := wfe.NewChallSrv(*challSrvHTTPOneAddr, *challSrvRPCAddr)
 		srv.Run()
 	default:
