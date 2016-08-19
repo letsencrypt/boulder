@@ -69,25 +69,11 @@ func (b backfiller) backfill(certStatus core.CertificateStatus) error {
 func (b backfiller) findEmpty() ([]core.CertificateStatus, error) {
 	var certs []core.CertificateStatus
 
-	// Note: there is a slight switch-a-roo happening here where the `expires`
-	// field of the `certificates` table is renamed to `notAfter` in order to
-	// populate the portion of a `CertificateStatus` object we wish to update.
 	_, err := b.dbMap.Select(&certs,
 		`SELECT
-			 cs.serial,
-			 cs.subscriberApproved,
-			 cs.status,
-			 cs.ocspLastUpdated,
-			 cs.revokedDate,
-			 cs.revokedReason,
-			 cs.lastExpirationNagSent,
-			 cs.LockCol,
-			 cs.ocspResponse,
-			 certificates.expires AS notAfter
-			 FROM certificates
-			 JOIN certificateStatus AS cs
-			 ON cs.serial = certificates.serial
-			 AND cs.notAfter IS NULL
+			 serial,
+			 FROM certificatesStatus
+			 WHERE notAfter IS NULL
 			 LIMIT :batchSize`,
 		map[string]interface{}{
 			"batchSize": b.batchSize,
@@ -100,6 +86,27 @@ func (b backfiller) findEmpty() ([]core.CertificateStatus, error) {
 	return certs, nil
 }
 
+func (b backfiller) populateNotAfter(certs []core.CertificateStatus) error {
+	for _, c := range certs {
+		// Note: there is a slight switch-a-roo happening here where the `expires`
+		// field of the `certificates` table is renamed to `notAfter` in order to
+		// populate the portion of a `CertificateStatus` object we wish to update.
+		_, err := b.dbMap.Select(&c,
+			`SELECT
+			expires AS notAfter
+			FROM certificates
+			WHERE serial = :serial
+			LIMIT 1`,
+			map[string]interface{}{
+				"serial": c.Serial,
+			})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (b backfiller) processBatch() (int, error) {
 	certs, err := b.findEmpty()
 	if err != nil {
@@ -109,6 +116,11 @@ func (b backfiller) processBatch() (int, error) {
 	b.log.Info(fmt.Sprintf("Found %d certificates for this batch", len(certs)))
 	if len(certs) == 0 {
 		return 0, nil // Nothing to backfill!
+	}
+
+	err = b.populateNotAfter(certs)
+	if err != nil {
+		return 0, err
 	}
 
 	startTime := b.clk.Now()
