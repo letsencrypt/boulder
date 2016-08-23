@@ -765,3 +765,66 @@ func TestAddIssuedNames(t *testing.T) {
 		t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, expectedArgs)
 	}
 }
+
+func TestDeactivateAuthorization(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	PA := core.Authorization{RegistrationID: reg.ID}
+
+	PA, err := sa.NewPendingAuthorization(ctx, PA)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
+
+	dbPa, err := sa.GetAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
+	test.AssertMarshaledEquals(t, PA, dbPa)
+
+	expectedPa := core.Authorization{ID: PA.ID}
+	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
+
+	combos := make([][]int, 1)
+	combos[0] = []int{0, 1}
+
+	exp := time.Now().AddDate(0, 0, 1)
+	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
+	newPa := core.Authorization{
+		ID:             PA.ID,
+		Identifier:     identifier,
+		RegistrationID: reg.ID,
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Combinations:   combos,
+	}
+	err = sa.UpdatePendingAuthorization(ctx, newPa)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
+
+	newPa.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, newPa)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+PA.ID)
+
+	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+
+	err = sa.DeactivateAuthorization(ctx, dbPa.ID)
+	test.AssertNotError(t, err, "Couldn't deactivate valid authorization with ID "+PA.ID)
+
+	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+
+	PA, err = sa.NewPendingAuthorization(ctx, PA)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
+	PA.Status = core.StatusPending
+	err = sa.UpdatePendingAuthorization(ctx, PA)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
+
+	err = sa.DeactivateAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't deactivate pending authorization with ID "+PA.ID)
+
+	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+}
