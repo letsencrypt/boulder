@@ -530,7 +530,7 @@ func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx con
 	return
 }
 
-// DeactivateAuthorization deactivates a currently valid authorization
+// DeactivateAuthorization deactivates a currently valid or pending authorization
 func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Context, authz core.Authorization) error {
 	data, err := json.Marshal(authz)
 	if err != nil {
@@ -1527,7 +1527,7 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 	return exists.Exists, err
 }
 
-// DeactivateAuthorization deactivates a currently valid authorization
+// DeactivateAuthorization deactivates a currently valid or pending authorization
 func (cac StorageAuthorityClient) DeactivateAuthorization(ctx context.Context, id string) error {
 	_, err := cac.rpc.DispatchSync(MethodDeactivateAuthorizationSA, []byte(id))
 	return err

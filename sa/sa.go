@@ -926,7 +926,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	table := "authz"
 	oldStatus := core.StatusValid
 	if existingPending(tx, id) {
-		table = "pendingAuthz"
+		table = "pendingAuthorizations"
 		oldStatus = core.StatusPending
 	}
 

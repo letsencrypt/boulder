@@ -817,7 +817,21 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 
 	err = sa.DeactivateAuthorization(ctx, dbPa.ID)
-	test.AssertNotError(t, err, "Couldn't deactivate authorization with ID "+PA.ID)
+	test.AssertNotError(t, err, "Couldn't deactivate valid authorization with ID "+PA.ID)
+
+	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+
+	PA, err = sa.NewPendingAuthorization(ctx, PA)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
+	PA.Status = core.StatusPending
+	err = sa.UpdatePendingAuthorization(ctx, PA)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
+
+	err = sa.DeactivateAuthorization(ctx, PA.ID)
+	test.AssertNotError(t, err, "Couldn't deactivate pending authorization with ID "+PA.ID)
 
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
