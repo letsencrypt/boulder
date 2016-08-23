@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
@@ -33,7 +32,7 @@ type eapConfig struct {
 }
 
 type expiredAuthzPurger struct {
-	stats statsd.Statter
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 	db    *gorp.DbMap
@@ -85,7 +84,7 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 			return rowsAffected, err
 		}
 
-		p.stats.Inc("PendingAuthzDeleted", rows, 1.0)
+		p.stats.Inc("PendingAuthzDeleted", rows)
 		rowsAffected += rows
 		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d total) expired pending authorizations", rows, rowsAffected))
 
@@ -113,6 +112,7 @@ func main() {
 
 	// Set up logging
 	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
+	scope := metrics.NewStatsdScope(stats, "AuthzPurger")
 	auditlogger.Info(cmd.Version())
 
 	// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -123,10 +123,10 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	purger := &expiredAuthzPurger{
-		stats:     stats,
+		stats:     scope,
 		log:       auditlogger,
 		clk:       cmd.Clock(),
 		db:        dbMap,

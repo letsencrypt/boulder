@@ -14,11 +14,10 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -111,16 +110,17 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (statsd.Statter, blog.Logger, *rpc.StorageAuthorityClient) {
+func setup(configFile string) (metrics.Scope, blog.Logger, *rpc.StorageAuthorityClient) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
 	err = json.Unmarshal(configJSON, &conf)
 	cmd.FailOnError(err, "Failed to parse config file")
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
+	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
 	sa, err := rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
-	return stats, logger, sa
+	return scope, logger, sa
 }
 
 func main() {
@@ -170,9 +170,9 @@ func main() {
 			}
 		}
 		logger.Info(fmt.Sprintf("Found %d orphans and added %d to the database\n", orphansFound, orphansAdded))
-		stats.Inc("orphaned-certificates.found", orphansFound, 1.0)
-		stats.Inc("orphaned-certificates.added", orphansAdded, 1.0)
-		stats.Inc("orphaned-certificates.adding-failed", orphansFound-orphansAdded, 1.0)
+		stats.Inc("Found", orphansFound)
+		stats.Inc("Added", orphansAdded)
+		stats.Inc("AddingFailed", orphansFound-orphansAdded)
 
 	case "parse-der":
 		ctx := context.Background()

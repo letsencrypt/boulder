@@ -11,7 +11,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -55,8 +54,9 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
+func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, metrics.Scope) {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
 	amqpConf := c.Revoker.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -66,12 +66,12 @@ func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AdminRevoker"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return *rac, logger, dbMap, *sac, stats
+	return *rac, logger, dbMap, *sac, scope
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
@@ -225,8 +225,8 @@ func main() {
 			authsRevoked,
 			pendingAuthsRevoked,
 		))
-		stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
-		stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
+		stats.Inc("RevokedAuthorizations", authsRevoked)
+		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
 
 	default:
 		usage()
