@@ -27,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
@@ -826,7 +825,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR, err = oldx509.ParseCertificateRequest(rawCSR.CSR)
+	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
 		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514

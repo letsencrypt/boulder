@@ -10,7 +10,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/revocation"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -77,7 +76,7 @@ type RegistrationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (Certificate, error)
+	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
 	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 
