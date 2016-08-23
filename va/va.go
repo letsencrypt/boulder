@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -28,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 
 	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
@@ -54,7 +54,7 @@ type ValidationAuthorityImpl struct {
 	httpsPort    int
 	tlsPort      int
 	userAgent    string
-	stats        statsd.Statter
+	stats        metrics.Scope
 	clk          clock.Clock
 	caaClient    caaPB.CAACheckerClient
 	caaDR        *cdr.CAADistributedResolver
@@ -69,7 +69,7 @@ func NewValidationAuthorityImpl(
 	resolver bdns.DNSResolver,
 	userAgent string,
 	issuerDomain string,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
@@ -591,7 +591,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
+	va.stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart))
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
@@ -718,23 +718,23 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
-		va.stats.Inc("VA.CAA.None", 1, 1.0)
+		va.stats.Inc("CAA.None", 1)
 		return false, true
 	}
 
 	// Record stats on directives not currently processed.
 	if len(caaSet.Iodef) > 0 {
-		va.stats.Inc("VA.CAA.WithIodef", 1, 1.0)
+		va.stats.Inc("CAA.WithIodef", 1)
 	}
 
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
-		va.stats.Inc("VA.CAA.UnknownCritical", 1, 1.0)
+		va.stats.Inc("CAA.UnknownCritical", 1)
 		return true, false
 	}
 
 	if len(caaSet.Unknown) > 0 {
-		va.stats.Inc("VA.CAA.WithUnknownNoncritical", 1, 1.0)
+		va.stats.Inc("CAA.WithUnknownNoncritical", 1)
 	}
 
 	if len(caaSet.Issue) == 0 {
@@ -742,7 +742,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
-		va.stats.Inc("VA.CAA.NoneRelevant", 1, 1.0)
+		va.stats.Inc("CAA.NoneRelevant", 1)
 		return true, true
 	}
 
@@ -753,13 +753,13 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.issuerDomain {
-			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
+			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
-	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
+	va.stats.Inc("CAA.Unauthorized", 1)
 	return true, false
 }
 

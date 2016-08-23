@@ -79,10 +79,11 @@ func main() {
 	go cmd.DebugServer(c.WFE.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "WFE")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), goodkey.NewKeyPolicy(), logger)
+	wfe, err := wfe.NewWebFrontEndImpl(scope, clock.Default(), goodkey.NewKeyPolicy(), logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(c, logger, stats)
 	wfe.RA = rac

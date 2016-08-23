@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
@@ -267,7 +268,7 @@ func TestFailNoSerial(t *testing.T) {
 	_, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -279,7 +280,7 @@ func TestIssueCertificate(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -340,7 +341,7 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		newIssuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -365,7 +366,7 @@ func TestOCSP(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -414,7 +415,7 @@ func TestOCSP(t *testing.T) {
 	ca, err = NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		newIssuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -461,7 +462,7 @@ func TestNoHostnames(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -482,7 +483,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -504,7 +505,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -531,7 +532,7 @@ func TestShortKey(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -552,7 +553,7 @@ func TestAllowNoCN(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -593,7 +594,7 @@ func TestLongCommonName(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -614,7 +615,7 @@ func TestWrongSignature(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -637,7 +638,7 @@ func TestProfileSelection(t *testing.T) {
 	ca, _ := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -688,7 +689,7 @@ func TestExtensions(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		testCtx.stats,
+		metrics.NewStatsdScope(testCtx.stats, "CA"),
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -726,12 +727,12 @@ func TestExtensions(t *testing.T) {
 	ca.enableMustStaple = true
 	singleStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionTLSFeature], int64(2))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionTLSFeature], int64(2))
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionTLSFeature], int64(3))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionTLSFeature], int64(3))
 
 	// ... but if it doesn't ask for stapling, there should be an error
 	_, err = ca.IssueCertificate(ctx, *tlsFeatureUnknownCSR, 1001)
@@ -739,15 +740,15 @@ func TestExtensions(t *testing.T) {
 	if _, ok := err.(core.MalformedRequestError); !ok {
 		t.Errorf("Wrong error type when rejecting a CSR with empty TLS feature extension")
 	}
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionTLSFeature], int64(4))
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionTLSFeatureInvalid], int64(1))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionTLSFeature], int64(4))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionTLSFeatureInvalid], int64(1))
 
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionOther], int64(1))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionOther], int64(1))
 
 	// None of the above CSRs have basic extensions
-	test.AssertEquals(t, testCtx.stats.Counters[metricCSRExtensionBasic], int64(0))
+	test.AssertEquals(t, testCtx.stats.Counters["CA."+metricCSRExtensionBasic], int64(0))
 }

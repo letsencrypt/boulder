@@ -818,6 +818,7 @@ func TestLimitedReader(t *testing.T) {
 
 func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
@@ -827,7 +828,7 @@ func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 	return va, stats, logger
@@ -838,6 +839,7 @@ func TestCheckCAAFallback(t *testing.T) {
 	defer testSrv.Close()
 
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
@@ -851,7 +853,7 @@ func TestCheckCAAFallback(t *testing.T) {
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"ca.com",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 

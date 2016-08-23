@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
@@ -132,6 +133,7 @@ func main() {
 	go cmd.DebugServer(c.CA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "CA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -152,7 +154,7 @@ func main() {
 	cai, err := ca.NewCertificateAuthorityImpl(
 		c.CA,
 		clock.Default(),
-		stats,
+		scope,
 		issuers,
 		goodkey.NewKeyPolicy(),
 		logger)

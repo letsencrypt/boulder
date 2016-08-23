@@ -92,6 +92,7 @@ func main() {
 	go cmd.DebugServer(c.RA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "RA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -141,7 +142,7 @@ func main() {
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
-		stats,
+		scope,
 		c.RA.MaxContactsPerRegistration,
 		goodkey.NewKeyPolicy(),
 		c.RA.MaxNames,

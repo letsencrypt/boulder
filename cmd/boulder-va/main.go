@@ -74,6 +74,7 @@ func main() {
 	go cmd.DebugServer(c.VA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "VA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -150,7 +151,7 @@ func main() {
 		resolver,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
-		stats,
+		scope,
 		clk,
 		logger)
 
