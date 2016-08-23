@@ -563,13 +563,14 @@ type config struct {
 	}
 }
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
 ) {
+	rpcScope := stats.NewScope("RPC")
 	amqpConf := c.AMQP
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	var pubc core.Publisher
@@ -578,10 +579,10 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	} else {
-		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, rpcScope)
 		cmd.FailOnError(err, "Unable to create Publisher client")
 	}
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Unable to create SA client")
 	return cac, pubc, sac
 }
@@ -616,7 +617,7 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	cac, pubc, sac := setupClients(conf, stats)
+	cac, pubc, sac := setupClients(conf, scope)
 
 	updater, err := newUpdater(
 		scope,

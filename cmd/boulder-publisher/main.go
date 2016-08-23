@@ -51,6 +51,7 @@ func main() {
 	go cmd.DebugServer(c.Publisher.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "Publisher")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -71,11 +72,10 @@ func main() {
 		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 	}
 
+	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.Publisher.AMQP
-	sa, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sa, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Unable to create SA client")
-
-	scope := metrics.NewStatsdScope(stats, "Publisher")
 
 	pubi := publisher.New(
 		bundle,
@@ -98,7 +98,7 @@ func main() {
 		}()
 	}
 
-	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats, logger)
+	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, rpcScope, logger)
 	cmd.FailOnError(err, "Unable to create Publisher RPC server")
 	err = rpc.NewPublisherServer(pubs, pubi)
 	cmd.FailOnError(err, "Unable to setup Publisher RPC server")

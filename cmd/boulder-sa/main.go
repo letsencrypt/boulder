@@ -42,6 +42,7 @@ func main() {
 	go cmd.DebugServer(c.SA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "SA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -60,8 +61,9 @@ func main() {
 
 	go cmd.ProfileCmd("SA", stats)
 
+	rpcScope := scope.NewScope("RPC")
 	amqpConf := saConf.AMQP
-	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats, logger)
+	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, rpcScope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
 	err = rpc.NewStorageAuthorityServer(sas, sai)

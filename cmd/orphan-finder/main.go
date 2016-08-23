@@ -118,7 +118,7 @@ func setup(configFile string) (metrics.Scope, blog.Logger, *rpc.StorageAuthority
 	cmd.FailOnError(err, "Failed to parse config file")
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
-	sa, err := rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, stats)
+	sa, err := rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope.NewScope("RPC"))
 	cmd.FailOnError(err, "Failed to create SA client")
 	return scope, logger, sa
 }

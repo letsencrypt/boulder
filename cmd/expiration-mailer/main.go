@@ -364,8 +364,9 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
+	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.Mailer.AMQP
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	// Load email template

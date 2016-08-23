@@ -53,12 +53,13 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+	rpcScope := stats.NewScope("RPC")
 	amqpConf := c.WFE.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac
@@ -85,7 +86,7 @@ func main() {
 
 	wfe, err := wfe.NewWebFrontEndImpl(scope, clock.Default(), goodkey.NewKeyPolicy(), logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac := setupWFE(c, logger, stats)
+	rac, sac := setupWFE(c, logger, scope)
 	wfe.RA = rac
 	wfe.SA = sac
 

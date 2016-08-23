@@ -102,14 +102,14 @@ func main() {
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}
 
-	scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
+	dnsScope := scope.NewScope("DNS")
 	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {
 		var err error
 		cdrClient, err = cdr.New(
-			scoped,
+			dnsScope,
 			c.VA.CAADistributedResolver.Timeout.Duration,
 			c.VA.CAADistributedResolver.MaxFailures,
 			c.VA.CAADistributedResolver.Proxies,
@@ -132,13 +132,13 @@ func main() {
 			dnsTimeout,
 			[]string{c.Common.DNSResolver},
 			caaSERVFAILExceptions,
-			scoped,
+			dnsScope,
 			clk,
 			dnsTries)
 		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, dnsScope, clk, dnsTries)
 		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	}
@@ -157,7 +157,7 @@ func main() {
 
 	amqpConf := c.VA.AMQP
 	if c.VA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
+		s, l, err := bgrpc.NewServer(c.VA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
 		err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 		cmd.FailOnError(err, "Unable to register VA gRPC server")
@@ -167,7 +167,7 @@ func main() {
 		}()
 	}
 
-	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
+	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, scope.NewScope("RPC"), logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")

@@ -163,8 +163,9 @@ func main() {
 
 	go cmd.ProfileCmd("CA", stats)
 
+	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	if c.CA.PublisherService != nil {
@@ -172,11 +173,11 @@ func main() {
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
 	} else {
-		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, rpcScope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")

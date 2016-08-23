@@ -94,8 +94,7 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	scope := metrics.NewStatsdScope(stats, "WFE")
-	nonceService, err := nonce.NewNonceService(scope)
+	nonceService, err := nonce.NewNonceService(stats.NewScope("NonceService"))
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
