@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 const (
@@ -52,7 +52,7 @@ type CachePurgeClient struct {
 	retries      int
 	retryBackoff time.Duration
 	log          blog.Logger
-	stats        statsd.Statter
+	stats        metrics.Scope
 	clk          clock.Clock
 }
 
@@ -77,7 +77,7 @@ func NewCachePurgeClient(
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger,
-	stats statsd.Statter,
+	stats metrics.Scope,
 ) (*CachePurgeClient, error) {
 	if strings.HasSuffix(endpoint, "/") {
 		endpoint = endpoint[:len(endpoint)-1]
@@ -181,7 +181,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	rS := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
-	cpc.stats.TimingDuration("CCU.PurgeRequestLatency", time.Since(rS), 1.0)
+	cpc.stats.TimingDuration("PurgeRequestLatency", time.Since(rS))
 	if err != nil {
 		return err
 	}
@@ -229,10 +229,10 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 		if err != nil {
 			if _, ok := err.(errFatal); ok {
 				cpc.log.AuditErr(err.Error())
-				cpc.stats.Inc("CCU.FatalFailures", 1, 1.0)
+				cpc.stats.Inc("FatalFailures", 1)
 				return err
 			}
-			cpc.stats.Inc("CCU.RetryableFailures", 1, 1.0)
+			cpc.stats.Inc("RetryableFailures", 1)
 			continue
 		}
 		successful = true
@@ -240,10 +240,10 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 	}
 
 	if !successful {
-		cpc.stats.Inc("CCU.FatalFailures", 1, 1.0)
+		cpc.stats.Inc("FatalFailures", 1)
 		return ErrAllRetriesFailed
 	}
 
-	cpc.stats.Inc("CCU.SuccessfulPurges", 1, 1.0)
+	cpc.stats.Inc("SuccessfulPurges", 1)
 	return nil
 }
