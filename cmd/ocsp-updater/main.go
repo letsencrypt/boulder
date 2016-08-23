@@ -207,7 +207,10 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT cs.*
+		`SELECT
+			 cs.serial,
+			 cs.status,
+			 cs.revokedDate
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
@@ -354,7 +357,11 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT * FROM certificateStatus
+		`SELECT
+			status,
+			revokedReason,
+			revokedDate
+		 FROM certificateStatus
 		 WHERE status = :revoked
 		 AND ocspLastUpdated <= revokedDate
 		 LIMIT :limit`,
