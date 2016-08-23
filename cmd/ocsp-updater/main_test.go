@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"testing"

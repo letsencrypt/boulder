@@ -2,6 +2,7 @@ package csr
 
 import (
 	"crypto"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"

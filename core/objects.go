@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
