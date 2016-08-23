@@ -18,6 +18,7 @@ import (
 )
 
 type dbAccess interface {
+	SelectOne(holder interface{}, query string, args ...interface{}) error
 	Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error)
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
@@ -47,7 +48,7 @@ func (b backfiller) printStatus(
 			serial, notAfter, cur+1, total, completion, elapsed.String()))
 }
 
-func (b backfiller) backfill(certStatus core.CertificateStatus) error {
+func (b backfiller) backfill(certStatus *core.CertificateStatus) error {
 	// We explicit use `Exec` over `Update` to avoid contention on the
 	// `LockCol` field that Gorp uses for optimistic locking. With an
 	// `ocsp-updater` running at the same time as a backfill there is a pretty
@@ -66,13 +67,13 @@ func (b backfiller) backfill(certStatus core.CertificateStatus) error {
 	return nil
 }
 
-func (b backfiller) findEmpty() ([]core.CertificateStatus, error) {
-	var certs []core.CertificateStatus
+func (b backfiller) findEmpty() ([]*core.CertificateStatus, error) {
+	var certs []*core.CertificateStatus
 
 	_, err := b.dbMap.Select(&certs,
 		`SELECT
-			 serial,
-			 FROM certificatesStatus
+			 serial
+			 FROM certificateStatus
 			 WHERE notAfter IS NULL
 			 LIMIT :batchSize`,
 		map[string]interface{}{
@@ -86,23 +87,21 @@ func (b backfiller) findEmpty() ([]core.CertificateStatus, error) {
 	return certs, nil
 }
 
-func (b backfiller) populateNotAfter(certs []core.CertificateStatus) error {
-	for _, c := range certs {
-		// Note: there is a slight switch-a-roo happening here where the `expires`
-		// field of the `certificates` table is renamed to `notAfter` in order to
-		// populate the portion of a `CertificateStatus` object we wish to update.
-		_, err := b.dbMap.Select(&c,
-			`SELECT
-			expires AS notAfter
+func (b backfiller) populateNotAfter(certs []*core.CertificateStatus) error {
+	for _, cs := range certs {
+		var c core.Certificate
+
+		err := b.dbMap.SelectOne(&c,
+			`SELECT expires
 			FROM certificates
-			WHERE serial = :serial
-			LIMIT 1`,
+			WHERE serial = :serial`,
 			map[string]interface{}{
-				"serial": c.Serial,
+				"serial": cs.Serial,
 			})
 		if err != nil {
 			return err
 		}
+		cs.NotAfter = c.Expires
 	}
 	return nil
 }
