@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestValidNonce(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -16,7 +17,7 @@ func TestValidNonce(t *testing.T) {
 }
 
 func TestAlreadyUsed(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -25,7 +26,7 @@ func TestAlreadyUsed(t *testing.T) {
 }
 
 func TestRejectMalformed(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -33,15 +34,15 @@ func TestRejectMalformed(t *testing.T) {
 }
 
 func TestRejectShort(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 	test.Assert(t, !ns.Valid("aGkK"), "Accepted an invalid nonce")
 }
 
 func TestRejectUnknown(t *testing.T) {
-	ns1, err := NewNonceService()
+	ns1, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
-	ns2, err := NewNonceService()
+	ns2, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	n, err := ns1.Nonce()
@@ -50,7 +51,7 @@ func TestRejectUnknown(t *testing.T) {
 }
 
 func TestRejectTooLate(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	ns.latest = 2
@@ -61,7 +62,7 @@ func TestRejectTooLate(t *testing.T) {
 }
 
 func TestRejectTooEarly(t *testing.T) {
-	ns, err := NewNonceService()
+	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
 	ns.maxUsed = 2
 
