@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -95,7 +96,8 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService()
+	scope := metrics.NewStatsdScope(stats, "WFE")
+	nonceService, err := nonce.NewNonceService(scope)
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
