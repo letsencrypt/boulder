@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	"github.com/facebookgo/httpdown"
 	"github.com/jmhodges/clock"
@@ -166,6 +165,7 @@ func main() {
 	go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "OCSPResponder")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString("ocsp-responder"))
 
@@ -196,7 +196,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(dbConnect, config.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 		sa.SetSQLDebug(dbMap, logger)
-		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
+		go sa.ReportDbConnCount(dbMap, scope)
 		source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
 		cmd.FailOnError(err, "Couldn't load OCSP DB")
 	}
@@ -205,7 +205,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
 	killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 	cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-	m := mux(stats, c.OCSPResponder.Path, source)
+	m := mux(scope, c.OCSPResponder.Path, source)
 	srv := &http.Server{
 		Addr:    c.OCSPResponder.ListenAddress,
 		Handler: m,
@@ -214,13 +214,13 @@ func main() {
 	hd := &httpdown.HTTP{
 		StopTimeout: stopTimeout,
 		KillTimeout: killTimeout,
-		Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
+		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
 	err = httpdown.ListenAndServe(srv, hd)
 	cmd.FailOnError(err, "Error starting HTTP server")
 }
 
-func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.Handler {
+func mux(scope metrics.Scope, responderPath string, source cfocsp.Source) http.Handler {
 	m := http.StripPrefix(responderPath, cfocsp.NewResponder(source))
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/" {
@@ -230,5 +230,5 @@ func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.
 		}
 		m.ServeHTTP(w, r)
 	})
-	return metrics.NewHTTPMonitor(stats, h, "OCSP")
+	return metrics.NewHTTPMonitor(scope, h)
 }

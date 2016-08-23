@@ -117,7 +117,7 @@ func main() {
 	h, err := wfe.Handler()
 	cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
-	httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
+	httpMonitor := metrics.NewHTTPMonitor(scope, h)
 
 	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 	srv := &http.Server{
@@ -128,7 +128,7 @@ func main() {
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
-		Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
+		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
 	err = httpdown.ListenAndServe(srv, hd)
 	cmd.FailOnError(err, "Error starting HTTP server")
