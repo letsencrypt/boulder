@@ -108,9 +108,8 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	go cmd.ProfileCmd("RA", stats)
+	go cmd.ProfileCmd(scope)
 
-	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
 	if c.RA.VAService != nil {
@@ -118,14 +117,14 @@ func main() {
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {
-		vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, rpcScope)
+		vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create VA client")
 	}
 
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, rpcScope)
+	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
@@ -158,7 +157,6 @@ func main() {
 
 	raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-	dnsScope := scope.NewScope("DNS")
 	dnsTries := c.RA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
@@ -168,14 +166,14 @@ func main() {
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
 			nil,
-			dnsScope,
+			scope,
 			clock.Default(),
 			dnsTries)
 	} else {
 		rai.DNSResolver = bdns.NewTestDNSResolverImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
-			dnsScope,
+			scope,
 			clock.Default(),
 			dnsTries)
 	}
@@ -184,7 +182,7 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
-	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, rpcScope, logger)
+	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")
 	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 	cmd.FailOnError(err, "Unable to setup RA RPC server")

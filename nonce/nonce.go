@@ -33,6 +33,7 @@ type NonceService struct {
 
 // NewNonceService constructs a NonceService with defaults
 func NewNonceService(scope metrics.Scope) (*NonceService, error) {
+	scope = scope.NewScope("NonceService")
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err

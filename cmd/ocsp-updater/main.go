@@ -158,7 +158,7 @@ func newUpdater(
 			config.AkamaiPurgeRetries,
 			config.AkamaiPurgeRetryBackoff.Duration,
 			log,
-			stats.NewScope("CCU"),
+			stats,
 		)
 		if err != nil {
 			return nil, err
@@ -568,9 +568,8 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.Publisher,
 	core.StorageAuthority,
 ) {
-	rpcScope := stats.NewScope("RPC")
 	amqpConf := c.AMQP
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, rpcScope)
+	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	var pubc core.Publisher
@@ -579,10 +578,10 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	} else {
-		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, rpcScope)
+		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create Publisher client")
 	}
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 	return cac, pubc, sac
 }
@@ -608,7 +607,7 @@ func main() {
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
 
-	go cmd.ProfileCmd("OCSP-Updater", stats)
+	go cmd.ProfileCmd(scope)
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()

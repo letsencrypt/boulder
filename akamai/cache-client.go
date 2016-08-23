@@ -79,6 +79,7 @@ func NewCachePurgeClient(
 	log blog.Logger,
 	stats metrics.Scope,
 ) (*CachePurgeClient, error) {
+	stats = stats.NewScope("CCU")
 	if strings.HasSuffix(endpoint, "/") {
 		endpoint = endpoint[:len(endpoint)-1]
 	}

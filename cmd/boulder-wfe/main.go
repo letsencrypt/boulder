@@ -54,12 +54,11 @@ type config struct {
 }
 
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
-	rpcScope := stats.NewScope("RPC")
 	amqpConf := c.WFE.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, rpcScope)
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac
@@ -111,7 +110,7 @@ func main() {
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
 
-	go cmd.ProfileCmd("WFE", stats)
+	go cmd.ProfileCmd(scope)
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL

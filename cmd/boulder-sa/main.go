@@ -54,16 +54,15 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "SA"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	go cmd.ProfileCmd("SA", stats)
+	go cmd.ProfileCmd(scope)
 
-	rpcScope := scope.NewScope("RPC")
 	amqpConf := saConf.AMQP
-	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, rpcScope, logger)
+	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
 	err = rpc.NewStorageAuthorityServer(sas, sai)

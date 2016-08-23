@@ -58,9 +58,8 @@ func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
-	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.Revoker.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, rpcScope)
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbURL, err := c.Revoker.DBConfig.URL()
@@ -69,7 +68,7 @@ func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp
 	cmd.FailOnError(err, "Couldn't setup database connection")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	return *rac, logger, dbMap, *sac, scope

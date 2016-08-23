@@ -161,11 +161,10 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
-	go cmd.ProfileCmd("CA", stats)
+	go cmd.ProfileCmd(scope)
 
-	rpcScope := scope.NewScope("RPC")
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, rpcScope)
+	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	if c.CA.PublisherService != nil {
@@ -177,7 +176,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, rpcScope, logger)
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")

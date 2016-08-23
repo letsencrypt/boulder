@@ -135,6 +135,7 @@ func NewAmqpRPCServer(
 	stats metrics.Scope,
 	log blog.Logger,
 ) (*AmqpRPCServer, error) {
+	stats = stats.NewScope("RPC")
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
@@ -517,6 +518,7 @@ func NewAmqpRPCClient(
 	rpcConf *cmd.RPCServerConfig,
 	stats metrics.Scope,
 ) (rpc *AmqpRPCCLient, err error) {
+	stats = stats.NewScope("RPC")
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
