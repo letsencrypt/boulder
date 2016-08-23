@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -26,7 +26,7 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
 	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
@@ -52,7 +52,7 @@ func TestGenerateMessage(t *testing.T) {
 
 func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
 	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
@@ -160,7 +160,7 @@ func disconnectHandler(closeFirst int) connHandler {
 
 func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 	const port = "16632"
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 

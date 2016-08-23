@@ -345,6 +345,7 @@ func main() {
 	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "ExpirationMailer")
 	defer logger.AuditPanic()
 	logger.Info(clientName)
 
@@ -362,7 +363,7 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 	sa.SetSQLDebug(dbMap, logger)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	amqpConf := c.Mailer.AMQP
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
@@ -386,7 +387,7 @@ func main() {
 		smtpPassword,
 		*fromAddress,
 		logger,
-		stats,
+		scope,
 		*reconnBase,
 		*reconnMax)
 	err = mailClient.Connect()
