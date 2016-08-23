@@ -1089,8 +1089,8 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
-	if auth.Status != core.StatusValid {
-		return core.MalformedRequestError("Only valid authorizations can be deactivated")
+	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
+		return core.MalformedRequestError("Only valid and pending authorizations can be deactivated")
 	}
 	err := ra.SA.DeactivateAuthorization(ctx, auth.ID)
 	if err != nil {
