@@ -358,6 +358,7 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	_, err := updater.dbMap.Select(
 		&statuses,
 		`SELECT
+			serial,
 			status,
 			revokedReason,
 			revokedDate
