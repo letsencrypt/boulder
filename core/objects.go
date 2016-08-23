@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -105,8 +105,8 @@ type AcmeIdentifier struct {
 // This data is unmarshalled from JSON by way of RawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR   *oldx509.CertificateRequest // The CSR
-	Bytes []byte                      // The original bytes of the CSR, for logging.
+	CSR   *x509.CertificateRequest // The CSR
+	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
 type RawCertificateRequest struct {
@@ -120,7 +120,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	csr, err := oldx509.ParseCertificateRequest(raw.CSR)
+	csr, err := x509.ParseCertificateRequest(raw.CSR)
 	if err != nil {
 		return err
 	}
