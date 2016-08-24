@@ -1824,9 +1824,9 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateRegistration(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 	wfe.AllowAccountDeactivation = true
-	responseWriter := httptest.NewRecorder()
 
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
