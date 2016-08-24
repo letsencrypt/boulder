@@ -338,6 +338,16 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 	return err
 }
 
+func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+		SET isExpired = TRUE
+		WHERE serial = ?`,
+		status.Serial,
+	)
+	return err
+}
+
 // newCertificateTick checks for certificates issued since the last tick and
 // generates and stores OCSP responses for these certs
 func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize int) error {
@@ -428,6 +438,13 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 		updater.stats.Inc("OCSP.Errors.FindStaleResponses", 1, 1.0)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
+	}
+
+	for _, s := range statuses {
+		err := updater.markExpired(s)
+		if err != nil {
+			return err
+		}
 	}
 
 	return updater.generateOCSPResponses(ctx, statuses)
