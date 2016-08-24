@@ -466,8 +466,14 @@ type CertificateStatus struct {
 	// later on just to retreive this `Time` value. This helps both the OCSP
 	// updater and the expiration-mailer stay performant.
 	//
+	// Similarly, we add an explicit `IsExpired` boolean to `CertificateStatus`
+	// table that the OCSP updater so that the database can create a meaningful
+	// index on `(isExpired, ocspLastUpdated)` without a `JOIN` on `certificates`.
+	// For more detail see Boulder #1864[0].
+	//
 	// [0]: https://github.com/letsencrypt/boulder/issues/1864
-	NotAfter time.Time `db:"notAfter"`
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
 }
 
 // OCSPResponse is a (large) table of OCSP responses. This contains all
