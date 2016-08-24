@@ -93,7 +93,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
-		Stats:     string(r.Status),
+		Status:    string(r.Status),
 	}
 	return rm, nil
 }
