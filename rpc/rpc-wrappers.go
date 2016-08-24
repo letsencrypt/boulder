@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -70,6 +69,8 @@ const (
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
+	MethodDeactivateAuthorizationSA         = "DeactivateAuthorizationSA"         // SA
+	MethodDeactivateAuthorization           = "DeactivateAuthorization"           // RA
 )
 
 // Request structs
@@ -372,6 +373,21 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 		return
 	})
 
+	rpc.Handle(MethodDeactivateAuthorization, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var authz core.Authorization
+		err = json.Unmarshal(req, &authz)
+		if err != nil {
+			errorCondition(MethodDeactivateAuthorization, err, req)
+			return
+		}
+		err = impl.DeactivateAuthorization(ctx, authz)
+		if err != nil {
+			errorCondition(MethodDeactivateAuthorization, err, req)
+			return
+		}
+		return
+	})
+
 	return nil
 }
 
@@ -513,6 +529,16 @@ func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx con
 	return
 }
 
+// DeactivateAuthorization deactivates a currently valid or pending authorization
+func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Context, authz core.Authorization) error {
+	data, err := json.Marshal(authz)
+	if err != nil {
+		return err
+	}
+	_, err = rac.rpc.DispatchSync(MethodDeactivateAuthorization, data)
+	return err
+}
+
 // NewValidationAuthorityServer constructs an RPC server
 //
 // ValidationAuthorityClient / Server
@@ -651,7 +677,7 @@ func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (
 			return
 		}
 
-		csr, err := oldx509.ParseCertificateRequest(icReq.Bytes)
+		csr, err := x509.ParseCertificateRequest(icReq.Bytes)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIssueCertificate, err, req)
@@ -705,7 +731,7 @@ func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, 
 }
 
 // IssueCertificate sends a request to issue a certificate
-func (cac CertificateAuthorityClient) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	var icReq issueCertificateRequest
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID
@@ -1125,6 +1151,15 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodDeactivateAuthorizationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
+		err = impl.DeactivateAuthorization(ctx, string(req))
+		if err != nil {
+			errorCondition(MethodDeactivateAuthorizationSA, err, req)
+			return
+		}
+		return
+	})
+
 	return nil
 }
 
@@ -1489,4 +1524,10 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 	var exists fqdnSetExistsResponse
 	err = json.Unmarshal(response, &exists)
 	return exists.Exists, err
+}
+
+// DeactivateAuthorization deactivates a currently valid or pending authorization
+func (cac StorageAuthorityClient) DeactivateAuthorization(ctx context.Context, id string) error {
+	_, err := cac.rpc.DispatchSync(MethodDeactivateAuthorizationSA, []byte(id))
+	return err
 }

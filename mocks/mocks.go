@@ -311,6 +311,11 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 	return 0, nil
 }
 
+// DeactivateAuthorization is a mock
+func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
+	return nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty

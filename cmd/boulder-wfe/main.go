@@ -39,6 +39,7 @@ type config struct {
 
 		CheckMalformedCSR      bool
 		AcceptRevocationReason bool
+		AllowAuthzDeactivation bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -98,6 +99,7 @@ func main() {
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
+	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 
 	wfe.CertCacheDuration = c.WFE.CertCacheDuration.Duration
 	wfe.CertNoCacheExpirationWindow = c.WFE.CertNoCacheExpirationWindow.Duration

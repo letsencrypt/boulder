@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -447,7 +446,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx509.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -1080,7 +1079,19 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 	return nil
 }
 
-// DeactivateRegistration deactivates a registration
+// DeactivateRegistration deactivates a valid registration
 func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, id int64) error {
 	return ra.SA.DeactivateRegistration(ctx, id)
+}
+
+// DeactivateAuthorization deactivates a currently valid authorization
+func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
+	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
+		return core.MalformedRequestError("Only valid and pending authorizations can be deactivated")
+	}
+	err := ra.SA.DeactivateAuthorization(ctx, auth.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
+	return nil
 }

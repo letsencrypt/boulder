@@ -12,6 +12,7 @@
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "checkMalformedCSR": true,
     "acceptRevocationReason": true,
+    "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
