@@ -1126,7 +1126,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), nil)
 			return
 		}
-		wfe.deactivateRegistration(currReg, response, request, logEvent)
+		wfe.deactivateRegistration(ctx, currReg, response, request, logEvent)
 		return
 	}
 
@@ -1388,7 +1388,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
-func (wfe *WebFrontEndImpl) deactivateRegistration(reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
+func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
 	if reg.Status != core.StatusValid {
 		wfe.sendError(response, logEvent, probs.Malformed("Only valid registrations can be deactivated"), nil)
 		return
