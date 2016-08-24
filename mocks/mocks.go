@@ -87,6 +87,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		Agreement: agreementURL,
 		InitialIP: net.ParseIP("5.6.7.8"),
 		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
+		Status:    core.StatusValid,
 	}, nil
 }
 
@@ -117,7 +118,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 	contacts := []string{"mailto:person@mail.com"}
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts}, nil
+		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts, Status: core.StatusValid}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -313,6 +314,11 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 
 // DeactivateAuthorization is a mock
 func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
+	return nil
+}
+
+// DeactivateRegistration is a mock
+func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
 	return nil
 }
 

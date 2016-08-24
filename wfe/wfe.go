@@ -455,7 +455,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	if wfe.AllowAccountDeactivation && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.UnauthorizedProblem("Cannot use a non-valid registration")
+		fmt.Println(reg)
+		return nil, nil, reg, probs.Unauthorized("Cannot use a non-valid registration")
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -1120,8 +1121,12 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if wfe.AllowAccountDeactivation && update.Status == core.StatusDeactivated {
-		wfe.deactivateRegistration(currReg)
+	if wfe.AllowAccountDeactivation && update.Status != "" {
+		if update.Status != core.StatusDeactivated {
+			wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), nil)
+			return
+		}
+		wfe.deactivateRegistration(currReg, response, request, logEvent)
 		return
 	}
 
@@ -1385,16 +1390,16 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
 	if reg.Status != core.StatusValid {
-		wfe.sendError(response, logEvent, probs.MalformedProblem("Only valid registrations can be deactivated"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Only valid registrations can be deactivated"), nil)
 		return
 	}
 	err := wfe.RA.DeactivateRegistration(ctx, reg.ID)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternalProblem("Failed to deactivate registration"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to deactivate registration"), err)
 		return
 	}
-	currReg.Status = core.StatusDeactivated
-	jsonReply, err := marshalIndent(currReg)
+	reg.Status = core.StatusDeactivated
+	jsonReply, err := marshalIndent(reg)
 	if err != nil {
 		// ServerInternal because registration is from DB and should be fine
 		logEvent.AddError("unable to marshal updated registration: %s", err)

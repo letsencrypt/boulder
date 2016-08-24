@@ -182,6 +182,10 @@ func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
+func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ int64) error {
+	return nil
+}
+
 type mockPA struct{}
 
 func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
@@ -1816,5 +1820,39 @@ func TestDeactivateAuthorization(t *testing.T) {
 		      "uri": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
+		}`)
+}
+
+func TestDeactivateRegistration(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.AllowAccountDeactivation = true
+	responseWriter := httptest.NewRecorder()
+
+	responseWriter.Body.Reset()
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"asd"}`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{"type": "urn:acme:error:malformed","detail": "Invalid status value","status": 400}`)
+
+	responseWriter.Body.Reset()
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"deactivated"}`, wfe.nonceService)))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "id": 1,
+		  "key": {
+		    "kty": "RSA",
+		    "n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+		    "e": "AQAB"
+		  },
+		  "contact": [
+		    "mailto:person@mail.com"
+		  ],
+		  "agreement": "http://example.invalid/terms",
+		  "initialIp": "",
+		  "createdAt": "0001-01-01T00:00:00Z",
+		  "Status": "deactivated"
 		}`)
 }

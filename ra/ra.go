@@ -258,7 +258,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	}
 
 	reg = core.Registration{
-		Key: init.Key,
+		Key:    init.Key,
+		Status: core.StatusValid,
 	}
 	_ = mergeUpdate(&reg, init)
 
