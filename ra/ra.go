@@ -1081,8 +1081,15 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 }
 
 // DeactivateRegistration deactivates a valid registration
-func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, id int64) error {
-	return ra.SA.DeactivateRegistration(ctx, id)
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	if reg.Status != core.StatusValid {
+		return core.MalformedRequestError("Only vaid registrations can be deactivated")
+	}
+	err := ra.SA.DeactivateRegistration(ctx, reg.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
+	return nil
 }
 
 // DeactivateAuthorization deactivates a currently valid authorization

@@ -2,7 +2,7 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
 
-ALTER TABLE `registrations` ADD COLUMN (`status` varchar(255));
+ALTER TABLE `registrations` ADD COLUMN (`status` varchar(255) DEFAULT NULL);
 UPDATE `registrations` SET `status` = 'valid';
 
 -- +goose Down

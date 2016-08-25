@@ -70,7 +70,7 @@ type RegistrationAuthority interface {
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
 	// [WebFrontEnd]
-	DeactivateRegistration(ctx context.Context, id int64) error
+	DeactivateRegistration(ctx context.Context, reg Registration) error
 
 	// [WebFrontEnd]
 	DeactivateAuthorization(ctx context.Context, auth Authorization) error

@@ -118,7 +118,13 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 	contacts := []string{"mailto:person@mail.com"}
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts, Status: core.StatusValid}, nil
+		return core.Registration{
+			ID:        1,
+			Key:       jwk,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusValid,
+		}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {

@@ -455,7 +455,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	if wfe.AllowAccountDeactivation && reg.Status != core.StatusValid {
-		fmt.Println(reg)
 		return nil, nil, reg, probs.Unauthorized("Cannot use a non-valid registration")
 	}
 
@@ -1389,13 +1388,10 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
-	if reg.Status != core.StatusValid {
-		wfe.sendError(response, logEvent, probs.Malformed("Only valid registrations can be deactivated"), nil)
-		return
-	}
-	err := wfe.RA.DeactivateRegistration(ctx, reg.ID)
+	err := wfe.RA.DeactivateRegistration(ctx, reg)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to deactivate registration"), err)
+		logEvent.AddError("unable to deactivate registration", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating registration"), err)
 		return
 	}
 	reg.Status = core.StatusDeactivated

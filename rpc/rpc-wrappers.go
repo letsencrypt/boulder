@@ -395,13 +395,13 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 	})
 
 	rpc.Handle(MethodDeactivateRegistration, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var drReq deactivateRegistrationRequest
-		err = json.Unmarshal(req, &drReq)
+		var reg core.Registration
+		err = json.Unmarshal(req, &reg)
 		if err != nil {
 			errorCondition(MethodDeactivateRegistration, err, req)
 			return
 		}
-		err = impl.DeactivateRegistration(ctx, drReq.ID)
+		err = impl.DeactivateRegistration(ctx, reg)
 		if err != nil {
 			errorCondition(MethodDeactivateRegistration, err, req)
 			return
@@ -560,9 +560,9 @@ func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Conte
 	return err
 }
 
-// DeactivateAuthorization deactivates a currently valid registration
-func (rac RegistrationAuthorityClient) DeactivateRegistration(ctx context.Context, id int64) error {
-	data, err := json.Marshal(deactivateRegistrationRequest{id})
+// DeactivateRegistration deactivates a currently valid registration
+func (rac RegistrationAuthorityClient) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	data, err := json.Marshal(reg)
 	if err != nil {
 		return err
 	}

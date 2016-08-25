@@ -1271,7 +1271,11 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	err := ra.DeactivateRegistration(context.Background(), 1)
+	err := ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusDeactivated})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusValid})
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
 	test.AssertNotError(t, err, "GetRegistration failed")

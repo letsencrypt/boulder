@@ -182,7 +182,7 @@ func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ int64) error {
+func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ core.Registration) error {
 	return nil
 }
 
