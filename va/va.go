@@ -177,7 +177,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		Path:   path,
 	}
 
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditInfo(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
@@ -464,7 +463,6 @@ func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident c
 	if err != nil {
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditInfo(fmt.Sprintf(
 		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
 		ident.Value,
@@ -490,7 +488,6 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 			Detail: "Internal communication failure",
 		}
 	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditInfo(fmt.Sprintf(
 		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
 		ident.Value,
@@ -593,7 +590,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
 
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 	if prob == nil {
