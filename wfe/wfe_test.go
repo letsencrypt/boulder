@@ -1833,7 +1833,7 @@ func TestDeactivateRegistration(t *testing.T) {
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"asd"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "urn:acme:error:malformed","detail": "Invalid status value","status": 400}`)
+		`{"type": "urn:acme:error:malformed","detail": "Invalid value provided for status field","status": 400}`)
 
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,

@@ -1120,9 +1120,13 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if wfe.AllowAccountDeactivation && update.Status != "" {
+	// People *will* POST their full registrations to this endpoint, including
+	// the 'valid' status, to avoid always failing out when that happens only
+	// attempt to deactivate if the provided status different from their current
+	// status.
+	if wfe.AllowAccountDeactivation && (update.Status != currReg.Status) {
 		if update.Status != core.StatusDeactivated {
-			wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), nil)
+			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
 		}
 		wfe.deactivateRegistration(ctx, currReg, response, request, logEvent)
