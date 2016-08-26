@@ -127,10 +127,10 @@ const (
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return probs.InvalidEmail(unparseableEmailDetail)
+		return probs.InvalidContact(unparseableEmailDetail)
 	}
 	if len(emails) > 1 {
-		return probs.InvalidEmail(multipleAddressDetail)
+		return probs.InvalidContact(multipleAddressDetail)
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -151,20 +151,20 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 
 	if errMX != nil {
 		prob := bdns.ProblemDetailsFromDNSError(errMX)
-		prob.Type = probs.InvalidEmailProblem
+		prob.Type = probs.InvalidContactProblem
 		return prob
 	} else if len(resultMX) > 0 {
 		return nil
 	}
 	if errA != nil {
 		prob := bdns.ProblemDetailsFromDNSError(errA)
-		prob.Type = probs.InvalidEmailProblem
+		prob.Type = probs.InvalidContactProblem
 		return prob
 	} else if len(resultA) > 0 {
 		return nil
 	}
 
-	return probs.InvalidEmail(emptyDNSResponseDetail)
+	return probs.InvalidContact(emptyDNSResponseDetail)
 }
 
 type certificateRequestEvent struct {

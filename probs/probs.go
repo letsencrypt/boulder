@@ -15,7 +15,7 @@ const (
 	UnknownHostProblem           = ProblemType("urn:acme:error:unknownHost")
 	RateLimitedProblem           = ProblemType("urn:acme:error:rateLimited")
 	BadNonceProblem              = ProblemType("urn:acme:error:badNonce")
-	InvalidEmailProblem          = ProblemType("urn:acme:error:invalidEmail")
+	InvalidContactProblem        = ProblemType("urn:acme:error:invalidContact")
 	RejectedIdentifierProblem    = ProblemType("urn:acme:error:rejectedIdentifier")
 	UnsupportedIdentifierProblem = ProblemType("urn:acme:error:unsupportedIdentifier")
 )
@@ -49,7 +49,7 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return prob.HTTPStatus
 	}
 	switch prob.Type {
-	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem, RejectedIdentifierProblem, UnsupportedIdentifierProblem:
+	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidContactProblem, RejectedIdentifierProblem, UnsupportedIdentifierProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
@@ -165,11 +165,11 @@ func ContentLengthRequired() *ProblemDetails {
 	}
 }
 
-// InvalidEmail returns a ProblemDetails representing an invalid email address
+// InvalidContact returns a ProblemDetails representing an invalid email address
 // error
-func InvalidEmail(detail string) *ProblemDetails {
+func InvalidContact(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       InvalidEmailProblem,
+		Type:       InvalidContactProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
