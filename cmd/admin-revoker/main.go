@@ -182,7 +182,6 @@ func main() {
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
 		cac, logger, dbMap, sac, _ := setupContext(c)
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer logger.AuditPanic()
 
 		tx, err := dbMap.Begin()

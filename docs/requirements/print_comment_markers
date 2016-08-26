@@ -1,7 +1,0 @@
-#!/bin/bash
-#
-# Provides comment lines for each requirement that can be located with tools
-
-echo "Insert these comments into the codebase where appropriate, formatted exactly as printed."
-
-cat audit_events.csv | tail -n +2 | awk -F "," '{print "// AUDIT[", $2, "]", $1;}'

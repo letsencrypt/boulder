@@ -115,7 +115,6 @@ func main() {
 	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
 	auditlogger.Info(cmd.Version())
 
-	// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 	defer auditlogger.AuditPanic()
 
 	// Configure DB
