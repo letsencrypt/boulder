@@ -230,6 +230,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			req.Header["User-Agent"] = []string{va.userAgent}
 		}
 
+		urlHost = req.URL.Host
 		reqHost := req.URL.Host
 		var reqPort int
 		if h, p, err := net.SplitHostPort(reqHost); err == nil {
@@ -266,7 +267,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	if err != nil {
 		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
 		return nil, validationRecords,
-			parseHTTPConnError(fmt.Sprintf("Could not connect to %s", url), err)
+			parseHTTPConnError(fmt.Sprintf("Could not connect to %s", urlHost), err)
 	}
 
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
