@@ -33,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 type DummyValidationAuthority struct {
@@ -116,7 +115,7 @@ var (
 
 	ResponseIndex = 0
 
-	ExampleCSR = &oldx509.CertificateRequest{}
+	ExampleCSR = &x509.CertificateRequest{}
 
 	// These values are populated by the tests as we go
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
@@ -232,7 +231,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 
 	block, _ := pem.Decode(CSRPEM)
-	ExampleCSR, _ = oldx509.ParseCertificateRequest(block.Bytes)
+	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
@@ -759,7 +758,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := oldx509.ParseCertificateRequest(csrBytes)
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
@@ -1249,6 +1248,22 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	// comes into effect.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
 	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
+}
+
+func TestDeactivateAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = ra.DeactivateAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization wtih ID "+authz.ID)
+	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
 }
 
 var CAkeyPEM = `

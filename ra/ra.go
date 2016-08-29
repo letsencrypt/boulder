@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -447,7 +446,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx509.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -563,7 +562,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// No matter what, log the request
 	defer func() {
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
@@ -979,7 +977,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 
 	state := "Failure"
 	defer func() {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 		// Needed:
 		//   Serial
 		//   CN
@@ -1012,7 +1009,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	state := "Failure"
 	defer func() {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 		// Needed:
 		//   Serial
 		//   CN
@@ -1077,5 +1073,17 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 	}
 
 	ra.stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
+	return nil
+}
+
+// DeactivateAuthorization deactivates a currently valid authorization
+func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
+	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
+		return core.MalformedRequestError("Only valid and pending authorizations can be deactivated")
+	}
+	err := ra.SA.DeactivateAuthorization(ctx, auth.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
 	return nil
 }

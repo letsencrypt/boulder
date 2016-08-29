@@ -350,7 +350,6 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	cb, present := rpc.dispatchTable[msg.Type]
 	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 	if !present {
-		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
 		rpc.log.AuditErr(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 		return
 	}
@@ -360,7 +359,6 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	response.Error = wrapError(err)
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		rpc.log.AuditErr(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
 		return
 	}

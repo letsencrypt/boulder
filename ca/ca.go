@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -31,8 +32,6 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
-	"github.com/letsencrypt/go/src/encoding/asn1"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -271,7 +270,7 @@ func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 //                        Any other value will result in an error.
 //
 // Other requested extensions are silently ignored.
-func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *oldx509.CertificateRequest) ([]signer.Extension, error) {
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) ([]signer.Extension, error) {
 	extensions := []signer.Extension{}
 
 	extensionSeen := map[string]bool{}
@@ -339,7 +338,6 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *oldx509.CertificateRe
 func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(err.Error())
 		return nil, err
 	}
@@ -373,11 +371,10 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err.Error())
 		return emptyCert, core.MalformedRequestError(err.Error())
 	}
@@ -392,7 +389,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 
 	if issuer.cert.NotAfter.Before(notAfter) {
 		err = core.InternalServerError("Cannot issue a certificate that expires after the issuer certificate.")
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -410,7 +406,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
@@ -426,7 +421,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 		profile = ca.ecdsaProfile
 	default:
 		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", csr.PublicKey))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -453,14 +447,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	ca.noteSignError(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 
 	if len(certPEM) == 0 {
 		err = core.InternalServerError("No certificate returned by server")
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
@@ -468,7 +460,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = core.InternalServerError("Invalid certificate value returned")
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
 			serialHex, certPEM, err))
 		return emptyCert, err
@@ -486,7 +477,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	// This is one last check for uncaught errors
 	if err != nil {
 		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
 			serialHex, hex.EncodeToString(certDER), err))
 		return emptyCert, err
@@ -496,7 +486,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr ol
 	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Sprintf(
 			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
 			serialHex,

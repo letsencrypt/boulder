@@ -916,3 +916,29 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	)
 	return count > 0, err
 }
+
+// DeactivateAuthorization deactivates a currently valid or pending authorization
+func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id string) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+	table := "authz"
+	oldStatus := core.StatusValid
+	if existingPending(tx, id) {
+		table = "pendingAuthorizations"
+		oldStatus = core.StatusPending
+	}
+
+	_, err = tx.Exec(
+		fmt.Sprintf(`UPDATE %s SET status = ? WHERE id = ? and status = ?`, table),
+		string(core.StatusDeactivated),
+		id,
+		string(oldStatus),
+	)
+	if err != nil {
+		err = Rollback(tx, err)
+		return err
+	}
+	return tx.Commit()
+}

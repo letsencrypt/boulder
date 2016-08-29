@@ -113,7 +113,6 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 // FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		logger := blog.Get()
 		logger.AuditErr(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
