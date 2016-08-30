@@ -85,7 +85,7 @@ func main() {
 		scope,
 		sa)
 
-	go cmd.ProfileCmd("Publisher", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "Publisher"))
 
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)

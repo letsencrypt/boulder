@@ -169,7 +169,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString("ocsp-responder"))
 
-	go cmd.ProfileCmd("OCSP", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "OCSP"))
 
 	config := c.OCSPResponder
 	var source cfocsp.Source

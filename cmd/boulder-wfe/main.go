@@ -111,7 +111,7 @@ func main() {
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
 
-	go cmd.ProfileCmd("WFE", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "WFE"))
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL

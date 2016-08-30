@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
@@ -159,7 +160,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
-	go cmd.ProfileCmd("CA", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "CA"))
 
 	amqpConf := c.CA.AMQP
 	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
