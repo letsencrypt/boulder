@@ -607,7 +607,7 @@ func main() {
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
 
-	go cmd.ProfileCmd("OCSP-Updater", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "OCSP-Updater"))
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()

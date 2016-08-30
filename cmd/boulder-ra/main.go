@@ -107,7 +107,7 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	go cmd.ProfileCmd("RA", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "RA"))
 
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority

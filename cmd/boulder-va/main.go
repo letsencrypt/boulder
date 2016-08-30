@@ -77,7 +77,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	go cmd.ProfileCmd("VA", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "VA"))
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,

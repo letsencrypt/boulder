@@ -58,7 +58,7 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	go cmd.ProfileCmd("SA", stats)
+	go cmd.ProfileCmd(metrics.NewStatsdScope(stats, "SA"))
 
 	amqpConf := saConf.AMQP
 	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats, logger)
