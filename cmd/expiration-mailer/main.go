@@ -298,7 +298,7 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-const clientName = "ExpirationMailer"
+const clientName = "Expiration"
 
 type config struct {
 	Mailer struct {
@@ -344,7 +344,7 @@ func main() {
 	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "ExpirationMailer")
+	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
 	logger.Info(clientName)
 
