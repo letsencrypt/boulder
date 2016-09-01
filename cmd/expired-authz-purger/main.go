@@ -41,19 +41,19 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64, error) {
+func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time) error {
 	if !yes {
 		var count int
-		err := p.db.SelectOne(&count, `SELECT COUNT(1) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
+		err := p.db.SelectOne(&count, `SELECT COUNT(1) FROM  AS pa WHERE expires <= ?`, purgeBefore)
 		if err != nil {
-			return 0, err
+			return err
 		}
 		reader := bufio.NewReader(os.Stdin)
 		for {
-			fmt.Fprintf(os.Stdout, "\nAbout to purge %d pending authorizations, proceed? [y/N]: ", count)
+			fmt.Fprintf(os.Stdout, "\nAbout to purge %d authorizations from %s, proceed? [y/N]: ", count, table)
 			text, err := reader.ReadString('\n')
 			if err != nil {
-				return 0, err
+				return err
 			}
 			text = strings.ToLower(text)
 			if text != "y\n" && text != "n\n" && text != "\n" {
@@ -66,34 +66,43 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 			}
 		}
 	}
-
-	rowsAffected := int64(0)
+	purged := int64(0)
 	for {
-		result, err := p.db.Exec(`
-			DELETE FROM pendingAuthorizations
+		result, err := p.db.Exec(fmt.Sprintf(`
+			DELETE FROM %s
 			WHERE expires <= ?
 			LIMIT ?
-			`,
+			`, table),
 			purgeBefore,
 			p.batchSize,
 		)
 		if err != nil {
-			return rowsAffected, err
+			return err
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
-			return rowsAffected, err
+			return err
 		}
 
 		p.stats.Inc("PendingAuthzDeleted", rows, 1.0)
-		rowsAffected += rows
-		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d total) expired pending authorizations", rows, rowsAffected))
+		purged += rows
+		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d) expired authorizations from: %s", rows, purged, table))
 
 		if rows < p.batchSize {
-			p.log.Info(fmt.Sprintf("Deleted a total of %d expired pending authorizations", rowsAffected))
-			return rowsAffected, nil
+			p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from: %s", purged, table))
+			return nil
 		}
 	}
+}
+
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) error {
+	for _, table := range []string{"pendingAuthorizations", "authz"} {
+		err := p.purge(table, yes, purgeBefore)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -137,6 +146,6 @@ func main() {
 		os.Exit(1)
 	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-	_, err = purger.purgeAuthzs(purgeBefore, *yes)
+	err = purger.purgeAuthzs(purgeBefore, *yes)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }

@@ -34,9 +34,8 @@ func TestPurgeAuthzs(t *testing.T) {
 
 	p := expiredAuthzPurger{stats, log, fc, dbMap, 1}
 
-	rows, err := p.purgeAuthzs(time.Time{}, true)
+	err = p.purgeAuthzs(time.Time{}, true)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
-	test.AssertEquals(t, rows, int64(0))
 
 	old, new := fc.Now().Add(-time.Hour), fc.Now().Add(time.Hour)
 
@@ -48,10 +47,15 @@ func TestPurgeAuthzs(t *testing.T) {
 	_, err = ssa.NewPendingAuthorization(context.Background(), core.Authorization{RegistrationID: reg.ID, Expires: &new})
 	test.AssertNotError(t, err, "NewPendingAuthorization failed")
 
-	rows, err = p.purgeAuthzs(fc.Now(), true)
+	err = p.purgeAuthzs(fc.Now(), true)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
-	test.AssertEquals(t, rows, int64(2))
-	rows, err = p.purgeAuthzs(fc.Now().Add(time.Hour), true)
+	count, err := dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
+	test.AssertNotError(t, err, "dbMap.SelectInt failed")
+	test.AssertEquals(t, count, int64(1))
+
+	err = p.purgeAuthzs(fc.Now().Add(time.Hour), true)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
-	test.AssertEquals(t, rows, int64(1))
+	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
+	test.AssertNotError(t, err, "dbMap.SelectInt failed")
+	test.AssertEquals(t, count, int64(0))
 }
