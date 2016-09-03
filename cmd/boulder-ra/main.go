@@ -92,6 +92,7 @@ func main() {
 	go cmd.DebugServer(c.RA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "RA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -112,7 +113,7 @@ func main() {
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
 	if c.RA.VAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.VAService)
+		conn, err := bgrpc.ClientSetup(c.RA.VAService, scope)
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {

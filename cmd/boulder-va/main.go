@@ -74,6 +74,7 @@ func main() {
 	go cmd.DebugServer(c.VA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "VA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -96,7 +97,7 @@ func main() {
 
 	var caaClient caaPB.CAACheckerClient
 	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService)
+		conn, err := bgrpc.ClientSetup(c.VA.CAAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}

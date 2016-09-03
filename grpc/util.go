@@ -25,7 +25,7 @@ var CodedError = grpc.Errorf
 // and validates the certificate presented by the server is for a
 // specific hostname and issued by the provided issuer certificate
 // thens dials and returns a grpc.ClientConn to the remote service.
-func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
 		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
 	}
@@ -41,10 +41,15 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	if stats == nil {
+		stats = metrics.NewNoopScope()
+	}
+	ci := clientInterceptor{stats, clock.Default()}
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
 		grpc.WithTransportCredentials(bcreds.New(rootCAs, []tls.Certificate{clientCert})),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
+		grpc.WithUnaryInterceptor(ci.intercept),
 	)
 }
 

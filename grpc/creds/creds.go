@@ -41,7 +41,7 @@ func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string
 	}()
 	select {
 	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+		return nil, nil, fmt.Errorf("boulder/grpc/creds: %s", ctx.Err())
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()
