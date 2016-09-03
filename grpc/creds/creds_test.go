@@ -91,7 +91,7 @@ func TestTransportCredentials(t *testing.T) {
 			case <-stop:
 				return
 			default:
-				ln.Accept()
+				_, _ = ln.Accept()
 				time.Sleep(time.Second)
 			}
 		}
