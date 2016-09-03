@@ -249,12 +249,17 @@ def run_expired_authz_purger_test():
                             ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
 
     def expect(target_time, num):
-        expected_output = 'Deleted a total of %d expired pending authorizations' % num
+        expected_output_a = 'Deleted a total of %d expired authorizations from: pendingAuthorizations' % num
+        expected_output_b = 'Deleted a total of %d expired authorizations from: authz' % num
         try:
             out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
-            if expected_output not in out:
+            if expected_output_a not in out:
                 print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
-                    % (expected_output, out))
+                    % (expected_output_a, out))
+                die(ExitStatus.NodeFailure)
+            if expected_output_b not in out:
+                print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
+                    % (expected_output_b, out))
                 die(ExitStatus.NodeFailure)
         except subprocess.CalledProcessError as e:
             print("\nFailed to run authz purger: %s" % e)
