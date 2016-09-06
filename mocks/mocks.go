@@ -59,6 +59,7 @@ const (
      "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
      "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
    }`
+	test3KeyPublicJSON = `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
 
 	agreementURL = "http://example.invalid/terms"
 )
@@ -95,6 +96,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var test3KeyPublic jose.JsonWebKey
 	var testE1KeyPublic jose.JsonWebKey
 	var testE2KeyPublic jose.JsonWebKey
 	var err error
@@ -103,6 +105,10 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 		return core.Registration{}, err
 	}
 	err = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -138,6 +144,17 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 
 	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
 		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test3KeyPublic) {
+		// deactivated registration
+		return core.Registration{
+			ID:        2,
+			Key:       jwk,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusDeactivated,
+		}, nil
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
