@@ -455,7 +455,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	if wfe.AllowAccountDeactivation && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized("Cannot use a non-valid registration")
+		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
