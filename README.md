@@ -33,7 +33,8 @@ reflected inside Docker images run with docker-compose.
 If docker-compose fails with an error message like "Cannot start service
 boulder: oci runtime error: no such file or directory" or "Cannot create
 container for service boulder" you should double check that your `$GOPATH`
-exists and is valid (e.g. does not contain any special characters).
+exists and doesn't contain any characters other than letters, numbers, `-`
+and `_`.
 
 By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 127.0.0.1. This is suitable for running integration tests inside the Docker
