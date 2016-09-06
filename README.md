@@ -30,6 +30,11 @@ The configuration in docker-compose.yml mounts your
 `$GOPATH`. So you can edit code on your host and it will be immediately
 reflected inside Docker images run with docker-compose.
 
+If docker-compose fails with an error message like "Cannot start service
+boulder: oci runtime error: no such file or directory" or "Cannot create
+container for service boulder" you should double check that your `$GOPATH`
+exists and is valid (e.g. does not contain any special characters).
+
 By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 127.0.0.1. This is suitable for running integration tests inside the Docker
 container. If you want Boulder to be able to communicate with a client running
