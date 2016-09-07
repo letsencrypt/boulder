@@ -38,8 +38,6 @@
   "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 
