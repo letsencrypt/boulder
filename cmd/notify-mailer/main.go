@@ -300,13 +300,14 @@ func main() {
 	cmd.FailOnError(err, "Unmarshaling config")
 
 	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
+	scope := metrics.NewStatsdScope(stats, "NotificationMailer")
 	defer log.AuditPanic()
 
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "NotificationMailer"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
@@ -336,7 +337,7 @@ func main() {
 			smtpPassword,
 			*address,
 			log,
-			stats,
+			scope,
 			*reconnBase,
 			*reconnMax)
 	}

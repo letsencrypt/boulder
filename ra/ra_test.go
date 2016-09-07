@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -25,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
@@ -221,7 +221,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,

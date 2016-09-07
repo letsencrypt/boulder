@@ -230,7 +230,7 @@ func main() {
 
 	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
-	scope := metrics.NewStatsdScope(stats, "caa-service")
+	scope := metrics.NewStatsdScope(stats, "CAAService")
 
 	caaSERVFAILExceptions, err := bdns.ReadHostList(c.CAASERVFAILExceptions)
 	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")

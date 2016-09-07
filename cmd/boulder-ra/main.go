@@ -92,6 +92,7 @@ func main() {
 	go cmd.DebugServer(c.RA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "RA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -107,7 +108,7 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	go cmd.ProfileCmd("RA", stats)
+	go cmd.ProfileCmd(scope)
 
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
@@ -116,14 +117,14 @@ func main() {
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {
-		vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
+		vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create VA client")
 	}
 
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
@@ -141,7 +142,7 @@ func main() {
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
-		stats,
+		scope,
 		c.RA.MaxContactsPerRegistration,
 		goodkey.NewKeyPolicy(),
 		c.RA.MaxNames,
@@ -156,7 +157,6 @@ func main() {
 
 	raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-	scoped := metrics.NewStatsdScope(stats, "RA", "DNS")
 	dnsTries := c.RA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
@@ -166,14 +166,14 @@ func main() {
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
 			nil,
-			scoped,
+			scope,
 			clock.Default(),
 			dnsTries)
 	} else {
 		rai.DNSResolver = bdns.NewTestDNSResolverImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
-			scoped,
+			scope,
 			clock.Default(),
 			dnsTries)
 	}
@@ -182,7 +182,7 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
-	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats, logger)
+	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")
 	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 	cmd.FailOnError(err, "Unable to setup RA RPC server")

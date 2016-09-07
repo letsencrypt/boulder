@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -28,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
@@ -219,7 +219,7 @@ var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
@@ -228,7 +228,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
-	wfe.stats, _ = statsd.NewNoopClient()
 
 	return wfe, fc
 }
@@ -621,7 +620,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
@@ -1294,7 +1293,6 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, fc := setupWFE(t)
 
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
-	wfe.stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
 	signer.SetNonceSource(wfe.nonceService)
