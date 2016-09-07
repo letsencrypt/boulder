@@ -92,7 +92,7 @@ func TestTransportCredentials(t *testing.T) {
 				return
 			default:
 				_, _ = ln.Accept()
-				time.Sleep(time.Second)
+				time.Sleep(2 * time.Millisecond)
 			}
 		}
 	}()
@@ -103,7 +103,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	conn, _, err = tc.ClientHandshake(ctx, "A:2020", rawConnC)
 	test.AssertError(t, err, "tc.ClientHandshake didn't timeout")
