@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
 	"github.com/cloudflare/cfssl/ocsp"
@@ -32,6 +31,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -74,25 +74,25 @@ var (
 // Metrics for CA statistics
 const (
 	// Increments when CA observes an HSM or signing error
-	metricSigningError = "CA.SigningError"
+	metricSigningError = "SigningError"
 	metricHSMError     = metricSigningError + ".HSMError"
 
 	// Increments when CA handles a CSR requesting a "basic" extension:
 	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
 	// basicConstraints, certificatePolicies, crlDistributionPoints,
 	// subjectAlternativeName, subjectKeyIdentifier,
-	metricCSRExtensionBasic = "CA.CSRExtensions.Basic"
+	metricCSRExtensionBasic = "CSRExtensions.Basic"
 
 	// Increments when CA handles a CSR requesting a TLS Feature extension
-	metricCSRExtensionTLSFeature = "CA.CSRExtensions.TLSFeature"
+	metricCSRExtensionTLSFeature = "CSRExtensions.TLSFeature"
 
 	// Increments when CA handles a CSR requesting a TLS Feature extension with
 	// an invalid value
-	metricCSRExtensionTLSFeatureInvalid = "CA.CSRExtensions.TLSFeatureInvalid"
+	metricCSRExtensionTLSFeatureInvalid = "CSRExtensions.TLSFeatureInvalid"
 
 	// Increments when CA handles a CSR requesting an extension other than those
 	// listed above
-	metricCSRExtensionOther = "CA.CSRExtensions.Other"
+	metricCSRExtensionOther = "CSRExtensions.Other"
 )
 
 type certificateStorage interface {
@@ -114,7 +114,7 @@ type CertificateAuthorityImpl struct {
 	keyPolicy        goodkey.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
-	stats            statsd.Statter
+	stats            metrics.Scope
 	prefix           int // Prepended to the serial number
 	validityPeriod   time.Duration
 	maxNames         int
@@ -179,7 +179,7 @@ func makeInternalIssuers(
 func NewCertificateAuthorityImpl(
 	config cmd.CAConfig,
 	clk clock.Clock,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -255,9 +255,9 @@ func NewCertificateAuthorityImpl(
 func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 	if err != nil {
 		if _, ok := err.(*pkcs11.Error); ok {
-			ca.stats.Inc(metricHSMError, 1, 1.0)
+			ca.stats.Inc(metricHSMError, 1)
 		} else if cfErr, ok := err.(*cferr.Error); ok {
-			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1, 1.0)
+			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1)
 		}
 	}
 	return
@@ -292,14 +292,14 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 
 				switch {
 				case ext.Type.Equal(oidTLSFeature):
-					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
+					ca.stats.Inc(metricCSRExtensionTLSFeature, 1)
 					value, ok := ext.Value.([]byte)
 					if !ok {
 						msg := fmt.Sprintf("Malformed extension with OID %v", ext.Type)
 						return nil, core.MalformedRequestError(msg)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
 						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
-						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
+						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1)
 						return nil, core.MalformedRequestError(msg)
 					}
 
@@ -324,11 +324,11 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 	}
 
 	if hasBasic {
-		ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+		ca.stats.Inc(metricCSRExtensionBasic, 1)
 	}
 
 	if hasOther {
-		ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+		ca.stats.Inc(metricCSRExtensionOther, 1)
 	}
 
 	return extensions, nil

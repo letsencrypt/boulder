@@ -828,3 +828,17 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
 }
+
+func TestDeactivateAccount(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	err := sa.DeactivateRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+}

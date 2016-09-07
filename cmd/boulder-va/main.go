@@ -78,7 +78,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	go cmd.ProfileCmd("VA", stats)
+	go cmd.ProfileCmd(scope)
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,
@@ -102,14 +102,13 @@ func main() {
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}
 
-	scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {
 		var err error
 		cdrClient, err = cdr.New(
-			scoped,
+			scope,
 			c.VA.CAADistributedResolver.Timeout.Duration,
 			c.VA.CAADistributedResolver.MaxFailures,
 			c.VA.CAADistributedResolver.Proxies,
@@ -132,13 +131,13 @@ func main() {
 			dnsTimeout,
 			[]string{c.Common.DNSResolver},
 			caaSERVFAILExceptions,
-			scoped,
+			scope,
 			clk,
 			dnsTries)
 		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
 		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	}
@@ -151,13 +150,13 @@ func main() {
 		resolver,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
-		stats,
+		scope,
 		clk,
 		logger)
 
 	amqpConf := c.VA.AMQP
 	if c.VA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
+		s, l, err := bgrpc.NewServer(c.VA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
 		err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 		cmd.FailOnError(err, "Unable to register VA gRPC server")
@@ -167,7 +166,7 @@ func main() {
 		}()
 	}
 
-	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
+	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")

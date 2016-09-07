@@ -11,7 +11,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/net/context"
@@ -40,7 +39,7 @@ type ocspDB interface {
 
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
-	stats statsd.Statter
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 
@@ -66,7 +65,7 @@ type OCSPUpdater struct {
 // This is somewhat gross but can be pared down a bit once the publisher and this
 // are fully smooshed together
 func newUpdater(
-	stats statsd.Statter,
+	stats metrics.Scope,
 	clk clock.Clock,
 	dbMap ocspDB,
 	ca core.CertificateAuthority,
@@ -105,7 +104,7 @@ func newUpdater(
 	updater.loops = []*looper{
 		{
 			clk:                  clk,
-			stats:                stats,
+			stats:                stats.NewScope("NewCertificates"),
 			batchSize:            config.NewCertificateBatchSize,
 			tickDur:              config.NewCertificateWindow.Duration,
 			tickFunc:             updater.newCertificateTick,
@@ -115,7 +114,7 @@ func newUpdater(
 		},
 		{
 			clk:                  clk,
-			stats:                stats,
+			stats:                stats.NewScope("OldOCSPResponses"),
 			batchSize:            config.OldOCSPBatchSize,
 			tickDur:              config.OldOCSPWindow.Duration,
 			tickFunc:             updater.oldOCSPResponsesTick,
@@ -127,7 +126,7 @@ func newUpdater(
 		// failureBackoffMax as it doesn't make any calls to the CA
 		{
 			clk:       clk,
-			stats:     stats,
+			stats:     stats.NewScope("MissingSCTReceipts"),
 			batchSize: config.MissingSCTBatchSize,
 			tickDur:   config.MissingSCTWindow.Duration,
 			tickFunc:  updater.missingReceiptsTick,
@@ -342,7 +341,7 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 	// OCSP responses
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
-		updater.stats.Inc("OCSP.Errors.FindMissingResponses", 1, 1.0)
+		updater.stats.Inc("Errors.FindMissingResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find certificates with missing OCSP responses: %s", err))
 		return err
 	}
@@ -369,7 +368,7 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSize int) error {
 	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
 	if err != nil {
-		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
+		updater.stats.Inc("Errors.FindRevokedCertificates", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find revoked certificates: %s", err))
 		return err
 	}
@@ -378,12 +377,12 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		meta, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to generate revoked OCSP response: %s", err))
-			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
+			updater.stats.Inc("Errors.RevokedResponseGeneration", 1)
 			return err
 		}
 		err = updater.storeResponse(meta)
 		if err != nil {
-			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
+			updater.stats.Inc("Errors.StoreRevokedResponse", 1)
 			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
 			continue
 		}
@@ -396,17 +395,17 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
-			updater.stats.Inc("OCSP.Errors.ResponseGeneration", 1, 1.0)
+			updater.stats.Inc("Errors.ResponseGeneration", 1)
 			return err
 		}
-		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
+		updater.stats.Inc("GeneratedResponses", 1)
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
-			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)
+			updater.stats.Inc("Errors.StoreResponse", 1)
 			continue
 		}
-		updater.stats.Inc("OCSP.StoredResponses", 1, 1.0)
+		updater.stats.Inc("StoredResponses", 1)
 	}
 	return nil
 }
@@ -417,7 +416,7 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	now := time.Now()
 	statuses, err := updater.findStaleOCSPResponses(now.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
-		updater.stats.Inc("OCSP.Errors.FindStaleResponses", 1, 1.0)
+		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
@@ -498,7 +497,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 
 type looper struct {
 	clk                  clock.Clock
-	stats                statsd.Statter
+	stats                metrics.Scope
 	batchSize            int
 	tickDur              time.Duration
 	tickFunc             func(context.Context, int) error
@@ -512,12 +511,12 @@ func (l *looper) tick() {
 	tickStart := l.clk.Now()
 	ctx := context.TODO()
 	err := l.tickFunc(ctx, l.batchSize)
-	l.stats.TimingDuration(fmt.Sprintf("OCSP.%s.TickDuration", l.name), time.Since(tickStart), 1.0)
-	l.stats.Inc(fmt.Sprintf("OCSP.%s.Ticks", l.name), 1, 1.0)
+	l.stats.TimingDuration("TickDuration", time.Since(tickStart))
+	l.stats.Inc("Ticks", 1)
 	tickEnd := tickStart.Add(time.Since(tickStart))
 	expectedTickEnd := tickStart.Add(l.tickDur)
 	if tickEnd.After(expectedTickEnd) {
-		l.stats.Inc(fmt.Sprintf("OCSP.%s.LongTicks", l.name), 1, 1.0)
+		l.stats.Inc("LongTicks", 1)
 	}
 
 	// After we have all the stats stuff out of the way let's check if the tick
@@ -525,7 +524,7 @@ func (l *looper) tick() {
 	// sleepDur using the exponentially increasing duration returned by core.RetryBackoff.
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
-		l.stats.Inc(fmt.Sprintf("OCSP.%s.FailedTicks", l.name), 1, 1.0)
+		l.stats.Inc("FailedTicks", 1)
 		l.failures++
 		sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
 	} else if l.failures > 0 {
@@ -564,7 +563,7 @@ type config struct {
 	}
 }
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
@@ -604,22 +603,23 @@ func main() {
 	go cmd.DebugServer(conf.DebugAddr)
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
 
-	go cmd.ProfileCmd("OCSP-Updater", stats)
+	go cmd.ProfileCmd(scope)
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPUpdater"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	cac, pubc, sac := setupClients(conf, stats)
+	cac, pubc, sac := setupClients(conf, scope)
 
 	updater, err := newUpdater(
-		stats,
+		scope,
 		clock.Default(),
 		dbMap,
 		cac,

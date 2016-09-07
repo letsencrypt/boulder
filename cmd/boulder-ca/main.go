@@ -154,17 +154,17 @@ func main() {
 	cai, err := ca.NewCertificateAuthorityImpl(
 		c.CA,
 		clock.Default(),
-		stats,
+		scope,
 		issuers,
 		goodkey.NewKeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
-	go cmd.ProfileCmd("CA", stats)
+	go cmd.ProfileCmd(scope)
 
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	if c.CA.PublisherService != nil {
@@ -172,11 +172,11 @@ func main() {
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
 	} else {
-		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
