@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 func main() {
@@ -24,7 +25,7 @@ func main() {
 		ServerIssuerPath:      "test/grpc-creds/ca.pem",
 		ClientCertificatePath: "test/grpc-creds/client.pem",
 		ClientKeyPath:         "test/grpc-creds/key.pem",
-	}, nil)
+	}, metrics.NewNoopScope())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup client connection: %s\n", err)
 		os.Exit(1)
