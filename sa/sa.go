@@ -741,8 +741,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Serial:             serial,
 		RevokedDate:        time.Time{},
 		RevokedReason:      0,
-		LockCol:            0,
 		NotAfter:           parsedCertificate.NotAfter,
+		LockCol:            0,
 	}
 
 	tx, err := ssa.dbMap.Begin()
