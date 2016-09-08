@@ -77,11 +77,7 @@ func (b backfiller) findEmpty() ([]*core.CertificateStatus, error) {
 			"batchSize": b.batchSize,
 		},
 	)
-	if err != nil {
-		return certs, err
-	}
-
-	return certs, nil
+	return certs, err
 }
 
 func (b backfiller) populateNotAfter(certs []*core.CertificateStatus) error {
