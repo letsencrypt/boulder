@@ -210,12 +210,11 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		`SELECT
 			 cs.serial,
 			 cs.status,
-			 cs.revokedDate
+			 cs.revokedDate,
+			 cs.notAfter
 			 FROM certificateStatus AS cs
-			 JOIN certificates AS cert
-			 ON cs.serial = cert.serial
 			 WHERE cs.ocspLastUpdated < :lastUpdate
-			 AND cert.expires > now()
+			 AND NOT cs.isExpired
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
 		map[string]interface{}{
@@ -441,9 +440,14 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	}
 
 	for _, s := range statuses {
-		err := updater.markExpired(s)
-		if err != nil {
-			return err
+		// If the certificate status has an expiration date before now, but it
+		// doesn't have `isExpired` set to true then we need to update the status to
+		// reflect that it is expired.
+		if !s.IsExpired && s.NotAfter.Before(now) {
+			err := updater.markExpired(s)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
