@@ -49,7 +49,7 @@ func (b backfiller) printStatus(
 }
 
 func (b backfiller) backfill(certStatus *core.CertificateStatus) error {
-	// We explicit use `Exec` over `Update` to avoid contention on the
+	// We explicitly use `Exec` over `Update` to avoid contention on the
 	// `LockCol` field that Gorp uses for optimistic locking. With an
 	// `ocsp-updater` running at the same time as a backfill there is a pretty
 	// good chance they would clobber each others `LockCol` values if we used
@@ -169,12 +169,12 @@ Introduction:
 The "20160817143417_AddCertStatusNotAfter.sql" db migration adds a "notAfter"
 column to the certificateStatus database table. This field duplicates the
 contents of the certificates table "expires" column. This enables performance
-improvements[0] for both the ocsp-updater and the expiration-mailer utilities.  
+improvements[0] for both the ocsp-updater and the expiration-mailer utilities.
 
-Since existing rows will have a NULL value in the new field he notafter-backfill
-utility exists to perform a one-time update of the existing certificateStatus
-rows to set their notAfter column based on the data that exists in the
-certificates table.
+Since existing rows will have a NULL value in the new field the
+notafter-backfill utility exists to perform a one-time update of the existing
+certificateStatus rows to set their notAfter column based on the data that
+exists in the certificates table.
 
 [0] https://github.com/letsencrypt/boulder/issues/1864
 
