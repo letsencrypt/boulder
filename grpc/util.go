@@ -20,6 +20,8 @@ import (
 // CodedError is a alias required to appease go vet
 var CodedError = grpc.Errorf
 
+var errNilScope = errors.New("boulder/grpc: Passed nil scope ")
+
 // ClientSetup loads various TLS certificates and creates a
 // gRPC TransportCredentials that presents the client certificate
 // and validates the certificate presented by the server is for a
@@ -28,6 +30,9 @@ var CodedError = grpc.Errorf
 func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
 		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
+	}
+	if stats == nil {
+		return nil, errNilScope
 	}
 	serverIssuerBytes, err := ioutil.ReadFile(c.ServerIssuerPath)
 	if err != nil {
@@ -55,6 +60,9 @@ func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn
 // issued by the provided issuer certificate and presents a
 // a server TLS certificate.
 func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
+	if stats == nil {
+		return nil, nil, errNilScope
+	}
 	cert, err := tls.LoadX509KeyPair(c.ServerCertificatePath, c.ServerKeyPath)
 	if err != nil {
 		return nil, nil, err
