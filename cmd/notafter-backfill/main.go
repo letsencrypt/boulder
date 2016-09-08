@@ -61,10 +61,7 @@ func (b backfiller) backfill(certStatus *core.CertificateStatus) error {
 		certStatus.NotAfter,
 		certStatus.Serial,
 	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (b backfiller) findEmpty() ([]*core.CertificateStatus, error) {
