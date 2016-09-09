@@ -174,6 +174,27 @@ if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
 
+  TEST=./test
+  openssl x509 -outform der -in $TEST/test-root.pem  -out $TEST/test-root.der
+  openssl x509 -outform der -in $TEST/test-ca2.pem  -out $TEST/test-ca2.der
+  GOBIN=./bin go install ./cmd/single-ocsp
+  ./bin/single-ocsp -issuer $TEST/test-root.der \
+          -responder $TEST/test-root.der \
+          -target $TEST/test-ca2.der \
+          -template cmd/single-ocsp/test/template-good.json \
+          -pkcs11 $TEST/test-ca.key-pkcs11.json \
+          -out ocsp-good.b64der
+
+  ./bin/single-ocsp -issuer $TEST/test-root.der \
+          -responder $TEST/test-root.der \
+          -target $TEST/test-ca2.der \
+          -template cmd/single-ocsp/test/template-good-2014.json \
+          -pkcs11 $TEST/test-ca.key-pkcs11.json \
+          -out ocsp-good-2014.b64der
+
+  cat ocsp-good-2014.b64der ocsp-good.b64der > $TEST/issuer-ocsp-responses.txt
+  git diff $TEST/issuer-ocsp-responses.txt
+
   if [ -z "$CERTBOT_PATH" ]; then
     export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
     echo "------------------------------------------------"

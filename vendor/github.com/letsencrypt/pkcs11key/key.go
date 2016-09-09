@@ -133,12 +133,12 @@ func initialize(modulePath string) (ctx, error) {
 
 	newModule := pkcs11.New(modulePath)
 	if newModule == nil {
-		return nil, fmt.Errorf("unable to load PKCS#11 module")
+		return nil, fmt.Errorf("unable to load PKCS#11 module from '%s'", modulePath)
 	}
 
 	err := newModule.Initialize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pkcs11key: intializing module: %s", err)
 	}
 
 	modules[modulePath] = ctx(newModule)
@@ -147,36 +147,36 @@ func initialize(modulePath string) (ctx, error) {
 }
 
 // New instantiates a new handle to a PKCS #11-backed key.
-func New(modulePath, tokenLabel, pin, privateKeyLabel string) (ps *Key, err error) {
+func New(modulePath, tokenLabel, pin, privateKeyLabel string) (*Key, error) {
 	module, err := initialize(modulePath)
 	if err != nil {
-		return
+		return nil, err
 	}
 	if module == nil {
 		err = fmt.Errorf("nil module")
-		return
+		return nil, err
 	}
 
 	// Initialize a partial key
-	ps = &Key{
+	ps := &Key{
 		module:     module,
 		tokenLabel: tokenLabel,
 		pin:        pin,
 	}
 	err = ps.setup(privateKeyLabel)
 	if err != nil {
-		return
+		return nil, err
 	}
 	return ps, nil
 }
 
-func (ps *Key) setup(privateKeyLabel string) (err error) {
+func (ps *Key) setup(privateKeyLabel string) error {
 	// Open a session
 	ps.sessionMu.Lock()
 	defer ps.sessionMu.Unlock()
 	session, err := ps.openSession()
 	if err != nil {
-		return
+		return fmt.Errorf("pkcs11key: opening session: %s", err)
 	}
 	ps.session = &session
 
@@ -184,15 +184,16 @@ func (ps *Key) setup(privateKeyLabel string) (err error) {
 	privateKeyHandle, err := ps.getPrivateKey(ps.module, session, privateKeyLabel)
 	if err != nil {
 		ps.module.CloseSession(session)
-		return
+		return fmt.Errorf("pkcs11key: getting private key: %s", err)
 	}
 	ps.privateKeyHandle = privateKeyHandle
 
 	err = ps.loadPublicKey(ps.module, session, privateKeyHandle)
 	if err != nil {
 		ps.module.CloseSession(session)
+		return fmt.Errorf("pkcs11key: getting public key: %s", err)
 	}
-	return
+	return nil
 }
 
 func (ps *Key) getPrivateKey(module ctx, session pkcs11.SessionHandle, label string) (pkcs11.ObjectHandle, error) {
