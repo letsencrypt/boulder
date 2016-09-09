@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/pkcs11key"
 	"golang.org/x/crypto/ocsp"
@@ -63,36 +64,15 @@ PKCS#11 configuration (JSON), e.g.:
 }
 `
 
-func readFiles(issuerFileName, responderFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11Config pkcs11key.Config, err error) {
+func readFiles(issuerFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, target *x509.Certificate, template ocsp.Response, pkcs11Config pkcs11key.Config, err error) {
 	// Issuer certificate
-	issuerBytes, err := ioutil.ReadFile(issuerFileName)
-	if err != nil {
-		return
-	}
-
-	issuer, err = x509.ParseCertificate(issuerBytes)
-	if err != nil {
-		return
-	}
-
-	// Responder certificate
-	responderBytes, err := ioutil.ReadFile(responderFileName)
-	if err != nil {
-		return
-	}
-
-	responder, err = x509.ParseCertificate(responderBytes)
+	issuer, err = core.LoadCert(issuerFileName)
 	if err != nil {
 		return
 	}
 
 	// Target certificate
-	targetBytes, err := ioutil.ReadFile(targetFileName)
-	if err != nil {
-		return
-	}
-
-	target, err = x509.ParseCertificate(targetBytes)
+	target, err = core.LoadCert(targetFileName)
 	if err != nil {
 		return
 	}
@@ -126,9 +106,8 @@ func readFiles(issuerFileName, responderFileName, targetFileName, templateFileNa
 }
 
 func main() {
-	issuerFile := flag.String("issuer", "", "Issuer certificate (DER)")
-	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
-	targetFile := flag.String("target", "", "Certificate whose status is being reported (DER)")
+	issuerFile := flag.String("issuer", "", "Issuer certificate (PEM)")
+	targetFile := flag.String("target", "", "Certificate whose status is being reported (PEM)")
 	templateFile := flag.String("template", "", templateUsage)
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
 	outFile := flag.String("out", "", "File to which the OCSP response will be written")
@@ -138,8 +117,12 @@ func main() {
 		cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 	}
 
-	issuer, responder, target, template, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *templateFile, *pkcs11File)
+	issuer, target, template, pkcs11, err := readFiles(*issuerFile, *targetFile, *templateFile, *pkcs11File)
 	cmd.FailOnError(err, "Failed to read files")
+
+	// For Let's Encrypt, we sign OCSP responser from the issuer certificate
+	// directly.
+	responder := issuer
 
 	// Instantiate the private key from PKCS11
 	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)

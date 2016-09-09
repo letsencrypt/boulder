@@ -175,19 +175,15 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   TEST=./test
-  openssl x509 -outform der -in $TEST/test-root.pem  -out $TEST/test-root.der
-  openssl x509 -outform der -in $TEST/test-ca2.pem  -out $TEST/test-ca2.der
   GOBIN=$PWD/bin go install ./cmd/single-ocsp
-  ./bin/single-ocsp -issuer $TEST/test-root.der \
-          -responder $TEST/test-root.der \
-          -target $TEST/test-ca2.der \
+  ./bin/single-ocsp -issuer $TEST/test-root.pem \
+          -target $TEST/test-ca2.pem \
           -template cmd/single-ocsp/test/template-good.json \
           -pkcs11 $TEST/test-ca.key-pkcs11.json \
           -out ocsp-good.b64der
 
   ./bin/single-ocsp -issuer $TEST/test-root.der \
-          -responder $TEST/test-root.der \
-          -target $TEST/test-ca2.der \
+          -target $TEST/test-ca2.pem \
           -template cmd/single-ocsp/test/template-good-2014.json \
           -pkcs11 $TEST/test-ca.key-pkcs11.json \
           -out ocsp-good-2014.b64der
