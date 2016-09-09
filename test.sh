@@ -193,7 +193,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
           -out ocsp-good-2014.b64der
 
   cat ocsp-good-2014.b64der ocsp-good.b64der > $TEST/issuer-ocsp-responses.txt
-  git diff $TEST/issuer-ocsp-responses.txt
 
   if [ -z "$CERTBOT_PATH" ]; then
     export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
