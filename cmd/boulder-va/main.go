@@ -97,7 +97,7 @@ func main() {
 
 	var caaClient caaPB.CAACheckerClient
 	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService)
+		conn, err := bgrpc.ClientSetup(c.VA.CAAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}

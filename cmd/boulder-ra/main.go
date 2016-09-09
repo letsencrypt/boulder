@@ -113,7 +113,7 @@ func main() {
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
 	if c.RA.VAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.VAService)
+		conn, err := bgrpc.ClientSetup(c.RA.VAService, scope)
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {

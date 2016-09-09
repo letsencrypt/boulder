@@ -168,7 +168,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	if c.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
+		conn, err := bgrpc.ClientSetup(c.CA.PublisherService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
 	} else {
