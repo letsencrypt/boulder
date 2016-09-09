@@ -136,6 +136,10 @@ func main() {
 	responseBytes, err := ocsp.CreateResponse(issuer, responder, template, priv)
 	cmd.FailOnError(err, "Failed to sign OCSP response")
 
+	response, err := ocsp.ParseResponse(responseBytes, nil)
+	cmd.FailOnError(err, "Failed to parse signed response")
+	fmt.Printf("response %#v\n", response)
+
 	responseBytesBase64 := base64.StdEncoding.EncodeToString(responseBytes) + "\n"
 
 	// Write the OCSP response to stdout
