@@ -177,7 +177,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   TEST=./test
   openssl x509 -outform der -in $TEST/test-root.pem  -out $TEST/test-root.der
   openssl x509 -outform der -in $TEST/test-ca2.pem  -out $TEST/test-ca2.der
-  GOBIN=./bin go install ./cmd/single-ocsp
+  GOBIN=$PWD/bin go install ./cmd/single-ocsp
   ./bin/single-ocsp -issuer $TEST/test-root.der \
           -responder $TEST/test-root.der \
           -target $TEST/test-ca2.der \
