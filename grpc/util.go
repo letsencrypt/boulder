@@ -20,7 +20,7 @@ import (
 // CodedError is a alias required to appease go vet
 var CodedError = grpc.Errorf
 
-var errNilScope = errors.New("boulder/grpc: Passed nil scope ")
+var errNilScope = errors.New("boulder/grpc: received nil scope")
 
 // ClientSetup loads various TLS certificates and creates a
 // gRPC TransportCredentials that presents the client certificate
