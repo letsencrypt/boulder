@@ -192,7 +192,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
+    wait_for_ocsp_good("../test-ca2.pem", "../test-root.pem", issuer_ocsp_url)
 
     verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 

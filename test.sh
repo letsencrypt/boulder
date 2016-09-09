@@ -182,7 +182,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
           -pkcs11 $TEST/test-ca.key-pkcs11.json \
           -out ocsp-good.b64der
 
-  ./bin/single-ocsp -issuer $TEST/test-root.der \
+  ./bin/single-ocsp -issuer $TEST/test-root.pem \
           -target $TEST/test-ca2.pem \
           -template cmd/single-ocsp/test/template-good-2014.json \
           -pkcs11 $TEST/test-ca.key-pkcs11.json \
