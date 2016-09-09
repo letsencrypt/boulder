@@ -8,9 +8,12 @@
     "debugAddr": "localhost:8010"
   },
   "common": {
-    "issuerCert": "test/test-ca2.pem"
+    "issuerCert": "test/test-root.pem"
   },
   "sql": {
     "sqlDebug": true
+  },
+  "syslog": {
+    "stdoutlevel": 6
   }
 }
