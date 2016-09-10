@@ -174,22 +174,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
 
-  TEST=./test
-  GOBIN=$PWD/bin go install ./cmd/single-ocsp
-  ./bin/single-ocsp -issuer $TEST/test-root.pem \
-          -target $TEST/test-ca2.pem \
-          -template cmd/single-ocsp/test/template-good.json \
-          -pkcs11 $TEST/test-ca.key-pkcs11.json \
-          -out ocsp-good.b64der
-
-  ./bin/single-ocsp -issuer $TEST/test-root.pem \
-          -target $TEST/test-ca2.pem \
-          -template cmd/single-ocsp/test/template-good-2014.json \
-          -pkcs11 $TEST/test-ca.key-pkcs11.json \
-          -out ocsp-good-2014.b64der
-
-  cat ocsp-good-2014.b64der ocsp-good.b64der > $TEST/issuer-ocsp-responses.txt
-
   if [ -z "$CERTBOT_PATH" ]; then
     export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
     echo "------------------------------------------------"
