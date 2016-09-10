@@ -55,8 +55,12 @@ git clone https://github.com/SUNET/pkcs11-proxy && \
 
 # Setup SoftHSM
 echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-token --label token_label --so-pin 1234
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+echo 0:${PWD}/softhsm.db > ${SOFTHSM_CONF}
+softhsm --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
+softhsm --slot 0 --import test-ca.key  --label intermediate --pin 5678 --id FB
+echo 1:${PWD}/softhsm.db >> ${SOFTHSM_CONF}
+softhsm --slot 1 --init-token --label root --pin 5678 --so-pin 1234
+softhsm --slot 1 --import test-root.key  --label root --pin 5678 --id FA
 
 gem install fpm
 

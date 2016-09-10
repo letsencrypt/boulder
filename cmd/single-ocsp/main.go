@@ -64,9 +64,15 @@ PKCS#11 configuration (JSON), e.g.:
 }
 `
 
-func readFiles(issuerFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, target *x509.Certificate, template ocsp.Response, pkcs11Config pkcs11key.Config, err error) {
+func readFiles(issuerFileName, responderFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11Config pkcs11key.Config, err error) {
 	// Issuer certificate
 	issuer, err = core.LoadCert(issuerFileName)
+	if err != nil {
+		return
+	}
+
+	// Responder certificate
+	responder, err = core.LoadCert(responderFileName)
 	if err != nil {
 		return
 	}
@@ -107,6 +113,7 @@ func readFiles(issuerFileName, targetFileName, templateFileName, pkcs11FileName 
 
 func main() {
 	issuerFile := flag.String("issuer", "", "Issuer certificate (PEM)")
+	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
 	targetFile := flag.String("target", "", "Certificate whose status is being reported (PEM)")
 	templateFile := flag.String("template", "", templateUsage)
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
@@ -117,12 +124,8 @@ func main() {
 		cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 	}
 
-	issuer, target, template, pkcs11, err := readFiles(*issuerFile, *targetFile, *templateFile, *pkcs11File)
+	issuer, responder, target, template, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *templateFile, *pkcs11File)
 	cmd.FailOnError(err, "Failed to read files")
-
-	// For Let's Encrypt, we sign OCSP responser from the issuer certificate
-	// directly.
-	responder := issuer
 
 	// Instantiate the private key from PKCS11
 	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)
@@ -132,13 +135,16 @@ func main() {
 	template.SerialNumber = target.SerialNumber
 	template.Certificate = responder
 
+	if !core.KeyDigestEquals(responder.PublicKey, priv.Public()) {
+		cmd.FailOnError(fmt.Errorf("PKCS#11 pubkey does not match pubkey in responder certificate"), "loading keys")
+	}
+
 	// Sign the OCSP response
 	responseBytes, err := ocsp.CreateResponse(issuer, responder, template, priv)
 	cmd.FailOnError(err, "Failed to sign OCSP response")
 
-	response, err := ocsp.ParseResponse(responseBytes, nil)
+	_, err = ocsp.ParseResponse(responseBytes, nil)
 	cmd.FailOnError(err, "Failed to parse signed response")
-	fmt.Printf("response %#v\n", response)
 
 	responseBytesBase64 := base64.StdEncoding.EncodeToString(responseBytes) + "\n"
 
