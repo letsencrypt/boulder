@@ -58,9 +58,9 @@ PKCS#11 configuration (JSON), e.g.:
 
 {
 	"module": "/usr/local/lib/libpkcs11-proxy.so",
-	"tokenLabel": "token_label",
+	"tokenLabel": "intermediate",
 	"pin": "5678",
-	"privateKeyLabel": "key_label"
+	"privateKeyLabel": "intermediate"
 }
 `
 

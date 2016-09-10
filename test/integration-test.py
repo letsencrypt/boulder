@@ -240,6 +240,26 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+# Run the single-ocsp command, which is used to generate OCSP responses for
+# intermediate certificates on a manual basis.
+def single_ocsp_sign():
+    subprocess.check_output("""
+        ./single-ocsp -issuer test/test-root.pem \
+                -responder test/test-root.pem \
+                -target test/test-ca2.pem \
+                -template cmd/single-ocsp/test/template-good.json \
+                -pkcs11 test/test-root.key-pkcs11.json \
+                -out ocsp-good.b64der
+        """)
+    with open("ocsp-good.b64der") as f:
+        output = f.read()
+    with open("test/issuer-ocsp-responses.txt") as f:
+        expected = f.read()
+    assert output == expected, (
+        """Output of single-ocsp did not match existing issuer-ocsp-responses.txt. Output:
+        %s
+        Expected:
+        %s""" % (output, expected))
 
 def get_future_output(cmd, date, cwd=None):
     return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)

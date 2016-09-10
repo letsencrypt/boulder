@@ -29,7 +29,6 @@ def install(race_detection):
 
 def run(cmd, race_detection):
     e = os.environ.copy()
-    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
     e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec ./bin/%s""" % cmd
