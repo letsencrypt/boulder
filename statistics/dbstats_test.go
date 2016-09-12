@@ -69,18 +69,6 @@ func parseConfigDuration(durationString string) cmd.ConfigDuration {
 	return cmd.ConfigDuration{Duration: duration}
 }
 
-func updateOCSP(t *testing.T, rwMap *gorp.DbMap, serial string, updateDate time.Time) {
-	_, err := rwMap.Exec(
-		`UPDATE certificateStatus
-     SET ocspResponse=?,ocspLastUpdated=?
-     WHERE serial=?`,
-		[]byte{},
-		updateDate,
-		serial,
-	)
-	test.AssertNotError(t, err, "Should not error")
-}
-
 func addCertificate(t *testing.T, rwMap *gorp.DbMap, saObj *sa.SQLStorageAuthority, ctx context.Context, regID int64, issueDate time.Time) *big.Int {
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Should not error")
@@ -104,22 +92,17 @@ func addCertificate(t *testing.T, rwMap *gorp.DbMap, saObj *sa.SQLStorageAuthori
 	_, err = saObj.AddCertificate(ctx, certDER, regID)
 	test.AssertNotError(t, err, "Should not error")
 
-	updateOCSP(t, rwMap, core.SerialToString(serial), issueDate)
 	return serial
 }
 
 func addRegistration(t *testing.T, sa core.StorageAdder, date time.Time) core.Registration {
-	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
-	test.AssertNotError(t, err, "unable to parse contact link")
-
-	contacts := []*core.AcmeURL{contact}
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "unable to generate key")
 
 	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       jose.JsonWebKey{Key: privKey.Public()},
-		Contact:   contacts,
-		InitialIP: net.ParseIP("88.77.66.11"),
+		Contact:   &[]string{"mailto:foo@example.com"},
+		InitialIP: net.ParseIP("203.0.113.4"), // rfc5737
 		CreatedAt: date,
 	})
 	test.AssertNotError(t, err, "Should not error")
@@ -164,7 +147,6 @@ func TestCalculateEmptyDB(t *testing.T) {
 
 	test.Assert(t, len(resultObj.CertsPerDayByStatus) == 0, "CertsPerDayByStatus should be empty")
 	test.Assert(t, len(resultObj.ChallengeCounts) == 0, "ChallengeCounts should be empty")
-	test.Assert(t, len(resultObj.OCSPUpdatesByDayAndHour) == 0, "OCSPUpdatesByDayAndHour should be empty")
 	test.Assert(t, len(resultObj.RegistrationsPerDayByType) == 0, "RegistrationsPerDayByType should be empty")
 }
 
@@ -256,7 +238,7 @@ func TestCalculateCertsPerDayByStatus(t *testing.T) {
 	}
 
 	// Revoke a certificate
-	err = saObj.MarkCertificateRevoked(ctx, core.SerialToString(firstSerial), core.RevocationCode(1))
+	err = saObj.MarkCertificateRevoked(ctx, core.SerialToString(firstSerial), 0)
 	test.AssertNotError(t, err, "Should not error on revocation")
 
 	err = engine.Calculate()
@@ -339,83 +321,6 @@ func TestRegistrationsPerDayByType(t *testing.T) {
 	}
 }
 
-func TestOCSPUpdates(t *testing.T) {
-	stats := mocks.NewStatter()
-	log := blog.UseMock()
-	duration := parseConfigDuration("0h") // Unused
-	var outBuf bytes.Buffer
-
-	// Prepare DB
-	rwMap, saObj, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	dbMap, err := sa.NewDbMap(vars.DBConnSAStats, 0)
-	test.AssertNotError(t, err, "Should not error")
-
-	if testing.Verbose() && !testing.Short() {
-		dbMap.TraceOn("r/o", &TestLogger{t})
-	}
-
-	engine, err := NewDBStatsEngine(dbMap, stats, fc, duration, &outBuf, log)
-	test.AssertNotError(t, err, "Engine construction should have been OK")
-
-	reg := addRegistration(t, saObj, fc.Now())
-
-	// Certificates
-	for i := 0; i < 24; i++ {
-		dur, _ := time.ParseDuration("1h")
-		fc.Add(dur)
-		_ = addCertificate(t, rwMap, saObj, ctx, reg.ID, fc.Now())
-	}
-
-	err = engine.Calculate()
-	test.AssertNotError(t, err, "Should not error")
-	test.Assert(t, outBuf.Len() > 0, "Should have output")
-	jdec := json.NewDecoder(&outBuf)
-
-	var resultObj EncodedStats
-	err = jdec.Decode(&resultObj)
-	test.AssertNotError(t, err, "Should not error")
-
-	for i := 0; i < 24; i++ {
-		test.AssertEquals(t, resultObj.OCSPUpdatesByDayAndHour[i].NumResponses, int64(1))
-		// StartHour=5, and we pre-increment the clock (+1). Mod 24 to constrain to hour of day.
-		test.AssertEquals(t, resultObj.OCSPUpdatesByDayAndHour[i].Hour, int64((i+5+1)%24))
-	}
-
-	// Add another certificate to now
-	_ = addCertificate(t, rwMap, saObj, ctx, reg.ID, fc.Now())
-
-	err = engine.Calculate()
-	test.AssertNotError(t, err, "Should not error")
-	test.Assert(t, outBuf.Len() > 0, "Should have output")
-	jdec = json.NewDecoder(&outBuf)
-
-	err = jdec.Decode(&resultObj)
-	test.AssertNotError(t, err, "Should not error")
-
-	test.AssertEquals(t, resultObj.OCSPUpdatesByDayAndHour[23].NumResponses, int64(2))
-
-	// Now also evaluate the OCSPAging
-	test.AssertEquals(t, resultObj.OCSPAging.Age12h, int64(13))
-	test.AssertEquals(t, resultObj.OCSPAging.Age24h, int64(12))
-
-	// Move forward 96 hours
-	dur, _ := time.ParseDuration("96h")
-	fc.Add(dur)
-
-	err = engine.Calculate()
-	test.AssertNotError(t, err, "Should not error")
-	test.Assert(t, outBuf.Len() > 0, "Should have output")
-	jdec = json.NewDecoder(&outBuf)
-
-	err = jdec.Decode(&resultObj)
-	test.AssertNotError(t, err, "Should not error")
-
-	test.AssertEquals(t, resultObj.OCSPAging.Age96h, int64(3))
-	test.AssertEquals(t, resultObj.OCSPAging.Older, int64(22))
-}
-
 func TestChallengeCounts(t *testing.T) {
 	stats := mocks.NewStatter()
 	log := blog.UseMock()
@@ -443,7 +348,7 @@ func TestChallengeCounts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		authz, err := saObj.NewPendingAuthorization(ctx, core.Authorization{
 			RegistrationID: reg.ID,
-			Challenges:     []core.Challenge{core.HTTPChallenge01(&reg.Key)},
+			Challenges:     []core.Challenge{core.HTTPChallenge01()},
 			Expires:        &futureExpiryTime,
 		})
 		test.AssertNotError(t, err, "Should not error")
@@ -471,7 +376,7 @@ func TestChallengeCounts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		authz, err := saObj.NewPendingAuthorization(ctx, core.Authorization{
 			RegistrationID: reg.ID,
-			Challenges:     []core.Challenge{core.DNSChallenge01(&reg.Key), core.TLSSNIChallenge01(&reg.Key)},
+			Challenges:     []core.Challenge{core.DNSChallenge01(), core.TLSSNIChallenge01()},
 			Expires:        &futureExpiryTime,
 		})
 		test.AssertNotError(t, err, "Should not error")
@@ -503,7 +408,7 @@ func TestChallengeCounts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		authz, err := saObj.NewPendingAuthorization(ctx, core.Authorization{
 			RegistrationID: reg.ID,
-			Challenges:     []core.Challenge{core.DNSChallenge01(&reg.Key), core.TLSSNIChallenge01(&reg.Key)},
+			Challenges:     []core.Challenge{core.DNSChallenge01(), core.TLSSNIChallenge01()},
 			Expires:        &futureExpiryTime,
 		})
 		test.AssertNotError(t, err, "Should not error")

@@ -254,6 +254,16 @@ type StatsdConfig struct {
 	Prefix string
 }
 
+// StatisticsConfig defines the config for Statistics
+type StatisticsConfig struct {
+	DBConfig
+
+	// A path to write the resulting JSON output, or blank to write to stdout
+	OutputPath string
+	// How wide a window to analyze; this should likely match Expiry
+	TimeWindow ConfigDuration
+}
+
 // ConfigDuration is just an alias for time.Duration that allows
 // serialization to YAML as well as JSON.
 type ConfigDuration struct {

@@ -31,8 +31,6 @@ type DBStatsEngine struct {
 type EncodedStats struct {
 	CertsPerDayByStatus       []CertsPerDayByStatus
 	ChallengeCounts           []ChallengeCounts
-	OCSPAging                 OCSPAging
-	OCSPUpdatesByDayAndHour   []OCSPUpdatesByDayAndHour
 	RegistrationsPerDayByType []RegistrationsPerDayByType
 }
 
@@ -50,24 +48,6 @@ type RegistrationsPerDayByType struct {
 	Anonymous   int64
 	CreateDate  time.Time
 	WithContact int64
-}
-
-type OCSPUpdatesByDayAndHour struct {
-	Day          time.Time
-	Hour         int64
-	NumResponses int64
-}
-
-type OCSPAging struct {
-	Age12h int64
-	Age24h int64
-	Age36h int64
-	Age48h int64
-	Age60h int64
-	Age72h int64
-	Age84h int64
-	Age96h int64
-	Older  int64
 }
 
 func NewDBStatsEngine(dbMap *gorp.DbMap, stats statsd.Statter, clk clock.Clock, window cmd.ConfigDuration, writer io.Writer, logger blog.Logger) (*DBStatsEngine, error) {
@@ -127,49 +107,6 @@ func (stats *DBStatsEngine) registrationsPerDayByType() ([]RegistrationsPerDayBy
 	return counts, err
 }
 
-func (stats *DBStatsEngine) ocspUpdatesByDayAndHour() ([]OCSPUpdatesByDayAndHour, error) {
-	var counts []OCSPUpdatesByDayAndHour
-	_, err := stats.DB.Select(&counts,
-		`SELECT
-          DATE(ocspLastUpdated) as Day,
-          HOUR(ocspLastUpdated) as Hour,
-          COUNT(1) as NumResponses
-      FROM
-          certificateStatus AS cs
-            NATURAL JOIN
-          certificates AS c
-      WHERE
-          c.expires > :now
-      GROUP BY DATE(ocspLastUpdated) , HOUR(ocspLastUpdated);`,
-		map[string]interface{}{"now": stats.clk.Now()})
-
-	return counts, err
-}
-
-func (stats *DBStatsEngine) ocspAging() (OCSPAging, error) {
-	var counts OCSPAging
-	err := stats.DB.SelectOne(&counts,
-		`SELECT
-          IFNULL(SUM(IF(cs.ocspLastUpdated > :now - INTERVAL 12 HOUR,1,0)),0) AS age12h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 24 HOUR AND :now - INTERVAL 12 HOUR,1,0)),0) AS age24h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 36 HOUR AND :now - INTERVAL 24 HOUR,1,0)),0) AS age36h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 48 HOUR AND :now - INTERVAL 36 HOUR,1,0)),0) AS age48h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 60 HOUR AND :now - INTERVAL 48 HOUR,1,0)),0) AS age60h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 72 HOUR AND :now - INTERVAL 60 HOUR,1,0)),0) AS age72h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 84 HOUR AND :now - INTERVAL 72 HOUR,1,0)),0) AS age84h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated BETWEEN :now - INTERVAL 97 HOUR AND :now - INTERVAL 84 HOUR,1,0)),0) AS age96h,
-          IFNULL(SUM(IF(cs.ocspLastUpdated < :now - INTERVAL 97 HOUR,1,0)),0) AS older
-      FROM
-          certificateStatus as cs
-            NATURAL JOIN
-          certificates AS c
-      WHERE
-          c.expires > :now;`,
-		map[string]interface{}{"now": stats.clk.Now()})
-
-	return counts, err
-}
-
 func (stats *DBStatsEngine) challengeCounts() ([]ChallengeCounts, error) {
 	// This would be better if there was a mechanism to select only recent
 	// challenges, but there's no direct way of determining the insertion
@@ -193,15 +130,6 @@ func (stats *DBStatsEngine) challengeCounts() ([]ChallengeCounts, error) {
 	return counts, err
 }
 
-func (stats *DBStatsEngine) runAndAppend(keyName string, dataMap map[string]interface{}, op func() (interface{}, error)) {
-	data, err := op()
-	if err != nil {
-		stats.Logger.Err(fmt.Sprintf("Failed to execute %s: %s", keyName, err))
-		return
-	}
-	dataMap[keyName] = data
-}
-
 func (stats *DBStatsEngine) Calculate() error {
 	enc := json.NewEncoder(stats.Writer)
 
@@ -215,14 +143,6 @@ func (stats *DBStatsEngine) Calculate() error {
 	data.CertsPerDayByStatus, err = stats.certificatesIssuedPerDayByStatus()
 	if err != nil {
 		return fmt.Errorf("CertsPerDayByStatus: %s", err)
-	}
-	data.OCSPUpdatesByDayAndHour, err = stats.ocspUpdatesByDayAndHour()
-	if err != nil {
-		return fmt.Errorf("OCSPUpdatesByDayAndHour: %s", err)
-	}
-	data.OCSPAging, err = stats.ocspAging()
-	if err != nil {
-		return fmt.Errorf("OCSPAging: %s", err)
 	}
 	data.ChallengeCounts, err = stats.challengeCounts()
 	if err != nil {

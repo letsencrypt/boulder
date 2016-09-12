@@ -6,65 +6,61 @@
 package main
 
 import (
+	"flag"
 	"os"
 
-	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/statistics"
 )
 
+type config struct {
+	Statistics cmd.StatisticsConfig
+
+	Statsd cmd.StatsdConfig
+
+	Syslog cmd.SyslogConfig
+}
+
 func main() {
-	app := cmd.NewAppShell("statistics", "Generates statistics about Boulder")
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	outFile := flag.String("outfile", "", "Path to write the JSON output")
+	forceStdout := flag.Bool("stdout", false, "Send JSON output to stdout instead of writing to disk; this supercedes --outfile")
 
-	app.App.Flags = append(app.App.Flags, cli.StringFlag{
-		Name:   "outfile",
-		EnvVar: "OUTFILE",
-		Usage:  "Path to write the JSON output",
-	}, cli.BoolFlag{
-		Name:  "stdout",
-		Usage: "Send JSON output to stdout instead of writing to disk",
-	})
-
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		if c.GlobalString("outfile") != "" {
-			config.Statistics.OutputPath = c.GlobalString("outfile")
-		}
-		if c.GlobalBool("stdout") {
-			config.Statistics.OutputPath = ""
-		}
-		return config
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
-		// Configure DB
-		dbURL, err := c.Statistics.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL, c.Statistics.DBConfig.MaxDBConns)
-		cmd.FailOnError(err, "Could not connect to database")
+	var c config
+	err := cmd.ReadJSONFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-		writer := os.Stdout
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
-		if c.Statistics.OutputPath != "" {
-			fd, err := os.Create(c.Statistics.OutputPath)
-			cmd.FailOnError(err, "Could not open outfile for writing")
+	dbURL, err := c.Statistics.DBConfig.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL, c.Statistics.DBConfig.MaxDBConns)
+	cmd.FailOnError(err, "Could not connect to database")
 
-			defer func() {
-				err := fd.Close()
-				cmd.FailOnError(err, "Could not close outfile")
-			}()
-			writer = fd
-		}
+	writer := os.Stdout
 
-		dbstats, err := statistics.NewDBStatsEngine(dbMap, stats, clock.Default(), c.Statistics.TimeWindow, writer, logger)
-		cmd.FailOnError(err, "Could not construct engine")
-		err = dbstats.Calculate()
-		cmd.FailOnError(err, "Could not process statistics")
+	if *forceStdout == false && *outFile != "" {
+		fd, err := os.Create(*outFile)
+		cmd.FailOnError(err, "Could not open outfile for writing")
+
+		defer func() { // May not be called if FailOnError triggers.
+			err := fd.Close()
+			cmd.FailOnError(err, "Could not close outfile")
+		}()
+		writer = fd
 	}
 
-	app.Run()
+	dbstats, err := statistics.NewDBStatsEngine(dbMap, stats, clock.Default(), c.Statistics.TimeWindow, writer, logger)
+	cmd.FailOnError(err, "Could not construct engine")
+	err = dbstats.Calculate()
+	cmd.FailOnError(err, "Could not process statistics")
 }
