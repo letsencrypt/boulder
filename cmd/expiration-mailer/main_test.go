@@ -17,7 +17,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"github.com/square/go-jose"
@@ -101,7 +100,7 @@ var (
 )
 
 func TestSendNags(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
@@ -422,7 +421,8 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
-	testCtx.m.stats = statter
+	stats := metrics.NewStatsdScope(statter, "Expiration")
+	testCtx.m.stats = stats
 
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
@@ -431,14 +431,14 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
 	// * 24 to setup() for the nag duration. This is because all of the nags are
 	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Mailer.Expiration.Errors.Nag-48h0m0s.AtCapacity",
+	statter.EXPECT().Inc("Expiration.Errors.Nag-48h0m0s.AtCapacity",
 		int64(1), float32(1.0))
 
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("Mailer.Expiration.SendLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
 	// Similarly, findExpiringCerticates() sends its latency as well
-	statter.EXPECT().TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
@@ -855,7 +855,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))

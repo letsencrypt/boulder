@@ -32,7 +32,8 @@ type NonceService struct {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService(parent metrics.Scope) (*NonceService, error) {
+func NewNonceService(scope metrics.Scope) (*NonceService, error) {
+	scope = scope.NewScope("NonceService")
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
@@ -53,7 +54,7 @@ func NewNonceService(parent metrics.Scope) (*NonceService, error) {
 		used:     make(map[int64]bool, MaxUsed),
 		gcm:      gcm,
 		maxUsed:  MaxUsed,
-		stats:    parent.NewScope("NonceService"),
+		stats:    scope,
 	}, nil
 }
 
