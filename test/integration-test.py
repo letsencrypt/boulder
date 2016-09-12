@@ -244,13 +244,13 @@ def run_client_tests():
 # intermediate certificates on a manual basis.
 def single_ocsp_sign():
     subprocess.check_output("""
-        ./single-ocsp -issuer test/test-root.pem \
+        ./bin/single-ocsp -issuer test/test-root.pem \
                 -responder test/test-root.pem \
                 -target test/test-ca2.pem \
                 -template cmd/single-ocsp/test/template-good.json \
                 -pkcs11 test/test-root.key-pkcs11.json \
                 -out ocsp-good.b64der
-        """)
+        """, shell=True)
     with open("ocsp-good.b64der") as f:
         output = f.read()
     with open("test/issuer-ocsp-responses.txt") as f:
@@ -341,6 +341,8 @@ def main():
 
     if not startservers.start(race_detection=True):
         die(ExitStatus.Error)
+
+    single_ocsp_sign()
 
     if args.run_all or args.run_node:
         os.chdir('test/js')

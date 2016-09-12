@@ -8,7 +8,7 @@
     "debugAddr": "localhost:8010"
   },
   "common": {
-    "issuerCert": "test/test-root.pem"
+    "issuerCert": "test/test-ca2.pem"
   },
   "sql": {
     "sqlDebug": true
