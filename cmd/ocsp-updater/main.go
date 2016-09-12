@@ -206,12 +206,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT cs.*
+		`SELECT
+			 cs.serial,
+			 cs.status,
+			 cs.revokedDate,
+			 cs.notAfter
 			 FROM certificateStatus AS cs
-			 JOIN certificates AS cert
-			 ON cs.serial = cert.serial
 			 WHERE cs.ocspLastUpdated < :lastUpdate
-			 AND cert.expires > now()
+			 AND NOT cs.isExpired
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
 		map[string]interface{}{
@@ -334,6 +336,16 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 	return err
 }
 
+func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+		SET isExpired = TRUE
+		WHERE serial = ?`,
+		status.Serial,
+	)
+	return err
+}
+
 // newCertificateTick checks for certificates issued since the last tick and
 // generates and stores OCSP responses for these certs
 func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize int) error {
@@ -353,7 +365,12 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT * FROM certificateStatus
+		`SELECT
+			serial,
+			status,
+			revokedReason,
+			revokedDate
+		 FROM certificateStatus
 		 WHERE status = :revoked
 		 AND ocspLastUpdated <= revokedDate
 		 LIMIT :limit`,
@@ -419,6 +436,18 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
+	}
+
+	for _, s := range statuses {
+		// If the certificate status has an expiration date before now, but it
+		// doesn't have `isExpired` set to true then we need to update the status to
+		// reflect that it is expired.
+		if !s.IsExpired && s.NotAfter.Before(now) {
+			err := updater.markExpired(s)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return updater.generateOCSPResponses(ctx, statuses)
