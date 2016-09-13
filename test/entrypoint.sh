@@ -39,8 +39,8 @@ addkey() {
   pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so \
     --type privkey --pin 5678 --login --so-pin 1234 "$@";
 }
-addkey --label intermediate --write-object test/test-ca.key.der
-addkey --label root --write-object test/test-root.key.der
+addkey --token-label intermediate --write-object test/test-ca.key.der --label intermediate_key
+addkey --token-label root --write-object test/test-root.key.der --label root_key
 
 if [[ $# -eq 0 ]]; then
     exec ./start.py
