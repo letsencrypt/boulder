@@ -1,6 +1,7 @@
 {
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
+    "requestTimeout": "10s",
     "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
@@ -8,6 +9,9 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
+    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+    "checkMalformedCSR": true,
+    "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
@@ -42,7 +46,6 @@
   },
 
   "common": {
-    "baseURL": "http://127.0.0.1:4000",
-    "issuerCert": "test/test-ca.pem"
+    "issuerCert": "test/test-ca.pem",
   }
 }
