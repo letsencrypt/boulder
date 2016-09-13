@@ -60,7 +60,7 @@ PKCS#11 configuration (JSON), e.g.:
 	"module": "/usr/local/lib/libpkcs11-proxy.so",
 	"tokenLabel": "intermediate",
 	"pin": "5678",
-	"privateKeyLabel": "intermediate"
+	"privateKeyLabel": "intermediate_key"
 }
 `
 
