@@ -245,7 +245,7 @@ def single_ocsp_sign():
                 -target test/test-ca2.pem \
                 -template cmd/single-ocsp/test/template-good.json \
                 -pkcs11 test/test-root.key-pkcs11.json \
-                -out test/issuer-ocsp-responses.txt
+                -out /tmp/issuer-ocsp-responses.txt
         """, shell=True)
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
