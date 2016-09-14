@@ -109,8 +109,6 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 	return nil
 }
 
-const regFields = `id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol`
-
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	var reg regModel
@@ -231,13 +229,17 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 	}
 
 	var auths []*core.Authorization
-	_, err = ssa.dbMap.Select(&auths, `
-		SELECT * FROM authz
+	_, err = ssa.dbMap.Select(
+		&auths,
+		fmt.Sprintf(`
+		SELECT %s FROM authz
 		WHERE registrationID = ?
 		AND expires > ?
 		AND identifier IN (`+strings.Join(qmarks, ",")+`)
 		AND status = 'valid'
-		`, append([]interface{}{registrationID, now}, params...)...)
+		`, authzFields),
+		append([]interface{}{registrationID, now}, params...)...,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -836,7 +838,7 @@ func (e ErrNoReceipt) Error() string {
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	err = ssa.dbMap.SelectOne(
 		&receipt,
-		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
+		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
 		map[string]interface{}{
 			"serial": serial,
 			"logID":  logID,
