@@ -57,7 +57,6 @@ def start(race_detection):
         'ct-test-srv',
         'dns-test-srv',
         'mail-test-srv --closeFirst 5',
-        'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
     if not install(race_detection):
