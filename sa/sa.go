@@ -109,21 +109,27 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 	return nil
 }
 
+const regFields = `id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol`
+
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	regObj, err := ssa.dbMap.Get(regModel{}, id)
+	var reg regModel
+	fmt.Println(fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id))
+	err := ssa.dbMap.SelectOne(
+		&reg,
+		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
+	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return core.Registration{}, core.NoSuchRegistrationError(fmt.Sprintf("No registrations with ID %d", id))
+		}
 		return core.Registration{}, err
 	}
-	if regObj == nil {
-		msg := fmt.Sprintf("No registrations with ID %d", id)
-		return core.Registration{}, core.NoSuchRegistrationError(msg)
-	}
-	regPtr, ok := regObj.(*regModel)
-	if !ok {
-		return core.Registration{}, fmt.Errorf("Invalid cast to reg model object")
-	}
-	return modelToRegistration(regPtr)
+	// if reg == nil {
+	// 	msg := fmt.Sprintf("No registrations with ID %d", id)
+	// 	return core.Registration{}, core.NoSuchRegistrationError(msg)
+	// }
+	return modelToRegistration(&reg)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
@@ -133,7 +139,11 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 	if err != nil {
 		return core.Registration{}, err
 	}
-	err = ssa.dbMap.SelectOne(reg, "SELECT * FROM registrations WHERE jwk_sha256 = :key", map[string]interface{}{"key": sha})
+	err = ssa.dbMap.SelectOne(
+		reg,
+		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", regFields),
+		map[string]interface{}{"key": sha},
+	)
 
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
