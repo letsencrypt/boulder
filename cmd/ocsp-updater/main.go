@@ -204,9 +204,15 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
+	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
+	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT cs.*
+		`SELECT
+			 cs.serial,
+			 cs.status,
+			 cs.revokedDate,
+			 cs.notAfter
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
@@ -229,7 +235,12 @@ func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) (
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT * FROM certificateStatus
+		`SELECT
+			 serial,
+			 status,
+			 revokedReason,
+			 revokedDate
+			 FROM certificateStatus
 			 WHERE ocspLastUpdated = 0
 			 LIMIT :limit`,
 		map[string]interface{}{
