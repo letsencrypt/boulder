@@ -112,21 +112,18 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	var reg regModel
-	fmt.Println(fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id))
 	err := ssa.dbMap.SelectOne(
 		&reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return core.Registration{}, core.NoSuchRegistrationError(fmt.Sprintf("No registrations with ID %d", id))
+			return core.Registration{}, core.NoSuchRegistrationError(
+				fmt.Sprintf("No registrations with ID %d", id),
+			)
 		}
 		return core.Registration{}, err
 	}
-	// if reg == nil {
-	// 	msg := fmt.Sprintf("No registrations with ID %d", id)
-	// 	return core.Registration{}, core.NoSuchRegistrationError(msg)
-	// }
 	return modelToRegistration(&reg)
 }
 
