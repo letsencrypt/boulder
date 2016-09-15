@@ -114,6 +114,20 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
   }
 }
 
+func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
+  if ssa.allowWizards { // Added!
+    return ssa.dbMap.Insert(personModel2{
+      HatSize:  p.HatSize,
+      IsWizard: p.IsWizard,
+    })
+  } else {
+    return ssa.dbMap.Insert(model personModel{
+      HatSize:  p.HatSize,
+      // p.IsWizard ignored
+    })
+  }
+}
+
 sa/_db/wizard_migrations.sql (Added!):
 
 -- +goose Up
