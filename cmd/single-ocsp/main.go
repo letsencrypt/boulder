@@ -92,8 +92,8 @@ func main() {
 	targetFile := flag.String("target", "", "Certificate whose status is being reported (PEM)")
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
 	outFile := flag.String("out", "", "File to which the OCSP response will be written")
-	thisUpdateString := flag.String("thisUpdate", "", "File to which the OCSP response will be written")
-	nextUpdateString := flag.String("nextUpdate", "", "File to which the OCSP response will be written")
+	thisUpdateString := flag.String("thisUpdate", "", "Time for ThisUpdate field, RFC3339 format (e.g. 2016-09-02T00:00:00Z)")
+	nextUpdateString := flag.String("nextUpdate", "", "Time for NextUpdate field, RFC3339 format")
 	status := flag.Int("status", 0, "Status for response (0 = good, 1 = revoked)")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
