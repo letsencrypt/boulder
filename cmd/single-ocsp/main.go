@@ -126,7 +126,8 @@ func main() {
 	}
 
 	if !core.KeyDigestEquals(responder.PublicKey, priv.Public()) {
-		cmd.FailOnError(fmt.Errorf("PKCS#11 pubkey does not match pubkey in responder certificate"), "loading keys")
+		cmd.FailOnError(fmt.Errorf("PKCS#11 pubkey does not match pubkey "+
+			"in responder certificate"), "loading keys")
 	}
 
 	// Sign the OCSP response
