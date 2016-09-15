@@ -111,19 +111,20 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	regObj, err := ssa.dbMap.Get(regModel{}, id)
+	var reg regModel
+	err := ssa.dbMap.SelectOne(
+		&reg,
+		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
+	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return core.Registration{}, core.NoSuchRegistrationError(
+				fmt.Sprintf("No registrations with ID %d", id),
+			)
+		}
 		return core.Registration{}, err
 	}
-	if regObj == nil {
-		msg := fmt.Sprintf("No registrations with ID %d", id)
-		return core.Registration{}, core.NoSuchRegistrationError(msg)
-	}
-	regPtr, ok := regObj.(*regModel)
-	if !ok {
-		return core.Registration{}, fmt.Errorf("Invalid cast to reg model object")
-	}
-	return modelToRegistration(regPtr)
+	return modelToRegistration(&reg)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
@@ -133,7 +134,11 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 	if err != nil {
 		return core.Registration{}, err
 	}
-	err = ssa.dbMap.SelectOne(reg, "SELECT * FROM registrations WHERE jwk_sha256 = :key", map[string]interface{}{"key": sha})
+	err = ssa.dbMap.SelectOne(
+		reg,
+		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", regFields),
+		map[string]interface{}{"key": sha},
+	)
 
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
@@ -221,13 +226,17 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 	}
 
 	var auths []*core.Authorization
-	_, err = ssa.dbMap.Select(&auths, `
-		SELECT * FROM authz
+	_, err = ssa.dbMap.Select(
+		&auths,
+		fmt.Sprintf(`
+		SELECT %s FROM authz
 		WHERE registrationID = ?
 		AND expires > ?
 		AND identifier IN (`+strings.Join(qmarks, ",")+`)
 		AND status = 'valid'
-		`, append([]interface{}{registrationID, now}, params...)...)
+		`, authzFields),
+		append([]interface{}{registrationID, now}, params...)...,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -827,7 +836,7 @@ func (e ErrNoReceipt) Error() string {
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	err = ssa.dbMap.SelectOne(
 		&receipt,
-		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
+		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
 		map[string]interface{}{
 			"serial": serial,
 			"logID":  logID,

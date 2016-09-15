@@ -235,14 +235,9 @@ func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) (
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT
-			 serial,
-			 status,
-			 revokedReason,
-			 revokedDate
-			 FROM certificateStatus
+		fmt.Sprintf(`SELECT %s FROM certificateStatus
 			 WHERE ocspLastUpdated = 0
-			 LIMIT :limit`,
+			 LIMIT :limit`, sa.CertificateStatusFields),
 		map[string]interface{}{
 			"limit": batchSize,
 		},
@@ -262,7 +257,7 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 	var cert core.Certificate
 	err := updater.dbMap.SelectOne(
 		&cert,
-		"SELECT * FROM certificates WHERE serial = :serial",
+		fmt.Sprintf("SELECT %s FROM certificates WHERE serial = :serial", sa.CertificateFields),
 		map[string]interface{}{"serial": status.Serial},
 	)
 	if err != nil {
@@ -364,10 +359,10 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT * FROM certificateStatus
+		fmt.Sprintf(`SELECT %s FROM certificateStatus
 		 WHERE status = :revoked
 		 AND ocspLastUpdated <= revokedDate
-		 LIMIT :limit`,
+		 LIMIT :limit`, sa.CertificateStatusFields),
 		map[string]interface{}{
 			"revoked": string(core.OCSPStatusRevoked),
 			"limit":   batchSize,

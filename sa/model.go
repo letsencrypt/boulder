@@ -12,6 +12,15 @@ import (
 	jose "github.com/square/go-jose"
 )
 
+const (
+	regFields   = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol"
+	authzFields = "id, identifier, registrationID, status, expires, combinations"
+	sctFields   = "id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol"
+
+	CertificateFields       = "registrationID, serial, digest, der, issued, expires"
+	CertificateStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+)
+
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
