@@ -55,9 +55,9 @@ When you add a new RPC to a Boulder service (e.g. `SA.GetFoo()`), all components
 
 ## Flag-gated migrations
 
-We use a [database migrations](https://en.wikipedia.org/wiki/Schema_migration)
+We use [database migrations](https://en.wikipedia.org/wiki/Schema_migration)
 to modify the existing schema. These migrations will be run on live
-data while Boulder is still running, we need Boulder code at any given commit to
+data while Boulder is still running, so we need Boulder code at any given commit to
 be capable of running without depending on any changes in schemas that have not
 yet been applied.
 
@@ -127,13 +127,20 @@ func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
     })
   }
 }
+```
 
-sa/_db/wizard_migrations.sql (Added!):
+Add a migration with
 
+`$ goose -path ./sa/_db/ create AddWizards sql`
+
+Then edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to add:
+
+```
 -- +goose Up
 ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 
-
+-- +goose Down
+ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
 
 
