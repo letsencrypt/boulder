@@ -86,27 +86,27 @@ struct Person {
   IsWizard bool // Added!
 }
 
-struct personModel {
+struct personModelv1 {
   HatSize int
 }
 
 // Added!
-struct personModel2 {
+struct personModelv2 {
   HatSize  int
   IsWizard bool
 }
 
 func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
   if ssa.allowWizards { // Added!
-    var model personModel2
-    ssa.dbMap.SelectOne(&mode, "SELECT hatSize, isWizard FROM people")
+    var model personModelv2
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize, isWizard FROM people")
     return Person{
       HatSize:  model.HatSize,
       IsWizard: model.IsWizard,
     }
   } else {
-    var model personModel
-    ssa.dbMap.SelectOne(&mode, "SELECT hatSize FROM people")
+    var model personModelv1
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize FROM people")
     return Person{
       HatSize:  model.HatSize,
       IsWizard: false,
@@ -116,12 +116,12 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
 
 func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
   if ssa.allowWizards { // Added!
-    return ssa.dbMap.Insert(personModel2{
+    return ssa.dbMap.Insert(personModelv2{
       HatSize:  p.HatSize,
       IsWizard: p.IsWizard,
     })
   } else {
-    return ssa.dbMap.Insert(model personModel{
+    return ssa.dbMap.Insert(personModelv1{
       HatSize:  p.HatSize,
       // p.IsWizard ignored
     })
