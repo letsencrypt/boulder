@@ -211,8 +211,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		`SELECT
 			 cs.serial,
 			 cs.status,
-			 cs.revokedDate,
-			 cs.notAfter
+			 cs.revokedDate
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial

@@ -19,7 +19,8 @@ type config struct {
 		cmd.ServiceConfig
 		cmd.DBConfig
 
-		MaxConcurrentRPCServerRequests int64
+		MaxConcurrentRPCServerRequests  int64
+		CertStatusOptimizationsMigrated bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -58,6 +59,7 @@ func main() {
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
+	sai.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
 
 	go cmd.ProfileCmd(scope)
 

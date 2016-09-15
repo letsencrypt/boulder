@@ -24,9 +24,10 @@ import (
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap *gorp.DbMap
-	clk   clock.Clock
-	log   blog.Logger
+	dbMap                           *gorp.DbMap
+	clk                             clock.Clock
+	log                             blog.Logger
+	CertStatusOptimizationsMigrated bool
 }
 
 func digest256(data []byte) []byte {
@@ -435,11 +436,55 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	certificateStats, err := ssa.dbMap.Get(core.CertificateStatus{}, serial)
-	if err != nil {
-		return
+	var statusObj interface{}
+	if ssa.CertStatusOptimizationsMigrated {
+		tblMap := ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
+		tblMap.SetKeys(false, "serial")
+		statusObj, err = ssa.dbMap.Get(certStatusModelMigrated{}, serial)
+		if err != nil {
+			return
+		}
+		if statusObj == nil {
+			return
+		}
+		statusModel := statusObj.(*certStatusModelMigrated)
+		status = core.CertificateStatus{
+			Serial:                statusModel.Serial,
+			SubscriberApproved:    statusModel.SubscriberApproved,
+			Status:                statusModel.Status,
+			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
+			RevokedDate:           statusModel.RevokedDate,
+			RevokedReason:         statusModel.RevokedReason,
+			LastExpirationNagSent: statusModel.LastExpirationNagSent,
+			OCSPResponse:          statusModel.OCSPResponse,
+			NotAfter:              statusModel.NotAfter,
+			IsExpired:             statusModel.IsExpired,
+			LockCol:               statusModel.LockCol,
+		}
+	} else {
+		tblMap := ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
+		tblMap.SetKeys(false, "serial")
+		statusObj, err = ssa.dbMap.Get(certStatusModel{}, serial)
+		if err != nil {
+			return
+		}
+		if statusObj == nil {
+			return
+		}
+		statusModel := statusObj.(*certStatusModel)
+		status = core.CertificateStatus{
+			Serial:                statusModel.Serial,
+			SubscriberApproved:    statusModel.SubscriberApproved,
+			Status:                statusModel.Status,
+			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
+			RevokedDate:           statusModel.RevokedDate,
+			RevokedReason:         statusModel.RevokedReason,
+			LastExpirationNagSent: statusModel.LastExpirationNagSent,
+			OCSPResponse:          statusModel.OCSPResponse,
+			LockCol:               statusModel.LockCol,
+		}
 	}
-	status = *certificateStats.(*core.CertificateStatus)
+
 	return
 }
 
@@ -475,32 +520,67 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return
 	}
 
-	statusObj, err := tx.Get(core.CertificateStatus{}, serial)
-	if err != nil {
-		err = Rollback(tx, err)
-		return
+	var statusObj interface{}
+
+	if ssa.CertStatusOptimizationsMigrated {
+		ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
+		statusObj, err = tx.Get(certStatusModelMigrated{}, serial)
+		if err != nil {
+			err = Rollback(tx, err)
+			return
+		}
+	} else {
+		ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
+		statusObj, err = tx.Get(certStatusModel{}, serial)
+		if err != nil {
+			err = Rollback(tx, err)
+			return
+		}
 	}
+
 	if statusObj == nil {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
 		return
 	}
 	now := ssa.clk.Now()
-	status := statusObj.(*core.CertificateStatus)
-	status.Status = core.OCSPStatusRevoked
-	status.RevokedDate = now
-	status.RevokedReason = reasonCode
 
-	n, err := tx.Update(status)
-	if err != nil {
-		err = Rollback(tx, err)
-		return
+	if ssa.CertStatusOptimizationsMigrated {
+		status := statusObj.(*certStatusModelMigrated)
+		status.Status = core.OCSPStatusRevoked
+		status.RevokedDate = now
+		status.RevokedReason = reasonCode
+
+		var n int64
+		n, err = tx.Update(status)
+		if err != nil {
+			err = Rollback(tx, err)
+			return
+		}
+		if n == 0 {
+			err = Rollback(tx, err)
+			err = errors.New("No certificate updated. Maybe the lock column was off?")
+			return
+		}
+	} else {
+		status := statusObj.(*certStatusModel)
+		status.Status = core.OCSPStatusRevoked
+		status.RevokedDate = now
+		status.RevokedReason = reasonCode
+
+		var n int64
+		n, err = tx.Update(status)
+		if err != nil {
+			err = Rollback(tx, err)
+			return
+		}
+		if n == 0 {
+			err = Rollback(tx, err)
+			err = errors.New("No certificate updated. Maybe the lock column was off?")
+			return
+		}
 	}
-	if n == 0 {
-		err = Rollback(tx, err)
-		err = errors.New("No certificate updated. Maybe the lock column was off?")
-		return
-	}
+
 	err = tx.Commit()
 
 	return
@@ -724,6 +804,27 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
+// We need two model structs, one for when boulder does *not* have the
+// 20160817143417_CertStatusOptimizations.sql migration applied
+// (certStatusModel) and one for when it does (certStatusModelMigrated)
+type certStatusModel struct {
+	Serial                string            `db:"serial"`
+	SubscriberApproved    bool              `db:"subscriberApproved"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	OCSPResponse          []byte            `db:"ocspResponse"`
+	LockCol               int64             `json:"-"`
+}
+
+type certStatusModelMigrated struct {
+	*certStatusModel
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
+}
+
 // AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
@@ -742,16 +843,35 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Issued:         ssa.clk.Now(),
 		Expires:        parsedCertificate.NotAfter,
 	}
-	certStatus := &core.CertificateStatus{
-		SubscriberApproved: false,
-		Status:             core.OCSPStatus("good"),
-		OCSPLastUpdated:    time.Time{},
-		OCSPResponse:       []byte{},
-		Serial:             serial,
-		RevokedDate:        time.Time{},
-		RevokedReason:      0,
-		NotAfter:           parsedCertificate.NotAfter,
-		LockCol:            0,
+
+	var certStatusOb interface{}
+	if ssa.CertStatusOptimizationsMigrated {
+		ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
+		certStatusOb = &certStatusModelMigrated{
+			certStatusModel: &certStatusModel{
+				SubscriberApproved: false,
+				Status:             core.OCSPStatus("good"),
+				OCSPLastUpdated:    time.Time{},
+				OCSPResponse:       []byte{},
+				Serial:             serial,
+				RevokedDate:        time.Time{},
+				RevokedReason:      0,
+				LockCol:            0,
+			},
+			NotAfter: parsedCertificate.NotAfter,
+		}
+	} else {
+		ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
+		certStatusOb = &certStatusModel{
+			SubscriberApproved: false,
+			Status:             core.OCSPStatus("good"),
+			OCSPLastUpdated:    time.Time{},
+			OCSPResponse:       []byte{},
+			Serial:             serial,
+			RevokedDate:        time.Time{},
+			RevokedReason:      0,
+			LockCol:            0,
+		}
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -766,7 +886,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		return
 	}
 
-	err = tx.Insert(certStatus)
+	err = tx.Insert(certStatusOb)
 	if err != nil {
 		err = Rollback(tx, err)
 		return
