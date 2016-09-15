@@ -24,6 +24,7 @@ MAILER_FAILED = 3
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
 
+JS_DIR = 'test/js'
 
 class ProcInfo:
     """
@@ -124,7 +125,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     with open(ocsp_resp_file, "w") as f:
         f.write(ocsp_response)
     ocsp_verify_cmd = """openssl ocsp -no_nonce -issuer %s -cert %s \
-      -verify_other %s -CAfile ../test-root.pem \
+      -verify_other %s -CAfile test/test-root.pem \
       -respin %s""" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
     print ocsp_verify_cmd
     try:
@@ -179,20 +180,15 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
           --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
-        shell=True).wait() != 0:
+        shell=True, cwd=JS_DIR).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
 
     ee_ocsp_url = "http://localhost:4002"
-    issuer_ocsp_url = "http://localhost:4003"
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    wait_for_ocsp_good(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
-
-    # Verify that the static OCSP responder, which answers with a
-    # pre-signed, long-lived response for the CA cert, works.
-    wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
+    wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
 
     verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
@@ -206,7 +202,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
         if subprocess.Popen(
                 (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/config/expiration-mailer.json && ' * 3) + 'true') %
                 (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
-                cwd='../..', shell=True).wait() != 0:
+                shell=True).wait() != 0:
             print("\nExpiry mailer failed")
             return MAILER_FAILED
         resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
@@ -221,11 +217,11 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
-        ''' % (cert_file, key_file), shell=True).wait() != 0:
+        ''' % (cert_file, key_file), shell=True, cwd=JS_DIR).wait() != 0:
         print("\nRevoking failed")
         return REVOCATION_FAILED
 
-    wait_for_ocsp_revoked(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     return 0
 
 def run_custom(cmd, cwd=None):
@@ -240,18 +236,38 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+# Run the single-ocsp command, which is used to generate OCSP responses for
+# intermediate certificates on a manual basis.
+def single_ocsp_sign():
+    subprocess.check_output("""
+        ./bin/single-ocsp -issuer test/test-root.pem \
+                -responder test/test-root.pem \
+                -target test/test-ca2.pem \
+                -pkcs11 test/test-root.key-pkcs11.json \
+                -thisUpdate 2016-09-02T00:00:00Z \
+                -nextUpdate 2020-09-02T00:00:00Z \
+                -status 0 \
+                -out /tmp/issuer-ocsp-responses.txt
+        """, shell=True)
+    p = subprocess.Popen(
+        './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
+
+    # Verify that the static OCSP responder, which answers with a
+    # pre-signed, long-lived response for the CA cert, works.
+    wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
 
 def get_future_output(cmd, date, cwd=None):
     return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
 
 def run_expired_authz_purger_test():
     subprocess.check_output('''node test.js --email %s --domains %s --abort-step %s''' %
-                            ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
+                            ("purger@test.com", "eap-test.com", "startChallenge"),
+                            shell=True, cwd=JS_DIR)
 
     def expect(target_time, num):
         expected_output = 'Deleted a total of %d expired pending authorizations' % num
         try:
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
             if expected_output not in out:
                 print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
                     % (expected_output, out))
@@ -271,7 +287,7 @@ def run_certificates_per_name_test():
         # to avoid a CalledProcessException we use Popen.
         handle = subprocess.Popen(
             '''node test.js --email %s --domains %s''' % ('test@lim.it', 'lim.it'),
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            shell=True, cwd=JS_DIR, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         handle.wait()
         out, err = handle.communicate()
     except subprocess.CalledProcessError as e:
@@ -322,9 +338,10 @@ def main():
     if not startservers.start(race_detection=True):
         die(ExitStatus.Error)
 
+    single_ocsp_sign()
+
     if args.run_all or args.run_node:
-        os.chdir('test/js')
-        if subprocess.Popen('npm install', shell=True).wait() != 0:
+        if subprocess.Popen('npm install', shell=True, cwd=JS_DIR).wait() != 0:
             print("\n Installing NPM modules failed")
             die(ExitStatus.Error)
         # Pick a random hostname so we don't run into certificate rate limiting.
