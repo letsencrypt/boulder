@@ -243,8 +243,10 @@ def single_ocsp_sign():
         ./bin/single-ocsp -issuer test/test-root.pem \
                 -responder test/test-root.pem \
                 -target test/test-ca2.pem \
-                -template cmd/single-ocsp/test/template-good.json \
                 -pkcs11 test/test-root.key-pkcs11.json \
+                -thisUpdate 2016-09-02T00:00:00Z \
+                -nextUpdate 2020-09-02T00:00:00Z \
+                -status 0 \
                 -out /tmp/issuer-ocsp-responses.txt
         """, shell=True)
     p = subprocess.Popen(

@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -25,32 +27,14 @@ usage:
 description:
   According to the BRs, the OCSP responses for intermediate certificate must
   be issued once per year.  So we need to issue OCSP responses for these
-	certificates, but it doesn't make sense to use all the infrastructure
+  certificates, but it doesn't make sense to use all the infrastructure
   that the "ocsp-updater" tool requires.  This tool allows an administrator
   to manually generate an OCSP response for an intermediate certificate.
 
-	This will write a base64-encoded DER format OCSP response to the file
-	specified with -out, ending in a newline. This output can be directly
-	appended to the flat file used by ocsp-responder for intermediate and
-	root OCSP responses.
-`
-
-const templateUsage = `
-OCSP template file (JSON), e.g.:
-
-{
-  "Status": 0, // Good
-  "ThisUpdate": "2015-08-26T00:00:00Z",
-  "NextUpdate": "2016-08-26T00:00:00Z"
-}
-
-{
-  "Status": 1, // Revoked
-  "ThisUpdate": "2015-08-26T00:00:00Z",
-  "NextUpdate": "2016-08-26T00:00:00Z",
-  "RevokedAt": "2015-08-20T00:00:00Z",
-  "RevocationReason": 1 // Key compromise
-}
+  This will write a base64-encoded DER format OCSP response to the file
+  specified with -out, ending in a newline. This output can be directly
+  appended to the flat file used by ocsp-responder for intermediate and
+  root OCSP responses.
 `
 
 const pkcs11Usage = `
@@ -62,9 +46,11 @@ PKCS#11 configuration (JSON), e.g.:
 	"pin": "5678",
 	"privateKeyLabel": "intermediate_key"
 }
+
+Note: These values should *not* be the same as the ones in the CA's config JSON, which point at a differen HSM partition.
 `
 
-func readFiles(issuerFileName, responderFileName, targetFileName, templateFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11Config pkcs11key.Config, err error) {
+func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, pkcs11Config pkcs11key.Config, err error) {
 	// Issuer certificate
 	issuer, err = core.LoadCert(issuerFileName)
 	if err != nil {
@@ -79,17 +65,6 @@ func readFiles(issuerFileName, responderFileName, targetFileName, templateFileNa
 
 	// Target certificate
 	target, err = core.LoadCert(targetFileName)
-	if err != nil {
-		return
-	}
-
-	// OCSP template
-	templateBytes, err := ioutil.ReadFile(templateFileName)
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(templateBytes, &template)
 	if err != nil {
 		return
 	}
@@ -115,20 +90,26 @@ func main() {
 	issuerFile := flag.String("issuer", "", "Issuer certificate (PEM)")
 	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
 	targetFile := flag.String("target", "", "Certificate whose status is being reported (PEM)")
-	templateFile := flag.String("template", "", templateUsage)
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
 	outFile := flag.String("out", "", "File to which the OCSP response will be written")
+	thisUpdateString := flag.String("thisUpdate", "", "File to which the OCSP response will be written")
+	nextUpdateString := flag.String("nextUpdate", "", "File to which the OCSP response will be written")
+	status := flag.Int("status", 0, "Status for response (0 = good, 1 = revoked)")
 	flag.Usage = func() {
-		fmt.Println(usage)
+		fmt.Fprint(os.Stderr, usage)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
 	if len(*outFile) == 0 {
-		cmd.FailOnError(fmt.Errorf(""), "No output file provided")
+		cmd.FailOnError(fmt.Errorf("No output file provided"), "")
 	}
+	thisUpdate, err := time.Parse(time.RFC3339, *thisUpdateString)
+	cmd.FailOnError(err, "Parsing thisUpdate flag")
+	nextUpdate, err := time.Parse(time.RFC3339, *nextUpdateString)
+	cmd.FailOnError(err, "Parsing nextUpdate flag")
 
-	issuer, responder, target, template, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *templateFile, *pkcs11File)
+	issuer, responder, target, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *pkcs11File)
 	cmd.FailOnError(err, "Failed to read files")
 
 	// Instantiate the private key from PKCS11
@@ -136,8 +117,13 @@ func main() {
 	cmd.FailOnError(err, "Failed to load PKCS#11 key")
 
 	// Populate the remaining fields in the template
-	template.SerialNumber = target.SerialNumber
-	template.Certificate = responder
+	template := ocsp.Response{
+		SerialNumber: target.SerialNumber,
+		Certificate:  responder,
+		Status:       *status,
+		ThisUpdate:   thisUpdate,
+		NextUpdate:   nextUpdate,
+	}
 
 	if !core.KeyDigestEquals(responder.PublicKey, priv.Public()) {
 		cmd.FailOnError(fmt.Errorf("PKCS#11 pubkey does not match pubkey in responder certificate"), "loading keys")
