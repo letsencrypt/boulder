@@ -118,6 +118,10 @@ func main() {
 	templateFile := flag.String("template", "", templateUsage)
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
 	outFile := flag.String("out", "", "File to which the OCSP response will be written")
+	flag.Usage = func() {
+		fmt.Println(usage)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	if len(*outFile) == 0 {
