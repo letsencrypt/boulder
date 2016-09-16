@@ -47,6 +47,30 @@ type authzModel struct {
 	core.Authorization
 }
 
+// We need two certStatus model structs, one for when boulder does *not* have
+// the 20160817143417_CertStatusOptimizations.sql migration applied
+// (certStatusModelv1) and one for when it does (certStatusModelv2)
+//
+// TODO(@cpu): Collapse into one struct once the migration has been applied
+//             & feature flag set.
+type certStatusModelv1 struct {
+	Serial                string            `db:"serial"`
+	SubscriberApproved    bool              `db:"subscriberApproved"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	OCSPResponse          []byte            `db:"ocspResponse"`
+	LockCol               int64             `json:"-"`
+}
+
+type certStatusModelv2 struct {
+	*certStatusModelv1
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
+}
+
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
@@ -438,16 +462,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 
 	var statusObj interface{}
 	if ssa.CertStatusOptimizationsMigrated {
-		tblMap := ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
+		tblMap := ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
 		tblMap.SetKeys(false, "serial")
-		statusObj, err = ssa.dbMap.Get(certStatusModelMigrated{}, serial)
+		statusObj, err = ssa.dbMap.Get(certStatusModelv2{}, serial)
 		if err != nil {
 			return
 		}
 		if statusObj == nil {
 			return
 		}
-		statusModel := statusObj.(*certStatusModelMigrated)
+		statusModel := statusObj.(*certStatusModelv2)
 		status = core.CertificateStatus{
 			Serial:                statusModel.Serial,
 			SubscriberApproved:    statusModel.SubscriberApproved,
@@ -462,16 +486,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 			LockCol:               statusModel.LockCol,
 		}
 	} else {
-		tblMap := ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
+		tblMap := ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
 		tblMap.SetKeys(false, "serial")
-		statusObj, err = ssa.dbMap.Get(certStatusModel{}, serial)
+		statusObj, err = ssa.dbMap.Get(certStatusModelv1{}, serial)
 		if err != nil {
 			return
 		}
 		if statusObj == nil {
 			return
 		}
-		statusModel := statusObj.(*certStatusModel)
+		statusModel := statusObj.(*certStatusModelv1)
 		status = core.CertificateStatus{
 			Serial:                statusModel.Serial,
 			SubscriberApproved:    statusModel.SubscriberApproved,
@@ -523,15 +547,15 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	var statusObj interface{}
 
 	if ssa.CertStatusOptimizationsMigrated {
-		ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
-		statusObj, err = tx.Get(certStatusModelMigrated{}, serial)
+		ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
+		statusObj, err = tx.Get(certStatusModelv2{}, serial)
 		if err != nil {
 			err = Rollback(tx, err)
 			return
 		}
 	} else {
-		ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
-		statusObj, err = tx.Get(certStatusModel{}, serial)
+		ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
+		statusObj, err = tx.Get(certStatusModelv1{}, serial)
 		if err != nil {
 			err = Rollback(tx, err)
 			return
@@ -546,7 +570,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	now := ssa.clk.Now()
 
 	if ssa.CertStatusOptimizationsMigrated {
-		status := statusObj.(*certStatusModelMigrated)
+		status := statusObj.(*certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
@@ -563,7 +587,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 			return
 		}
 	} else {
-		status := statusObj.(*certStatusModel)
+		status := statusObj.(*certStatusModelv1)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
@@ -804,27 +828,6 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
-// We need two model structs, one for when boulder does *not* have the
-// 20160817143417_CertStatusOptimizations.sql migration applied
-// (certStatusModel) and one for when it does (certStatusModelMigrated)
-type certStatusModel struct {
-	Serial                string            `db:"serial"`
-	SubscriberApproved    bool              `db:"subscriberApproved"`
-	Status                core.OCSPStatus   `db:"status"`
-	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
-	RevokedDate           time.Time         `db:"revokedDate"`
-	RevokedReason         revocation.Reason `db:"revokedReason"`
-	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
-	OCSPResponse          []byte            `db:"ocspResponse"`
-	LockCol               int64             `json:"-"`
-}
-
-type certStatusModelMigrated struct {
-	*certStatusModel
-	NotAfter  time.Time `db:"notAfter"`
-	IsExpired bool      `db:"isExpired"`
-}
-
 // AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
@@ -846,9 +849,9 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 
 	var certStatusOb interface{}
 	if ssa.CertStatusOptimizationsMigrated {
-		ssa.dbMap.AddTableWithName(certStatusModelMigrated{}, "certificateStatus")
-		certStatusOb = &certStatusModelMigrated{
-			certStatusModel: &certStatusModel{
+		ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
+		certStatusOb = &certStatusModelv2{
+			certStatusModelv1: &certStatusModelv1{
 				SubscriberApproved: false,
 				Status:             core.OCSPStatus("good"),
 				OCSPLastUpdated:    time.Time{},
@@ -861,8 +864,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 			NotAfter: parsedCertificate.NotAfter,
 		}
 	} else {
-		ssa.dbMap.AddTableWithName(certStatusModel{}, "certificateStatus")
-		certStatusOb = &certStatusModel{
+		ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
+		certStatusOb = &certStatusModelv1{
 			SubscriberApproved: false,
 			Status:             core.OCSPStatus("good"),
 			OCSPLastUpdated:    time.Time{},
