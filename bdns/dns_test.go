@@ -12,7 +12,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -220,8 +219,7 @@ func TestMain(m *testing.M) {
 }
 
 func newTestStats() metrics.Scope {
-	c, _ := statsd.NewNoopClient()
-	return metrics.NewStatsdScope(c, "fakesvc")
+	return metrics.NewNoopScope()
 }
 
 var testStats = newTestStats()

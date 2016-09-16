@@ -17,7 +17,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"github.com/square/go-jose"
@@ -78,9 +77,9 @@ const emailARaw = "rolandshoemaker@gmail.com"
 const emailBRaw = "test@gmail.com"
 
 var (
-	emailA, _ = core.ParseAcmeURL("mailto:" + emailARaw)
-	emailB, _ = core.ParseAcmeURL("mailto:" + emailBRaw)
-	jsonKeyA  = []byte(`{
+	emailA   = "mailto:" + emailARaw
+	emailB   = "mailto:" + emailBRaw
+	jsonKeyA = []byte(`{
   "kty":"RSA",
   "n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
   "e":"AQAB"
@@ -101,7 +100,7 @@ var (
 )
 
 func TestSendNags(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
@@ -124,7 +123,7 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	err := m.sendNags([]*core.AcmeURL{emailA}, []*x509.Certificate{cert})
+	err := m.sendNags([]string{emailA}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -134,7 +133,7 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags([]*core.AcmeURL{emailA, emailB}, []*x509.Certificate{cert})
+	err = m.sendNags([]string{emailA, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -149,7 +148,7 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags([]*core.AcmeURL{}, []*x509.Certificate{cert})
+	err = m.sendNags([]string{}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
@@ -253,7 +252,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -261,7 +260,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	regB := core.Registration{
 		ID: 2,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailB,
 		},
 		Key:       keyB,
@@ -269,7 +268,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	regC := core.Registration{
 		ID: 3,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailB,
 		},
 		Key:       keyC,
@@ -422,7 +421,8 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
-	testCtx.m.stats = statter
+	stats := metrics.NewStatsdScope(statter, "Expiration")
+	testCtx.m.stats = stats
 
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
@@ -431,14 +431,14 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
 	// * 24 to setup() for the nag duration. This is because all of the nags are
 	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Mailer.Expiration.Errors.Nag-48h0m0s.AtCapacity",
+	statter.EXPECT().Inc("Expiration.Errors.Nag-48h0m0s.AtCapacity",
 		int64(1), float32(1.0))
 
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("Mailer.Expiration.SendLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
 	// Similarly, findExpiringCerticates() sends its latency as well
-	statter.EXPECT().TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
@@ -595,7 +595,7 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -696,11 +696,11 @@ func TestDontFindRevokedCert(t *testing.T) {
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
-	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+	emailA := "mailto:one@mail.com"
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -756,7 +756,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	regA := core.Registration{
 		ID: 1,
-		Contact: &[]*core.AcmeURL{
+		Contact: &[]string{
 			emailA,
 		},
 		Key:       keyA,
@@ -855,7 +855,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))

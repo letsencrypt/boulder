@@ -3,6 +3,7 @@ package wfe
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -23,10 +23,10 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
@@ -52,7 +52,7 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	stats statsd.Statter
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 
@@ -84,18 +84,20 @@ type WebFrontEndImpl struct {
 	RequestTimeout time.Duration
 
 	// Feature gates
-	CheckMalformedCSR      bool
-	AcceptRevocationReason bool
+	CheckMalformedCSR        bool
+	AcceptRevocationReason   bool
+	AllowAccountDeactivation bool
+	AllowAuthzDeactivation   bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
-	stats statsd.Statter,
+	stats metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService()
+	nonceService, err := nonce.NewNonceService(stats)
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
@@ -255,7 +257,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, newAuthzPath, wfe.NewAuthorization, "POST")
 	wfe.HandleFunc(m, newCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, regPath, wfe.Registration, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
@@ -362,21 +364,21 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	reg := core.Registration{ID: 0}
 
 	if _, ok := request.Header["Content-Length"]; !ok {
-		wfe.stats.Inc("WFE.HTTP.ClientErrors.LengthRequiredError", 1, 1.0)
+		wfe.stats.Inc("HTTP.ClientErrors.LengthRequiredError", 1)
 		logEvent.AddError("missing Content-Length header on POST")
 		return nil, nil, reg, probs.ContentLengthRequired()
 	}
 
 	// Read body
 	if request.Body == nil {
-		wfe.stats.Inc("WFE.Errors.NoPOSTBody", 1, 1.0)
+		wfe.stats.Inc("Errors.NoPOSTBody", 1)
 		logEvent.AddError("no body on POST")
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnableToReadRequestBody", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
 		logEvent.AddError("unable to read request body")
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
@@ -385,7 +387,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Parse as JWS
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnableToParseJWS", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
 		logEvent.AddError("could not JSON parse body into JWS: %s", err)
 		return nil, nil, reg, probs.Malformed("Parse error reading JWS")
 	}
@@ -397,25 +399,25 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if len(parsedJws.Signatures) > 1 {
-		wfe.stats.Inc("WFE.Errors.TooManyJWSSignaturesInPOST", 1, 1.0)
+		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
 		logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
 		return nil, nil, reg, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.stats.Inc("WFE.Errors.JWSNotSignedInPOST", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
 		logEvent.AddError("no signatures in POST body")
 		return nil, nil, reg, probs.Malformed("POST JWS not signed")
 	}
 
 	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
 	if submittedKey == nil {
-		wfe.stats.Inc("WFE.Errors.NoJWKInJWSSignatureHeader", 1, 1.0)
+		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
 		logEvent.AddError("no JWK in JWS signature header in POST body")
 		return nil, nil, reg, probs.Malformed("No JWK in JWS header")
 	}
 
 	if !submittedKey.Valid() {
-		wfe.stats.Inc("WFE.Errors.InvalidJWK", 1, 1.0)
+		wfe.stats.Inc("Errors.InvalidJWK", 1)
 		logEvent.AddError("invalid JWK in JWS signature header in POST body")
 		return nil, nil, reg, probs.Malformed("Invalid JWK in JWS header")
 	}
@@ -430,14 +432,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
-			wfe.stats.Inc("WFE.Errors.JWKRejectedByGoodKey", 1, 1.0)
+			wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
 			logEvent.AddError("JWK in request was rejected by GoodKey: %s", err)
 			return nil, nil, reg, probs.Malformed(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
-		wfe.stats.Inc("WFE.Errors.UnableToGetRegistrationByKey", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
 		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
@@ -451,14 +453,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		logEvent.Contacts = reg.Contact
 	}
 
+	if wfe.AllowAccountDeactivation && reg.Status != core.StatusValid {
+		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
+	}
+
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
-		wfe.stats.Inc(statName, 1, 1.0)
+		wfe.stats.Inc(statName, 1)
 		return nil, nil, reg, probs.Malformed(err.Error())
 	}
 
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.JWSVerificationFailed", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSVerificationFailed", 1)
 		n := len(body)
 		if n > 100 {
 			n = 100
@@ -471,11 +477,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	nonce := parsedJws.Signatures[0].Header.Nonce
 	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
-		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		logEvent.AddError("JWS is missing an anti-replay nonce")
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
-		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
 		logEvent.AddError("JWS has an invalid anti-replay nonce: %s", nonce)
 		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %v", nonce))
 	}
@@ -486,16 +492,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnparsableJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.UnparsableJWSPayload", 1)
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
 	}
 	if parsedRequest.Resource == "" {
-		wfe.stats.Inc("WFE.Errors.NoResourceInJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.NoResourceInJWSPayload", 1)
 		logEvent.AddError("JWS request payload does not specify a resource")
 		return nil, nil, reg, probs.Malformed("Request payload does not specify a resource")
 	} else if resource != core.AcmeResource(parsedRequest.Resource) {
-		wfe.stats.Inc("WFE.Errors.MismatchedResourceInJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.MismatchedResourceInJWSPayload", 1)
 		logEvent.AddError("JWS request payload does not match resource")
 		return nil, nil, reg, probs.Malformed("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource)
 	}
@@ -515,13 +521,11 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
 	}
 
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
@@ -532,10 +536,10 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
+	wfe.stats.Inc(fmt.Sprintf("HTTP.ErrorCodes.%d", code), 1)
 	problemSegments := strings.Split(string(prob.Type), ":")
 	if len(problemSegments) > 0 {
-		wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+		wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1)
 	}
 }
 
@@ -768,11 +772,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
 		ClientAddr   string
-		CsrBase64    []byte
+		CSR          string
 		Registration core.Registration
 	}{
 		ClientAddr:   getClientAddr(request),
-		CsrBase64:    cr.Bytes,
+		CSR:          hex.EncodeToString(cr.Bytes),
 		Registration: registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
@@ -824,7 +828,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR, err = oldx509.ParseCertificateRequest(rawCSR.CSR)
+	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
 		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514
@@ -1113,7 +1117,33 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
+	// People *will* POST their full registrations to this endpoint, including
+	// the 'valid' status, to avoid always failing out when that happens only
+	// attempt to deactivate if the provided status is different from their current
+	// status.
+	//
+	// If a user tries to send both a deactivation request and an update to their
+	// contacts or subscriber agreement URL the deactivation will take place and
+	// return before an update would be performed.
+	if wfe.AllowAccountDeactivation && (update.Status != currReg.Status) {
+		if update.Status != core.StatusDeactivated {
+			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
+			return
+		}
+		wfe.deactivateRegistration(ctx, currReg, response, request, logEvent)
+		return
+	}
+
+	// If a user POSTs their registration object including a previously valid
+	// agreement URL but that URL has since changed we will fail out here
+	// since the update agreement URL doesn't match the current URL. To fix that we
+	// only fail if the sent URL doesn't match the currently valid agreement URL
+	// and it doesn't match the URL currently stored in the registration
+	// in the database. The RA understands the user isn't actually trying to
+	// update the agreement but since we do an early check here in order to prevent
+	// extraneous requests to the RA we have to add this bypass.
+	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
+		update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
@@ -1149,6 +1179,44 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	response.Write(jsonReply)
 }
 
+func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *core.Authorization, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) bool {
+	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceAuthz)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return false
+	}
+	if reg.ID != authz.RegistrationID {
+		logEvent.AddError("registration ID doesn't match ID for authorization")
+		wfe.sendError(response, logEvent, probs.Unauthorized("Registration ID doesn't match ID for authorization"), nil)
+		return false
+	}
+	var req struct {
+		Status core.AcmeStatus
+	}
+	err := json.Unmarshal(body, &req)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+		return false
+	}
+	if req.Status != core.StatusDeactivated {
+		logEvent.AddError("invalid status value")
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
+		return false
+	}
+	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
+	if err != nil {
+		logEvent.AddError("unable to deactivate authorization", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating authorization"), err)
+		return false
+	}
+	// Since the authorization passed to DeactivateAuthorization isn't
+	// mutated locally by the function we must manually set the status
+	// here before displaying the authorization to the user
+	authz.Status = core.StatusDeactivated
+	return true
+}
+
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
@@ -1173,6 +1241,15 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
+	}
+
+	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
+		// If the deactivation fails return early as errors and return codes
+		// have already been set. Otherwise continue so that the user gets
+		// sent the deactivated authorization.
+		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, request) {
+			return
+		}
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
@@ -1313,4 +1390,24 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
+	err := wfe.RA.DeactivateRegistration(ctx, reg)
+	if err != nil {
+		logEvent.AddError("unable to deactivate registration", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating registration"), err)
+		return
+	}
+	reg.Status = core.StatusDeactivated
+	jsonReply, err := marshalIndent(reg)
+	if err != nil {
+		// ServerInternal because registration is from DB and should be fine
+		logEvent.AddError("unable to marshal updated registration: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	response.Write(jsonReply)
 }

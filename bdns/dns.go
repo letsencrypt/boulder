@@ -186,6 +186,7 @@ func NewDNSResolverImpl(
 	clk clock.Clock,
 	maxTries int,
 ) *DNSResolverImpl {
+	stats = stats.NewScope("DNS")
 	// TODO(jmhodges): make constructor use an Option func pattern
 	dnsClient := new(dns.Client)
 

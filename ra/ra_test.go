@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -26,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
@@ -34,7 +34,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 type DummyValidationAuthority struct {
@@ -117,7 +116,7 @@ var (
 
 	ResponseIndex = 0
 
-	ExampleCSR = &oldx509.CertificateRequest{}
+	ExampleCSR = &x509.CertificateRequest{}
 
 	// These values are populated by the tests as we go
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
@@ -223,7 +222,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,
@@ -233,11 +232,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 
 	block, _ := pem.Decode(CSRPEM)
-	ExampleCSR, _ = oldx509.ParseCertificateRequest(block.Bytes)
+	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
+		Status:    core.StatusValid,
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
@@ -285,31 +285,31 @@ func TestValidateContacts(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
-	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
-	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
-	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
-	nonASCII, _ := core.ParseAcmeURL("mailto:señor@email.com")
+	ansible := "ansible:earth.sol.milkyway.laniakea/letsencrypt"
+	validEmail := "mailto:admin@email.com"
+	otherValidEmail := "mailto:other-admin@email.com"
+	malformedEmail := "mailto:admin.com"
+	nonASCII := "mailto:señor@email.com"
 
-	err := ra.validateContacts(context.Background(), &[]*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), &[]string{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail, otherValidEmail})
+	err = ra.validateContacts(context.Background(), &[]string{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), &[]string{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), &[]string{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), &[]string{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nil})
-	test.AssertError(t, err, "Nil AcmeURL")
+	err = ra.validateContacts(context.Background(), &[]string{""})
+	test.AssertError(t, err, "Empty URL")
 
-	err = ra.validateContacts(context.Background(), &[]*core.AcmeURL{nonASCII})
+	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
 }
 
@@ -351,9 +351,9 @@ func TestValidateEmail(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
-		Contact:   &[]*core.AcmeURL{mailto},
+		Contact:   &[]string{mailto},
 		Key:       AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
@@ -365,8 +365,7 @@ func TestNewRegistration(t *testing.T) {
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
 	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto.String() == (*result.Contact)[0].String(),
-		"Contact didn't match")
+	test.Assert(t, mailto == (*result.Contact)[0], "Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
 	reg, err := sa.GetRegistration(ctx, result.ID)
@@ -377,11 +376,11 @@ func TestNewRegistration(t *testing.T) {
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		ID:        23,
 		Key:       AccountKeyC,
-		Contact:   &[]*core.AcmeURL{mailto},
+		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
@@ -406,9 +405,9 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
-		Contact: &[]*core.AcmeURL{mailto},
+		Contact: &[]string{mailto},
 		Key:     ShortKey,
 	}
 
@@ -427,12 +426,12 @@ func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ core.Registration) 
 func TestUpdateRegistrationSame(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
+	mailto := "mailto:foo@letsencrypt.org"
 
 	// Make a new registration with AccountKeyC and a Contact
 	input := core.Registration{
 		Key:       AccountKeyC,
-		Contact:   &[]*core.AcmeURL{mailto},
+		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
@@ -447,7 +446,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	updateSame := core.Registration{
 		ID:        id,
 		Key:       AccountKeyC,
-		Contact:   &[]*core.AcmeURL{mailto},
+		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 	}
 
@@ -762,7 +761,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := oldx509.ParseCertificateRequest(csrBytes)
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
@@ -1090,15 +1089,15 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 }
 
 func TestRegistrationUpdate(t *testing.T) {
-	oldURL, _ := core.ParseAcmeURL("http://old.invalid")
-	newURL, _ := core.ParseAcmeURL("http://new.invalid")
+	oldURL := "http://old.invalid"
+	newURL := "http://new.invalid"
 	reg := core.Registration{
 		ID:        1,
-		Contact:   &[]*core.AcmeURL{oldURL},
+		Contact:   &[]string{oldURL},
 		Agreement: "",
 	}
 	update := core.Registration{
-		Contact:   &[]*core.AcmeURL{newURL},
+		Contact:   &[]string{newURL},
 		Agreement: "totally!",
 	}
 
@@ -1107,21 +1106,21 @@ func TestRegistrationUpdate(t *testing.T) {
 	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
 
-	// Make sure that a `MergeUpdate` call with a nil entry doesn't produce an
+	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
 	// error and results in a change to the base reg.
-	nilUpdate := core.Registration{
-		Contact:   &[]*core.AcmeURL{nil},
+	emptyUpdate := core.Registration{
+		Contact:   &[]string{""},
 		Agreement: "totally!",
 	}
-	changed = mergeUpdate(&reg, nilUpdate)
+	changed = mergeUpdate(&reg, emptyUpdate)
 	test.AssertEquals(t, changed, true)
 }
 
 func TestRegistrationContactUpdate(t *testing.T) {
-	contactURL, _ := core.ParseAcmeURL("mailto://example@example.com")
+	contactURL := "mailto://example@example.com"
 	fullReg := core.Registration{
 		ID:        1,
-		Contact:   &[]*core.AcmeURL{contactURL},
+		Contact:   &[]string{contactURL},
 		Agreement: "totally!",
 	}
 
@@ -1167,7 +1166,7 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	changed = mergeUpdate(&reg, contactSameUpdate)
 	test.AssertEquals(t, changed, false)
 	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
-	test.Assert(t, (*reg.Contact)[0].String() == "mailto://example@example.com", "Contact was changed unexpectedly")
+	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
@@ -1252,6 +1251,37 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	// comes into effect.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
 	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
+}
+
+func TestDeactivateAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = ra.DeactivateAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization wtih ID "+authz.ID)
+	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateRegistration(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	err := ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusDeactivated})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusValid})
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }
 
 var CAkeyPEM = `

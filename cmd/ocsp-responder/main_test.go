@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
+	"golang.org/x/crypto/ocsp"
+
 	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 var (
-	req      = mustRead("./testdata/ocsp.req")
-	resp     = dbResponse{mustRead("./testdata/ocsp.resp"), time.Now()}
-	stats, _ = statsd.NewNoopClient()
+	req   = mustRead("./testdata/ocsp.req")
+	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), time.Now()}
+	stats = metrics.NewNoopScope()
 )
 
 func TestMux(t *testing.T) {

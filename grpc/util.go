@@ -20,14 +20,19 @@ import (
 // CodedError is a alias required to appease go vet
 var CodedError = grpc.Errorf
 
+var errNilScope = errors.New("boulder/grpc: received nil scope")
+
 // ClientSetup loads various TLS certificates and creates a
 // gRPC TransportCredentials that presents the client certificate
 // and validates the certificate presented by the server is for a
 // specific hostname and issued by the provided issuer certificate
 // thens dials and returns a grpc.ClientConn to the remote service.
-func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
 		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
+	}
+	if stats == nil {
+		return nil, errNilScope
 	}
 	serverIssuerBytes, err := ioutil.ReadFile(c.ServerIssuerPath)
 	if err != nil {
@@ -41,10 +46,12 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default()}
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
 		grpc.WithTransportCredentials(bcreds.New(rootCAs, []tls.Certificate{clientCert})),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
+		grpc.WithUnaryInterceptor(ci.intercept),
 	)
 }
 
@@ -53,6 +60,9 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 // issued by the provided issuer certificate and presents a
 // a server TLS certificate.
 func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
+	if stats == nil {
+		return nil, nil, errNilScope
+	}
 	cert, err := tls.LoadX509KeyPair(c.ServerCertificatePath, c.ServerKeyPath)
 	if err != nil {
 		return nil, nil, err
@@ -75,6 +85,6 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 	if err != nil {
 		return nil, nil, err
 	}
-	si := &serverInterceptor{stats, clock.Default()}
+	si := &serverInterceptor{stats.NewScope("gRPCServer"), clock.Default()}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
 }

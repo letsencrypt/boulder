@@ -8,23 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
 var (
-	email1 = mustParseAcmeURL("mailto:one@example.com")
-	email2 = mustParseAcmeURL("mailto:two@example.com")
+	email1 = "mailto:one@example.com"
+	email2 = "mailto:two@example.com"
 )
-
-func mustParseAcmeURL(acmeURL string) *core.AcmeURL {
-	c, err := core.ParseAcmeURL(acmeURL)
-	if err != nil {
-		panic(fmt.Sprintf("unable to parse as AcmeURL %#v: %s", acmeURL, err))
-	}
-	return c
-}
 
 func TestSendEarliestCertInfo(t *testing.T) {
 	expiresIn := 24 * time.Hour
@@ -42,7 +33,7 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		serial2,
 	)
 
-	err := ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	err := ctx.m.sendNags([]string{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
 	if err != nil {
 		t.Fatal(err)
 	}

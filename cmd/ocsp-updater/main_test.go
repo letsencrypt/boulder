@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"testing"
@@ -8,26 +9,25 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 var ctx = context.Background()
 
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(_ context.Context, csr oldx509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -72,10 +72,8 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats, _ := statsd.NewNoopClient(nil)
-
 	updater, err := newUpdater(
-		stats,
+		metrics.NewNoopScope(),
 		fc,
 		dbMap,
 		&mockCA{},
@@ -402,10 +400,9 @@ func TestStoreResponseGuard(t *testing.T) {
 
 func TestLoopTickBackoff(t *testing.T) {
 	fc := clock.NewFake()
-	stats, _ := statsd.NewNoopClient(nil)
 	l := looper{
 		clk:                  fc,
-		stats:                stats,
+		stats:                metrics.NewNoopScope(),
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,

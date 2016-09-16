@@ -164,7 +164,6 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 }
 
-// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 	text := fmt.Sprintf("%s %s", auditTag, msg)
 	log.w.logAtLevel(level, text)
@@ -181,7 +180,6 @@ func caller(level int) string {
 
 // AuditPanic catches panicking executables. This method should be added
 // in a defer statement as early as possible
-// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *impl) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
@@ -227,7 +225,6 @@ func (log *impl) AuditInfo(msg string) {
 func (log *impl) AuditObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
 		return
 	}
@@ -236,7 +233,6 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 }
 
 // AuditErr can format an error for auditing; it does so at ERR level.
-// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *impl) AuditErr(msg string) {
 	log.auditAtLevel(syslog.LOG_ERR, msg)
 }

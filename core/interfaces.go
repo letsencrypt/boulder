@@ -10,7 +10,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/revocation"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -70,6 +69,12 @@ type RegistrationAuthority interface {
 	// [WebFrontEnd]
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
+	// [WebFrontEnd]
+	DeactivateRegistration(ctx context.Context, reg Registration) error
+
+	// [WebFrontEnd]
+	DeactivateAuthorization(ctx context.Context, auth Authorization) error
+
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
@@ -77,7 +82,7 @@ type RegistrationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(ctx context.Context, csr oldx509.CertificateRequest, regID int64) (Certificate, error)
+	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
 	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 
@@ -115,6 +120,8 @@ type StorageAdder interface {
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
+	DeactivateRegistration(ctx context.Context, id int64) error
+	DeactivateAuthorization(ctx context.Context, id string) error
 }
 
 // StorageAuthority interface represents a simple key/value

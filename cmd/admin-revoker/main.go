@@ -11,7 +11,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -55,23 +54,24 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
+func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, metrics.Scope) {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
 	amqpConf := c.Revoker.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AdminRevoker"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return *rac, logger, dbMap, *sac, stats
+	return *rac, logger, dbMap, *sac, scope
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
@@ -182,7 +182,6 @@ func main() {
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
 		cac, logger, dbMap, sac, _ := setupContext(c)
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer logger.AuditPanic()
 
 		tx, err := dbMap.Begin()
@@ -225,8 +224,8 @@ func main() {
 			authsRevoked,
 			pendingAuthsRevoked,
 		))
-		stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
-		stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
+		stats.Inc("RevokedAuthorizations", authsRevoked)
+		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
 
 	default:
 		usage()

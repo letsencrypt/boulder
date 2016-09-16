@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
@@ -51,12 +50,15 @@ type Mailer interface {
 // MailerImpl defines a mail transfer agent to use for sending mail. It is not
 // safe for concurrent access.
 type MailerImpl struct {
-	dialer      dialer
-	from        mail.Address
-	client      smtpClient
-	clk         clock.Clock
-	csprgSource idGenerator
-	stats       *metrics.StatsdScope
+	log           blog.Logger
+	dialer        dialer
+	from          mail.Address
+	client        smtpClient
+	clk           clock.Clock
+	csprgSource   idGenerator
+	stats         metrics.Scope
+	reconnectBase time.Duration
+	reconnectMax  time.Duration
 }
 
 type dialer interface {
@@ -103,7 +105,16 @@ func (d dryRunClient) Write(p []byte) (n int, err error) {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password string, from mail.Address, stats statsd.Statter) *MailerImpl {
+func New(
+	server,
+	port,
+	username,
+	password string,
+	from mail.Address,
+	logger blog.Logger,
+	stats metrics.Scope,
+	reconnectBase time.Duration,
+	reconnectMax time.Duration) *MailerImpl {
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -111,21 +122,26 @@ func New(server, port, username, password string, from mail.Address, stats stats
 			server:   server,
 			port:     port,
 		},
-		from:        from,
-		clk:         clock.Default(),
-		csprgSource: realSource{},
-		stats:       metrics.NewStatsdScope(stats, "Mailer"),
+		log:           logger,
+		from:          from,
+		clk:           clock.Default(),
+		csprgSource:   realSource{},
+		stats:         stats.NewScope("Mailer"),
+		reconnectBase: reconnectBase,
+		reconnectMax:  reconnectMax,
 	}
 }
 
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
+	stats := metrics.NewNoopScope()
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
+		stats:       stats,
 	}
 }
 
@@ -168,6 +184,22 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 		strings.Join(headers, "\r\n"),
 		bodyBuf.String(),
 	)), nil
+}
+
+func (m *MailerImpl) reconnect() {
+	for i := 0; ; i++ {
+		sleepDuration := core.RetryBackoff(i, m.reconnectBase, m.reconnectMax, 2)
+		m.log.Info(fmt.Sprintf("sleeping for %s before reconnecting mailer", sleepDuration))
+		m.clk.Sleep(sleepDuration)
+		m.log.Info("attempting to reconnect mailer")
+		err := m.Connect()
+		if err != nil {
+			m.log.Warning(fmt.Sprintf("reconnect error: %s", err))
+			continue
+		}
+		break
+	}
+	m.log.Info("reconnected successfully")
 }
 
 // Connect opens a connection to the specified mail server. It must be called
@@ -246,10 +278,25 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	m.stats.Inc("SendMail.Attempts", 1)
 
-	err := m.sendOne(to, subject, msg)
-	if err != nil {
-		m.stats.Inc("SendMail.Errors", 1)
-		return err
+	for {
+		err := m.sendOne(to, subject, msg)
+		if err == nil {
+			// If the error is nil, we sent the mail without issue. nice!
+			break
+		} else if err == io.EOF {
+			// If the error is an EOF, we should try to reconnect on a backoff
+			// schedule, sleeping between attempts.
+			m.stats.Inc("SendMail.Errors.EOF", 1)
+			m.reconnect()
+			// After reconnecting, loop around and try `sendOne` again.
+			m.stats.Inc("SendMail.Reconnects", 1)
+			continue
+		} else if err != nil {
+			// If it wasn't an EOF error it is unexpected and we return from
+			// SendMail() with an error
+			m.stats.Inc("SendMail.Errors", 1)
+			return err
+		}
 	}
 
 	m.stats.Inc("SendMail.Successes", 1)

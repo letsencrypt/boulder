@@ -7,18 +7,14 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -26,11 +22,14 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -48,7 +47,7 @@ type RegistrationAuthorityImpl struct {
 	VA          core.ValidationAuthority
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
-	stats       statsd.Statter
+	stats       metrics.Scope
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
@@ -75,7 +74,7 @@ type RegistrationAuthorityImpl struct {
 func NewRegistrationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
@@ -84,7 +83,6 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
-	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -98,10 +96,10 @@ func NewRegistrationAuthorityImpl(
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
-		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
-		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
-		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
-		totalCertsStats:              scope.NewScope("RA", "RateLimit", "TotalCertificates"),
+		regByIPStats:                 stats.NewScope("RA", "RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats:         stats.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:          stats.NewScope("RA", "RateLimit", "CertificatesForDomain"),
+		totalCertsStats:              stats.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
 }
@@ -259,7 +257,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	}
 
 	reg = core.Registration{
-		Key: init.Key,
+		Key:    init.Key,
+		Status: core.StatusValid,
 	}
 	_ = mergeUpdate(&reg, init)
 
@@ -280,11 +279,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 		err = core.InternalServerError(err.Error())
 	}
 
-	ra.stats.Inc("RA.NewRegistrations", 1, 1.0)
+	ra.stats.Inc("NewRegistrations", 1)
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]*core.AcmeURL) error {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
 	}
@@ -294,26 +293,30 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	}
 
 	for _, contact := range *contacts {
-		if contact == nil {
+		if contact == "" {
+			return core.MalformedRequestError("Empty contact")
+		}
+		parsed, err := url.Parse(contact)
+		if err != nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		if contact.Scheme != "mailto" {
-			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+		if parsed.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsed.Scheme))
 		}
-		if !core.IsASCII(contact.String()) {
+		if !core.IsASCII(contact) {
 			return core.MalformedRequestError(
-				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact.String()))
+				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact))
 		}
 
 		start := ra.clk.Now()
-		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
-		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+		ra.stats.Inc("ValidateEmail.Calls", 1)
+		problem := validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
+		ra.stats.TimingDuration("ValidateEmail.Latency", ra.clk.Now().Sub(start))
 		if problem != nil {
-			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+			ra.stats.Inc("ValidateEmail.Errors", 1)
 			return problem
 		}
-		ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
+		ra.stats.Inc("ValidateEmail.Successes", 1)
 	}
 
 	return nil
@@ -391,7 +394,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			// it to be OK for reuse
 			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
 			if populatedAuthz.Expires.After(reuseCutOff) {
-				ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
+				ra.stats.Inc("ReusedValidAuthz", 1)
 				return populatedAuthz, nil
 			}
 		}
@@ -443,7 +446,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *oldx509.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -559,7 +562,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// No matter what, log the request
 	defer func() {
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
@@ -648,7 +650,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	logEventResult = "successful"
 
 	issuanceExpvar.Set(now.Unix())
-	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
+	ra.stats.Inc("NewCertificates", 1)
 	return cert, nil
 }
 
@@ -793,7 +795,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 		return core.Registration{}, err
 	}
 
-	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
+	ra.stats.Inc("UpdatedRegistrations", 1)
 	return base, nil
 }
 
@@ -805,29 +807,17 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	}
 
 	// If there is an existing contact slice and it has the same length as the
-	// new contact slice we need to look at each AcmeURL to determine if there
-	// is a change being made
-	//
-	// TODO(cpu): After #1966 is merged and the `AcmeURL`s are just `String`s we
-	//            should use `sort.Strings` here to ensure a consistent
-	//            comparison.
+	// new contact slice we need to look at each contact to determine if there
+	// is a change being made. Use `sort.Strings` here to ensure a consistent
+	// comparison
 	a := *other.Contact
 	b := *r.Contact
+	sort.Strings(a)
+	sort.Strings(b)
 	for i := 0; i < len(a); i++ {
-		// In order to call .String() we need to make sure the AcmeURL pointers
-		// aren't nil. In practice `a[i]` should never be nil but `b[i]` might be
-		if a[i] == nil || b[i] == nil {
-			// We return false, allowing MergeUpdate to use `other` to overwrite. The
-			// nil value in the Contact slice will be turned into a user-facing error
-			// when the RA validates the contacts post-merge.
-			return false
-		}
-
 		// If the contact's string representation differs at any index they aren't
 		// equal
-		contactA := (*a[i]).String()
-		contactB := (*b[i]).String()
-		if contactA != contactB {
+		if a[i] != b[i] {
 			return false
 		}
 	}
@@ -879,7 +869,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	if response.Type != "" && ch.Type != response.Type {
 		// TODO(riking): Check the rate on this, uncomment error return if negligible
-		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
+		ra.stats.Inc("StartChallengeWrongType", 1)
 		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
 		// return
 	}
@@ -890,7 +880,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// the overall authorization is already good! We increment a stat for this
 	// case and return early.
 	if (ra.reuseValidAuthz || features.Enabled(features.ReuseValidAuthz)) && authz.Status == core.StatusValid {
-		ra.stats.Inc("RA.ReusedValidAuthzChallenge", 1, 1.0)
+		ra.stats.Inc("ReusedValidAuthzChallenge", 1)
 		return
 	}
 
@@ -929,7 +919,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		err = core.MalformedRequestError("Challenge data was corrupted")
 		return
 	}
-	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
+	ra.stats.Inc("NewPendingAuthorizations", 1)
 
 	// Dispatch to the VA for service
 
@@ -965,7 +955,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
 		}
 	}()
-	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
+	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
 	return
 }
 
@@ -987,7 +977,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 
 	state := "Failure"
 	defer func() {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 		// Needed:
 		//   Serial
 		//   CN
@@ -1020,7 +1009,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	state := "Failure"
 	defer func() {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 		// Needed:
 		//   Serial
 		//   CN
@@ -1041,7 +1029,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	state = "Success"
-	ra.stats.Inc("RA.RevokedCertificates", 1, 1.0)
+	ra.stats.Inc("RevokedCertificates", 1)
 	return nil
 }
 
@@ -1084,6 +1072,30 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 		return err
 	}
 
-	ra.stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
+	ra.stats.Inc("FinalizedAuthorizations", 1)
+	return nil
+}
+
+// DeactivateRegistration deactivates a valid registration
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	if reg.Status != core.StatusValid {
+		return core.MalformedRequestError("Only vaid registrations can be deactivated")
+	}
+	err := ra.SA.DeactivateRegistration(ctx, reg.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
+	return nil
+}
+
+// DeactivateAuthorization deactivates a currently valid authorization
+func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
+	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
+		return core.MalformedRequestError("Only valid and pending authorizations can be deactivated")
+	}
+	err := ra.SA.DeactivateAuthorization(ctx, auth.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
 	return nil
 }

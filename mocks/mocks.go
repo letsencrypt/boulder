@@ -59,6 +59,7 @@ const (
      "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
      "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
    }`
+	test3KeyPublicJSON = `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
 
 	agreementURL = "http://example.invalid/terms"
 )
@@ -87,6 +88,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		Agreement: agreementURL,
 		InitialIP: net.ParseIP("5.6.7.8"),
 		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
+		Status:    core.StatusValid,
 	}, nil
 }
 
@@ -94,6 +96,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var test3KeyPublic jose.JsonWebKey
 	var testE1KeyPublic jose.JsonWebKey
 	var testE2KeyPublic jose.JsonWebKey
 	var err error
@@ -102,6 +105,10 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 		return core.Registration{}, err
 	}
 	err = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -114,11 +121,16 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 		panic(err)
 	}
 
-	contactURL, _ := core.ParseAcmeURL("mailto:person@mail.com")
-	contacts := []*core.AcmeURL{contactURL}
+	contacts := []string{"mailto:person@mail.com"}
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL, Contact: &contacts}, nil
+		return core.Registration{
+			ID:        1,
+			Key:       jwk,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusValid,
+		}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -132,6 +144,17 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 
 	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
 		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test3KeyPublic) {
+		// deactivated registration
+		return core.Registration{
+			ID:        2,
+			Key:       jwk,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusDeactivated,
+		}, nil
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
@@ -310,6 +333,16 @@ func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, 
 // CountPendingAuthorizations is a mock
 func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
 	return 0, nil
+}
+
+// DeactivateAuthorization is a mock
+func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
+	return nil
+}
+
+// DeactivateRegistration is a mock
+func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
+	return nil
 }
 
 // Publisher is a mock

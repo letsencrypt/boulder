@@ -12,20 +12,25 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
+type mailSrv struct {
+	closeFirst      uint
+	closeDuration   time.Duration
+	allReceivedMail []rcvdMail
+	allMailMutex    sync.Mutex
+	connNumber      uint
+	connNumberMutex sync.RWMutex
+}
 
 type rcvdMail struct {
 	From string
 	To   string
 	Mail string
 }
-
-var allReceivedMail []rcvdMail
-var allMailMutex sync.Mutex
 
 func expectLine(buf *bufio.Reader, expected string) error {
 	line, _, err := buf.ReadLine()
@@ -44,8 +49,11 @@ var dataRegex = regexp.MustCompile("^DATA\\s*$")
 var smtpErr501 = []byte("501 syntax error in parameters or arguments \r\n")
 var smtpOk250 = []byte("250 OK \r\n")
 
-func handleConn(conn net.Conn) {
+func (srv *mailSrv) handleConn(conn net.Conn) {
 	defer conn.Close()
+	srv.connNumberMutex.Lock()
+	srv.connNumber++
+	srv.connNumberMutex.Unlock()
 	auditlogger := blog.Get()
 	auditlogger.Info(fmt.Sprintf("mail-test-srv: Got connection from %s", conn.RemoteAddr()))
 
@@ -91,6 +99,15 @@ func handleConn(conn net.Conn) {
 		case "NOOP":
 			conn.Write(smtpOk250)
 		case "MAIL":
+			srv.connNumberMutex.RLock()
+			if srv.connNumber <= srv.closeFirst {
+				log.Printf(
+					"mail-test-srv: connection # %d < -closeFirst parameter %d, disconnecting client. Bye!\n",
+					srv.connNumber, srv.closeFirst)
+				clearState()
+				conn.Close()
+			}
+			srv.connNumberMutex.RUnlock()
 			clearState()
 			matches := mailFromRegex.FindStringSubmatch(line)
 			if matches == nil {
@@ -135,13 +152,13 @@ func handleConn(conn net.Conn) {
 				From: fromAddr,
 				Mail: msgBuf.String(),
 			}
-			allMailMutex.Lock()
+			srv.allMailMutex.Lock()
 			for _, rcpt := range toAddr {
 				mailResult.To = rcpt
-				allReceivedMail = append(allReceivedMail, mailResult)
+				srv.allReceivedMail = append(srv.allReceivedMail, mailResult)
 				log.Printf("mail-test-srv: Got mail: %s -> %s\n", fromAddr, rcpt)
 			}
-			allMailMutex.Unlock()
+			srv.allMailMutex.Unlock()
 			conn.Write([]byte("250 Got mail \r\n"))
 			clearState()
 		}
@@ -151,24 +168,33 @@ func handleConn(conn net.Conn) {
 	}
 }
 
-func serveSMTP(l net.Listener) error {
+func (srv *mailSrv) serveSMTP(l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			return err
 		}
-		go handleConn(conn)
+		go srv.handleConn(conn)
 	}
 }
 
 func main() {
-	l, err := net.Listen("tcp", "0.0.0.0:9380")
+	var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
+	var listenSMTP = flag.String("smtp", "0.0.0.0:9380", "smtp port to listen on")
+	var closeFirst = flag.Uint("closeFirst", 0, "close first n connections after MAIL for reconnection tests")
+
+	flag.Parse()
+	l, err := net.Listen("tcp", *listenSMTP)
 	if err != nil {
-		log.Fatalln("Couldn't bind for SMTP", err)
+		log.Fatalln("Couldn't bind %q for SMTP", *listenSMTP, err)
 	}
 	defer l.Close()
 
-	setupHTTP(http.DefaultServeMux)
+	srv := mailSrv{
+		closeFirst: *closeFirst,
+	}
+
+	srv.setupHTTP(http.DefaultServeMux)
 	go func() {
 		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux)
 		if err != nil {
@@ -176,7 +202,7 @@ func main() {
 		}
 	}()
 
-	err = serveSMTP(l)
+	err = srv.serveSMTP(l)
 	if err != nil {
 		log.Fatalln(err, "Failed to accept connection")
 	}

@@ -10,6 +10,7 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+    "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
