@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -369,7 +368,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	if ra.reuseValidAuthz || features.Enabled(features.ReuseValidAuthz) {
+	if ra.reuseValidAuthz {
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
 			outErr := core.InternalServerError(
@@ -464,7 +463,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if (!ra.forceCNFromSAN || features.Enabled(features.DoNotForceCN)) && len(csr.Subject.CommonName) > 0 &&
+	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
 		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
@@ -879,7 +878,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// case we don't need to process the challenge update. It wouldn't be helpful,
 	// the overall authorization is already good! We increment a stat for this
 	// case and return early.
-	if (ra.reuseValidAuthz || features.Enabled(features.ReuseValidAuthz)) && authz.Status == core.StatusValid {
+	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
 		ra.stats.Inc("ReusedValidAuthzChallenge", 1)
 		return
 	}

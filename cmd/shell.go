@@ -210,31 +210,13 @@ func DebugServer(addr string) {
 
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
-// configuration of a boulder component. If the file contains a
-// "Features" field it will try to initialize the features
-// package
+// configuration of a boulder component.
 func ReadConfigFile(filename string, out interface{}) error {
 	configData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	var f struct {
-		Features *map[string]bool
-	}
-	err = json.Unmarshal(configData, &f)
-	if err != nil {
-		return err
-	}
-	if f.Features != nil {
-		if err = features.Set(*f.Features); err != nil {
-			return err
-		}
-	}
-	err = json.Unmarshal(configData, out)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(configData, out)
 }
 
 // VersionString produces a friendly Application version string.

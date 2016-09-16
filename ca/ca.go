@@ -29,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -304,7 +303,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 						return nil, core.MalformedRequestError(msg)
 					}
 
-					if ca.enableMustStaple || features.Enabled(features.EnableMustStaple) {
+					if ca.enableMustStaple {
 						extensions = append(extensions, mustStapleExtension)
 					}
 				case ext.Type.Equal(oidAuthorityInfoAccess),
@@ -380,7 +379,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		ca.maxNames,
 		&ca.keyPolicy,
 		ca.PA,
-		(ca.forceCNFromSAN && !features.Enabled(features.DoNotForceCN)),
+		ca.forceCNFromSAN,
 		regID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
@@ -444,7 +443,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		Serial:     serialBigInt,
 		Extensions: requestedExtensions,
 	}
-	if !ca.forceCNFromSAN || features.Enabled(features.DoNotForceCN) {
+	if !ca.forceCNFromSAN {
 		req.Subject.SerialNumber = serialHex
 	}
 

@@ -13,7 +13,6 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -378,16 +377,14 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 
 	for _, answer := range recordsA {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) ||
-				(dnsResolver.allowRestrictedAddresses || features.Enabled(features.DNSAllowLoopbackAddresses))) {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, a.A)
 			}
 		}
 	}
 	for _, answer := range recordsAAAA {
 		if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) ||
-				(dnsResolver.allowRestrictedAddresses || features.Enabled(features.DNSAllowLoopbackAddresses))) {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

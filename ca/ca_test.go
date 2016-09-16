@@ -21,7 +21,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -275,9 +274,6 @@ func TestFailNoSerial(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
-	err := features.Set(map[string]bool{"DoNotForceCN": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -287,6 +283,7 @@ func TestIssueCertificate(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.forceCNFromSAN = false
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	sa := &mockSA{}
@@ -551,9 +548,6 @@ func TestShortKey(t *testing.T) {
 }
 
 func TestAllowNoCN(t *testing.T) {
-	err := features.Set(map[string]bool{"DoNotForceCN": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -563,6 +557,7 @@ func TestAllowNoCN(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Couldn't create new CA")
+	ca.forceCNFromSAN = false
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
@@ -689,9 +684,6 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 }
 
 func TestExtensions(t *testing.T) {
-	err := features.Set(map[string]bool{"DoNotForceCN": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
 
@@ -730,17 +722,15 @@ func TestExtensions(t *testing.T) {
 		return cert
 	}
 
-	// With features.EnableMustStaple = false, should issue successfully and not add
+	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
-	// With features.EnableMustStaple = true, a TLS feature extension should put a must-staple
+	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
-	err = features.Set(map[string]bool{"EnableMustStaple": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
+	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	singleStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)

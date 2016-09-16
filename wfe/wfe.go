@@ -20,7 +20,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -750,7 +749,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	}
 
 	reason := revocation.Reason(0)
-	if revokeRequest.Reason != nil && (wfe.AcceptRevocationReason || features.Enabled(features.AcceptRevocationReason)) {
+	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
 			logEvent.AddError("unsupported revocation reason code provided")
 			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
@@ -816,7 +815,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
 		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
-		if wfe.CheckMalformedCSR || features.Enabled(features.CheckMalformedCSR) {
+		if wfe.CheckMalformedCSR {
 			wfe.sendError(
 				response,
 				logEvent,

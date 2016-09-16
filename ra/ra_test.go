@@ -22,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -491,9 +490,7 @@ func TestReuseAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Turn on AuthZ Reuse
-	err := features.Set(map[string]bool{"ReuseValidAuthz": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
+	ra.reuseValidAuthz = true
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
@@ -502,7 +499,7 @@ func TestReuseAuthorization(t *testing.T) {
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
-	finalAuthz, err = sa.NewPendingAuthorization(ctx, finalAuthz)
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
@@ -584,9 +581,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Turn on AuthZ Reuse
-	err := features.Set(map[string]bool{"ReuseValidAuthz": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
+	ra.reuseValidAuthz = true
 
 	// Create one finalized authorization that expires in 12 hours from now
 	expiringAuth := AuthzInitial
@@ -595,7 +590,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 	expiringAuth.Expires = &exp
 	expiringAuth.Challenges[0].Status = "valid"
 	expiringAuth.RegistrationID = Registration.ID
-	expiringAuth, err = sa.NewPendingAuthorization(ctx, expiringAuth)
+	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	err = sa.FinalizeAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")

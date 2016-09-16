@@ -25,7 +25,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -788,9 +787,7 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
 	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
-	err = features.Set(map[string]bool{"CheckMalformedCSR": true})
-	test.AssertNotError(t, err, "Failed to set required feature flags")
-	defer features.Reset()
+	wfe.CheckMalformedCSR = true
 
 	mockLog.Clear()
 	responseWriter.Body.Reset()

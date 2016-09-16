@@ -11,24 +11,12 @@ import (
 type FeatureFlag int
 
 const (
-	unused                    FeatureFlag = iota
-	DNSAllowLoopbackAddresses             // Common
-	CheckMalformedCSR                     // WFE
-	DoNotForceCN                          // RA, CA
-	ReuseValidAuthz                       // RA
-	EnableMustStaple                      // CA
-	AcceptRevocationReason                // WFE
+	unused FeatureFlag = iota // unused is used for testing
 )
 
 // List of features and their default value
 var features = map[FeatureFlag]bool{
 	unused: false,
-	DNSAllowLoopbackAddresses: false,
-	CheckMalformedCSR:         false,
-	DoNotForceCN:              false,
-	ReuseValidAuthz:           false,
-	EnableMustStaple:          false,
-	AcceptRevocationReason:    false,
 }
 
 var fMu = new(sync.RWMutex)
