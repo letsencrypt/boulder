@@ -636,8 +636,11 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
 	ar, par, err := sa.RevokeAuthorizationsByDomain(ctx, ident)
 	test.AssertNotError(t, err, "Failed to revoke authorizations for a.com")
-	test.AssertEquals(t, ar, int64(1))
-	test.AssertEquals(t, par, int64(1))
+	// Since pending authzs are stored in the "authz" table now, there should be
+	// zero affected "pendingAuthorization" rows
+	test.AssertEquals(t, ar, int64(0))
+	// And there should be two affected "authz" rows
+	test.AssertEquals(t, par, int64(2))
 
 	PA, err := sa.GetAuthorization(ctx, PA1.ID)
 	test.AssertNotError(t, err, "Failed to retrieve pending authorization")
