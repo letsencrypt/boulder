@@ -10,6 +10,8 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+    "checkMalformedCSR": true,
+    "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
     "amqp": {
@@ -39,10 +41,5 @@
   "common": {
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053"
-  },
-
-  "features": {
-    "CheckMalformedCSR": true,
-    "AcceptRevocationReason": true
   }
 }

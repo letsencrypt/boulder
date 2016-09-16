@@ -14,6 +14,8 @@
     "expiry": "2160h",
     "lifespanOCSP": "96h",
     "maxNames": 1000,
+    "doNotForceCN": true,
+    "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
     "cfssl": {
       "signing": {
@@ -141,10 +143,5 @@
 
   "common": {
     "issuerCert": "test/test-ca.pem"
-  },
-
-  "features": {
-    "DoNotForceCN": true,
-    "EnableMustStaple": true
   }
 }
