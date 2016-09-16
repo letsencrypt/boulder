@@ -525,7 +525,8 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
+	var err error
 	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)
@@ -538,71 +539,55 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return err
 	}
 
 	var statusObj interface{}
 
 	if CertStatusOptimizationsMigrated {
 		statusObj, err = tx.Get(certStatusModelv2{}, serial)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
-		}
 	} else {
 		statusObj, err = tx.Get(certStatusModelv1{}, serial)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
-		}
 	}
-
+	if err != nil {
+		err = Rollback(tx, err)
+		return err
+	}
 	if statusObj == nil {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
-		return
+		return err
 	}
-	now := ssa.clk.Now()
 
+	var n int64
+	now := ssa.clk.Now()
 	if CertStatusOptimizationsMigrated {
 		status := statusObj.(*certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
 
-		var n int64
 		n, err = tx.Update(status)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
-		}
-		if n == 0 {
-			err = Rollback(tx, err)
-			err = errors.New("No certificate updated. Maybe the lock column was off?")
-			return
-		}
 	} else {
 		status := statusObj.(*certStatusModelv1)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
 
-		var n int64
 		n, err = tx.Update(status)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
-		}
-		if n == 0 {
-			err = Rollback(tx, err)
-			err = errors.New("No certificate updated. Maybe the lock column was off?")
-			return
-		}
 	}
 
-	err = tx.Commit()
+	if err != nil {
+		err = Rollback(tx, err)
+		return err
+	}
+	if n == 0 {
+		err = errors.New("No certificate updated. Maybe the lock column was off?")
+		err = Rollback(tx, err)
+		return err
+	}
 
-	return
+	return tx.Commit()
 }
 
 // UpdateRegistration stores an updated Registration
