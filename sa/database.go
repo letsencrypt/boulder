@@ -181,4 +181,11 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
+
+	// TODO(@cpu): Delete these table maps when the `CertStatusOptimizationsMigrated` flag is default on
+	if CertStatusOptimizationsMigrated {
+		dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
+	} else {
+		dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
+	}
 }

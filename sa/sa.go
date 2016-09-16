@@ -24,10 +24,9 @@ import (
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap                           *gorp.DbMap
-	clk                             clock.Clock
-	log                             blog.Logger
-	CertStatusOptimizationsMigrated bool
+	dbMap *gorp.DbMap
+	clk   clock.Clock
+	log   blog.Logger
 }
 
 func digest256(data []byte) []byte {
@@ -70,6 +69,8 @@ type certStatusModelv2 struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 }
+
+var CertStatusOptimizationsMigrated bool
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
@@ -461,9 +462,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var statusObj interface{}
-	if ssa.CertStatusOptimizationsMigrated {
-		tblMap := ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
-		tblMap.SetKeys(false, "serial")
+	if CertStatusOptimizationsMigrated {
 		statusObj, err = ssa.dbMap.Get(certStatusModelv2{}, serial)
 		if err != nil {
 			return
@@ -486,8 +485,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 			LockCol:               statusModel.LockCol,
 		}
 	} else {
-		tblMap := ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
-		tblMap.SetKeys(false, "serial")
 		statusObj, err = ssa.dbMap.Get(certStatusModelv1{}, serial)
 		if err != nil {
 			return
@@ -546,15 +543,13 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	var statusObj interface{}
 
-	if ssa.CertStatusOptimizationsMigrated {
-		ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
+	if CertStatusOptimizationsMigrated {
 		statusObj, err = tx.Get(certStatusModelv2{}, serial)
 		if err != nil {
 			err = Rollback(tx, err)
 			return
 		}
 	} else {
-		ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
 		statusObj, err = tx.Get(certStatusModelv1{}, serial)
 		if err != nil {
 			err = Rollback(tx, err)
@@ -569,7 +564,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	}
 	now := ssa.clk.Now()
 
-	if ssa.CertStatusOptimizationsMigrated {
+	if CertStatusOptimizationsMigrated {
 		status := statusObj.(*certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
@@ -848,8 +843,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	var certStatusOb interface{}
-	if ssa.CertStatusOptimizationsMigrated {
-		ssa.dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus")
+	if CertStatusOptimizationsMigrated {
 		certStatusOb = &certStatusModelv2{
 			certStatusModelv1: &certStatusModelv1{
 				SubscriberApproved: false,
@@ -864,7 +858,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 			NotAfter: parsedCertificate.NotAfter,
 		}
 	} else {
-		ssa.dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus")
 		certStatusOb = &certStatusModelv1{
 			SubscriberApproved: false,
 			Status:             core.OCSPStatus("good"),

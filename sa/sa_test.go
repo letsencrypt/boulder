@@ -383,7 +383,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
-	if sa.CertStatusOptimizationsMigrated {
+	if CertStatusOptimizationsMigrated {
 		test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
 	}
 

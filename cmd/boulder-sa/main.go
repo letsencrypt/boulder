@@ -59,7 +59,7 @@ func main() {
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
-	sai.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
+	sa.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
 
 	go cmd.ProfileCmd(scope)
 
