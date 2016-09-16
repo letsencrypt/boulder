@@ -455,20 +455,20 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (status core.CertificateStatus, err error) {
+func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
 	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.CertificateStatus{}, err
 	}
 
-	var statusObj interface{}
+	var status core.CertificateStatus
 	if CertStatusOptimizationsMigrated {
-		statusObj, err = ssa.dbMap.Get(certStatusModelv2{}, serial)
+		statusObj, err := ssa.dbMap.Get(certStatusModelv2{}, serial)
 		if err != nil {
-			return
+			return status, err
 		}
 		if statusObj == nil {
-			return
+			return status, nil
 		}
 		statusModel := statusObj.(*certStatusModelv2)
 		status = core.CertificateStatus{
@@ -485,12 +485,12 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 			LockCol:               statusModel.LockCol,
 		}
 	} else {
-		statusObj, err = ssa.dbMap.Get(certStatusModelv1{}, serial)
+		statusObj, err := ssa.dbMap.Get(certStatusModelv1{}, serial)
 		if err != nil {
-			return
+			return status, err
 		}
 		if statusObj == nil {
-			return
+			return status, nil
 		}
 		statusModel := statusObj.(*certStatusModelv1)
 		status = core.CertificateStatus{
@@ -506,7 +506,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		}
 	}
 
-	return
+	return status, nil
 }
 
 // NewRegistration stores a new Registration
