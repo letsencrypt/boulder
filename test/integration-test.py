@@ -239,16 +239,19 @@ def run_client_tests():
 # Run the single-ocsp command, which is used to generate OCSP responses for
 # intermediate certificates on a manual basis.
 def single_ocsp_sign():
-    subprocess.check_output("""
-        ./bin/single-ocsp -issuer test/test-root.pem \
-                -responder test/test-root.pem \
-                -target test/test-ca2.pem \
-                -pkcs11 test/test-root.key-pkcs11.json \
-                -thisUpdate 2016-09-02T00:00:00Z \
-                -nextUpdate 2020-09-02T00:00:00Z \
-                -status 0 \
-                -out /tmp/issuer-ocsp-responses.txt
-        """, shell=True)
+    try:
+        subprocess.check_output("""./bin/single-ocsp -issuer test/test-root.pem \
+                    -responder test/test-root.pem \
+                    -target test/test-ca2.pem \
+                    -pkcs11 test/test-root.key-pkcs11.json \
+                    -thisUpdate 2016-09-02T00:00:00Z \
+                    -nextUpdate 2020-09-02T00:00:00Z \
+                    -status 0 \
+                    -out /tmp/issuer-ocsp-responses.txt""", shell=True)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run single-ocsp: %s" % e)
+        die(ExitStatus.PythonFailure)
+
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
 
