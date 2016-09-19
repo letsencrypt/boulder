@@ -123,7 +123,9 @@ func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
     return ssa.dbMap.Insert(personModelv2{
       personModelv1: {
         HatSize:  p.HatSize,
-      }
+      },
+      IsWizard: p.IsWizard,
+    })
   } else {
     return ssa.dbMap.Insert(personModelv1{
       HatSize:  p.HatSize,
