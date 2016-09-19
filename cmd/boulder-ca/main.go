@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/ca"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -174,6 +175,17 @@ func main() {
 	} else {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
+	}
+
+	if c.CA.GRPC != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
+		cmd.FailOnError(err, "Unable to setup VA gRPC server")
+		cw := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterCertificateAuthorityServer(s, cw)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "CA gRPC service failed")
+		}()
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
