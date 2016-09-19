@@ -54,6 +54,121 @@ In general, we would like our deploy process to be: deploy new code + old config
 
 When you add a new RPC to a Boulder service (e.g. `SA.GetFoo()`), all components that call that RPC should wrap those calls in some flag. Generally this will be a boolean config field `UseFoo`. Since `UseFoo`'s zero value is false, a deploy with the existing config will not call `SA.GetFoo()`. Then, once the deploy is complete and we know that all SA instances support the `GetFoo()` RPC, we do a followup config deploy that sets `UseFoo()` to true.
 
+## Flag-gated migrations
+
+We use [database migrations](https://en.wikipedia.org/wiki/Schema_migration)
+to modify the existing schema. These migrations will be run on live
+data while Boulder is still running, so we need Boulder code at any given commit to
+be capable of running without depending on any changes in schemas that have not
+yet been applied.
+
+For instance, if we're adding a new column to an existing table, Boulder should
+run correctly in three states:
+ 1. Migration not yet applied.
+ 2. Migration applied, flag not yet flipped.
+ 3. Migration applied, flag flipped.
+
+Specifically, that means that all of our `SELECT` statements should enumerate
+columns to select, and not use `*`. Also, generally speaking, we will need a
+separate model `struct` for serializing and deserializing data before and after the
+migration. This is because the ORM package we use,
+[`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
+map to a column in the table. If we add a new field to a model struct and
+Boulder attempts to write that struct to a table that doesn't yet have the
+corresponding column (case 1), gorp wil fail with
+`Insert failed table posts has no column named Foo`.
+There are examples of such models in sa/model.go, along with code to
+turn a model into a `struct` used internally. 
+
+An example of a flag-gated migration, adding a new `IsWizard` field to Person
+controlled by a `allowWizards` flag:
+
+```
+struct Person {
+  HatSize  int
+  IsWizard bool // Added!
+}
+
+var allowWizards bool // Added!
+
+struct personModelv1 {
+  HatSize int
+}
+
+// Added!
+struct personModelv2 {
+  *personModelv1
+  IsWizard bool
+}
+
+func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
+  if allowWizards { // Added!
+    var model personModelv2
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize, isWizard FROM people")
+    return Person{
+      HatSize:  model.HatSize,
+      IsWizard: model.IsWizard,
+    }
+  } else {
+    var model personModelv1
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize FROM people")
+    return Person{
+      HatSize:  model.HatSize,
+    }
+  }
+}
+
+func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
+  if allowWizards { // Added!
+    return ssa.dbMap.Insert(personModelv2{
+      personModelv1: {
+        HatSize:  p.HatSize,
+      },
+      IsWizard: p.IsWizard,
+    })
+  } else {
+    return ssa.dbMap.Insert(personModelv1{
+      HatSize:  p.HatSize,
+      // p.IsWizard ignored
+    })
+  }
+}
+```
+
+You will also need to update the `initTables` function from `sa/database.go` to
+tell Gorp which table to use for your versioned model structs. Make sure to
+consult the flag you defined so that only **one** of the table maps is added at
+any given time, otherwise Gorp will error.  Depending on your table you may also
+need to add `SetKeys` and `SetVersionCol` entries for your versioned models.
+Example:
+
+```
+func initTables(dbMap *gorp.DbMap) {
+ // < unrelated lines snipped for brevity >
+
+ if allowWizards {
+    dbMap.AddTableWithName(personModelv2, "person")
+ } else {
+    dbMap.AddTableWithName(personModelv1, "person")
+ }
+}
+```
+
+You can then add a migration with:
+
+`$ goose -path ./sa/_db/ create AddWizards sql`
+
+Finally, edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to define your migration:
+
+```
+-- +goose Up
+ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
+
+-- +goose Down
+ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
+```
+
+
 # Dependencies
 
 We vendorize all our dependencies using `godep`. Vendorizing means we copy the contents of those dependencies into our own repo. This has a few advantages:
