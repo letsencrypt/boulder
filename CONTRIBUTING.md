@@ -78,8 +78,10 @@ Boulder attempts to write that struct to a table that doesn't yet have the
 corresponding column (case 1), gorp wil fail with
 `Insert failed table posts has no column named Foo`.
 There are examples of such models in sa/model.go, along with code to
-turn a model into a `struct` used internally. An example of a flag-gated
-migration, adding a new `IsWizard` field to Person:
+turn a model into a `struct` used internally. 
+
+An example of a flag-gated migration, adding a new `IsWizard` field to Person
+controlled by a `allowWizards` flag:
 
 ```
 struct Person {
@@ -87,18 +89,20 @@ struct Person {
   IsWizard bool // Added!
 }
 
+var allowWizards bool // Added!
+
 struct personModelv1 {
   HatSize int
 }
 
 // Added!
 struct personModelv2 {
-  HatSize  int
+  *personModelv1
   IsWizard bool
 }
 
 func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
-  if ssa.allowWizards { // Added!
+  if allowWizards { // Added!
     var model personModelv2
     ssa.dbMap.SelectOne(&model, "SELECT hatSize, isWizard FROM people")
     return Person{
@@ -110,15 +114,16 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
     ssa.dbMap.SelectOne(&model, "SELECT hatSize FROM people")
     return Person{
       HatSize:  model.HatSize,
-      IsWizard: false,
     }
   }
 }
 
 func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
-  if ssa.allowWizards { // Added!
+  if allowWizards { // Added!
     return ssa.dbMap.Insert(personModelv2{
-      HatSize:  p.HatSize,
+      personModelv1: {
+        HatSize:  p.HatSize,
+      },
       IsWizard: p.IsWizard,
     })
   } else {
@@ -130,11 +135,30 @@ func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
 }
 ```
 
-Add a migration with
+You will also need to update the `initTables` function from `sa/database.go` to
+tell Gorp which table to use for your versioned model structs. Make sure to
+consult the flag you defined so that only **one** of the table maps is added at
+any given time, otherwise Gorp will error.  Depending on your table you may also
+need to add `SetKeys` and `SetVersionCol` entries for your versioned models.
+Example:
+
+```
+func initTables(dbMap *gorp.DbMap) {
+ // < unrelated lines snipped for brevity >
+
+ if allowWizards {
+    dbMap.AddTableWithName(personModelv2, "person")
+ } else {
+    dbMap.AddTableWithName(personModelv1, "person")
+ }
+}
+```
+
+You can then add a migration with:
 
 `$ goose -path ./sa/_db/ create AddWizards sql`
 
-Then edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to add:
+Finally, edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to define your migration:
 
 ```
 -- +goose Up
