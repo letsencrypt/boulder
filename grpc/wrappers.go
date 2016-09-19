@@ -13,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 	ggrpc "google.golang.org/grpc"
 
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/publisher"
@@ -124,4 +125,78 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubP
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
 	}
 	return &pubPB.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
+}
+
+// CertificateAuthorityClientWrapper is the gRPC version of a core.CertificateAuthority client
+type CertificateAuthorityClientWrapper struct {
+	inner   caPB.CertificateAuthorityClient
+	timeout time.Duration
+}
+
+func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+	localCtx, cancel := context.WithTimeout(ctx, cac.timeout)
+	defer cancel()
+	res, err := cac.inner.IssueCertificate(localCtx, &caPB.IssueCertificateRequest{
+		CSR:            csr.Raw,
+		RegistrationID: regID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return core.Certificate{
+		RegistrationID: res.RegistrationID,
+		Serial:         res.Serial,
+		Digest:         res.Digest,
+		DER:            res.DER,
+		Issued:         time.Unix(0, res.Issued),
+		Expires:        time.Unix(0, res.Expires),
+	}, nil
+}
+
+func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]bytes, error) {
+	localCtx, cancel := context.WithTimeout(ctx, cac.timeout)
+	defer cancel()
+	res, err := cac.inner.GenerateOCSP(localCtx, &caPB.GenerateOCSPRequest{
+		CertDER:   ocspReq.CertDER,
+		Status:    ocspReq.Status,
+		Reason:    ocspReq.Reason,
+		RevokedAt: ocspReq.RevokedAt.UnixNano(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.Response, nil
+}
+
+// CertificateAuthorityServerWrapper is the gRPC version of a core.CertificateAuthority server
+type CertificateAuthorityServerWrapper struct {
+	inner *core.CertificateAuthority
+}
+
+func (cas *CertificateAuthorityServerWrapper) IssueCertificatee(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.Certificate, error) {
+	res, err := cas.inner.IssueCertificate(ctx, request.CSR, request.RegistrationID)
+	if err != nil {
+		return nil, err
+	}
+	return &caPB.Certificate{
+		RegistrationID: res.RegistrationID,
+		Serial:         res.Serial,
+		Digest:         res.Digest,
+		DER:            res.DER,
+		Issued:         res.Issued.UnixNano(),
+		Expires:        res.Expires.UnixNano(),
+	}, nil
+}
+
+func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, request *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+	res, err := cas.inner.GenerateOCSP(ctx, core.OCSPSigningRequest{
+		CertDER:   request.CertDER,
+		Status:    request.Status,
+		Reason:    request.Reason,
+		RevokedAt: time.Unix(0, request.RevokedAt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &caPB.OCSPResponse{Response: res}, nil
 }
