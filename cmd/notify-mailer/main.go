@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -171,6 +172,9 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 		map[string]interface{}{
 			"id": id,
 		})
+	if err == sql.ErrNoRows {
+		return []string{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
