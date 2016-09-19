@@ -89,7 +89,7 @@ func (fba FBAdapter) BumpHistogram(_ string, _ float64) {
 
 // Statter implements the statsd.Statter interface but
 // appends the name of the host the process is running on
-// and its PID to the end of every stat name
+// to the end of every stat name
 type Statter struct {
 	suffix string
 	s      statsd.Statter
@@ -101,7 +101,7 @@ func NewStatter(addr, prefix string) (Statter, error) {
 	if err != nil {
 		return Statter{}, err
 	}
-	suffix := fmt.Sprintf(".%s.%d", host, os.Getpid())
+	suffix := fmt.Sprintf(".%s", host)
 	s, err := statsd.NewClient(addr, prefix)
 	if err != nil {
 		return Statter{}, err
