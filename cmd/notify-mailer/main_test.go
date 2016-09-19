@@ -350,10 +350,9 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		return fmt.Errorf("incorrect output type %T", output)
 	}
 
-	fmt.Printf("ID is %d. len(db) is %d\n", id, len(db))
-
 	// If the ID (shifted by 1 to account for zero indexing) is within the range
-	// of the DB list, return the DB entry
+	// of the DB list, return the DB entry by assigning to the `outputPtr`.
+	// Otherwise, return that no rows were found
 	if (id-1) >= 0 && int(id-1) < len(db) {
 		*outputPtr = db[id-1]
 	} else {
