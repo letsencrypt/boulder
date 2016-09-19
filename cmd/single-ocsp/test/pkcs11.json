@@ -1,6 +1,0 @@
-{
-  "Module": "/usr/local/Cellar/opensc/0.14.0_1/lib/opensc-pkcs11.so",
-  "TokenLabel": "PIV_II (PIV Card Holder pin)",
-  "PrivateKeyLabel": "SIGN key",
-  "PIN": "163246"
-}
