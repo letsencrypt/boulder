@@ -14,7 +14,7 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 )
 
-// List of features and their default value
+// List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused: false,
 }
@@ -32,9 +32,11 @@ func init() {
 	}
 }
 
+// expvar.Set requires a type that satisfies the expvar.Var interface,
+// since neither string nor bool implement this interface we require
+// a basic shim.
 type boolVar bool
 
-// you'd think bool would implement this itself
 func (b boolVar) String() string { return fmt.Sprintf("%t", b) }
 
 // Set accepts a list of features and whether they should

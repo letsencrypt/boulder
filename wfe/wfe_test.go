@@ -788,7 +788,6 @@ func TestIssueCertificate(t *testing.T) {
 
 	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
 	wfe.CheckMalformedCSR = true
-
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
