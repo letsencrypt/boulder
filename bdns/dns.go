@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 func parseCidr(network string, comment string) net.IPNet {

@@ -50,6 +50,14 @@ Note that there are some config fields that we want to be a hard requirement. To
 
 In general, we would like our deploy process to be: deploy new code + old config; then immediately after deploy the same code + new config. This makes deploys cheaper so we can do them more often, and allows us to more readily separate deploy-triggered problems from config-triggered problems.
 
+## Flag-gating features
+
+When adding significant new features or replacing existing RPCs the `boulder/features` package should be used to gate its usage. To add a flag a new `const FeatureFlag` should be added and its default value specified in `features.features`in `features/features.go`. In order to test if the flag is enabled elsewhere in the codebase you can use `features.Enabled(features.ExampleFeatureName)` which returns a `bool` indicating if the flag is enabled or not.
+
+Each service should include a `map[string]features.FeatureFlag` named `Features` in its configuration object at the top level and call `features.Set` with that map immediately after parsing the configuration.
+
+Feature flags are meant to be used temporarily and should not be used for permanent boolean configuration options. Once a feature has been enabled in both staging and production the flag should be removed making the previously gated functionality the default in future deployments.
+
 ## Flag-gated RPCs
 
 When you add a new RPC to a Boulder service (e.g. `SA.GetFoo()`), all components that call that RPC should wrap those calls in some flag. Generally this will be a boolean config field `UseFoo`. Since `UseFoo`'s zero value is false, a deploy with the existing config will not call `SA.GetFoo()`. Then, once the deploy is complete and we know that all SA instances support the `GetFoo()` RPC, we do a followup config deploy that sets `UseFoo()` to true.

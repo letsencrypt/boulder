@@ -549,9 +549,6 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Turn *off* AuthZ Reuse
-	ra.reuseValidAuthz = false
-
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
 	finalAuthz.Status = "valid"

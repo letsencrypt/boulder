@@ -374,7 +374,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(
+		&csr,
+		ca.maxNames,
+		&ca.keyPolicy,
+		ca.PA,
+		ca.forceCNFromSAN,
+		regID,
+	); err != nil {
 		ca.log.AuditErr(err.Error())
 		return emptyCert, core.MalformedRequestError(err.Error())
 	}
