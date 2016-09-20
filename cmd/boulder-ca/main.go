@@ -179,9 +179,9 @@ func main() {
 
 	if c.CA.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
-		cmd.FailOnError(err, "Unable to setup VA gRPC server")
-		cw := bgrpc.NewCertificateAuthorityServer(cai)
-		caPB.RegisterCertificateAuthorityServer(s, cw)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
 		go func() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "CA gRPC service failed")

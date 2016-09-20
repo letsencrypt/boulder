@@ -14,7 +14,6 @@ import (
 	"golang.org/x/net/context"
 	ggrpc "google.golang.org/grpc"
 
-	// "github.com/letsencrypt/boulder/ca"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
