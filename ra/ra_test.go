@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -1251,6 +1252,8 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	features.Set(map[string]bool{"AllowAccountDeactivation": true})
+
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
