@@ -52,6 +52,10 @@ func main() {
 	dbURL, err := saConf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
+	// This must be set *before* `sa.NewDbMap` in order for `initTables()` to add
+	// the correct model mapping based on the migration flag.
+	sa.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
+
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
@@ -59,7 +63,6 @@ func main() {
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
-	sa.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
 
 	go cmd.ProfileCmd(scope)
 
