@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	regFields   = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol"
+	regFields   = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
 	authzFields = "id, identifier, registrationID, status, expires, combinations"
 	sctFields   = "id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol"
 
