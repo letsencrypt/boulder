@@ -65,7 +65,7 @@ type certStatusModelv1 struct {
 }
 
 type certStatusModelv2 struct {
-	*certStatusModelv1
+	certStatusModelv1
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 }
@@ -830,7 +830,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	var certStatusOb interface{}
 	if CertStatusOptimizationsMigrated {
 		certStatusOb = &certStatusModelv2{
-			certStatusModelv1: &certStatusModelv1{
+			certStatusModelv1: certStatusModelv1{
 				SubscriberApproved: false,
 				Status:             core.OCSPStatus("good"),
 				OCSPLastUpdated:    time.Time{},
