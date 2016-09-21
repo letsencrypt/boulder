@@ -105,7 +105,7 @@ struct personModelv1 {
 
 // Added!
 struct personModelv2 {
-  *personModelv1
+  personModelv1
   IsWizard bool
 }
 
