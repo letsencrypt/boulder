@@ -2,6 +2,7 @@ package sa
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -181,4 +182,11 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
+}
+
+func safeSelectOne(m *gorp.DbMap, holder interface{}, q string, args ...interface{}) error {
+	if strings.ContainsAny(q, "'\"\n\r\\") {
+		return errors.New("Query contains unsafe character")
+	}
+	return m.SelectOne(holder, q, args...)
 }

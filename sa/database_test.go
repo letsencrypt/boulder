@@ -73,3 +73,26 @@ func TestStrictness(t *testing.T) {
 		t.Fatalf("Got wrong type of error: %s", err)
 	}
 }
+
+func TestSafeSelectOne(t *testing.T) {
+	err := safeSelectOne(nil, nil, "test '")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
+	err = safeSelectOne(nil, nil, "test \"")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
+	err = safeSelectOne(nil, nil, "test \r")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
+	err = safeSelectOne(nil, nil, "test \n")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
+	err = safeSelectOne(nil, nil, "test \\")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
+}
