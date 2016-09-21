@@ -71,8 +71,6 @@ const (
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
 	MethodDeactivateAuthorizationSA         = "DeactivateAuthorizationSA"         // SA
 	MethodDeactivateAuthorization           = "DeactivateAuthorization"           // RA
-	MethodDeactivateRegistrationSA          = "DeactivateRegistrationSA"          // SA
-	MethodDeactivateRegistration            = "DeactivateRegistration"            // RA
 )
 
 // Request structs
@@ -149,10 +147,6 @@ type performValidationRequest struct {
 	Challenge core.Challenge
 	// TODO(#1626): remove
 	Authz core.Authorization
-}
-
-type deactivateRegistrationRequest struct {
-	ID int64
 }
 
 type performValidationResponse struct {
@@ -380,21 +374,6 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 		return
 	})
 
-	rpc.Handle(MethodDeactivateRegistration, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var reg core.Registration
-		err = json.Unmarshal(req, &reg)
-		if err != nil {
-			errorCondition(MethodDeactivateRegistration, err, req)
-			return
-		}
-		err = impl.DeactivateRegistration(ctx, reg)
-		if err != nil {
-			errorCondition(MethodDeactivateRegistration, err, req)
-			return
-		}
-		return
-	})
-
 	return nil
 }
 
@@ -543,16 +522,6 @@ func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Conte
 		return err
 	}
 	_, err = rac.rpc.DispatchSync(MethodDeactivateAuthorization, data)
-	return err
-}
-
-// DeactivateRegistration deactivates a currently valid registration
-func (rac RegistrationAuthorityClient) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	data, err := json.Marshal(reg)
-	if err != nil {
-		return err
-	}
-	_, err = rac.rpc.DispatchSync(MethodDeactivateRegistration, data)
 	return err
 }
 
@@ -1143,20 +1112,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodDeactivateRegistrationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var drReq deactivateRegistrationRequest
-		err = json.Unmarshal(req, &drReq)
-		if err != nil {
-			return
-		}
-		err = impl.DeactivateRegistration(ctx, drReq.ID)
-		if err != nil {
-			errorCondition(MethodDeactivateRegistrationSA, err, req)
-			return
-		}
-		return
-	})
-
 	return nil
 }
 
@@ -1526,15 +1481,5 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 // DeactivateAuthorization deactivates a currently valid or pending authorization
 func (cac StorageAuthorityClient) DeactivateAuthorization(ctx context.Context, id string) error {
 	_, err := cac.rpc.DispatchSync(MethodDeactivateAuthorizationSA, []byte(id))
-	return err
-}
-
-// DeactivateRegistration deactivates a currently valid registration
-func (cac StorageAuthorityClient) DeactivateRegistration(ctx context.Context, id int64) error {
-	data, err := json.Marshal(deactivateRegistrationRequest{id})
-	if err != nil {
-		return err
-	}
-	_, err = cac.rpc.DispatchSync(MethodDeactivateRegistrationSA, data)
 	return err
 }

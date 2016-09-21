@@ -262,7 +262,7 @@ func main() {
 	}
 
 	var config config
-	err := cmd.ReadJSONFile(*configFile, &config)
+	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)

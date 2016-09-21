@@ -31,12 +31,12 @@ type IdentifierType string
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
 
-// These statuses are the states of authorizations, challenges, and registrations
+// These statuses are the states of authorizations
 const (
 	StatusUnknown     = AcmeStatus("unknown")     // Unknown status; the default
 	StatusPending     = AcmeStatus("pending")     // In process; client has next action
 	StatusProcessing  = AcmeStatus("processing")  // In process; server has next action
-	StatusValid       = AcmeStatus("valid")       // Object is valid
+	StatusValid       = AcmeStatus("valid")       // Validation succeeded
 	StatusInvalid     = AcmeStatus("invalid")     // Validation failed
 	StatusRevoked     = AcmeStatus("revoked")     // Object no longer valid
 	StatusDeactivated = AcmeStatus("deactivated") // Object has been deactivated
@@ -159,8 +159,6 @@ type Registration struct {
 
 	// CreatedAt is the time the registration was created.
 	CreatedAt time.Time `json:"createdAt"`
-
-	Status AcmeStatus
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname

@@ -29,7 +29,6 @@ def install(race_detection):
 
 def run(cmd, race_detection):
     e = os.environ.copy()
-    e.setdefault("PKCS11_PROXY_SOCKET", "tcp://boulder-hsm:5657")
     e.setdefault("GORACE", "halt_on_error=1")
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec ./bin/%s""" % cmd
@@ -58,7 +57,6 @@ def start(race_detection):
         'ct-test-srv',
         'dns-test-srv',
         'mail-test-srv --closeFirst 5',
-        'ocsp-responder --config test/issuer-ocsp-responder.json',
         'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
     if not install(race_detection):

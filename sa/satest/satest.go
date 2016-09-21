@@ -47,7 +47,6 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registra
 		Contact:   contacts,
 		InitialIP: net.ParseIP("88.77.66.11"),
 		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
-		Status:    core.StatusValid,
 	})
 	if err != nil {
 		t.Fatalf("Unable to create new registration: %s", err)

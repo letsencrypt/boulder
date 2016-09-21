@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	_ "expvar" // For DebugServer, below.
+	"expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -37,6 +37,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -192,6 +193,8 @@ func LoadCert(path string) (cert []byte, err error) {
 //
 //   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
+	m := expvar.NewMap("enabled-features")
+	features.Export(m)
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
 	}
@@ -205,19 +208,15 @@ func DebugServer(addr string) {
 	}
 }
 
-// ReadJSONFile takes a file path as an argument and attempts to
+// ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component.
-func ReadJSONFile(filename string, out interface{}) error {
+func ReadConfigFile(filename string, out interface{}) error {
 	configData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(configData, out)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(configData, out)
 }
 
 // VersionString produces a friendly Application version string.
