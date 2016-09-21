@@ -18,6 +18,7 @@ import (
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -111,7 +112,13 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	regObj, err := ssa.dbMap.Get(regModel{}, id)
+	var regType interface{}
+	if features.Enabled(features.AllowAccountDeactivation) {
+		regType = regModelv2{}
+	} else {
+		regType = regModelv1{}
+	}
+	regObj, err := ssa.dbMap.Get(regType, id)
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -119,16 +126,17 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 		msg := fmt.Sprintf("No registrations with ID %d", id)
 		return core.Registration{}, core.NoSuchRegistrationError(msg)
 	}
-	regPtr, ok := regObj.(*regModel)
-	if !ok {
-		return core.Registration{}, fmt.Errorf("Invalid cast to reg model object")
-	}
-	return modelToRegistration(regPtr)
+	return modelToRegistration(regObj)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
-	reg := &regModel{}
+	var reg interface{}
+	if features.Enabled(features.AllowAccountDeactivation) {
+		reg = &regModelv2{}
+	} else {
+		reg = &regModelv1{}
+	}
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
@@ -436,11 +444,11 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 
 // NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	reg.CreatedAt = ssa.clk.Now()
 	rm, err := registrationToModel(&reg)
 	if err != nil {
 		return reg, err
 	}
-	rm.CreatedAt = ssa.clk.Now()
 	err = ssa.dbMap.Insert(rm)
 	if err != nil {
 		return reg, err
@@ -499,7 +507,13 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	lookupResult, err := ssa.dbMap.Get(regModel{}, reg.ID)
+	var regType interface{}
+	if features.Enabled(features.AllowAccountDeactivation) {
+		regType = regModelv2{}
+	} else {
+		regType = regModelv1{}
+	}
+	lookupResult, err := ssa.dbMap.Get(regType, reg.ID)
 	if err != nil {
 		return err
 	}
@@ -507,17 +521,23 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
 	}
-	existingRegModel, ok := lookupResult.(*regModel)
-	if !ok {
-		// Shouldn't happen
-		return fmt.Errorf("Incorrect type returned from registration lookup")
-	}
 
 	updatedRegModel, err := registrationToModel(&reg)
 	if err != nil {
 		return err
 	}
-	updatedRegModel.LockCol = existingRegModel.LockCol
+
+	if features.Enabled(features.AllowAccountDeactivation) {
+		erm := lookupResult.(*regModelv2)
+		urm := updatedRegModel.(*regModelv2)
+		urm.LockCol = erm.LockCol
+		updatedRegModel = urm
+	} else {
+		erm := lookupResult.(*regModelv1)
+		urm := updatedRegModel.(*regModelv1)
+		urm.LockCol = erm.LockCol
+		updatedRegModel = urm
+	}
 
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
@@ -915,6 +935,17 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 		hashNames(names),
 	)
 	return count > 0, err
+}
+
+// DeactivateRegistration deactivates a currently valid registration
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
+	_, err := ssa.dbMap.Exec(
+		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
+		string(core.StatusDeactivated),
+		string(core.StatusValid),
+		id,
+	)
+	return err
 }
 
 // DeactivateAuthorization deactivates a currently valid or pending authorization

@@ -21,6 +21,7 @@ import (
 	jose "github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -769,6 +770,7 @@ func TestAddIssuedNames(t *testing.T) {
 func TestDeactivateAuthorization(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
+	features.Set(map[string]bool{"AllowAccountDeactivation": true})
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	PA := core.Authorization{RegistrationID: reg.ID}
@@ -827,4 +829,18 @@ func TestDeactivateAuthorization(t *testing.T) {
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateAccount(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	err := sa.DeactivateRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }

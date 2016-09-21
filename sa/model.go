@@ -7,9 +7,11 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/probs"
 	jose "github.com/square/go-jose"
+
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -21,8 +23,9 @@ type issuedNameModel struct {
 	Serial       string    `db:"serial"`
 }
 
-// regModel is the description of a core.Registration in the database.
-type regModel struct {
+// regModelv1 is the description of a core.Registration in the database before
+// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
+type regModelv1 struct {
 	ID        int64    `db:"id"`
 	Key       []byte   `db:"jwk"`
 	KeySHA256 string   `db:"jwk_sha256"`
@@ -33,6 +36,13 @@ type regModel struct {
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
+}
+
+// regModelv1 is the description of a core.Registration in the database after
+// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
+type regModelv2 struct {
+	regModelv1
+	Status string `db:"status"`
 }
 
 // challModel is the description of a core.Challenge in the database
@@ -63,7 +73,7 @@ const getChallengesQuery = `
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration
-func registrationToModel(r *core.Registration) (*regModel, error) {
+func registrationToModel(r *core.Registration) (interface{}, error) {
 	key, err := json.Marshal(r.Key)
 	if err != nil {
 		return nil, err
@@ -79,7 +89,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	if r.Contact == nil {
 		r.Contact = &[]string{}
 	}
-	rm := &regModel{
+	rm := regModelv1{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
@@ -88,10 +98,23 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
 	}
-	return rm, nil
+	if features.Enabled(features.AllowAccountDeactivation) {
+		return &regModelv2{
+			regModelv1: rm,
+			Status:     string(r.Status),
+		}, nil
+	}
+	return &rm, nil
 }
 
-func modelToRegistration(rm *regModel) (core.Registration, error) {
+func modelToRegistration(ri interface{}) (core.Registration, error) {
+	var rm *regModelv1
+	if features.Enabled(features.AllowAccountDeactivation) {
+		r2 := ri.(*regModelv2)
+		rm = &r2.regModelv1
+	} else {
+		rm = ri.(*regModelv1)
+	}
 	k := &jose.JsonWebKey{}
 	err := json.Unmarshal(rm.Key, k)
 	if err != nil {
@@ -114,6 +137,10 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
+	}
+	if features.Enabled(features.AllowAccountDeactivation) {
+		r2 := ri.(*regModelv2)
+		r.Status = core.AcmeStatus(r2.Status)
 	}
 	return r, nil
 }
