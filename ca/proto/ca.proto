@@ -18,17 +18,17 @@ message Certificate {
   optional string serial = 2;
   optional string digest = 3;
   optional bytes der = 4;
-  optional int64 issued = 5;
-  optional int64 expires = 6;
+  optional int64 issued = 5;  // Unix timestamp (nanoseconds)
+  optional int64 expires = 6; // Unix timestamp (nanoseconds)
 }
 
 message GenerateOCSPRequest {
-        optional bytes certDER = 1;
-        optional string status = 2;
-        optional int32 reason = 3;
-        optional int64 revokedAt = 4;
+  optional bytes certDER = 1;
+  optional string status = 2;
+  optional int32 reason = 3;
+  optional int64 revokedAt = 4;
 }
 
 message OCSPResponse {
-        optional bytes response = 1;
+  optional bytes response = 1;
 }
