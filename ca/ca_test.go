@@ -182,7 +182,6 @@ func setup(t *testing.T) *testCtx {
 		Expiry:       "8760h",
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
-		DoNotForceCN: true,
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
@@ -284,6 +283,7 @@ func TestIssueCertificate(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.forceCNFromSAN = false
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	sa := &mockSA{}
@@ -557,6 +557,7 @@ func TestAllowNoCN(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Couldn't create new CA")
+	ca.forceCNFromSAN = false
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
@@ -721,13 +722,13 @@ func TestExtensions(t *testing.T) {
 		return cert
 	}
 
-	// With enableMustStaple = false, should issue successfully and not add
+	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
-	// With enableMustStaple = true, a TLS feature extension should put a must-staple
+	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
 	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)

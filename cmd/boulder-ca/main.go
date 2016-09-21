@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/ca"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -127,7 +128,7 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(c.CA.DebugAddr)
@@ -168,12 +169,23 @@ func main() {
 	cmd.FailOnError(err, "Failed to create SA client")
 
 	if c.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
+		conn, err := bgrpc.ClientSetup(c.CA.PublisherService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
 	} else {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
+	}
+
+	if c.CA.GRPC != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "CA gRPC service failed")
+		}()
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)

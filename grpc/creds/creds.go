@@ -3,10 +3,8 @@ package creds
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
-	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/credentials"
@@ -25,7 +23,7 @@ func New(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.Tran
 }
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
-func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, timeout time.Duration) (net.Conn, credentials.AuthInfo, error) {
+func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, nil, err
@@ -42,8 +40,8 @@ func (tc *transportCredentials) ClientHandshake(addr string, rawConn net.Conn, t
 		errChan <- conn.Handshake()
 	}()
 	select {
-	case <-time.After(timeout):
-		return nil, nil, errors.New("boulder/grpc/creds: TLS handshake timed out")
+	case <-ctx.Done():
+		return nil, nil, fmt.Errorf("boulder/grpc/creds: %s", ctx.Err())
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()

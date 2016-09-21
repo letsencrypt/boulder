@@ -68,7 +68,7 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(c.VA.DebugAddr)
@@ -97,7 +97,7 @@ func main() {
 
 	var caaClient caaPB.CAACheckerClient
 	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService)
+		conn, err := bgrpc.ClientSetup(c.VA.CAAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		caaClient = caaPB.NewCAACheckerClient(conn)
 	}

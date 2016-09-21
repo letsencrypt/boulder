@@ -41,7 +41,6 @@ type regModel struct {
 	// represents a v4 or v6 IP address.
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
-	Status    string    `db:"status"`
 	LockCol   int64
 }
 
@@ -63,18 +62,13 @@ type challModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 
 	LockCol int64
-
-	// obsoleteTLS is obsoleted. Only used for simpleHTTP and simpleHTTP is
-	// dead. Only still here because gorp complains if its gone and locks up if
-	// its private.
-	ObsoleteTLS *bool `db:"tls"`
 }
 
 // getChallengesQuery fetches exactly the fields in challModel from the
 // challenges table.
 const getChallengesQuery = `
 	SELECT id, authorizationID, type, status, error, validated, token,
-		keyAuthorization, validationRecord, tls
+		keyAuthorization, validationRecord
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration
@@ -102,7 +96,6 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
-		Status:    string(r.Status),
 	}
 	return rm, nil
 }
@@ -130,7 +123,6 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
-		Status:    core.AcmeStatus(rm.Status),
 	}
 	return r, nil
 }

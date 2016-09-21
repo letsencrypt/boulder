@@ -574,7 +574,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 
 	var pubc core.Publisher
 	if c.Publisher != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher)
+		conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	} else {
@@ -595,7 +595,7 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	conf := c.OCSPUpdater

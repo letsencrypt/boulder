@@ -50,9 +50,156 @@ Note that there are some config fields that we want to be a hard requirement. To
 
 In general, we would like our deploy process to be: deploy new code + old config; then immediately after deploy the same code + new config. This makes deploys cheaper so we can do them more often, and allows us to more readily separate deploy-triggered problems from config-triggered problems.
 
-## Flag-gated RPCs
+## Flag-gating features
 
-When you add a new RPC to a Boulder service (e.g. `SA.GetFoo()`), all components that call that RPC should wrap those calls in some flag. Generally this will be a boolean config field `UseFoo`. Since `UseFoo`'s zero value is false, a deploy with the existing config will not call `SA.GetFoo()`. Then, once the deploy is complete and we know that all SA instances support the `GetFoo()` RPC, we do a followup config deploy that sets `UseFoo()` to true.
+When adding significant new features or replacing existing RPCs the `boulder/features` package should be used to gate its usage. To add a flag a new `const FeatureFlag` should be added and its default value specified in `features.features` in `features/features.go`. In order to test if the flag is enabled elsewhere in the codebase you can use `features.Enabled(features.ExampleFeatureName)` which returns a `bool` indicating if the flag is enabled or not.
+
+Each service should include a `map[string]bool` named `Features` in its configuration object at the top level and call `features.Set` with that map immediately after parsing the configuration. For example to enable `UseNewMetrics` and disable `AccountRevocation` you would add this object:
+
+```
+{
+    ...
+    "features": {
+        "UseNewMetrics": true,
+        "AccountRevocation": false,
+    }
+}
+```
+
+Feature flags are meant to be used temporarily and should not be used for permanent boolean configuration options. Once a feature has been enabled in both staging and production the flag should be removed making the previously gated functionality the default in future deployments.
+
+### Gating RPCs
+
+When you add a new RPC to a Boulder service (e.g. `SA.GetFoo()`), all components that call that RPC should gate those calls using a feature flag. Since the feature's zero value is false, a deploy with the existing config will not call `SA.GetFoo()`. Then, once the deploy is complete and we know that all SA instances support the `GetFoo()` RPC, we do a followup config deploy that sets the default value to true, and finally remove the flag entirely once we are confident the functionality it gates behaves correctly.
+
+### Gating migrations
+
+We use [database migrations](https://en.wikipedia.org/wiki/Schema_migration)
+to modify the existing schema. These migrations will be run on live
+data while Boulder is still running, so we need Boulder code at any given commit to
+be capable of running without depending on any changes in schemas that have not
+yet been applied.
+
+For instance, if we're adding a new column to an existing table, Boulder should
+run correctly in three states:
+ 1. Migration not yet applied.
+ 2. Migration applied, flag not yet flipped.
+ 3. Migration applied, flag flipped.
+
+Specifically, that means that all of our `SELECT` statements should enumerate
+columns to select, and not use `*`. Also, generally speaking, we will need a
+separate model `struct` for serializing and deserializing data before and after the
+migration. This is because the ORM package we use,
+[`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
+map to a column in the table. If we add a new field to a model struct and
+Boulder attempts to write that struct to a table that doesn't yet have the
+corresponding column (case 1), gorp wil fail with
+`Insert failed table posts has no column named Foo`.
+There are examples of such models in sa/model.go, along with code to
+turn a model into a `struct` used internally. 
+
+An example of a flag-gated migration, adding a new `IsWizard` field to Person
+controlled by a `AllowWizards` feature flag:
+
+```
+# features/features.go:
+
+const (
+	unused FeatureFlag = iota // unused is used for testing
+	AllowWizards // Added!
+)
+
+...
+
+var features = map[FeatureFlag]bool{
+	unused: false,
+	AllowWizards: false, // Added!
+}
+
+# sa/sa.go:
+
+struct Person {
+  HatSize  int
+  IsWizard bool // Added!
+}
+
+struct personModelv1 {
+  HatSize int
+}
+
+// Added!
+struct personModelv2 {
+  personModelv1
+  IsWizard bool
+}
+
+func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
+  if features.Enabled(features.AllowWizards) { // Added!
+    var model personModelv2
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize, isWizard FROM people")
+    return Person{
+      HatSize:  model.HatSize,
+      IsWizard: model.IsWizard,
+    }
+  } else {
+    var model personModelv1
+    ssa.dbMap.SelectOne(&model, "SELECT hatSize FROM people")
+    return Person{
+      HatSize:  model.HatSize,
+    }
+  }
+}
+
+func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
+  if features.Enabled(features.AllowWizards) { // Added!
+    return ssa.dbMap.Insert(personModelv2{
+      personModelv1: {
+        HatSize:  p.HatSize,
+      },
+      IsWizard: p.IsWizard,
+    })
+  } else {
+    return ssa.dbMap.Insert(personModelv1{
+      HatSize:  p.HatSize,
+      // p.IsWizard ignored
+    })
+  }
+}
+```
+
+You will also need to update the `initTables` function from `sa/database.go` to
+tell Gorp which table to use for your versioned model structs. Make sure to
+consult the flag you defined so that only **one** of the table maps is added at
+any given time, otherwise Gorp will error.  Depending on your table you may also
+need to add `SetKeys` and `SetVersionCol` entries for your versioned models.
+Example:
+
+```
+func initTables(dbMap *gorp.DbMap) {
+ // < unrelated lines snipped for brevity >
+
+ if features.Enabled(features.AllowWizards) {
+    dbMap.AddTableWithName(personModelv2, "person")
+ } else {
+    dbMap.AddTableWithName(personModelv1, "person")
+ }
+}
+```
+
+You can then add a migration with:
+
+`$ goose -path ./sa/_db/ create AddWizards sql`
+
+Finally, edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to define your migration:
+
+```
+-- +goose Up
+ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
+
+-- +goose Down
+ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
+```
+
 
 # Dependencies
 
