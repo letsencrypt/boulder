@@ -54,7 +54,17 @@ In general, we would like our deploy process to be: deploy new code + old config
 
 When adding significant new features or replacing existing RPCs the `boulder/features` package should be used to gate its usage. To add a flag a new `const FeatureFlag` should be added and its default value specified in `features.features` in `features/features.go`. In order to test if the flag is enabled elsewhere in the codebase you can use `features.Enabled(features.ExampleFeatureName)` which returns a `bool` indicating if the flag is enabled or not.
 
-Each service should include a `map[string]features.FeatureFlag` named `Features` in its configuration object at the top level and call `features.Set` with that map immediately after parsing the configuration.
+Each service should include a `map[string]bool` named `Features` in its configuration object at the top level and call `features.Set` with that map immediately after parsing the configuration. For example to enable `UseNewMetrics` and disable `AccountRevocation` you would add this object:
+
+```
+{
+    ...
+    "features": {
+        "UseNewMetrics": true,
+        "AccountRevocation": false,
+    }
+}
+```
 
 Feature flags are meant to be used temporarily and should not be used for permanent boolean configuration options. Once a feature has been enabled in both staging and production the flag should be removed making the previously gated functionality the default in future deployments.
 
@@ -92,6 +102,22 @@ An example of a flag-gated migration, adding a new `IsWizard` field to Person
 controlled by a `AllowWizards` feature flag:
 
 ```
+# features/features.go:
+
+const (
+	unused FeatureFlag = iota // unused is used for testing
+	AllowWizards // Added!
+)
+
+...
+
+var features = map[FeatureFlag]bool{
+	unused: false,
+	AllowWizards: false, // Added!
+}
+
+# sa/sa.go:
+
 struct Person {
   HatSize  int
   IsWizard bool // Added!
