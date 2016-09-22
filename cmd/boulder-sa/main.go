@@ -7,6 +7,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -19,9 +20,10 @@ type config struct {
 		cmd.ServiceConfig
 		cmd.DBConfig
 
-		MaxConcurrentRPCServerRequests  int64
-		CertStatusOptimizationsMigrated bool
+		MaxConcurrentRPCServerRequests int64
 	}
+
+	Features map[string]bool
 
 	Statsd cmd.StatsdConfig
 
@@ -40,6 +42,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	features.Set(c.Features)
+
 	go cmd.DebugServer(c.SA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
@@ -51,10 +55,6 @@ func main() {
 
 	dbURL, err := saConf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-
-	// This must be set *before* `sa.NewDbMap` in order for `initTables()` to add
-	// the correct model mapping based on the migration flag.
-	sa.CertStatusOptimizationsMigrated = saConf.CertStatusOptimizationsMigrated
 
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")

@@ -11,6 +11,7 @@ import (
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -182,8 +183,8 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 
-	// TODO(@cpu): Delete these table maps when the `CertStatusOptimizationsMigrated` flag is default on
-	if CertStatusOptimizationsMigrated {
+	// TODO(@cpu): Delete these table maps when the `CertStatusOptimizationsMigrated` feature flag is removed
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	} else {
 		dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")

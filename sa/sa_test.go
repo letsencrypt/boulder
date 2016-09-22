@@ -21,6 +21,7 @@ import (
 	jose "github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -360,6 +361,14 @@ func TestGetValidAuthorizationsMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
+	// Enable the feature for the `CertStatusOptimizationsMigrated` flag so that
+	// adding a new certificate will populate the `certificateStatus.NotAfter`
+	// field correctly. This will let the unit test assertion for `NotAfter`
+	// pass provided everything is working as intended. Note: this must be done
+	// **before** the DbMap is created in `initSA()` or the feature flag won't be
+	// set correctly at the time the table maps are set up.
+	features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
+
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -382,10 +391,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-
-	if CertStatusOptimizationsMigrated {
-		test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
-	}
+	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
 
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]

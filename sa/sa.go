@@ -18,6 +18,7 @@ import (
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -69,8 +70,6 @@ type certStatusModelv2 struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 }
-
-var CertStatusOptimizationsMigrated bool
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
@@ -462,7 +461,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var status core.CertificateStatus
-	if CertStatusOptimizationsMigrated {
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		statusObj, err := ssa.dbMap.Get(certStatusModelv2{}, serial)
 		if err != nil {
 			return status, err
@@ -544,7 +543,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	var statusObj interface{}
 
-	if CertStatusOptimizationsMigrated {
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		statusObj, err = tx.Get(certStatusModelv2{}, serial)
 	} else {
 		statusObj, err = tx.Get(certStatusModelv1{}, serial)
@@ -561,7 +560,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	var n int64
 	now := ssa.clk.Now()
-	if CertStatusOptimizationsMigrated {
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		status := statusObj.(*certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
@@ -828,7 +827,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	var certStatusOb interface{}
-	if CertStatusOptimizationsMigrated {
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		certStatusOb = &certStatusModelv2{
 			certStatusModelv1: certStatusModelv1{
 				SubscriberApproved: false,

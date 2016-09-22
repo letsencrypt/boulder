@@ -4,12 +4,15 @@
     "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
-    "CertStatusOptimizationsMigrated": true,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
     }
+  },
+
+  "features": {
+    "CertStatusOptimizationsMigrated": true
   },
 
   "statsd": {
