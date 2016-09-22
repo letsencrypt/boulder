@@ -367,7 +367,7 @@ func TestAddCertificate(t *testing.T) {
 	// pass provided everything is working as intended. Note: this must be done
 	// **before** the DbMap is created in `initSA()` or the feature flag won't be
 	// set correctly at the time the table maps are set up.
-	features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
+	_ := features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
 
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()

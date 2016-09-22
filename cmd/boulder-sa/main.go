@@ -42,7 +42,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	features.Set(c.Features)
+	err = features.Set(c.Features)
+	cmd.FailOnError(err, "Setting features from config")
 
 	go cmd.DebugServer(c.SA.DebugAddr)
 
