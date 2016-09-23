@@ -95,4 +95,8 @@ func TestSafeSelectOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("safeSelectOne failed to catch unsafe character in query")
 	}
+	err = safeSelectOne(nil, nil, "test \x00")
+	if err == nil {
+		t.Fatal("safeSelectOne failed to catch unsafe character in query")
+	}
 }

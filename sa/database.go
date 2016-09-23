@@ -2,9 +2,9 @@ package sa
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -184,9 +184,11 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 }
 
+var unsafeCharacterSet = "'\"\n\r\\\x00"
+
 func safeSelectOne(m *gorp.DbMap, holder interface{}, q string, args ...interface{}) error {
-	if strings.ContainsAny(q, "'\"\n\r\\") {
-		return errors.New("Query contains unsafe character")
+	if strings.ContainsAny(q, unsafeCharacterSet) {
+		return fmt.Errorf("Query contains an unsafe character (%s)", strconv.QuoteToASCII(unsafeCharacterSet))
 	}
 	return m.SelectOne(holder, q, args...)
 }
