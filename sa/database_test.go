@@ -109,4 +109,7 @@ func TestSafeSelectOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("safeSelectOne failed with a safe query: %s", err)
 	}
+	if !called {
+		t.Fatal("safeSelectOne didn't call the passed in function on safe query")
+	}
 }
