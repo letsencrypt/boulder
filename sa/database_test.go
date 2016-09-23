@@ -99,4 +99,14 @@ func TestSafeSelectOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("safeSelectOne failed to catch unsafe character in query")
 	}
+
+	called := false
+	testSelect := func(interface{}, string, ...interface{}) error {
+		called = true
+		return nil
+	}
+	err = safeSelectOne(testSelect, nil, "test")
+	if err != nil {
+		t.Fatalf("safeSelectOne failed with a safe query: %s", err)
+	}
 }

@@ -186,9 +186,9 @@ func initTables(dbMap *gorp.DbMap) {
 
 var unsafeCharacterSet = "'\"\n\r\\\x00"
 
-func safeSelectOne(m *gorp.DbMap, holder interface{}, q string, args ...interface{}) error {
+func safeSelectOne(so func(interface{}, string, ...interface{}) error, holder interface{}, q string, args ...interface{}) error {
 	if strings.ContainsAny(q, unsafeCharacterSet) {
 		return fmt.Errorf("Query contains an unsafe character (%s)", strconv.QuoteToASCII(unsafeCharacterSet))
 	}
-	return m.SelectOne(holder, q, args...)
+	return so(holder, q, args...)
 }

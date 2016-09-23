@@ -113,7 +113,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	var reg regModel
 	err := safeSelectOne(
-		ssa.dbMap,
+		ssa.dbMap.SelectOne,
 		&reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
 	)
@@ -136,7 +136,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 		return core.Registration{}, err
 	}
 	err = safeSelectOne(
-		ssa.dbMap,
+		ssa.dbMap.SelectOne,
 		reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", regFields),
 		map[string]interface{}{"key": sha},
@@ -836,7 +836,7 @@ func (e ErrNoReceipt) Error() string {
 // CT log ID
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	err = safeSelectOne(
-		ssa.dbMap,
+		ssa.dbMap.SelectOne,
 		&receipt,
 		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
 		map[string]interface{}{
