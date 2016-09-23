@@ -1253,6 +1253,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
 
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)

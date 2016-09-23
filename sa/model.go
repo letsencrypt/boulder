@@ -38,7 +38,7 @@ type regModelv1 struct {
 	LockCol   int64
 }
 
-// regModelv1 is the description of a core.Registration in the database after
+// regModelv2 is the description of a core.Registration in the database after
 // sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
 type regModelv2 struct {
 	regModelv1

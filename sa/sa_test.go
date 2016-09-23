@@ -770,7 +770,6 @@ func TestAddIssuedNames(t *testing.T) {
 func TestDeactivateAuthorization(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	features.Set(map[string]bool{"AllowAccountDeactivation": true})
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	PA := core.Authorization{RegistrationID: reg.ID}
@@ -834,6 +833,8 @@ func TestDeactivateAuthorization(t *testing.T) {
 func TestDeactivateAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
+	features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
