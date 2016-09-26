@@ -34,8 +34,19 @@ for dbenv in $DBENVS; do
   echo "migrated ${db} database with ./sa/_db/"
 
   if [[ "$APPLY_NEXT_MIGRATIONS" = true ]]; then
-    goose -path=./sa/_db-next/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db-next/"
-    echo "migrated ${db} database with ./sa/_db-next/"
+    nextDir="./sa/_db-next/"
+
+    # Goose exits non-zero if there are no migrations to apply with the error
+    # message:
+    #   "2016/09/26 15:43:38 no valid version found"
+    # so we only want to run goose with the nextDir if there is a migrations
+    # directory present with at least one migration
+    if [ $(find "$nextDir/migrations" -maxdepth 0 -type d -not -empty 2>/dev/null) ]; then
+      goose -path=${nextDir} -env=$dbenv up || die "unable to migrate ${db} with ${nextDir}"
+      echo "migrated ${db} database with ${nextDir}"
+    else
+      echo "no ${nextDir} migrations to apply"
+    fi
   fi
 
   # With MYSQL_CONTAINER, patch the GRANT statements to
