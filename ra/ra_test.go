@@ -1252,8 +1252,6 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)
@@ -1269,6 +1267,8 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateRegistration(t *testing.T) {
+	features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
