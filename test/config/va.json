@@ -1,5 +1,6 @@
 {
   "va": {
+    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
     "debugAddr": "localhost:8004",
     "portConfig": {
@@ -7,6 +8,7 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
+    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",

@@ -298,7 +298,7 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-const clientName = "Expiration"
+const clientName = "ExpirationMailer"
 
 type config struct {
 	Mailer struct {
@@ -338,7 +338,7 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(c.Mailer.DebugAddr)
