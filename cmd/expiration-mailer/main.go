@@ -298,7 +298,7 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-const clientName = "Expiration"
+const clientName = "ExpirationMailer"
 
 type config struct {
 	Mailer struct {
