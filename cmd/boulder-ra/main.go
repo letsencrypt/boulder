@@ -9,6 +9,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -41,6 +42,7 @@ type config struct {
 		DNSTries int
 
 		VAService *cmd.GRPCClientConfig
+		CAService *cmd.GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -121,8 +123,15 @@ func main() {
 		cmd.FailOnError(err, "Unable to create VA client")
 	}
 
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Unable to create CA client")
+	var cac core.CertificateAuthority
+	if c.RA.CAService != nil {
+		conn, err := bgrpc.ClientSetup(c.RA.CAService, scope)
+		cmd.FailOnError(err, "Unable to create CA client")
+		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn), c.RA.CAService.Timeout.Duration)
+	} else {
+		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Unable to create CA client")
+	}
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create SA client")
