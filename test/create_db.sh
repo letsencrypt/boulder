@@ -9,6 +9,8 @@ if [[ $MYSQL_CONTAINER ]]; then
 	dbconn="-u root -h boulder-mysql --port 3306"
 fi
 
+APPLY_NEXT_MIGRATIONS=${APPLY_NEXT_MIGRATIONS:-true}
+
 # MariaDB sets the default binlog_format to STATEMENT,
 # which causes warnings that fail tests. Instead set it
 # to the format we use in production, MIXED.
@@ -28,8 +30,13 @@ for dbenv in $DBENVS; do
     echo "created empty ${db} database"
   fi
 
-  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db}"
-  echo "migrated ${db} database"
+  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db/"
+  echo "migrated ${db} database with ./sa/_db/"
+
+  if [[ "$APPLY_NEXT_MIGRATIONS" = true ]]; then
+    goose -path=./sa/_db-next/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db-next/"
+    echo "migrated ${db} database with ./sa/_db-next/"
+  fi
 
   # With MYSQL_CONTAINER, patch the GRANT statements to
   # use 127.0.0.1, not localhost, as MySQL may interpret
