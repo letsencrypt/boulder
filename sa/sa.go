@@ -112,8 +112,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	var reg regModel
-	err := safeSelectOne(
-		ssa.dbMap.SelectOne,
+	err := ssa.dbMap.SelectOne(
 		&reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
 	)
@@ -135,8 +134,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 	if err != nil {
 		return core.Registration{}, err
 	}
-	err = safeSelectOne(
-		ssa.dbMap.SelectOne,
+	err = ssa.dbMap.SelectOne(
 		reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", regFields),
 		map[string]interface{}{"key": sha},
@@ -160,27 +158,27 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		return
 	}
 
-	authObj, err := tx.Get(pendingauthzModel{}, id)
-	if err != nil {
+	var pa pendingauthzModel
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, id))
+	if err != nil && err != sql.ErrNoRows {
 		err = Rollback(tx, err)
 		return
 	}
-	if authObj != nil {
-		authD := *authObj.(*pendingauthzModel)
-		authz = authD.Authorization
-	} else {
-		authObj, err = tx.Get(authzModel{}, id)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
-		}
-		if authObj == nil {
+	if err == sql.ErrNoRows {
+		var fa authzModel
+		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = %q", authzFields, id))
+		if err == sql.ErrNoRows {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
 			err = Rollback(tx, err)
 			return
 		}
-		authD := authObj.(*authzModel)
-		authz = authD.Authorization
+		if err != nil {
+			err = Rollback(tx, err)
+			return
+		}
+		authz = fa.Authorization
+	} else {
+		authz = pa.Authorization
 	}
 
 	var challObjs []challModel
@@ -318,7 +316,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
-		 WHERE 
+		 WHERE
 		 :beginIP <= initialIP AND
 		 initialIP < :endIP AND
 		 :earliest < createdAt AND
@@ -411,38 +409,39 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	certObj, err := ssa.dbMap.Get(core.Certificate{}, serial)
+	var cert core.Certificate
+	err := ssa.dbMap.SelectOne(&cert, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = %q", CertificateFields, serial))
+	if err == sql.ErrNoRows {
+		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+	}
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	if certObj == nil {
-		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
-		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
-	}
-
-	certPtr, ok := certObj.(*core.Certificate)
-	if !ok {
-		ssa.log.Debug("Failed to convert cert")
-		return core.Certificate{}, fmt.Errorf("Error converting certificate response for %s", serial)
-	}
-	return *certPtr, err
+	return cert, err
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (status core.CertificateStatus, err error) {
+func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
 	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.CertificateStatus{}, err
 	}
 
-	certificateStats, err := ssa.dbMap.Get(core.CertificateStatus{}, serial)
-	if err != nil {
-		return
+	var status core.CertificateStatus
+	err := ssa.dbMap.SelectOne(&status, fmt.Sprintf(
+		"SELECT %s FROM certificateStatus WHERE serial = %q",
+		CertificateStatusFields,
+		serial,
+	))
+	if err == sql.ErrNoRows {
+		return core.CertificateStatus{}, fmt.Errorf("No certificate status found for %s", serial)
 	}
-	status = *certificateStats.(*core.CertificateStatus)
-	return
+	if err != nil {
+		return core.CertificateStatus{}, err
+	}
+	return status, err
 }
 
 // NewRegistration stores a new Registration
@@ -477,23 +476,25 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return
 	}
 
-	statusObj, err := tx.Get(core.CertificateStatus{}, serial)
+	var status core.CertificateStatus
+	err = tx.SelectOne(&status, fmt.Sprintf(
+		"SELECT %s FROM certificateStatus WHERE serial = %q",
+		CertificateStatusFields,
+		serial,
+	))
+	if err == sql.ErrNoRows {
+		return Rollback(tx, fmt.Errorf("No certificate status found for %s", serial))
+	}
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
-	if statusObj == nil {
-		err = fmt.Errorf("No certificate with serial %s", serial)
-		err = Rollback(tx, err)
-		return
-	}
+
 	now := ssa.clk.Now()
-	status := statusObj.(*core.CertificateStatus)
 	status.Status = core.OCSPStatusRevoked
 	status.RevokedDate = now
 	status.RevokedReason = reasonCode
 
-	n, err := tx.Update(status)
+	n, err := tx.Update(&status)
 	if err != nil {
 		err = Rollback(tx, err)
 		return
@@ -510,25 +511,18 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	lookupResult, err := ssa.dbMap.Get(regModel{}, reg.ID)
-	if err != nil {
-		return err
-	}
-	if lookupResult == nil {
+	var rm regModel
+	err := ssa.dbMap.SelectOne(&rm, fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, reg.ID))
+	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
-	}
-	existingRegModel, ok := lookupResult.(*regModel)
-	if !ok {
-		// Shouldn't happen
-		return fmt.Errorf("Incorrect type returned from registration lookup")
 	}
 
 	updatedRegModel, err := registrationToModel(&reg)
 	if err != nil {
 		return err
 	}
-	updatedRegModel.LockCol = existingRegModel.LockCol
+	updatedRegModel.LockCol = rm.LockCol
 
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
@@ -618,14 +612,16 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		return
 	}
 
-	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
-	if err != nil {
-		err = Rollback(tx, err)
-		return
+	var pa pendingauthzModel
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, authz.ID))
+	if err == sql.ErrNoRows {
+		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
 	}
-	auth := authObj.(*pendingauthzModel)
-	auth.Authorization = authz
-	_, err = tx.Update(auth)
+	if err != nil {
+		return Rollback(tx, err)
+	}
+	pa.Authorization = authz
+	_, err = tx.Update(&pa)
 	if err != nil {
 		err = Rollback(tx, err)
 		return
@@ -661,12 +657,14 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	}
 
 	auth := &authzModel{authz}
-	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
-	if err != nil {
-		err = Rollback(tx, err)
-		return
+	var pa pendingauthzModel
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, authz.ID))
+	if err == sql.ErrNoRows {
+		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
 	}
-	oldAuth := authObj.(*pendingauthzModel)
+	if err != nil {
+		return Rollback(tx, err)
+	}
 
 	err = tx.Insert(auth)
 	if err != nil {
@@ -674,7 +672,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		return
 	}
 
-	_, err = tx.Delete(oldAuth)
+	_, err = tx.Delete(&pa)
 	if err != nil {
 		err = Rollback(tx, err)
 		return
@@ -835,8 +833,7 @@ func (e ErrNoReceipt) Error() string {
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	err = safeSelectOne(
-		ssa.dbMap.SelectOne,
+	err = ssa.dbMap.SelectOne(
 		&receipt,
 		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
 		map[string]interface{}{

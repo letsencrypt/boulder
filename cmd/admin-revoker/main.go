@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/x509"
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -79,16 +80,15 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	certObj, err := tx.Get(core.Certificate{}, serial)
+	var certObj core.Certificate
+	err = tx.SelectOne(&certObj, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = %q", sa.CertificateFields, serial))
+	if err == sql.ErrNoRows {
+		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+	}
 	if err != nil {
-		return
+		return err
 	}
-	certificate, ok := certObj.(*core.Certificate)
-	if !ok {
-		err = fmt.Errorf("Cast failure")
-		return
-	}
-	cert, err := x509.ParseCertificate(certificate.DER)
+	cert, err := x509.ParseCertificate(certObj.DER)
 	if err != nil {
 		return
 	}

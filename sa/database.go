@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -182,13 +181,4 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
-}
-
-var unsafeCharacterSet = "'\"\n\r\\\x00"
-
-func safeSelectOne(so func(interface{}, string, ...interface{}) error, holder interface{}, q string, args ...interface{}) error {
-	if strings.ContainsAny(q, unsafeCharacterSet) {
-		return fmt.Errorf("Query contains an unsafe character (%s)", strconv.QuoteToASCII(unsafeCharacterSet))
-	}
-	return so(holder, q, args...)
 }

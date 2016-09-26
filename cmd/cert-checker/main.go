@@ -91,10 +91,6 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period
 	return c
 }
 
-const getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now"
-
-var getCertsQuery = fmt.Sprintf("SELECT %s FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit", sa.CertificateFields)
-
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
@@ -107,7 +103,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
-		getCertsCountQuery,
+		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
@@ -123,7 +119,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		var certs []core.Certificate
 		_, err = c.dbMap.Select(
 			&certs,
-			getCertsQuery,
+			fmt.Sprintf("SELECT %s FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit", sa.CertificateFields),
 			args,
 		)
 		if err != nil {
