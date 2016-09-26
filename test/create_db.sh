@@ -9,11 +9,6 @@ if [[ $MYSQL_CONTAINER ]]; then
 	dbconn="-u root -h boulder-mysql --port 3306"
 fi
 
-if mysql $dbconn -e 'show databases;' | grep boulder_sa_integration > /dev/null; then
-  echo "Databases already created."
-  exit 0
-fi
-
 # MariaDB sets the default binlog_format to STATEMENT,
 # which causes warnings that fail tests. Instead set it
 # to the format we use in production, MIXED.
@@ -22,11 +17,16 @@ mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 for dbenv in $DBENVS; do
   (
   db="boulder_sa_${dbenv}"
-  create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
 
-  mysql $dbconn -e "$create_script" || die "unable to create ${db}"
+  if mysql $dbconn -e 'show databases;' | grep $db > /dev/null; then
+    echo "Database $db already exists - skipping create"
+  else
+    create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
 
-  echo "created empty ${db} database"
+    mysql $dbconn -e "$create_script" || die "unable to create ${db}"
+
+    echo "created empty ${db} database"
+  fi
 
   goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db}"
   echo "migrated ${db} database"
