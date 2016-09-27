@@ -159,7 +159,6 @@ type DNSResolverImpl struct {
 	// for CAA queries that get a temporary pass during a notification period.
 	caaSERVFAILExceptions map[string]bool
 	maxTries              int
-	LookupIPv6            bool
 	clk                   clock.Clock
 	stats                 metrics.Scope
 	txtStats              metrics.Scope
@@ -360,16 +359,14 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 		defer wg.Done()
 		recordsA, errA = dnsResolver.lookupIP(ctx, hostname, dns.TypeA, dnsResolver.aStats)
 	}()
-	if dnsResolver.LookupIPv6 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			recordsAAAA, errAAAA = dnsResolver.lookupIP(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
-		}()
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		recordsAAAA, errAAAA = dnsResolver.lookupIP(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
+	}()
 	wg.Wait()
 
-	if errA != nil && (errAAAA != nil || !dnsResolver.LookupIPv6) {
+	if errA != nil && errAAAA != nil {
 		return nil, errA
 	}
 
