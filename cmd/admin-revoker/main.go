@@ -81,7 +81,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	}
 
 	var certObj core.Certificate
-	err = tx.SelectOne(&certObj, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = %q", sa.CertificateFields, serial))
+	err = tx.SelectOne(&certObj, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", sa.CertificateFields), serial)
 	if err == sql.ErrNoRows {
 		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}

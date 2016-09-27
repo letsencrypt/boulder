@@ -159,14 +159,14 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	}
 
 	var pa pendingauthzModel
-	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, id))
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = ?", pendingAuthzFields), id)
 	if err != nil && err != sql.ErrNoRows {
 		err = Rollback(tx, err)
 		return
 	}
 	if err == sql.ErrNoRows {
 		var fa authzModel
-		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = %q", authzFields, id))
+		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 		if err == sql.ErrNoRows {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
 			err = Rollback(tx, err)
@@ -410,7 +410,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 	}
 
 	var cert core.Certificate
-	err := ssa.dbMap.SelectOne(&cert, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = %q", CertificateFields, serial))
+	err := ssa.dbMap.SelectOne(&cert, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", CertificateFields), serial)
 	if err == sql.ErrNoRows {
 		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
@@ -430,11 +430,11 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var status core.CertificateStatus
-	err := ssa.dbMap.SelectOne(&status, fmt.Sprintf(
-		"SELECT %s FROM certificateStatus WHERE serial = %q",
-		CertificateStatusFields,
+	err := ssa.dbMap.SelectOne(
+		&status,
+		fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", CertificateStatusFields),
 		serial,
-	))
+	)
 	if err == sql.ErrNoRows {
 		return core.CertificateStatus{}, fmt.Errorf("No certificate status found for %s", serial)
 	}
@@ -477,11 +477,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	}
 
 	var status core.CertificateStatus
-	err = tx.SelectOne(&status, fmt.Sprintf(
-		"SELECT %s FROM certificateStatus WHERE serial = %q",
-		CertificateStatusFields,
+	err = tx.SelectOne(
+		&status,
+		fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", CertificateStatusFields),
 		serial,
-	))
+	)
 	if err == sql.ErrNoRows {
 		return Rollback(tx, fmt.Errorf("No certificate status found for %s", serial))
 	}
@@ -613,7 +613,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	var pa pendingauthzModel
-	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, authz.ID))
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = ?", pendingAuthzFields), authz.ID)
 	if err == sql.ErrNoRows {
 		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
 	}
@@ -658,7 +658,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	auth := &authzModel{authz}
 	var pa pendingauthzModel
-	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = %q", pendingAuthzFields, authz.ID))
+	err = tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = ?", pendingAuthzFields), authz.ID)
 	if err == sql.ErrNoRows {
 		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
 	}
