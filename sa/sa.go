@@ -538,7 +538,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		regType = &regModelv1{}
 		fields = regV1Fields
 	}
-	err := ssa.dbMap.SelectOne(regType, fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", fields, reg.ID))
+	err := ssa.dbMap.SelectOne(regType, fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields), reg.ID)
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
