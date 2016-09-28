@@ -12,6 +12,17 @@ import (
 	jose "github.com/square/go-jose"
 )
 
+const (
+	regFields          string = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
+	pendingAuthzFields string = "id, identifier, registrationID, status, expires, combinations, LockCol"
+	authzFields        string = "id, identifier, registrationID, status, expires, combinations"
+	sctFields          string = "id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol"
+
+	// CertificateFields and CertificateStatusFields are also used by cert-checker and ocsp-updater
+	CertificateFields       string = "registrationID, serial, digest, der, issued, expires"
+	CertificateStatusFields string = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+)
+
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
