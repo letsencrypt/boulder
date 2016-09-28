@@ -18,7 +18,8 @@ HARDFAIL=${HARDFAIL:-fmt godep-restore}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
+DEFAULT_TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
+TESTPATHS=${TESTPATHS:-$DEFAULT_TESTPATHS}
 
 GITHUB_SECRET_FILE="/tmp/github-secret.json"
 

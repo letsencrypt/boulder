@@ -31,8 +31,6 @@ type config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
-		LookupIPv6 bool
-
 		GoogleSafeBrowsing *cmd.GoogleSafeBrowsingConfig
 
 		CAAService *cmd.GRPCClientConfig
@@ -134,11 +132,9 @@ func main() {
 			scope,
 			clk,
 			dnsTries)
-		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	} else {
 		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
-		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	}
 

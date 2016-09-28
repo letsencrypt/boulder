@@ -831,10 +831,10 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAccount(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
 	features.Set(map[string]bool{"AllowAccountDeactivation": true})
 	defer features.Reset()
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
