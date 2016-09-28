@@ -130,7 +130,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CSR contains one or more emailAddress fields"),
+			errors.New("CSR contains one or more email address fields"),
 		},
 		{
 			signedReqWithIPAddress,
@@ -138,7 +138,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CSR contains one or more iPAddress fields"),
+			errors.New("CSR contains one or more IP address fields"),
 		},
 	}
 
