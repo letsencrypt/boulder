@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -52,6 +53,12 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithBadName := new(x509.CertificateRequest)
 	*signedReqWithBadName = *signedReq
 	signedReqWithBadName.DNSNames = []string{"bad-name.com"}
+	signedReqWithEmailAddress := new(x509.CertificateRequest)
+	*signedReqWithEmailAddress = *signedReq
+	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
+	signedReqWithIPAddress := new(x509.CertificateRequest)
+	*signedReqWithIPAddress = *signedReq
+	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
 
 	cases := []struct {
 		csr           *x509.CertificateRequest
@@ -116,6 +123,22 @@ func TestVerifyCSR(t *testing.T) {
 			&mockPA{},
 			0,
 			errors.New("policy forbids issuing for: bad-name.com"),
+		},
+		{
+			signedReqWithEmailAddress,
+			1,
+			testingPolicy,
+			&mockPA{},
+			0,
+			errors.New("CSR contains one or more emailAddress fields"),
+		},
+		{
+			signedReqWithIPAddress,
+			1,
+			testingPolicy,
+			&mockPA{},
+			0,
+			errors.New("CSR contains one or more iPAddress fields"),
 		},
 	}
 

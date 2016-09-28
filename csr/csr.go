@@ -50,6 +50,12 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if err := csr.CheckSignature(); err != nil {
 		return errors.New("invalid signature on CSR")
 	}
+	if len(csr.EmailAddresses) > 0 {
+		return errors.New("CSR contains one or more emailAddress fields")
+	}
+	if len(csr.IPAddresses) > 0 {
+		return errors.New("CSR contains one or more iPAddress fields")
+	}
 	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
 		return errors.New("at least one DNS name is required")
 	}
