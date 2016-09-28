@@ -570,12 +570,6 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		n, err = tx.Update(status)
 	}
 
-	now := ssa.clk.Now()
-	status.Status = core.OCSPStatusRevoked
-	status.RevokedDate = now
-	status.RevokedReason = reasonCode
-
-	n, err := tx.Update(&status)
 	if err != nil {
 		err = Rollback(tx, err)
 		return err
