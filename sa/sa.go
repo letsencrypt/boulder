@@ -116,12 +116,12 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 		&reg,
 		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
 	)
+	if err == sql.ErrNoRows {
+		return core.Registration{}, core.NoSuchRegistrationError(
+			fmt.Sprintf("No registrations with ID %d", id),
+		)
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return core.Registration{}, core.NoSuchRegistrationError(
-				fmt.Sprintf("No registrations with ID %d", id),
-			)
-		}
 		return core.Registration{}, err
 	}
 	return modelToRegistration(&reg)
