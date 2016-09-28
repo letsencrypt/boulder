@@ -66,6 +66,10 @@ Boulder considers the following keys authorized to revoke a certificate:
 1. The account key that initially created the certificate being revoked
 2. The public key in the certificate being revoked
 
+Boulder does not allow for revocation of a certificate by an account key that is
+authorized for all DNS names in a certificate when that account did not create
+the certificate.
+
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3)
 
 Boulder implements `tls-sni-01` from [draft-ietf-acme-01 Section 7.3](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3) instead of the `tls-sni-02` validation method.
