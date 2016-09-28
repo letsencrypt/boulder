@@ -12,7 +12,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
   possible.
 * Exception:
   * Pull requests from current master into the 'staging' branch can be merged without review. This is because any code in master has already been through the normal code review process. Similarly, pull requests from the current 'staging' branch into the 'release' branch can be merged without review. Pull requests into 'staging' or 'release' that aren't directly from master require the normal code review process. These pull requests should be marked by the submitter with the r0=branch-merge label.
-* We indicate review approval by attaching an r=username tag. After review, if changes need to be made, we add a needs-revision tag so we can easily skim the pull request list to see what needs review.
+* We indicate review approval through GitHub's code review facility.
 * New commits pushed to a branch invalidate previous reviews. In other words, a reviewer must give positive reviews of a branch after its most recent pushed commit.
 * You cannot review your own code.
 * If a branch contains commits from multiple authors, it needs a reviewer who is not an author of commits on that branch.
