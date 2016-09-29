@@ -538,9 +538,19 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	var statusObj interface{}
 
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err = tx.Get(certStatusModelv2{}, serial)
+		var statusModel certStatusModelv2
+		err = tx.SelectOne(
+			&statusModel,
+			fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", CertificateStatusFields),
+			serial)
+		statusObj = statusModel
 	} else {
-		statusObj, err = tx.Get(certStatusModelv1{}, serial)
+		var statusModel certStatusModelv1
+		err = tx.SelectOne(
+			&statusModel,
+			fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", CertificateStatusFields),
+			serial)
+		statusObj = statusModel
 	}
 	if err != nil {
 		err = Rollback(tx, err)
@@ -555,19 +565,19 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	var n int64
 	now := ssa.clk.Now()
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		status := statusObj.(*certStatusModelv2)
+		status := statusObj.(certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
 
-		n, err = tx.Update(status)
+		n, err = tx.Update(&status)
 	} else {
-		status := statusObj.(*certStatusModelv1)
+		status := statusObj.(certStatusModelv1)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
 
-		n, err = tx.Update(status)
+		n, err = tx.Update(&status)
 	}
 
 	if err != nil {
