@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -51,7 +52,6 @@ func TestWillingToIssue(t *testing.T) {
 		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
 		{`www.zomb-.com`, errInvalidDNSCharacter}, // Label ends with '-'
 		{`xn--.net`, errInvalidDNSCharacter},      // Label ends with '-'
-		{`www.xn--hmr.net`, errIDNNotSupported},   // Punycode (disallowed for now)
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
 		{`*`, errInvalidDNSCharacter},
@@ -153,6 +153,16 @@ func TestWillingToIssue(t *testing.T) {
 			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
 	}
+
+	// Test IDNs
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
+	test.AssertError(t, err, "WillingToIssue didn't fail on a IDN with features.IDNASupport disabled")
+	_ = features.Set(map[string]bool{"IDNASupport": true})
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--m.com"})
+	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
+	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
+	features.Reset()
 
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {

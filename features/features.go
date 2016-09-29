@@ -12,11 +12,13 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
+	IDNASupport
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused: false,
+	unused:      false,
+	IDNASupport: false,
 }
 
 var fMu = new(sync.RWMutex)
