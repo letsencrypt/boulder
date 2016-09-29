@@ -33,7 +33,7 @@ in the registration object (nor the endpoints the latter two link to).
 
 ## [Section 6.1.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1.3)
 
-Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of application requirements Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
 
 ## [Section 6.1.4.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1.4)
 
@@ -53,7 +53,7 @@ Boulder does not implement account deactivation.
 
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3)
 
-Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of application requirements Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
 
 ## [Section 6.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.5)
 
