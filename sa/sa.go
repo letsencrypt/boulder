@@ -136,10 +136,19 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	var reg regModel
+	var reg interface{}
+	var fields string
+	if features.Enabled(features.AllowAccountDeactivation) {
+		reg = &regModelv2{}
+		fields = regV2Fields
+	} else {
+		reg = &regModelv1{}
+		fields = regV1Fields
+	}
 	err := ssa.dbMap.SelectOne(
-		&reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, id),
+		reg,
+		fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields),
+		id,
 	)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, core.NoSuchRegistrationError(
@@ -149,19 +158,27 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	if err != nil {
 		return core.Registration{}, err
 	}
-	return modelToRegistration(&reg)
+	return modelToRegistration(reg)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
-	reg := &regModel{}
+	var reg interface{}
+	var fields string
+	if features.Enabled(features.AllowAccountDeactivation) {
+		reg = &regModelv2{}
+		fields = regV2Fields
+	} else {
+		reg = &regModelv1{}
+		fields = regV1Fields
+	}
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
 	}
 	err = ssa.dbMap.SelectOne(
 		reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", regFields),
+		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", fields),
 		map[string]interface{}{"key": sha},
 	)
 
@@ -504,11 +521,11 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 
 // NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	reg.CreatedAt = ssa.clk.Now()
 	rm, err := registrationToModel(&reg)
 	if err != nil {
 		return reg, err
 	}
-	rm.CreatedAt = ssa.clk.Now()
 	err = ssa.dbMap.Insert(rm)
 	if err != nil {
 		return reg, err
@@ -591,8 +608,16 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	var rm regModel
-	err := ssa.dbMap.SelectOne(&rm, fmt.Sprintf("SELECT %s FROM registrations WHERE id = %d", regFields, reg.ID))
+	var regType interface{}
+	var fields string
+	if features.Enabled(features.AllowAccountDeactivation) {
+		regType = &regModelv2{}
+		fields = regV2Fields
+	} else {
+		regType = &regModelv1{}
+		fields = regV1Fields
+	}
+	err := ssa.dbMap.SelectOne(regType, fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields), reg.ID)
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
@@ -602,7 +627,22 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	if err != nil {
 		return err
 	}
-	updatedRegModel.LockCol = rm.LockCol
+
+	// Since registrationToModel has to return an interface so that we can use either model
+	// version we need to cast both the updated and existing model to their proper types
+	// so that we can copy over the LockCol from one to the other. Once we have copied
+	// that field we reassign to the interface so gorp can properly update it.
+	if features.Enabled(features.AllowAccountDeactivation) {
+		erm := regType.(*regModelv2)
+		urm := updatedRegModel.(*regModelv2)
+		urm.LockCol = erm.LockCol
+		updatedRegModel = urm
+	} else {
+		erm := regType.(*regModelv1)
+		urm := updatedRegModel.(*regModelv1)
+		urm.LockCol = erm.LockCol
+		updatedRegModel = urm
+	}
 
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
@@ -1022,6 +1062,17 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 		hashNames(names),
 	)
 	return count > 0, err
+}
+
+// DeactivateRegistration deactivates a currently valid registration
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
+	_, err := ssa.dbMap.Exec(
+		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
+		string(core.StatusDeactivated),
+		string(core.StatusValid),
+		id,
+	)
+	return err
 }
 
 // DeactivateAuthorization deactivates a currently valid or pending authorization

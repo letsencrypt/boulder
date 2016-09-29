@@ -168,7 +168,12 @@ func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
 // autoincremented value that resulted from the insert. See
 // https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 func initTables(dbMap *gorp.DbMap) {
-	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
+	var regTable *gorp.TableMap
+	if features.Enabled(features.AllowAccountDeactivation) {
+		regTable = dbMap.AddTableWithName(regModelv2{}, "registrations").SetKeys(true, "ID")
+	} else {
+		regTable = dbMap.AddTableWithName(regModelv1{}, "registrations").SetKeys(true, "ID")
+	}
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetNotNull(true)
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)

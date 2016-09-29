@@ -23,5 +23,9 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
+  },
+
+  "features": {
+    "AllowAccountDeactivation": true
   }
 }

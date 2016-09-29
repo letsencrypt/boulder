@@ -21,6 +21,8 @@ type config struct {
 		cmd.DBConfig
 
 		MaxConcurrentRPCServerRequests int64
+
+		Features map[string]bool
 	}
 
 	Features map[string]bool
@@ -42,8 +44,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.Features)
-	cmd.FailOnError(err, "Setting features from config")
+	err = features.Set(c.SA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	go cmd.DebugServer(c.SA.DebugAddr)
 
