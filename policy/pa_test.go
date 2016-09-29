@@ -158,8 +158,10 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a IDN with features.IDNASupport disabled")
 	_ = features.Set(map[string]bool{"IDNASupport": true})
+	// Invalid encoding
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--m.com"})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
+	// Valid encoding
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	features.Reset()
