@@ -549,6 +549,10 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		return err
 	}
 
+	// Since registrationToModel has to return an interface so that we can use either model
+	// version we need to cast both the updated and existing model to their proper types
+	// so that we can copy over the LockCol from one to the other. Once we have copied
+	// that field we reassign to the interface so gorp can properly update it.
 	if features.Enabled(features.AllowAccountDeactivation) {
 		erm := regType.(*regModelv2)
 		urm := updatedRegModel.(*regModelv2)
