@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -236,6 +237,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
+		Status:    core.StatusValid,
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
@@ -1250,6 +1252,7 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
@@ -1261,6 +1264,23 @@ func TestDeactivateAuthorization(t *testing.T) {
 	deact, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not get deactivated authorization wtih ID "+authz.ID)
 	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateRegistration(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	err := ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusDeactivated})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusValid})
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }
 
 var CAkeyPEM = `
