@@ -13,65 +13,62 @@ import (
 
 // HTTPMonitor stores some server state
 type HTTPMonitor struct {
-	stats               statsd.Statter
-	statsPrefix         string
+	stats               Scope
 	handler             http.Handler
 	connectionsInFlight int64
 }
 
 // NewHTTPMonitor returns a new initialized HTTPMonitor
-func NewHTTPMonitor(stats statsd.Statter, handler http.Handler, prefix string) *HTTPMonitor {
+func NewHTTPMonitor(stats Scope, handler http.Handler) *HTTPMonitor {
 	return &HTTPMonitor{
 		stats:               stats,
 		handler:             handler,
-		statsPrefix:         prefix,
 		connectionsInFlight: 0,
 	}
 }
 
 func (h *HTTPMonitor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.stats.Inc(fmt.Sprintf("%s.HTTP.Rate", h.statsPrefix), 1, 1.0)
+	h.stats.Inc("HTTP.Rate", 1)
 	inFlight := atomic.AddInt64(&h.connectionsInFlight, 1)
-	h.stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", h.statsPrefix), inFlight, 1.0)
+	h.stats.Gauge("HTTP.OpenConnections", inFlight)
 
 	h.handler.ServeHTTP(w, r)
 
 	inFlight = atomic.AddInt64(&h.connectionsInFlight, -1)
-	h.stats.Gauge(fmt.Sprintf("%s.HTTP.ConnectionsInFlight", h.statsPrefix), inFlight, 1.0)
+	h.stats.Gauge("HTTP.ConnectionsInFlight", inFlight)
 }
 
 // FBAdapter provides a facebookgo/stats client interface that sends metrics via
 // a StatsD client
 type FBAdapter struct {
-	stats  statsd.Statter
-	prefix string
-	clk    clock.Clock
+	stats Scope
+	clk   clock.Clock
 }
 
 // NewFBAdapter returns a new adapter
-func NewFBAdapter(stats statsd.Statter, prefix string, clock clock.Clock) FBAdapter {
-	return FBAdapter{stats: stats, prefix: prefix, clk: clock}
+func NewFBAdapter(stats Scope, clock clock.Clock) FBAdapter {
+	return FBAdapter{stats: stats, clk: clock}
 }
 
 // BumpAvg is essentially statsd.Statter.Gauge
 func (fba FBAdapter) BumpAvg(key string, val float64) {
-	fba.stats.Gauge(fmt.Sprintf("%s.%s", fba.prefix, key), int64(val), 1.0)
+	fba.stats.Gauge(key, int64(val))
 }
 
 // BumpSum is essentially statsd.Statter.Inc (httpdown only ever uses positive
 // deltas)
 func (fba FBAdapter) BumpSum(key string, val float64) {
-	fba.stats.Inc(fmt.Sprintf("%s.%s", fba.prefix, key), int64(val), 1.0)
+	fba.stats.Inc(key, int64(val))
 }
 
 type btHolder struct {
 	key     string
-	stats   statsd.Statter
+	stats   Scope
 	started time.Time
 }
 
 func (bth btHolder) End() {
-	bth.stats.TimingDuration(bth.key, time.Since(bth.started), 1.0)
+	bth.stats.TimingDuration(bth.key, time.Since(bth.started))
 }
 
 // BumpTime is essentially a (much better) statsd.Statter.TimingDuration
@@ -79,7 +76,7 @@ func (fba FBAdapter) BumpTime(key string) interface {
 	End()
 } {
 	return btHolder{
-		key:     fmt.Sprintf("%s.%s", fba.prefix, key),
+		key:     key,
 		started: fba.clk.Now(),
 		stats:   fba.stats,
 	}
@@ -92,7 +89,7 @@ func (fba FBAdapter) BumpHistogram(_ string, _ float64) {
 
 // Statter implements the statsd.Statter interface but
 // appends the name of the host the process is running on
-// and its PID to the end of every stat name
+// to the end of every stat name
 type Statter struct {
 	suffix string
 	s      statsd.Statter
@@ -104,7 +101,7 @@ func NewStatter(addr, prefix string) (Statter, error) {
 	if err != nil {
 		return Statter{}, err
 	}
-	suffix := fmt.Sprintf(".%s.%d", host, os.Getpid())
+	suffix := fmt.Sprintf(".%s", host)
 	s, err := statsd.NewClient(addr, prefix)
 	if err != nil {
 		return Statter{}, err

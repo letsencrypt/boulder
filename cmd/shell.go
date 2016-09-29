@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	_ "expvar" // For DebugServer, below.
+	"expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -33,11 +33,11 @@ import (
 	"runtime"
 	"time"
 
+	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
 
-	cfsslLog "github.com/cloudflare/cfssl/log"
-
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -121,7 +121,8 @@ func FailOnError(err error, msg string) {
 }
 
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
-func ProfileCmd(profileName string, stats metrics.Statter) {
+func ProfileCmd(stats metrics.Scope) {
+	stats = stats.NewScope("Gostats")
 	var memoryStats runtime.MemStats
 	prevNumGC := int64(0)
 	c := time.Tick(1 * time.Second)
@@ -129,14 +130,14 @@ func ProfileCmd(profileName string, stats metrics.Statter) {
 		runtime.ReadMemStats(&memoryStats)
 
 		// Gather goroutine count
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+		stats.Gauge("Goroutines", int64(runtime.NumGoroutine()))
 
 		// Gather various heap metrics
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Alloc", profileName), int64(memoryStats.HeapAlloc), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+		stats.Gauge("Heap.Alloc", int64(memoryStats.HeapAlloc))
+		stats.Gauge("Heap.Objects", int64(memoryStats.HeapObjects))
+		stats.Gauge("Heap.Idle", int64(memoryStats.HeapIdle))
+		stats.Gauge("Heap.InUse", int64(memoryStats.HeapInuse))
+		stats.Gauge("Heap.Released", int64(memoryStats.HeapReleased))
 
 		// Gather various GC related metrics
 		if memoryStats.NumGC > 0 {
@@ -150,16 +151,16 @@ func ProfileCmd(profileName string, stats metrics.Statter) {
 			}
 			gcPauseAvg := totalRecentGC / uint64(realBufSize)
 			lastGC := memoryStats.PauseNs[(memoryStats.NumGC+255)%256]
-			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), int64(gcPauseAvg), 1.0)
-			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), int64(lastGC), 1.0)
+			stats.Timing("Gc.PauseAvg", int64(gcPauseAvg))
+			stats.Gauge("Gc.LastPause", int64(lastGC))
 		}
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+		stats.Gauge("Gc.NextAt", int64(memoryStats.NextGC))
 		// Send both a counter and a gauge here we can much more easily observe
 		// the GC rate (versus the raw number of GCs) in graphing tools that don't
 		// like deltas
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), int64(memoryStats.NumGC), 1.0)
+		stats.Gauge("Gc.Count", int64(memoryStats.NumGC))
 		gcInc := int64(memoryStats.NumGC) - prevNumGC
-		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Rate", profileName), gcInc, 1.0)
+		stats.Inc("Gc.Rate", gcInc)
 		prevNumGC += gcInc
 	}
 }
@@ -192,6 +193,8 @@ func LoadCert(path string) (cert []byte, err error) {
 //
 //   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
+	m := expvar.NewMap("enabled-features")
+	features.Export(m)
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
 	}
@@ -205,19 +208,15 @@ func DebugServer(addr string) {
 	}
 }
 
-// ReadJSONFile takes a file path as an argument and attempts to
+// ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component.
-func ReadJSONFile(filename string, out interface{}) error {
+func ReadConfigFile(filename string, out interface{}) error {
 	configData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(configData, out)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(configData, out)
 }
 
 // VersionString produces a friendly Application version string.

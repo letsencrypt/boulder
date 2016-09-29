@@ -36,12 +36,13 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	go cmd.DebugServer(c.SA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "SA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -53,15 +54,15 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "SA"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	go cmd.ProfileCmd("SA", stats)
+	go cmd.ProfileCmd(scope)
 
 	amqpConf := saConf.AMQP
-	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats, logger)
+	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
 	err = rpc.NewStorageAuthorityServer(sas, sai)

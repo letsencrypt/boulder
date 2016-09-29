@@ -12,6 +12,17 @@ import (
 	jose "github.com/square/go-jose"
 )
 
+const (
+	regFields          string = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
+	pendingAuthzFields string = "id, identifier, registrationID, status, expires, combinations, LockCol"
+	authzFields        string = "id, identifier, registrationID, status, expires, combinations"
+	sctFields          string = "id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol"
+
+	// CertificateFields and CertificateStatusFields are also used by cert-checker and ocsp-updater
+	CertificateFields       string = "registrationID, serial, digest, der, issued, expires"
+	CertificateStatusFields string = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+)
+
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
@@ -53,18 +64,13 @@ type challModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 
 	LockCol int64
-
-	// obsoleteTLS is obsoleted. Only used for simpleHTTP and simpleHTTP is
-	// dead. Only still here because gorp complains if its gone and locks up if
-	// its private.
-	ObsoleteTLS *bool `db:"tls"`
 }
 
 // getChallengesQuery fetches exactly the fields in challModel from the
 // challenges table.
 const getChallengesQuery = `
 	SELECT id, authorizationID, type, status, error, validated, token,
-		keyAuthorization, validationRecord, tls
+		keyAuthorization, validationRecord
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration

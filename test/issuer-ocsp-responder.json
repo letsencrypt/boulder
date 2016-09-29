@@ -1,6 +1,6 @@
 {
   "ocspResponder": {
-    "source": "file:test/issuer-ocsp-responses.txt",
+    "source": "file:///tmp/issuer-ocsp-responses.txt",
     "path": "/",
     "listenAddress": "0.0.0.0:4003",
     "shutdownStopTimeout": "10s",
@@ -12,5 +12,8 @@
   },
   "sql": {
     "sqlDebug": true
+  },
+  "syslog": {
+    "stdoutlevel": 6
   }
 }

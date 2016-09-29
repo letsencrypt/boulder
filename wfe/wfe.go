@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -52,7 +51,7 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	stats statsd.Statter
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 
@@ -91,13 +90,12 @@ type WebFrontEndImpl struct {
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
-	stats statsd.Statter,
+	stats metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	scope := metrics.NewStatsdScope(stats, "WFE")
-	nonceService, err := nonce.NewNonceService(scope)
+	nonceService, err := nonce.NewNonceService(stats)
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
@@ -364,21 +362,21 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	reg := core.Registration{ID: 0}
 
 	if _, ok := request.Header["Content-Length"]; !ok {
-		wfe.stats.Inc("WFE.HTTP.ClientErrors.LengthRequiredError", 1, 1.0)
+		wfe.stats.Inc("HTTP.ClientErrors.LengthRequiredError", 1)
 		logEvent.AddError("missing Content-Length header on POST")
 		return nil, nil, reg, probs.ContentLengthRequired()
 	}
 
 	// Read body
 	if request.Body == nil {
-		wfe.stats.Inc("WFE.Errors.NoPOSTBody", 1, 1.0)
+		wfe.stats.Inc("Errors.NoPOSTBody", 1)
 		logEvent.AddError("no body on POST")
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnableToReadRequestBody", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
 		logEvent.AddError("unable to read request body")
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
@@ -387,7 +385,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Parse as JWS
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnableToParseJWS", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
 		logEvent.AddError("could not JSON parse body into JWS: %s", err)
 		return nil, nil, reg, probs.Malformed("Parse error reading JWS")
 	}
@@ -399,25 +397,25 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if len(parsedJws.Signatures) > 1 {
-		wfe.stats.Inc("WFE.Errors.TooManyJWSSignaturesInPOST", 1, 1.0)
+		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
 		logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
 		return nil, nil, reg, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.stats.Inc("WFE.Errors.JWSNotSignedInPOST", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
 		logEvent.AddError("no signatures in POST body")
 		return nil, nil, reg, probs.Malformed("POST JWS not signed")
 	}
 
 	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
 	if submittedKey == nil {
-		wfe.stats.Inc("WFE.Errors.NoJWKInJWSSignatureHeader", 1, 1.0)
+		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
 		logEvent.AddError("no JWK in JWS signature header in POST body")
 		return nil, nil, reg, probs.Malformed("No JWK in JWS header")
 	}
 
 	if !submittedKey.Valid() {
-		wfe.stats.Inc("WFE.Errors.InvalidJWK", 1, 1.0)
+		wfe.stats.Inc("Errors.InvalidJWK", 1)
 		logEvent.AddError("invalid JWK in JWS signature header in POST body")
 		return nil, nil, reg, probs.Malformed("Invalid JWK in JWS header")
 	}
@@ -432,14 +430,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
-			wfe.stats.Inc("WFE.Errors.JWKRejectedByGoodKey", 1, 1.0)
+			wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
 			logEvent.AddError("JWK in request was rejected by GoodKey: %s", err)
 			return nil, nil, reg, probs.Malformed(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
-		wfe.stats.Inc("WFE.Errors.UnableToGetRegistrationByKey", 1, 1.0)
+		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
 		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
@@ -454,13 +452,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
-		wfe.stats.Inc(statName, 1, 1.0)
+		wfe.stats.Inc(statName, 1)
 		return nil, nil, reg, probs.Malformed(err.Error())
 	}
 
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.JWSVerificationFailed", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSVerificationFailed", 1)
 		n := len(body)
 		if n > 100 {
 			n = 100
@@ -473,11 +471,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	nonce := parsedJws.Signatures[0].Header.Nonce
 	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
-		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		logEvent.AddError("JWS is missing an anti-replay nonce")
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
-		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
+		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
 		logEvent.AddError("JWS has an invalid anti-replay nonce: %s", nonce)
 		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %v", nonce))
 	}
@@ -488,16 +486,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		wfe.stats.Inc("WFE.Errors.UnparsableJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.UnparsableJWSPayload", 1)
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
 	}
 	if parsedRequest.Resource == "" {
-		wfe.stats.Inc("WFE.Errors.NoResourceInJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.NoResourceInJWSPayload", 1)
 		logEvent.AddError("JWS request payload does not specify a resource")
 		return nil, nil, reg, probs.Malformed("Request payload does not specify a resource")
 	} else if resource != core.AcmeResource(parsedRequest.Resource) {
-		wfe.stats.Inc("WFE.Errors.MismatchedResourceInJWSPayload", 1, 1.0)
+		wfe.stats.Inc("Errors.MismatchedResourceInJWSPayload", 1)
 		logEvent.AddError("JWS request payload does not match resource")
 		return nil, nil, reg, probs.Malformed("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource)
 	}
@@ -532,10 +530,10 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
+	wfe.stats.Inc(fmt.Sprintf("HTTP.ErrorCodes.%d", code), 1)
 	problemSegments := strings.Split(string(prob.Type), ":")
 	if len(problemSegments) > 0 {
-		wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+		wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1)
 	}
 }
 

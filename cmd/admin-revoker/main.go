@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/x509"
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -11,7 +12,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -55,23 +55,24 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
+func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, metrics.Scope) {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
 	amqpConf := c.Revoker.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AdminRevoker"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return *rac, logger, dbMap, *sac, stats
+	return *rac, logger, dbMap, *sac, scope
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
@@ -79,16 +80,15 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	certObj, err := tx.Get(core.Certificate{}, serial)
+	var certObj core.Certificate
+	err = tx.SelectOne(&certObj, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", sa.CertificateFields), serial)
+	if err == sql.ErrNoRows {
+		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+	}
 	if err != nil {
-		return
+		return err
 	}
-	certificate, ok := certObj.(*core.Certificate)
-	if !ok {
-		err = fmt.Errorf("Cast failure")
-		return
-	}
-	cert, err := x509.ParseCertificate(certificate.DER)
+	cert, err := x509.ParseCertificate(certObj.DER)
 	if err != nil {
 		return
 	}
@@ -147,7 +147,7 @@ func main() {
 	}
 
 	var c config
-	err = cmd.ReadJSONFile(*configFile, &c)
+	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	ctx := context.Background()
@@ -224,8 +224,8 @@ func main() {
 			authsRevoked,
 			pendingAuthsRevoked,
 		))
-		stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
-		stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
+		stats.Inc("RevokedAuthorizations", authsRevoked)
+		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
 
 	default:
 		usage()

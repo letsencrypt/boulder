@@ -8,13 +8,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
@@ -383,7 +383,7 @@ type RegistrationAuthorityClient struct {
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*RegistrationAuthorityClient, error) {
+func NewRegistrationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats metrics.Scope) (*RegistrationAuthorityClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->RA", amqpConf, amqpConf.RA, stats)
 	return &RegistrationAuthorityClient{rpc: client}, err
 }
@@ -572,7 +572,7 @@ type ValidationAuthorityClient struct {
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*ValidationAuthorityClient, error) {
+func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats metrics.Scope) (*ValidationAuthorityClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->VA", amqpConf, amqpConf.VA, stats)
 	return &ValidationAuthorityClient{rpc: client}, err
 }
@@ -636,7 +636,7 @@ type PublisherClient struct {
 }
 
 // NewPublisherClient constructs an RPC client
-func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*PublisherClient, error) {
+func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats metrics.Scope) (*PublisherClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->Publisher", amqpConf, amqpConf.Publisher, stats)
 	return &PublisherClient{rpc: client}, err
 }
@@ -705,7 +705,7 @@ type CertificateAuthorityClient struct {
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*CertificateAuthorityClient, error) {
+func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats metrics.Scope) (*CertificateAuthorityClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->CA", amqpConf, amqpConf.CA, stats)
 	return &CertificateAuthorityClient{rpc: client}, err
 }
@@ -1121,7 +1121,7 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*StorageAuthorityClient, error) {
+func NewStorageAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats metrics.Scope) (*StorageAuthorityClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->SA", amqpConf, amqpConf.SA, stats)
 	return &StorageAuthorityClient{rpc: client}, err
 }
