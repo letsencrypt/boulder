@@ -186,27 +186,27 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context/ctxhttp",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
@@ -261,6 +261,14 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
+		},
+		{
+			"ImportPath": "golang.org/x/net/idna",
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+		},
+		{
+			"ImportPath": "golang.org/x/net/lex/httplex",
+			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
 		}
 	]
 }
