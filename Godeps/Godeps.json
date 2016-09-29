@@ -186,27 +186,33 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context/ctxhttp",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
@@ -264,11 +270,13 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/idna",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		},
 		{
 			"ImportPath": "golang.org/x/net/lex/httplex",
-			"Rev": "ed0556cc888129faa06ff0ef3c65e0ce59c8b75c"
+			"Comment": "fix-contextcontext.mailed",
+			"Rev": "89ff6b25fad1015847370b11bde3fd302f1ec2f1"
 		}
 	]
 }

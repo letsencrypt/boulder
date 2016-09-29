@@ -10,9 +10,13 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+
+	"golang.org/x/net/context"
 )
 
-type contextContext interface{}
+type contextContext interface {
+	context.Context
+}
 
 type fakeContext struct{}
 
