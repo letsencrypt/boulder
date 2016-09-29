@@ -56,6 +56,7 @@ const (
 	ResourceRegistration = AcmeResource("reg")
 	ResourceChallenge    = AcmeResource("challenge")
 	ResourceAuthz        = AcmeResource("authz")
+	ResourceKeyChange    = AcmeResource("key-change")
 )
 
 // These status are the states of OCSP

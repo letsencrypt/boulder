@@ -343,6 +343,34 @@ const (
 	unknownKey = "No registration exists matching provided key"
 )
 
+func verifyJWS(body string) error {
+	parsedJws, err := jose.ParseSigned(body)
+	if err != nil {
+		// logEvent.AddError("could not JSON parse body into JWS: %s", err)
+		return probs.Malformed("Parse error reading JWS")
+	}
+
+	if len(parsedJws.Signatures) > 1 {
+		// logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
+		return probs.Malformed("Too many signatures in POST body")
+	}
+	if len(parsedJws.Signatures) == 0 {
+		// logEvent.AddError("no signatures in POST body")
+		return probs.Malformed("POST JWS not signed")
+	}
+
+	key := parsedJws.Signatures[0].Header.JsonWebKey
+	if key == nil {
+		// logEvent.AddError("no JWK in JWS signature header in POST body")
+		return probs.Malformed("No JWK in JWS header")
+	}
+
+	if !key.Valid() {
+		// logEvent.AddError("invalid JWK in JWS signature header in POST body")
+		return probs.Malformed("Invalid JWK in JWS header")
+	}
+}
+
 // verifyPOST reads and parses the request body, looks up the Registration
 // corresponding to its JWK, verifies the JWS signature, checks that the
 // resource field is present and correct in the JWS protected header, and
@@ -1367,4 +1395,43 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+// KeyRollover does something
+func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	body, _, _, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Parse as JWS
+	parsedJws, err := jose.ParseSigned(body)
+	if err != nil {
+		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
+		logEvent.AddError("could not JSON parse body into JWS: %s", err)
+		return nil, nil, reg, probs.Malformed("Parse error reading JWS")
+	}
+
+	if len(parsedJws.Signatures) > 1 {
+		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
+		logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
+		return nil, nil, reg, probs.Malformed("Too many signatures in POST body")
+	}
+	if len(parsedJws.Signatures) == 0 {
+		logEvent.AddError("no signatures in POST body")
+		return nil, nil, reg, probs.Malformed("POST JWS not signed")
+	}
+
+	newKey := parsedJws.Signatures[0].Header.JsonWebKey
+	if newKey == nil {
+		logEvent.AddError("no JWK in JWS signature header in wrapped payload body")
+		return nil, nil, reg, probs.Malformed("No JWK in JWS header")
+	}
+
+	if !submittedKey.Valid() {
+		logEvent.AddError("invalid JWK in JWS signature header in wrapped payload body")
+		return nil, nil, reg, probs.Malformed("Invalid JWK in JWS header")
+	}
 }
