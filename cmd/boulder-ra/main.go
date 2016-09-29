@@ -12,6 +12,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
@@ -64,6 +65,8 @@ type config struct {
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
+
+		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
@@ -90,6 +93,9 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(c.RA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	go cmd.DebugServer(c.RA.DebugAddr)
 
