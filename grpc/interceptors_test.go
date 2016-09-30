@@ -25,7 +25,7 @@ func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 }
 
 func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
-	if method == "broke-test" {
+	if method == "-service-brokeTest" {
 		return errors.New("")
 	}
 	fc.Sleep(time.Second)
@@ -47,15 +47,15 @@ func TestServerInterceptor(t *testing.T) {
 	statter.EXPECT().GaugeDelta("fake.gRPCServer.test.InProgress", int64(1), float32(1.0)).Return(nil)
 	statter.EXPECT().TimingDuration("fake.gRPCServer.test.Latency", time.Second, float32(1.0)).Return(nil)
 	statter.EXPECT().GaugeDelta("fake.gRPCServer.test.InProgress", int64(-1), float32(1.0)).Return(nil)
-	_, err = si.intercept(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "test"}, testHandler)
+	_, err = si.intercept(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
 	test.AssertNotError(t, err, "si.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	statter.EXPECT().Inc("fake.gRPCServer.broke-test.Calls", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCServer.broke-test.InProgress", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().TimingDuration("fake.gRPCServer.broke-test.Latency", time.Duration(0), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCServer.broke-test.InProgress", int64(-1), float32(1.0)).Return(nil)
-	statter.EXPECT().Inc("fake.gRPCServer.broke-test.Failed", int64(1), float32(1.0)).Return(nil)
-	_, err = si.intercept(context.Background(), 0, &grpc.UnaryServerInfo{FullMethod: "broke-test"}, testHandler)
+	statter.EXPECT().Inc("fake.gRPCServer.brokeTest.Calls", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCServer.brokeTest.InProgress", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().TimingDuration("fake.gRPCServer.brokeTest.Latency", time.Duration(0), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCServer.brokeTest.InProgress", int64(-1), float32(1.0)).Return(nil)
+	statter.EXPECT().Inc("fake.gRPCServer.brokeTest.Failed", int64(1), float32(1.0)).Return(nil)
+	_, err = si.intercept(context.Background(), 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail when handler returned a error")
 }
 
@@ -66,18 +66,18 @@ func TestClientInterceptor(t *testing.T) {
 	stats := metrics.NewStatsdScope(statter, "fake", "gRPCClient")
 	ci := clientInterceptor{stats, fc}
 
-	statter.EXPECT().Inc("fake.gRPCClient.test.Calls", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.test.InProgress", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().TimingDuration("fake.gRPCClient.test.Latency", time.Second, float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.test.InProgress", int64(-1), float32(1.0)).Return(nil)
-	err := ci.intercept(context.Background(), "test", nil, nil, nil, testInvoker)
+	statter.EXPECT().Inc("fake.gRPCClient.service-test.Calls", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-test.InProgress", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().TimingDuration("fake.gRPCClient.service-test.Latency", time.Second, float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-test.InProgress", int64(-1), float32(1.0)).Return(nil)
+	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	statter.EXPECT().Inc("fake.gRPCClient.broke-test.Calls", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.broke-test.InProgress", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().TimingDuration("fake.gRPCClient.broke-test.Latency", time.Duration(0), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.broke-test.InProgress", int64(-1), float32(1.0)).Return(nil)
-	statter.EXPECT().Inc("fake.gRPCClient.broke-test.Failed", int64(1), float32(1.0)).Return(nil)
-	err = ci.intercept(context.Background(), "broke-test", nil, nil, nil, testInvoker)
+	statter.EXPECT().Inc("fake.gRPCClient.service-brokeTest.Calls", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-brokeTest.InProgress", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().TimingDuration("fake.gRPCClient.service-brokeTest.Latency", time.Duration(0), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-brokeTest.InProgress", int64(-1), float32(1.0)).Return(nil)
+	statter.EXPECT().Inc("fake.gRPCClient.service-brokeTest.Failed", int64(1), float32(1.0)).Return(nil)
+	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
