@@ -25,8 +25,6 @@ type config struct {
 		Features map[string]bool
 	}
 
-	Features map[string]bool
-
 	Statsd cmd.StatsdConfig
 
 	Syslog cmd.SyslogConfig
