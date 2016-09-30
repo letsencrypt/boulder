@@ -463,6 +463,20 @@ type CertificateStatus struct {
 	// The encoded and signed OCSP response.
 	OCSPResponse []byte `db:"ocspResponse"`
 
+	// For performance reasons[0] we duplicate the `Expires` field of the
+	// `Certificates` object/table in `CertificateStatus` to avoid a costly `JOIN`
+	// later on just to retreive this `Time` value. This helps both the OCSP
+	// updater and the expiration-mailer stay performant.
+	//
+	// Similarly, we add an explicit `IsExpired` boolean to `CertificateStatus`
+	// table that the OCSP updater so that the database can create a meaningful
+	// index on `(isExpired, ocspLastUpdated)` without a `JOIN` on `certificates`.
+	// For more detail see Boulder #1864[0].
+	//
+	// [0]: https://github.com/letsencrypt/boulder/issues/1864
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
+
 	LockCol int64 `json:"-"`
 }
 
