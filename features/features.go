@@ -14,13 +14,15 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	IDNASupport
 	AllowAccountDeactivation
+	CertStatusOptimizationsMigrated
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	IDNASupport:              false,
-	AllowAccountDeactivation: false,
+	unused:                          false,
+	IDNASupport:                     false,
+	AllowAccountDeactivation:        false,
+	CertStatusOptimizationsMigrated: false,
 }
 
 var fMu = new(sync.RWMutex)

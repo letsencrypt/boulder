@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -204,9 +205,14 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
+	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
+	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT cs.*
+		`SELECT
+			 cs.serial,
+			 cs.status,
+			 cs.revokedDate
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
@@ -227,11 +233,17 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
+	var fields string
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		fields = sa.CertificateStatusFieldsv2
+	} else {
+		fields = sa.CertificateStatusFields
+	}
 	_, err := updater.dbMap.Select(
 		&statuses,
 		fmt.Sprintf(`SELECT %s FROM certificateStatus
 			 WHERE ocspLastUpdated = 0
-			 LIMIT :limit`, sa.CertificateStatusFields),
+			 LIMIT :limit`, fields),
 		map[string]interface{}{
 			"limit": batchSize,
 		},
@@ -351,12 +363,18 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
+	var fields string
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		fields = sa.CertificateStatusFieldsv2
+	} else {
+		fields = sa.CertificateStatusFields
+	}
 	_, err := updater.dbMap.Select(
 		&statuses,
 		fmt.Sprintf(`SELECT %s FROM certificateStatus
 		 WHERE status = :revoked
 		 AND ocspLastUpdated <= revokedDate
-		 LIMIT :limit`, sa.CertificateStatusFields),
+		 LIMIT :limit`, fields),
 		map[string]interface{}{
 			"revoked": string(core.OCSPStatusRevoked),
 			"limit":   batchSize,

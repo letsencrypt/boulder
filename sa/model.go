@@ -24,6 +24,10 @@ const (
 	// CertificateFields and CertificateStatusFields are also used by cert-checker and ocsp-updater
 	CertificateFields       string = "registrationID, serial, digest, der, issued, expires"
 	CertificateStatusFields string = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+
+	// CertificateStatusFieldsv2 is used when the CertStatusOptimizationsMigrated
+	// feature flag is enabled and includes "notAfter" and "isExpired" fields
+	CertificateStatusFieldsv2 string = CertificateStatusFields + ", notAfter, isExpired"
 )
 
 var mediumBlobSize = int(math.Pow(2, 24))
