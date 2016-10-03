@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -52,6 +53,12 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithBadName := new(x509.CertificateRequest)
 	*signedReqWithBadName = *signedReq
 	signedReqWithBadName.DNSNames = []string{"bad-name.com"}
+	signedReqWithEmailAddress := new(x509.CertificateRequest)
+	*signedReqWithEmailAddress = *signedReq
+	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
+	signedReqWithIPAddress := new(x509.CertificateRequest)
+	*signedReqWithIPAddress = *signedReq
+	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
 
 	cases := []struct {
 		csr           *x509.CertificateRequest
@@ -67,7 +74,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("invalid public key in CSR"),
+			invalidPubKey,
 		},
 		{
 			&x509.CertificateRequest{PublicKey: private.PublicKey},
@@ -75,7 +82,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("signature algorithm not supported"),
+			unsupportedSigAlg,
 		},
 		{
 			brokenSignedReq,
@@ -83,7 +90,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("invalid signature on CSR"),
+			invalidSig,
 		},
 		{
 			signedReq,
@@ -91,7 +98,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("at least one DNS name is required"),
+			invalidNoDNS,
 		},
 		{
 			signedReqWithLongCN,
@@ -116,6 +123,22 @@ func TestVerifyCSR(t *testing.T) {
 			&mockPA{},
 			0,
 			errors.New("policy forbids issuing for: bad-name.com"),
+		},
+		{
+			signedReqWithEmailAddress,
+			1,
+			testingPolicy,
+			&mockPA{},
+			0,
+			invalidEmailPresent,
+		},
+		{
+			signedReqWithIPAddress,
+			1,
+			testingPolicy,
+			&mockPA{},
+			0,
+			invalidIPPresent,
 		},
 	}
 

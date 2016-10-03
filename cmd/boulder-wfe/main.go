@@ -10,6 +10,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -40,6 +41,8 @@ type config struct {
 		CheckMalformedCSR      bool
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -76,6 +79,9 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(c.WFE.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	go cmd.DebugServer(c.WFE.DebugAddr)
 
