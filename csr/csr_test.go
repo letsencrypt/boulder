@@ -74,7 +74,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("invalid public key in CSR"),
+			invalidPubKey,
 		},
 		{
 			&x509.CertificateRequest{PublicKey: private.PublicKey},
@@ -82,7 +82,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("signature algorithm not supported"),
+			unsupportedSigAlg,
 		},
 		{
 			brokenSignedReq,
@@ -90,7 +90,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("invalid signature on CSR"),
+			invalidSig,
 		},
 		{
 			signedReq,
@@ -98,7 +98,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("at least one DNS name is required"),
+			invalidNoDNS,
 		},
 		{
 			signedReqWithLongCN,
@@ -130,7 +130,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CSR contains one or more email address fields"),
+			invalidEmailPresent,
 		},
 		{
 			signedReqWithIPAddress,
@@ -138,7 +138,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CSR contains one or more IP address fields"),
+			invalidIPPresent,
 		},
 	}
 
