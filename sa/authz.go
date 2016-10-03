@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -67,31 +68,36 @@ func getAuthz(tx *gorp.Transaction, id string) (core.Authorization, string, erro
 
 	// First try to find a row from the `pendingAuthorizations` table with
 	// a `pendingauthzModel{}`.
-	authObj, err := tx.Get(pendingauthzModel{}, id)
-	if err != nil {
+	var pa pendingauthzModel
+	err := tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = ?", pendingAuthzFields), id)
+	// If there was an error other than "no rows", abort
+	if err != nil && err != sql.ErrNoRows {
 		err = Rollback(tx, err)
 		return authz, table, err
 	}
-	if authObj != nil {
-		authD := *authObj.(*pendingauthzModel)
-		authz = authD.Authorization
+	// If there was no error, then we found the authz row.
+	if err == nil {
 		table = "pendingAuthorizations"
-	} else {
-		// If that doesn't yield an authz, then try from the `authz` table with
-		// a `authzModel{}`.
-		authObj, err = tx.Get(authzModel{}, id)
-		if err != nil {
-			err = Rollback(tx, err)
-			return authz, table, err
-		}
-		if authObj == nil {
+		authz = pa.Authorization
+	} else if err == sql.ErrNoRows {
+		// But if the err was ErrNoRows, then we need to try looking in the `authz`
+		// table using a `authzModel` since there wasn't a `pendingAuthorization`
+		// row
+		var fa authzModel
+		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		// If there *still* was no rows, we're out of options. Nothing found
+		if err == sql.ErrNoRows {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
 			err = Rollback(tx, err)
 			return authz, table, err
 		}
-		authD := authObj.(*authzModel)
-		authz = authD.Authorization
+		// If there was an error other than "no rows", abort
+		if err != nil {
+			err = Rollback(tx, err)
+			return authz, table, err
+		}
 		table = "authz"
+		authz = fa.Authorization
 	}
 
 	var challObjs []challModel
