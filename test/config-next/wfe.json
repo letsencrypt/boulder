@@ -41,5 +41,9 @@
   "common": {
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053"
+  },
+
+  "features": {
+    "AllowAccountDeactivation": true
   }
 }

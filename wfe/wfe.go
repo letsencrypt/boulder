@@ -20,6 +20,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -449,6 +450,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		key = &reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
+	}
+
+	if features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
+		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -1111,6 +1116,23 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
+	// People *will* POST their full registrations to this endpoint, including
+	// the 'valid' status, to avoid always failing out when that happens only
+	// attempt to deactivate if the provided status is different from their current
+	// status.
+	//
+	// If a user tries to send both a deactivation request and an update to their
+	// contacts or subscriber agreement URL the deactivation will take place and
+	// return before an update would be performed.
+	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != currReg.Status) {
+		if update.Status != core.StatusDeactivated {
+			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
+			return
+		}
+		wfe.deactivateRegistration(ctx, currReg, response, request, logEvent)
+		return
+	}
+
 	// If a user POSTs their registration object including a previously valid
 	// agreement URL but that URL has since changed we will fail out here
 	// since the update agreement URL doesn't match the current URL. To fix that we
@@ -1367,4 +1389,24 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
+	err := wfe.RA.DeactivateRegistration(ctx, reg)
+	if err != nil {
+		logEvent.AddError("unable to deactivate registration", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating registration"), err)
+		return
+	}
+	reg.Status = core.StatusDeactivated
+	jsonReply, err := marshalIndent(reg)
+	if err != nil {
+		// ServerInternal because registration is from DB and should be fine
+		logEvent.AddError("unable to marshal updated registration: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	response.Write(jsonReply)
 }
