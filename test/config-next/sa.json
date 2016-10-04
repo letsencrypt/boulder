@@ -14,6 +14,10 @@
     }
   },
 
+  "features": {
+    "CertStatusOptimizationsMigrated": true
+  },
+
   "statsd": {
     "server": "localhost:8125",
     "prefix": "Boulder"

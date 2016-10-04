@@ -13,12 +13,14 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	AllowAccountDeactivation
+	CertStatusOptimizationsMigrated
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused: false,
-	AllowAccountDeactivation: false,
+	AllowAccountDeactivation:        false,
+	CertStatusOptimizationsMigrated: false,
 }
 
 var fMu = new(sync.RWMutex)
