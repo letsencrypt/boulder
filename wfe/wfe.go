@@ -193,6 +193,26 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *requestEvent, status int, v interface{}) error {
+	jsonReply, err := marshalIndent(v)
+	if err != nil {
+		return err
+	}
+
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+
+	_, err = response.Write(jsonReply)
+	if err != nil {
+		// Don't worry about returning this error because the caller will
+		// never handle it.
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		logEvent.AddError(err.Error())
+	}
+
+	return nil
+}
+
 func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint string) string {
 	var result string
 	proto := "http"
