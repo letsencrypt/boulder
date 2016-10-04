@@ -8,6 +8,9 @@
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
+    },
+    "features": {
+      "AllowAccountDeactivation": true
     }
   },
 
@@ -19,9 +22,5 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
-  },
-
-  "features": {
-    "AllowAccountDeactivation": true
   }
 }

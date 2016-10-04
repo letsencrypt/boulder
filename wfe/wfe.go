@@ -452,7 +452,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		logEvent.Contacts = reg.Contact
 	}
 
-	if features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
+	// Only check for validity if we are actually checking the registration
+	if regCheck && features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
 		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
