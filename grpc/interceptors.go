@@ -20,7 +20,7 @@ func cleanMethod(m string, trimService bool) string {
 	m = strings.TrimLeft(m, "-")
 	if trimService {
 		s := strings.Split(m, "-")
-		if len(s) == 0 {
+		if len(s) == 1 {
 			return m
 		}
 		return s[len(s)-1]

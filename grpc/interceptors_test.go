@@ -81,3 +81,23 @@ func TestClientInterceptor(t *testing.T) {
 	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
+
+func TestCleanMethod(t *testing.T) {
+	tests := []struct {
+		in           string
+		out          string
+		stripService bool
+	}{
+		{"-ServiceName-MethodName", "ServiceName-MethodName", false},
+		{"-ServiceName-MethodName", "MethodName", true},
+		{"--MethodName", "MethodName", true},
+		{"--MethodName", "MethodName", true},
+		{"MethodName", "MethodName", false},
+	}
+	for _, tc := range tests {
+		out := cleanMethod(tc.in, tc.stripService)
+		if out != tc.out {
+			t.Fatalf("cleanMethod didn't return the expected name: expected: %q, got: %q", tc.out, out)
+		}
+	}
+}
