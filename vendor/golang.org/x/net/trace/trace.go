@@ -93,7 +93,8 @@ var DebugUseAfterFinish = false
 //
 // AuthRequest may be replaced by a program to customise its authorisation requirements.
 //
-// The default AuthRequest function returns (true, true) iff the request comes from localhost/127.0.0.1/[::1].
+// The default AuthRequest function returns (true, true) if and only if the request
+// comes from localhost/127.0.0.1/[::1].
 var AuthRequest = func(req *http.Request) (any, sensitive bool) {
 	// RemoteAddr is commonly in the form "IP" or "IP:port".
 	// If it is in the form "IP:port", split off the port.
