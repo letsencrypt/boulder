@@ -44,6 +44,7 @@ const (
 	termsPath      = "/terms"
 	issuerPath     = "/acme/issuer-cert"
 	buildIDPath    = "/build"
+	rolloverPath   = "/acme/key-change"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -264,6 +265,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
+	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -327,6 +329,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"new-authz":   newAuthzPath,
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
+		"key-change":  rolloverPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -1376,7 +1379,7 @@ type rolloverRequest struct {
 	NewKey jose.JsonWebKey
 }
 
-// KeyRollover does something
+// KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, oldKey, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
 	addRequesterHeader(response, logEvent.Requester)
