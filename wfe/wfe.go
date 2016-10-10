@@ -1394,42 +1394,64 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 	payload, err := parsedJWS.Verify(newKey)
 	if err != nil {
-		// bad
+		n := len(body)
+		if n > 100 {
+			n = 100
+		}
+		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
+		wfe.sendError(response, logEvent, probs.Malformed("JWS verification error"), err)
+		return
 	}
 	var ror rolloverRequest
 	err = json.Unmarshal(payload, &ror)
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Request payload did not parse as JSON"), nil)
+		return
 	}
 
 	// Check body contains the correct keys
 	pokThumb, err := ror.OldKey.Thumbprint(crypto.SHA256)
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to compute fingerprint of old key in inner payload: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed old JWK"), nil)
+		return
 	}
 	okThumb, err := oldKey.Thumbprint(crypto.SHA256)
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to compute fingerprint of registration key: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compute fingerprint of registration key"), err)
+		return
 	}
 	if bytes.Compare(pokThumb, okThumb) != 0 {
-		// bad
+		logEvent.AddError("old key in inner payload doesn't match registration key")
+		wfe.sendError(response, logEvent, probs.Malformed("Old JWK in inner payload doesn't match current JWK"), nil)
+		return
 	}
 	pnkThumb, err := ror.NewKey.Thumbprint(crypto.SHA256)
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to compute fingerprint of new key in inner payload: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed new JWK"), nil)
+		return
 	}
 	nkThumb, err := newKey.Thumbprint(crypto.SHA256)
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to compute fingerprint of new key used to sign inner payload: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Request inner payload signed by malformed new JWK"), nil)
+		return
 	}
 	if bytes.Compare(pnkThumb, nkThumb) != 0 {
-		// bad
+		logEvent.AddError("new key in inner payload doesn't match key used to sign")
+		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match signing JWK"), nil)
+		return
 	}
 
 	// Update registration key
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: *newKey})
 	if err != nil {
-		// bad
+		logEvent.AddError("unable to update registration: %s", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		return
 	}
 
 	jsonReply, err := marshalIndent(updatedReg)
