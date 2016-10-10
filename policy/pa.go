@@ -12,8 +12,10 @@ import (
 	"sync"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/net/idna"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
@@ -137,6 +139,7 @@ var (
 	errLabelTooShort       = probs.Malformed("DNS label is too short")
 	errLabelTooLong        = probs.Malformed("DNS label is too long")
 	errIDNNotSupported     = probs.UnsupportedIdentifier("Internationalized domain names (starting with xn--) not yet supported")
+	errMalformedIDN        = probs.Malformed("DNS label contains malformed punycode")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -207,7 +210,18 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		}
 
 		if punycodeRegexp.MatchString(label) {
-			return errIDNNotSupported
+			if features.Enabled(features.IDNASupport) {
+				// We don't care about script usage, if a name is resolvable it was
+				// registered with a higher power and they should be enforcing their
+				// own policy. As long as it was properly encoded that is enough
+				// for us.
+				_, err := idna.ToUnicode(label)
+				if err != nil {
+					return errMalformedIDN
+				}
+			} else {
+				return errIDNNotSupported
+			}
 		}
 	}
 

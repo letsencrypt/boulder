@@ -452,7 +452,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		logEvent.Contacts = reg.Contact
 	}
 
-	if features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
+	// Only check for validity if we are actually checking the registration
+	if regCheck && features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
 		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
@@ -1124,7 +1125,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != currReg.Status) {
+	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != "" && update.Status != currReg.Status) {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
