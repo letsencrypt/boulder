@@ -1165,6 +1165,31 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
 }
 
+func TestRegistrationKeyUpdate(t *testing.T) {
+	rA, rB := core.Registration{Key: jose.JsonWebKey{KeyID: "id"}}, core.Registration{}
+	changed := mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
+	}
+
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
+
+	changed = mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with empty update")
+	}
+
+	rB.Key.KeyID = "other-id"
+	changed = mergeUpdate(&rA, rB)
+	if !changed {
+		t.Fatal("mergeUpdate didn't change the key with non-empty update")
+	}
+	if rA.Key.KeyID != "other-id" {
+		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
+	}
+}
+
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
 // CountCertificatesByName as well as FQDNSetExists. This allows testing
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.

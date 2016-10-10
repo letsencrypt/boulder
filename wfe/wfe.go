@@ -266,7 +266,9 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
-	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+	if features.Enabled(features.AllowKeyRollover) {
+		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+	}
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -330,7 +332,9 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"new-authz":   newAuthzPath,
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
-		"key-change":  rolloverPath,
+	}
+	if features.Enabled(features.AllowKeyRollover) {
+		directoryEndpoints["key-change"] = rolloverPath
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -1084,6 +1088,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	}
 }
 
+var emptyKey jose.JsonWebKey
+
 // Registration is used by a client to submit an update to their registration.
 func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
@@ -1159,6 +1165,12 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// the key of the updated registration object is going to be the same as the
 	// key of the current one, so we set it here. This ensures we can cleanly
 	// serialize the update as JSON to send via AMQP to the RA.
+	if features.Enabled(features.AllowKeyRollover) && update.Key != emptyKey && update.Key != currReg.Key {
+		msg := "Key can only be changed using the /acme/key-change endpoint"
+		logEvent.AddError(msg)
+		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+		return
+	}
 	update.Key = currReg.Key
 
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)

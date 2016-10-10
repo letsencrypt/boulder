@@ -190,6 +190,9 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
+	if reg.Key != updated.Key {
+		reg.Key = updated.Key
+	}
 	return reg, nil
 }
 
@@ -573,6 +576,8 @@ func TestDirectory(t *testing.T) {
 	// This tests to ensure the `Host` in the following `http.Request` is not
 	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
 	// and expecting `localhost` in the JSON result.
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
@@ -592,6 +597,8 @@ func TestDirectory(t *testing.T) {
 }
 
 func TestRelativeDirectory(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
@@ -1930,5 +1937,119 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "type": "urn:acme:error:unauthorized",
 		  "detail": "Registration is not valid, has status 'deactivated'",
 		  "status": 403
+		}`)
+}
+
+func TestKeyRollover(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+
+	key, err := jose.LoadPrivateKey([]byte(test3KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Parse error reading JWS",
+		  "status": 400
+		}`)
+
+	inner, err := signer.Sign([]byte(`{}`))
+	test.AssertNotError(t, err, "Unable to sign")
+	innerStr := inner.FullSerialize()
+	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+	outer := signRequest(t, innerStr, wfe.nonceService)
+
+	responseWriter.Body.Reset()
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Request payload contained malformed old JWK",
+		  "status": 400
+		}`)
+
+	inner, err = signer.Sign([]byte(`{"oldKey":{"e": "AQAB","kty": "RSA","n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"}}`))
+	test.AssertNotError(t, err, "Unable to sign")
+	innerStr = inner.FullSerialize()
+	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+	outer = signRequest(t, innerStr, wfe.nonceService)
+
+	responseWriter.Body.Reset()
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Old JWK in inner payload doesn't match current JWK",
+		  "status": 400
+		}`)
+
+	inner, err = signer.Sign([]byte(`{"oldKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}}`))
+	test.AssertNotError(t, err, "Unable to sign")
+	innerStr = inner.FullSerialize()
+	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+	outer = signRequest(t, innerStr, wfe.nonceService)
+
+	responseWriter.Body.Reset()
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Request payload contained malformed new JWK",
+		  "status": 400
+		}`)
+
+	inner, err = signer.Sign([]byte(`{"oldKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}}`))
+	test.AssertNotError(t, err, "Unable to sign")
+	innerStr = inner.FullSerialize()
+	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+	outer = signRequest(t, innerStr, wfe.nonceService)
+
+	responseWriter.Body.Reset()
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "New JWK in inner payload doesn't match signing JWK",
+		  "status": 400
+		}`)
+
+	inner, err = signer.Sign([]byte(`{"oldKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"newKey":{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}}`))
+	test.AssertNotError(t, err, "Unable to sign")
+	innerStr = inner.FullSerialize()
+	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+	outer = signRequest(t, innerStr, wfe.nonceService)
+
+	responseWriter.Body.Reset()
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "id": 1,
+		  "key": {
+		    "kty": "RSA",
+		    "n": "uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w",
+		    "e": "AQAB"
+		  },
+		  "contact": [
+		    "mailto:person@mail.com"
+		  ],
+		  "agreement": "http://example.invalid/terms",
+		  "initialIp": "",
+		  "createdAt": "0001-01-01T00:00:00Z",
+		  "Status": "valid"
 		}`)
 }

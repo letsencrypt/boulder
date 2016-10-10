@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/square/go-jose"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -825,6 +827,8 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	return true
 }
 
+var emptyKey jose.JsonWebKey
+
 // MergeUpdate copies a subset of information from the input Registration
 // into the Registration r. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -847,6 +851,12 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		r.Agreement = input.Agreement
 		changed = true
 	}
+
+	if features.Enabled(features.AllowKeyRollover) && input.Key != emptyKey && input.Key != r.Key {
+		r.Key = input.Key
+		changed = true
+	}
+
 	return changed
 }
 
