@@ -256,7 +256,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	}
 
 	reg = core.Registration{
-		Key: init.Key,
+		Key:    init.Key,
+		Status: core.StatusValid,
 	}
 	_ = mergeUpdate(&reg, init)
 
@@ -1071,6 +1072,18 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 	}
 
 	ra.stats.Inc("FinalizedAuthorizations", 1)
+	return nil
+}
+
+// DeactivateRegistration deactivates a valid registration
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	if reg.Status != core.StatusValid {
+		return core.MalformedRequestError("Only valid registrations can be deactivated")
+	}
+	err := ra.SA.DeactivateRegistration(ctx, reg.ID)
+	if err != nil {
+		return core.InternalServerError(err.Error())
+	}
 	return nil
 }
 

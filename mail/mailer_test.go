@@ -159,22 +159,12 @@ func disconnectHandler(closeFirst int) connHandler {
 }
 
 func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
-	const port = "16632"
 	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
-	m := New(
-		"localhost",
-		port,
-		"user@example.com",
-		"paswd",
-		*fromAddress,
-		log,
-		stats,
-		time.Second*2, time.Second*10)
-
-	l, err := net.Listen("tcp", ":"+port)
+	// Listen on port 0 to get any free available port
+	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -184,6 +174,21 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 			t.Errorf("listen.Close: %s", err)
 		}
 	}
+
+	// We can look at the listener Addr() to figure out which free port was
+	// assigned by the operating system
+	addr := l.Addr().(*net.TCPAddr)
+	port := addr.Port
+
+	m := New(
+		"localhost",
+		fmt.Sprintf("%d", port),
+		"user@example.com",
+		"paswd",
+		*fromAddress,
+		log,
+		stats,
+		time.Second*2, time.Second*10)
 
 	return m, l, cleanUp
 }

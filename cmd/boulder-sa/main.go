@@ -7,6 +7,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -20,6 +21,8 @@ type config struct {
 		cmd.DBConfig
 
 		MaxConcurrentRPCServerRequests int64
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -38,6 +41,9 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(c.SA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	go cmd.DebugServer(c.SA.DebugAddr)
 

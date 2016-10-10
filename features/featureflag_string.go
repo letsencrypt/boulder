@@ -4,9 +4,9 @@ package features
 
 import "fmt"
 
-const _FeatureFlag_name = "unused"
+const _FeatureFlag_name = "unusedIDNASupportAllowAccountDeactivationCertStatusOptimizationsMigrated"
 
-var _FeatureFlag_index = [...]uint8{0, 6}
+var _FeatureFlag_index = [...]uint8{0, 6, 17, 41, 72}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
