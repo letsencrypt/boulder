@@ -44,7 +44,7 @@
     },
     "features": {
       "IDNASupport": true,
-      "AllowKeyRollover": true,
+      "AllowKeyRollover": true
     }
   },
 
