@@ -70,6 +70,9 @@ type RegistrationAuthority interface {
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
 	// [WebFrontEnd]
+	DeactivateRegistration(ctx context.Context, reg Registration) error
+
+	// [WebFrontEnd]
 	DeactivateAuthorization(ctx context.Context, auth Authorization) error
 
 	// [AdminRevoker]
@@ -117,6 +120,7 @@ type StorageAdder interface {
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
+	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 }
 

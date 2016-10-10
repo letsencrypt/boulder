@@ -8,6 +8,9 @@
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "reuseValidAuthz": true,
+    "authorizationLifetimeDays": 90,
+    "pendingAuthorizationLifetimeDays": 7,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -48,8 +51,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 

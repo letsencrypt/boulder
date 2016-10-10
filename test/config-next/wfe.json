@@ -25,6 +25,9 @@
         "server": "SA.server",
         "rpcTimeout": "15s"
       }
+    },
+    "features": {
+      "AllowAccountDeactivation": true
     }
   },
 

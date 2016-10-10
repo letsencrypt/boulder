@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -30,7 +30,7 @@ func TestPurgeAuthzs(t *testing.T) {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 	defer cleanUp()
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 
 	p := expiredAuthzPurger{stats, log, fc, dbMap, 1}
 

@@ -21,6 +21,7 @@ import (
 	jose "github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -360,6 +361,15 @@ func TestGetValidAuthorizationsMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
+	// Enable the feature for the `CertStatusOptimizationsMigrated` flag so that
+	// adding a new certificate will populate the `certificateStatus.NotAfter`
+	// field correctly. This will let the unit test assertion for `NotAfter`
+	// pass provided everything is working as intended. Note: this must be done
+	// **before** the DbMap is created in `initSA()` or the feature flag won't be
+	// set correctly at the time the table maps are set up.
+	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
+	defer features.Reset()
+
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -382,6 +392,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
+	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
 
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
@@ -529,24 +540,22 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	serial := "000000000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
 
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
-	beforeStatus := certificateStatusObj.(*core.CertificateStatus)
-	test.AssertEquals(t, beforeStatus.Status, core.OCSPStatusGood)
+	certificateStatusObj, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertEquals(t, certificateStatusObj.Status, core.OCSPStatusGood)
 
 	fc.Add(1 * time.Hour)
 
 	err = sa.MarkCertificateRevoked(ctx, serial, revocation.KeyCompromise)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
-	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
-	afterStatus := certificateStatusObj.(*core.CertificateStatus)
+	certificateStatusObj, err = sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
-	if revocation.KeyCompromise != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, afterStatus.RevokedReason)
+	if revocation.KeyCompromise != certificateStatusObj.RevokedReason {
+		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, certificateStatusObj.RevokedReason)
 	}
-	if !fc.Now().Equal(afterStatus.RevokedDate) {
-		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
+	if !fc.Now().Equal(certificateStatusObj.RevokedDate) {
+		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), certificateStatusObj.RevokedDate)
 	}
 }
 
@@ -827,4 +836,20 @@ func TestDeactivateAuthorization(t *testing.T) {
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateAccount(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	err := sa.DeactivateRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }

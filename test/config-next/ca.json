@@ -4,6 +4,12 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": "localhost:8001",
+    "grpc": {
+      "address": "boulder:9093",
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem"
+    },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca2.pem"
@@ -120,6 +126,9 @@
         "server": "SA.server",
         "rpcTimeout": "15s"
       }
+    },
+    "features": {
+        "IDNASupport": true
     }
   },
 

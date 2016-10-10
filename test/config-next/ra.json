@@ -18,6 +18,13 @@
       "clientKeyPath": "test/grpc-creds/key.pem",
       "timeout": "90s"
     },
+    "caService": {
+      "serverAddresses": ["boulder:9093"],
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "90s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -34,6 +41,9 @@
         "server": "CA.server",
         "rpcTimeout": "15s"
       }
+    },
+    "features": {
+        "IDNASupport": true
     }
   },
 
