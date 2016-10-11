@@ -12,7 +12,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -220,8 +219,7 @@ func TestMain(m *testing.M) {
 }
 
 func newTestStats() metrics.Scope {
-	c, _ := statsd.NewNoopClient()
-	return metrics.NewStatsdScope(c, "fakesvc")
+	return metrics.NewNoopScope()
 }
 
 var testStats = newTestStats()
@@ -308,8 +306,6 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	obj.LookupIPv6 = true
-
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
@@ -369,33 +365,6 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
 	expectedErr := DNSError{dns.TypeA, hostname, nil, dns.RcodeRefused}
-	if err, ok := err.(*DNSError); !ok || *err != expectedErr {
-		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
-	}
-
-	obj.LookupIPv6 = false
-
-	// Single IPv6 address
-	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
-	t.Logf("v6.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Should not be error")
-	test.Assert(t, len(ip) == 0, "Should have no IPs")
-
-	// Both IPv6 and IPv4 address
-	ip, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
-	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Should not be error")
-	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("127.0.0.1")
-	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
-
-	// IPv6 success, IPv4 error
-	hostname = "v4error.letsencrypt.org"
-	ip, err = obj.LookupHost(context.Background(), hostname)
-	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertError(t, err, "Should be error")
-	test.Assert(t, len(ip) == 0, "Should have 0 IPs")
-	expectedErr = DNSError{dns.TypeA, hostname, nil, dns.RcodeNotImplemented}
 	if err, ok := err.(*DNSError); !ok || *err != expectedErr {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
 	}

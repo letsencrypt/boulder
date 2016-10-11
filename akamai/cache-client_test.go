@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestConstructAuthHeader(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	cpc, err := NewCachePurgeClient(
 		"https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
 		"akab-client-token-xxx-xxxxxxxxxxxxxxxx",

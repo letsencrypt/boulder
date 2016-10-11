@@ -41,7 +41,8 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cover &
+  golang.org/x/tools/cover \
+  golang.org/x/tools/cmd/stringer &
 
 wait
 
@@ -55,8 +56,9 @@ git clone https://github.com/SUNET/pkcs11-proxy && \
 
 # Setup SoftHSM
 echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-token --label token_label --so-pin 1234
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+echo "1:/var/lib/softhsm/slot1.db" >> /etc/softhsm/softhsm.conf
+softhsm --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
+softhsm --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
 gem install fpm
 

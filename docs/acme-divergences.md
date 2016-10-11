@@ -33,7 +33,7 @@ in the registration object (nor the endpoints the latter two link to).
 
 ## [Section 6.1.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1.3)
 
-Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of application requirements Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
 
 ## [Section 6.1.4.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1.4)
 
@@ -47,17 +47,24 @@ Boulder does not allow `tel` URIs in the registrations `contact` list.
 
 Boulder does not implement key roll-over.
 
-## [Section 6.2.2.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.2.2)
-
-Boulder does not implement account deactivation.
-
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3)
 
-Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of application requirements Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
 
 ## [Section 6.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.5)
 
 Boulder does not implement the `reason` field for the `revoke-cert` endpoint, `unspecified` (0) from [RFC3280 Section 5.3.1](https://tools.ietf.org/html/rfc3280#section-5.3.1) is used for all requests.
+
+## [Section 6.6.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.6)
+
+Boulder considers the following keys authorized to revoke a certificate:
+
+1. The account key that initially created the certificate being revoked
+2. The public key in the certificate being revoked
+
+Boulder does not allow for revocation of a certificate by an account key that is
+authorized for all DNS names in a certificate when that account did not create
+the certificate.
 
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3)
 

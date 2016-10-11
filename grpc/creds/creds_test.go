@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -58,7 +60,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnA.Close()
 	}()
 
-	conn, _, err := tc.ClientHandshake("A:2020", rawConnA, time.Second)
+	conn, _, err := tc.ClientHandshake(context.Background(), "A:2020", rawConnA)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
@@ -71,7 +73,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	conn, _, err = tc.ClientHandshake("B:3030", rawConnB, time.Second)
+	conn, _, err = tc.ClientHandshake(context.Background(), "B:3030", rawConnB)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
@@ -82,11 +84,16 @@ func TestTransportCredentials(t *testing.T) {
 		_ = ln.Close()
 	}()
 	addrC := ln.Addr().String()
+	stop := make(chan struct{}, 1)
 	go func() {
 		for {
-			_, err := ln.Accept()
-			test.AssertNotError(t, err, "ln.Accept failed")
-			time.Sleep(time.Second)
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = ln.Accept()
+				time.Sleep(2 * time.Millisecond)
+			}
 		}
 	}()
 
@@ -96,8 +103,12 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	conn, _, err = tc.ClientHandshake("A:2020", rawConnC, time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	conn, _, err = tc.ClientHandshake(ctx, "A:2020", rawConnC)
 	test.AssertError(t, err, "tc.ClientHandshake didn't timeout")
-	test.AssertEquals(t, err.Error(), "boulder/grpc/creds: TLS handshake timed out")
+	test.AssertEquals(t, err.Error(), "boulder/grpc/creds: context deadline exceeded")
 	test.Assert(t, conn == nil, "tc.ClientHandshake returned a non-nil net.Conn on failure")
+
+	stop <- struct{}{}
 }

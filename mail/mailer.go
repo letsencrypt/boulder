@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
@@ -57,7 +56,7 @@ type MailerImpl struct {
 	client        smtpClient
 	clk           clock.Clock
 	csprgSource   idGenerator
-	stats         *metrics.StatsdScope
+	stats         metrics.Scope
 	reconnectBase time.Duration
 	reconnectMax  time.Duration
 }
@@ -113,7 +112,7 @@ func New(
 	password string,
 	from mail.Address,
 	logger blog.Logger,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	reconnectBase time.Duration,
 	reconnectMax time.Duration) *MailerImpl {
 	return &MailerImpl{
@@ -127,7 +126,7 @@ func New(
 		from:          from,
 		clk:           clock.Default(),
 		csprgSource:   realSource{},
-		stats:         metrics.NewStatsdScope(stats, "Mailer"),
+		stats:         stats.NewScope("Mailer"),
 		reconnectBase: reconnectBase,
 		reconnectMax:  reconnectMax,
 	}
@@ -136,8 +135,7 @@ func New(
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
-	statter, _ := statsd.NewNoopClient(nil)
-	stats := metrics.NewStatsdScope(statter)
+	stats := metrics.NewNoopScope()
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,

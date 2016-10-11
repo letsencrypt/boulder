@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -350,9 +351,12 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	}
 
 	// If the ID (shifted by 1 to account for zero indexing) is within the range
-	// of the DB list, return the DB entry
-	if (id-1) > 0 || int(id-1) < len(db) {
+	// of the DB list, return the DB entry by assigning to the `outputPtr`.
+	// Otherwise, return that no rows were found
+	if (id-1) >= 0 && int(id-1) < len(db) {
 		*outputPtr = db[id-1]
+	} else {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -371,6 +375,11 @@ func TestResolveEmails(t *testing.T) {
 		},
 		regID{
 			ID: 3,
+		},
+		// This registration ID deliberately doesn't exist in the mock data to make
+		// sure this case is handled gracefully
+		regID{
+			ID: 999,
 		},
 	}
 	contactsJSON, err := json.Marshal(regs)
