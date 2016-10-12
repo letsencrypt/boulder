@@ -25,7 +25,7 @@ func cleanMethod(m string, trimService bool) string {
 		}
 		return s[len(s)-1]
 	}
-	return m
+	return strings.Replace(m, "-", "_", -1)
 }
 
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {

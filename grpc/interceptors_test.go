@@ -66,18 +66,18 @@ func TestClientInterceptor(t *testing.T) {
 	stats := metrics.NewStatsdScope(statter, "fake", "gRPCClient")
 	ci := clientInterceptor{stats, fc}
 
-	statter.EXPECT().Inc("fake.gRPCClient.service-test.Calls", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-test.InProgress", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().TimingDuration("fake.gRPCClient.service-test.Latency", time.Second, float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-test.InProgress", int64(-1), float32(1.0)).Return(nil)
+	statter.EXPECT().Inc("fake.gRPCClient.service_test.Calls", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_test.InProgress", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().TimingDuration("fake.gRPCClient.service_test.Latency", time.Second, float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_test.InProgress", int64(-1), float32(1.0)).Return(nil)
 	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	statter.EXPECT().Inc("fake.gRPCClient.service-brokeTest.Calls", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-brokeTest.InProgress", int64(1), float32(1.0)).Return(nil)
-	statter.EXPECT().TimingDuration("fake.gRPCClient.service-brokeTest.Latency", time.Duration(0), float32(1.0)).Return(nil)
-	statter.EXPECT().GaugeDelta("fake.gRPCClient.service-brokeTest.InProgress", int64(-1), float32(1.0)).Return(nil)
-	statter.EXPECT().Inc("fake.gRPCClient.service-brokeTest.Failed", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().Inc("fake.gRPCClient.service_brokeTest.Calls", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_brokeTest.InProgress", int64(1), float32(1.0)).Return(nil)
+	statter.EXPECT().TimingDuration("fake.gRPCClient.service_brokeTest.Latency", time.Duration(0), float32(1.0)).Return(nil)
+	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_brokeTest.InProgress", int64(-1), float32(1.0)).Return(nil)
+	statter.EXPECT().Inc("fake.gRPCClient.service_brokeTest.Failed", int64(1), float32(1.0)).Return(nil)
 	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
@@ -88,7 +88,7 @@ func TestCleanMethod(t *testing.T) {
 		out          string
 		stripService bool
 	}{
-		{"-ServiceName-MethodName", "ServiceName-MethodName", false},
+		{"-ServiceName-MethodName", "ServiceName_MethodName", false},
 		{"-ServiceName-MethodName", "MethodName", true},
 		{"--MethodName", "MethodName", true},
 		{"--MethodName", "MethodName", true},
