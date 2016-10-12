@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version b4a941a (Fri Aug 26 16:29:25 2016)"
+const defaultListVersion = "PSL version 1a8f371 (Wed Oct 12 01:25:48 2016)"
 
 func init() {
-	r := [8041]Rule{
+	r := [8059]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -3918,8 +3918,15 @@ func init() {
 		{1, "edu.my", 2, false},
 		{1, "mil.my", 2, false},
 		{1, "name.my", 2, false},
-		{2, "mz", 2, false},
-		{3, "teledata.mz", 2, false},
+		{1, "mz", 1, false},
+		{1, "ac.mz", 2, false},
+		{1, "adv.mz", 2, false},
+		{1, "co.mz", 2, false},
+		{1, "edu.mz", 2, false},
+		{1, "gov.mz", 2, false},
+		{1, "mil.mz", 2, false},
+		{1, "net.mz", 2, false},
+		{1, "org.mz", 2, false},
 		{1, "na", 1, false},
 		{1, "info.na", 2, false},
 		{1, "pro.na", 2, false},
@@ -7288,6 +7295,7 @@ func init() {
 		{1, "beep.pl", 2, true},
 		{2, "compute.estate", 3, true},
 		{2, "alces.network", 3, true},
+		{2, "alwaysdata.net", 3, true},
 		{1, "cloudfront.net", 2, true},
 		{1, "compute.amazonaws.com", 3, true},
 		{1, "ap-northeast-1.compute.amazonaws.com", 4, true},
@@ -7763,6 +7771,9 @@ func init() {
 		{1, "fbxos.fr", 2, true},
 		{1, "freebox-os.fr", 2, true},
 		{1, "freeboxos.fr", 2, true},
+		{1, "futuremailing.at", 2, true},
+		{2, "ex.ortsinfo.at", 4, true},
+		{2, "kunden.ortsinfo.at", 4, true},
 		{1, "service.gov.uk", 3, true},
 		{1, "github.io", 2, true},
 		{1, "githubusercontent.com", 2, true},
@@ -7857,6 +7868,7 @@ func init() {
 		{1, "googleapis.com", 2, true},
 		{1, "googlecode.com", 2, true},
 		{1, "pagespeedmobilizer.com", 2, true},
+		{1, "publishproxy.com", 2, true},
 		{1, "withgoogle.com", 2, true},
 		{1, "withyoutube.com", 2, true},
 		{1, "hashbang.sh", 2, true},
@@ -7870,6 +7882,7 @@ func init() {
 		{2, "triton.zone", 3, true},
 		{2, "cns.joyent.com", 4, true},
 		{1, "js.org", 2, true},
+		{1, "knightpoint.systems", 2, true},
 		{1, "co.krd", 2, true},
 		{1, "edu.krd", 2, true},
 		{2, "magentosite.cloud", 3, true},
@@ -7972,6 +7985,7 @@ func init() {
 		{1, "zapto.org", 2, true},
 		{1, "nyc.mn", 2, true},
 		{1, "nid.io", 2, true},
+		{1, "opencraft.hosting", 2, true},
 		{1, "operaunite.com", 2, true},
 		{1, "outsystemscloud.com", 2, true},
 		{1, "ownprovider.com", 2, true},
@@ -7999,6 +8013,9 @@ func init() {
 		{1, "rackmaze.net", 2, true},
 		{1, "rhcloud.com", 2, true},
 		{1, "hzc.io", 2, true},
+		{1, "wellbeingzone.eu", 2, true},
+		{1, "ptplus.fit", 2, true},
+		{1, "wellbeingzone.co.uk", 3, true},
 		{1, "sandcats.io", 2, true},
 		{1, "logoip.de", 2, true},
 		{1, "logoip.com", 2, true},
@@ -8030,6 +8047,7 @@ func init() {
 		{1, "i234.me", 2, true},
 		{1, "myds.me", 2, true},
 		{1, "synology.me", 2, true},
+		{1, "taifun-dns.de", 2, true},
 		{1, "gda.pl", 2, true},
 		{1, "gdansk.pl", 2, true},
 		{1, "gdynia.pl", 2, true},
