@@ -819,7 +819,6 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 				return results[0], results[1], err
 			}
 
-			//
 			if table == "pendingAuthorizations" {
 				results[0] += numRevoked
 			} else if table == "authz" {
