@@ -48,7 +48,7 @@ func TestStatusIsPending(t *testing.T) {
 	for _, c := range testCases {
 		result := statusIsPending(c.status)
 		if result != c.pending {
-			t.Errorf("statusIsPending error. statusIsPending(%#v) = %s. Expected %s",
+			t.Errorf("statusIsPending error. statusIsPending(%#v) = %v. Expected %v",
 				c.status, result, c.pending)
 		}
 	}
