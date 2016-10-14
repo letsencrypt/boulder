@@ -602,12 +602,10 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 }
 
 // NewPendingAuthorization stores a new Pending Authorization
-func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	var result core.Authorization
-
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (output core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return result, err
+		return
 	}
 
 	authz.ID = core.NewToken()
@@ -629,14 +627,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
 		err = Rollback(tx, err)
-		return result, err
+		return
 	}
 
 	for i, c := range authz.Challenges {
 		challModel, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
 			err = Rollback(tx, err)
-			return result, err
+			return core.Authorization{}, err
 		}
 		// Magic happens here: Gorp will modify challModel, setting challModel.ID
 		// to the auto-increment primary key. This is important because we want
@@ -646,47 +644,47 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		err = tx.Insert(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return result, err
+			return core.Authorization{}, err
 		}
 		challenge, err := modelToChallenge(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return result, err
+			return core.Authorization{}, err
 		}
 		authz.Challenges[i] = challenge
 	}
 
 	err = tx.Commit()
-	result = pendingAuthz.Authorization
-	result.Challenges = authz.Challenges
-	return result, err
+	output = pendingAuthz.Authorization
+	output.Challenges = authz.Challenges
+	return
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
+func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return err
+		return
 	}
 
 	// If the provided authz isn't Status: pending that's a problem, return early.
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use FinalizeAuthorization() to update to a final status")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	// If the existing authz row isn't pending, we can't update it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot update a non-pending authorization")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	var updateAuth interface{}
@@ -701,42 +699,42 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		// Should never happen - we only have two fixed authz tables!
 		err = errors.New("Internal error. Table mismatch updating authz")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	_, err = tx.Update(updateAuth)
 	if err != nil {
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	err = tx.Commit()
-	return err
+	return
 }
 
 // FinalizeAuthorization converts a Pending Authorization to a final one
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return err
+		return
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	// If the existing authz from the DB isn't currently pending, we can't finalize it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot finalize an authorization that is not pending")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	// If the authz update is to a pending status, we can't do that! Use
@@ -744,7 +742,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize an authorization to a non-final status")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	// If we found a pending authz in the pendingAuthorizations table, follow
@@ -757,13 +755,13 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		err = tx.Insert(newRow)
 		if err != nil {
 			err = Rollback(tx, err)
-			return err
+			return
 		}
 
 		_, err = tx.Delete(oldRow)
 		if err != nil {
 			err = Rollback(tx, err)
-			return err
+			return
 		}
 	} else if table == "authz" {
 		// Otherwise, for a pending authz found in the authz table we can just
@@ -772,14 +770,14 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		_, err = tx.Update(updatedRow)
 		if err != nil {
 			err = Rollback(tx, err)
-			return err
+			return
 		}
 	} else {
 		// Should not happen! There are only two tables defined
 		// `authorizationTables` from `sa/authz.go`
 		err = errors.New("Internal error finalizing authz from unknown table")
 		err = Rollback(tx, err)
-		return err
+		return
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
