@@ -880,6 +880,8 @@ func TestTotalCertRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
+	ra.updateIssuedCount()
+	fmt.Println(ra.rlPolicies.TotalCertificates().Threshold)
 
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
