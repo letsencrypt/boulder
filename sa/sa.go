@@ -950,21 +950,17 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 	 * [0] - https://github.com/letsencrypt/boulder/issues/2162
 	 */
 	for _, table := range authorizationTables {
-		stmtArgs := []interface{}{regID, ssa.clk.Now()}
-		qmarks := []string{}
-		for _, status := range pendingStatuses {
-			stmtArgs = append(stmtArgs, string(status))
-			qmarks = append(qmarks, "?")
-		}
-		statusStmt := fmt.Sprintf("(%s)", strings.Join(qmarks, ","))
-
 		var tableCount int64
 		err := ssa.dbMap.SelectOne(&tableCount, fmt.Sprintf(`
 		SELECT COUNT(1) FROM %s
 		WHERE registrationID = ?
 		AND expires > ?
-		AND status IN %s`, table, statusStmt),
-			stmtArgs...)
+		AND status IN (?, ?, ?)`, table),
+			regID,
+			ssa.clk.Now(),
+			string(core.StatusPending),
+			string(core.StatusProcessing),
+			string(core.StatusUnknown))
 		if err != nil {
 			return int(count), nil
 		}
