@@ -137,6 +137,22 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	}
 }
 
+func TestPendingStatusList(t *testing.T) {
+	expectedPendingStatuses := []core.AcmeStatus{
+		core.StatusPending,
+		core.StatusProcessing,
+		core.StatusUnknown,
+	}
+	for i, status := range pendingStatuses {
+		if expectedPendingStatuses[i] != status {
+			errFormat := "pendingStatuses was updated. This test and " +
+				"`CountPendingAuthorizations` must be updated. Expected %#v at " +
+				"pendingStatuses[%d], got %#v"
+			t.Errorf(errFormat, expectedPendingStatuses[i], i, status)
+		}
+	}
+}
+
 func TestCountPendingAuthorizations(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
