@@ -2023,7 +2023,7 @@ func TestKeyRollover(t *testing.T) {
 		responseWriter.Body.String(),
 		`{
 		  "type": "urn:acme:error:malformed",
-		  "detail": "New JWK in inner payload doesn't match signing JWK",
+		  "detail": "New JWK in inner payload doesn't match key used to sign inner JWS",
 		  "status": 400
 		}`)
 

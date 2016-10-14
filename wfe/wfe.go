@@ -2,7 +2,6 @@ package wfe
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -353,7 +352,7 @@ const (
 	unknownKey = "No registration exists matching provided key"
 )
 
-func verifyJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+func extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
 		return nil, nil, errors.New("Parse error reading JWS")
@@ -424,7 +423,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	submittedKey, parsedJws, err := verifyJWSKey(body)
+	submittedKey, parsedJws, err := extractJWSKey(body)
 	if err != nil {
 		logEvent.AddError(err.Error())
 		return nil, nil, reg, probs.Malformed(err.Error())
@@ -1409,11 +1408,6 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
-type rolloverRequest struct {
-	OldKey jose.JsonWebKey
-	NewKey jose.JsonWebKey
-}
-
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, oldKey, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
@@ -1424,7 +1418,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Parse as JWS
-	newKey, parsedJWS, err := verifyJWSKey(string(body))
+	newKey, parsedJWS, err := extractJWSKey(string(body))
 	if err != nil {
 		logEvent.AddError(err.Error())
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)
@@ -1436,12 +1430,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		if n > 100 {
 			n = 100
 		}
-		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
+		logEvent.AddError("verification of the inner JWS with the inner JWK failed: %v; body: %s", err, body[:n])
 		wfe.sendError(response, logEvent, probs.Malformed("JWS verification error"), err)
 		return
 	}
-	var ror rolloverRequest
-	err = json.Unmarshal(payload, &ror)
+	var rolloverRequest struct {
+		OldKey jose.JsonWebKey
+		NewKey jose.JsonWebKey
+	}
+	err = json.Unmarshal(payload, &rolloverRequest)
 	if err != nil {
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Request payload did not parse as JSON"), nil)
@@ -1449,38 +1446,39 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Check body contains the correct keys
-	pokThumb, err := ror.OldKey.Thumbprint(crypto.SHA256)
+	pok, err := x509.MarshalPKIXPublicKey(rolloverRequest.OldKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to compute fingerprint of old key in inner payload: %s", err)
+		logEvent.AddError("unable to marshal old key in inner payload: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed old JWK"), nil)
 		return
 	}
-	okThumb, err := oldKey.Thumbprint(crypto.SHA256)
+	ok, err := x509.MarshalPKIXPublicKey(oldKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to compute fingerprint of registration key: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compute fingerprint of registration key"), err)
+		logEvent.AddError("unable to marshal registration key: %s", err)
+		fmt.Println(err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to marshal registration key"), nil)
 		return
 	}
-	if bytes.Compare(pokThumb, okThumb) != 0 {
+	if bytes.Compare(pok, ok) != 0 {
 		logEvent.AddError("old key in inner payload doesn't match registration key")
 		wfe.sendError(response, logEvent, probs.Malformed("Old JWK in inner payload doesn't match current JWK"), nil)
 		return
 	}
-	pnkThumb, err := ror.NewKey.Thumbprint(crypto.SHA256)
+	pnk, err := x509.MarshalPKIXPublicKey(rolloverRequest.NewKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to compute fingerprint of new key in inner payload: %s", err)
+		logEvent.AddError("unable to marshal new key in inner payload: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed new JWK"), nil)
 		return
 	}
-	nkThumb, err := newKey.Thumbprint(crypto.SHA256)
+	nk, err := x509.MarshalPKIXPublicKey(newKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to compute fingerprint of new key used to sign inner payload: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Request inner payload signed by malformed new JWK"), nil)
+		logEvent.AddError("unable to marshal new key used to sign inner payload: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Inner JWS payload signed by malformed JWK"), nil)
 		return
 	}
-	if bytes.Compare(pnkThumb, nkThumb) != 0 {
-		logEvent.AddError("new key in inner payload doesn't match key used to sign")
-		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match signing JWK"), nil)
+	if bytes.Compare(pnk, nk) != 0 {
+		logEvent.AddError("new key in inner payload doesn't match key used to sign inner JWS")
+		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
 		return
 	}
 
