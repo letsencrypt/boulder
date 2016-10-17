@@ -28,8 +28,6 @@ func (e LogEntryType) String() string {
 		return "X509LogEntryType"
 	case PrecertLogEntryType:
 		return "PrecertLogEntryType"
-	case XJSONLogEntryType:
-		return "XJSONLogEntryType"
 	}
 	panic(fmt.Sprintf("No string defined for LogEntryType constant value %d", e))
 }
@@ -38,7 +36,6 @@ func (e LogEntryType) String() string {
 const (
 	X509LogEntryType    LogEntryType = 0
 	PrecertLogEntryType LogEntryType = 1
-	XJSONLogEntryType   LogEntryType = 0x8000 // Experimental.  Don't rely on this!
 )
 
 // MerkleLeafType represents the MerkleLeafType enum from section 3.4 of the
@@ -241,7 +238,6 @@ type LogEntry struct {
 	Leaf     MerkleTreeLeaf
 	X509Cert *x509.Certificate
 	Precert  *Precertificate
-	JSONData []byte
 	Chain    []ASN1Cert
 }
 
@@ -317,7 +313,6 @@ type TimestampedEntry struct {
 	Timestamp    uint64
 	EntryType    LogEntryType
 	X509Entry    ASN1Cert
-	JSONData     []byte
 	PrecertEntry PreCert
 	Extensions   CTExtensions
 }
@@ -365,10 +360,4 @@ func (e sctError) Error() string {
 	default:
 		return "unknown error"
 	}
-}
-
-// AddJSONRequest represents the JSON request body sent ot the add-json CT
-// method.
-type AddJSONRequest struct {
-	Data interface{} `json:"data"`
 }
