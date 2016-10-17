@@ -116,10 +116,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["limit"] = batchSize
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
-		var certs []core.Certificate
-		_, err = c.dbMap.Select(
-			&certs,
-			fmt.Sprintf("SELECT %s FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit", sa.CertificateFields),
+		certs, err := sa.SelectCertificates(
+			c.dbMap.Select,
+			"WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit",
 			args,
 		)
 		if err != nil {

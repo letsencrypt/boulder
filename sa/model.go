@@ -12,23 +12,137 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
-const (
-	regV1Fields        string = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
-	regV2Fields        string = regV1Fields + ", status"
-	pendingAuthzFields string = "id, identifier, registrationID, status, expires, combinations, LockCol"
-	authzFields        string = "id, identifier, registrationID, status, expires, combinations"
-	sctFields          string = "id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol"
+type dbSelectOne func(interface{}, string, ...interface{}) error
+type dbSelect func(interface{}, string, ...interface{}) ([]interface{}, error)
 
-	// CertificateFields and CertificateStatusFields are also used by cert-checker and ocsp-updater
-	CertificateFields       string = "registrationID, serial, digest, der, issued, expires"
-	CertificateStatusFields string = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
+const regFieldsv2 = regFields + ", status"
 
-	// CertificateStatusFieldsv2 is used when the CertStatusOptimizationsMigrated
-	// feature flag is enabled and includes "notAfter" and "isExpired" fields
-	CertificateStatusFieldsv2 string = CertificateStatusFields + ", notAfter, isExpired"
-)
+func SelectRegistration(so dbSelectOne, q string, args ...interface{}) (*regModelv1, error) {
+	var model regModelv1
+	err := so(
+		&model,
+		"SELECT "+regFields+" FROM registrations "+q,
+		args...,
+	)
+	return &model, err
+}
+
+func SelectRegistrationv2(so dbSelectOne, q string, args ...interface{}) (*regModelv2, error) {
+	var model regModelv2
+	err := so(
+		&model,
+		"SELECT "+regFieldsv2+" FROM registrations "+q, args...)
+	return &model, err
+}
+
+func SelectPendingAuthz(so dbSelectOne, q string, args ...interface{}) (*pendingauthzModel, error) {
+	var model pendingauthzModel
+	err := so(
+		&model,
+		"SELECT id, identifier, registrationID, status, expires, combinations, LockCol FROM pendingAuthorizations "+q,
+		args...,
+	)
+	return &model, err
+}
+
+const authzFields = "id, identifier, registrationID, status, expires, combinations"
+
+func SelectAuthz(so dbSelectOne, q string, args ...interface{}) (*authzModel, error) {
+	var model authzModel
+	err := so(
+		&model,
+		"SELECT "+authzFields+" FROM authz "+q,
+		args...,
+	)
+	return &model, err
+}
+
+func SelectAuthzs(s dbSelect, q string, args ...interface{}) ([]*core.Authorization, error) {
+	var models []*core.Authorization
+	_, err := s(
+		&models,
+		"SELECT "+authzFields+" FROM authz "+q,
+		args...,
+	)
+	return models, err
+}
+
+func SelectSctReceipt(so dbSelectOne, q string, args ...interface{}) (core.SignedCertificateTimestamp, error) {
+	var model core.SignedCertificateTimestamp
+	err := so(
+		&model,
+		"SELECT id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol FROM sctReceipts "+q,
+		args...,
+	)
+	return model, err
+}
+
+const certFields = "registrationID, serial, digest, der, issued, expires"
+
+func SelectCertificate(so dbSelectOne, q string, args ...interface{}) (core.Certificate, error) {
+	var model core.Certificate
+	err := so(
+		&model,
+		"SELECT "+certFields+" FROM certificates "+q,
+		args...,
+	)
+	return model, err
+}
+
+func SelectCertificates(s dbSelect, q string, args map[string]interface{}) ([]core.Certificate, error) {
+	var models []core.Certificate
+	_, err := s(
+		&models,
+		"SELECT "+certFields+" FROM certificates "+q, args)
+	return models, err
+}
+
+const certStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+const certStatusFieldsv2 = certStatusFields + ", notAfter, isExpired"
+
+func SelectCertificateStatus(so dbSelectOne, q string, args ...interface{}) (certStatusModelv1, error) {
+	var model certStatusModelv1
+	err := so(
+		&model,
+		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
+		args...,
+	)
+	return model, err
+}
+
+func SelectCertificateStatusv2(so dbSelectOne, q string, args ...interface{}) (certStatusModelv2, error) {
+	var model certStatusModelv2
+	err := so(
+		&model,
+		"SELECT "+certStatusFieldsv2+" FROM certificateStatus "+q,
+		args...,
+	)
+	return model, err
+}
+
+func SelectCertificateStatuses(s dbSelect, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s(
+		&models,
+		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
+		args...,
+	)
+	return models, err
+}
+
+func SelectCertificateStatusesv2(s dbSelect, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s(
+		&models,
+		"SELECT "+certStatusFieldsv2+" FROM certificateStatus "+q,
+		args...,
+	)
+	return models, err
+}
 
 var mediumBlobSize = int(math.Pow(2, 24))
 
@@ -59,6 +173,30 @@ type regModelv1 struct {
 type regModelv2 struct {
 	regModelv1
 	Status string `db:"status"`
+}
+
+// We need two certStatus model structs, one for when boulder does *not* have
+// the 20160817143417_CertStatusOptimizations.sql migration applied
+// (certStatusModelv1) and one for when it does (certStatusModelv2)
+//
+// TODO(@cpu): Collapse into one struct once the migration has been applied
+//             & feature flag set.
+type certStatusModelv1 struct {
+	Serial                string            `db:"serial"`
+	SubscriberApproved    bool              `db:"subscriberApproved"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	OCSPResponse          []byte            `db:"ocspResponse"`
+	LockCol               int64             `json:"-"`
+}
+
+type certStatusModelv2 struct {
+	certStatusModelv1
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
 }
 
 // challModel is the description of a core.Challenge in the database

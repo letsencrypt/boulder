@@ -80,8 +80,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	var certObj core.Certificate
-	err = tx.SelectOne(&certObj, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", sa.CertificateFields), serial)
+	certObj, err := sa.SelectCertificate(tx.SelectOne, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
 		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
