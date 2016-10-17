@@ -328,8 +328,6 @@ def main():
                         help="run the certbot integration tests")
     parser.add_argument('--node', dest="run_node", action="store_true",
                         help="run the node client's integration tests")
-    parser.add_argument('--next-tests', dest="run_next_tests", action="store_true",
-                        help="run the integration tests that require using the test/config-next configuration files")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
@@ -359,7 +357,7 @@ def main():
         if int(submissionStr) > 0:
             expected_ct_submissions = int(submissionStr)+1
         next_tests = ""
-        if args.run_next_tests:
+        if os.environ.get("BOULDER_CONFIG_DIR", "") == "test/config-next":
             next_tests = "--next-tests"
         for chall_type in challenge_types:
             if run_node_test(domain, chall_type, expected_ct_submissions, next_tests) != 0:
