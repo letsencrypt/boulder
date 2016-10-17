@@ -725,9 +725,9 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	ra.tiMu.RLock()
+	defer ra.tiMu.RUnlock()
 	if totalCertLimits.Enabled() && ra.totalIssuedCount > 0 {
-		ra.tiMu.RLock()
-		defer ra.tiMu.RUnlock()
 		if ra.totalIssuedCount >= totalCertLimits.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
