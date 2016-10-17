@@ -31,7 +31,8 @@ var cliOptions = cli.parse({
   email:  ["email", "Email address", "string", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
   challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
-  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null]
+  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null],
+  nextTests: ["next-tests", "Run tests for functionality enabled in test/config-next configurations", "bool", false]
 });
 
 var state = {
@@ -58,6 +59,8 @@ var state = {
   certificateURL: "",
   certFile: cliOptions.certFile,
   keyFile: cliOptions.certKeyFile,
+
+  nextTests: cliOptions.nextTests,
 };
 
 function parseLink(link) {
@@ -103,6 +106,8 @@ getTerms
   |
 sendAgreement
   |
+rotateAccountKey
+  |
 getDomain
   |
 getChallenges
@@ -136,22 +141,23 @@ function makeKeyPair() {
     state.certPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
     console.log();
-    makeAccountKeyPair()
+    makeAccountKeyPair("account-key.pem", register)
   });
 }
 
-function makeAccountKeyPair() {
+function makeAccountKeyPair(keyName, callback) {
   console.log("Generating account key pair...");
-  child_process.exec("openssl genrsa -out account-key.pem 2048", function (error, stdout, stderr) {
-    if (error) {
-      console.log(error);
-      process.exit(1);
-    }
-    state.accountKeyPair = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
-    state.acme = new Acme(state.accountKeyPair);
+    child_process.exec("openssl genrsa -out " + keyName + " 2048", function (error, stdout, stderr) {
+        if (error) {
+            console.log(error);
+            process.exit(1);
+        }
 
-    register();
-  });
+        state.accountKeyPair = cryptoUtil.importPemPrivateKey(fs.readFileSync(keyName));
+        state.acme = new Acme(state.accountKeyPair);
+
+        callback();
+    });
 }
 
 function register() {
@@ -200,8 +206,35 @@ function sendAgreement(termsURL) {
         console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
       } else {
-        getChallenges({domain: state.domains.pop()});
+          if (state.nextTests) {
+              rotateAccountKey();
+          } else {
+              getChallenges({domain: state.domains.pop()});
+          }
       }
+    });
+}
+
+function rotateAccountKey() {
+    // Make a new account key
+    var oldAcme = state.acme;
+    makeAccountKeyPair("new-account-key.pem", function() {
+        var payload = JSON.stringify({
+            oldKey: oldAcme.privateKey.publicKey,
+            newKey: state.acme.privateKey.publicKey,
+        }, null, 2)
+        var signed = cryptoUtil.generateSignature(state.acme.privateKey, new Buffer(payload), oldAcme.nonces.shift());
+        signed.resource = "key-change"
+        oldAcme.post("http://boulder:4000/acme/key-change", signed, function(err, resp, body) {
+            if (err || Math.floor(resp.statusCode / 100) != 2) {
+                console.log(body);
+                console.log("error: " + err);
+                console.log("POST to /acme/key-change failed, aborting.");
+            process.exit(1)
+            }
+
+            getChallenges({domain: state.domains.pop()});
+        });
     });
 }
 
@@ -426,7 +459,6 @@ function saveFiles() {
   // XXX: Explicitly exit, since something's tenacious here
   process.exit(0);
 }
-
 
 // BEGIN
 main();

@@ -169,7 +169,7 @@ def verify_ct_submission(expectedSubmissions, url):
         die(ExitStatus.CTFailure)
     return 0
 
-def run_node_test(domain, chall_type, expected_ct_submissions):
+def run_node_test(domain, chall_type, expected_ct_submissions, run_next):
     email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -177,9 +177,9 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email %s --domains %s \
-          --certKey %s --cert %s --challType %s && \
+          --certKey %s --cert %s --challType %s %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
+        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem, run_next),
         shell=True, cwd=JS_DIR).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
@@ -328,10 +328,12 @@ def main():
                         help="run the certbot integration tests")
     parser.add_argument('--node', dest="run_node", action="store_true",
                         help="run the node client's integration tests")
+    parser.add_argument('--next-tests', dest="run_next_tests", action="store_true",
+                        help="run the integration tests that require using the test/config-next configuration files")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_node=False)
+    parser.set_defaults(run_all=False, run_certbot=False, run_node=False, run_next_tests=False)
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_node or args.custom is not None):
@@ -356,16 +358,19 @@ def main():
         submissionStr = resp.read()
         if int(submissionStr) > 0:
             expected_ct_submissions = int(submissionStr)+1
+        next_tests = ""
+        if args.run_next_tests:
+            next_tests = "--next-tests"
         for chall_type in challenge_types:
-            if run_node_test(domain, chall_type, expected_ct_submissions) != 0:
+            if run_node_test(domain, chall_type, expected_ct_submissions, next_tests) != 0:
                 die(ExitStatus.NodeFailure)
             expected_ct_submissions += 1
 
-        if run_node_test("good-caa-reserved.com", challenge_types[0], expected_ct_submissions) != 0:
+        if run_node_test("good-caa-reserved.com", challenge_types[0], expected_ct_submissions, next_tests) != 0:
             print("\nDidn't issue certificate for domain with good CAA records")
             die(ExitStatus.NodeFailure)
 
-        if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
+        if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions, next_tests) != ISSUANCE_FAILED:
             print("\nIssused certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
