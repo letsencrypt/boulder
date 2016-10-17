@@ -688,7 +688,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	var updateAuth interface{}
-	if table == "pendingAuthorization" {
+	if table == "pendingAuthorizations" {
 		// If the authz came from the legacy pending table, use
 		// a `pendingAuthzModel` as the `updateAuth`.
 		updateAuth = &pendingauthzModel{Authorization: authz}
