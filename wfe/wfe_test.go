@@ -1453,6 +1453,8 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
@@ -1554,6 +1556,23 @@ func TestRegistration(t *testing.T) {
 	links = responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
+	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with correct registration key
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `","key":{"kty": "RSA","n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e": "AQAB"}}`))
+	test.AssertNotError(t, err, "Couldn't sign")
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", result.FullSerialize()))
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with wrong registration key
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `","key":{"kty": "RSA","n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e": "AQAC"}}`))
+	test.AssertNotError(t, err, "Couldn't sign")
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("1", result.FullSerialize()))
+	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
+	test.AssertContains(t, responseWriter.Body.String(), "Key can only be changed using the /acme/key-change endpoint")
 	responseWriter.Body.Reset()
 }
 

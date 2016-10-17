@@ -1158,16 +1158,35 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
+	// If key rollover has been enabled people may try to POST a different key
+	// in the registration update body, if they do so and the key doesn't match
+	// the current registration key that we are going to overwrite the update key
+	// with below then throw an error informing them of the proper endpoint for
+	// key rollover.
+	if features.Enabled(features.AllowKeyRollover) && update.Key.Key != nil {
+		crk, err := x509.MarshalPKIXPublicKey(currReg.Key.Key)
+		if err != nil {
+			logEvent.AddError("unable to marshal registration key: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to marshal registration key"), nil)
+			return
+		}
+		urk, err := x509.MarshalPKIXPublicKey(update.Key.Key)
+		if err != nil {
+			logEvent.AddError("unable to marshal registration key in POST body: %s", err)
+			wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal registration key in POST body"), nil)
+			return
+		}
+		if bytes.Compare(urk, crk) != 0 {
+			msg := "Key can only be changed using the /acme/key-change endpoint"
+			logEvent.AddError(msg)
+			wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+			return
+		}
+	}
 	// Registration objects contain a JWK object, which must be non-nil. We know
 	// the key of the updated registration object is going to be the same as the
 	// key of the current one, so we set it here. This ensures we can cleanly
 	// serialize the update as JSON to send via AMQP to the RA.
-	if features.Enabled(features.AllowKeyRollover) && update.Key.Key != nil && update.Key.Key != currReg.Key.Key {
-		msg := "Key can only be changed using the /acme/key-change endpoint"
-		logEvent.AddError(msg)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
-		return
-	}
 	update.Key = currReg.Key
 
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
@@ -1453,7 +1472,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	ok, err := x509.MarshalPKIXPublicKey(oldKey.Key)
 	if err != nil {
 		logEvent.AddError("unable to marshal registration key: %s", err)
-		fmt.Println(err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to marshal registration key"), nil)
 		return
 	}
