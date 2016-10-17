@@ -122,7 +122,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("policy forbids issuing for: bad-name.com"),
+			errors.New("policy forbids issuing for: \"bad-name.com\""),
 		},
 		{
 			signedReqWithEmailAddress,

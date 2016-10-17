@@ -84,7 +84,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		}
 	}
 	if len(badNames) > 0 {
-		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+		return fmt.Errorf("policy forbids issuing for: %q", strings.Join(badNames, ", "))
 	}
 	return nil
 }
