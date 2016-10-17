@@ -179,7 +179,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions, run_next):
         node test.js --email %s --domains %s \
           --certKey %s --cert %s --challType %s %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem, run_next),
+        ''' % (email_addr, domain, key_file, cert_file, chall_type, run_next, cert_file, cert_file_pem),
         shell=True, cwd=JS_DIR).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
