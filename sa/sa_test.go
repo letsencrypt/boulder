@@ -163,14 +163,37 @@ func TestCountPendingAuthorizations(t *testing.T) {
 		RegistrationID: reg.ID,
 		Expires:        &expires,
 	}
+	classicPendingAuthz := core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: reg.ID,
+		Expires:        &expires,
+		Status:         core.StatusPending,
+	}
 
-	pendingAuthz, err := sa.NewPendingAuthorization(ctx, pendingAuthz)
+	// Add one pending authz to the "pendingAuthorizations" table
+	oldStylePendingAuthz := pendingauthzModel{Authorization: classicPendingAuthz}
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
+	err = tx.Insert(&oldStylePendingAuthz)
+	if err != nil {
+		err = Rollback(tx, err)
+		t.Fatalf("Failed to insert pendingAuthorizations table test authz: %#v\n", err)
+	}
+	_ = tx.Commit()
+
+	// Add one pending authz to the "authz" table
+	pendingAuthz, err = sa.NewPendingAuthorization(ctx, pendingAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+
+	// Count the pending authz's from all tables
 	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count, 2)
 
+	// Advance the clock
 	fc.Add(2 * time.Hour)
+	// At this point a recount should be zero since the existing two pending
+	// authz's have expired out
 	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 0)
@@ -186,6 +209,14 @@ func TestAddAuthorization(t *testing.T) {
 	PA, err := sa.NewPendingAuthorization(ctx, PA)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
+
+	// Check that the correct table was used for the new PA
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
+	defer tx.Commit()
+	_, table, err := getAuthz(tx, PA.ID)
+	test.AssertNotError(t, err, fmt.Sprintf("unexpected error calling getAuthz(%s)", PA.ID))
+	test.AssertEquals(t, table, "authz")
 
 	dbPa, err := sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
@@ -209,6 +240,73 @@ func TestAddAuthorization(t *testing.T) {
 
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+}
+
+func TestUpdatePendingAuthorization(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	dbMap := sa.dbMap
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	firstID := core.NewToken()
+
+	authz := core.Authorization{
+		ID:             firstID,
+		RegistrationID: reg.ID,
+		Status:         core.StatusPending,
+	}
+
+	// Add one pending authz to the "pendingAuthorizations" table
+	oldStylePendingAuthz := pendingauthzModel{Authorization: authz}
+	tx, err := dbMap.Begin()
+	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
+	err = tx.Insert(&oldStylePendingAuthz)
+	if err != nil {
+		err = Rollback(tx, err)
+		t.Fatalf("Failed to insert pendingAuthorizations table test authz: %#v\n", err)
+	}
+	_ = tx.Commit()
+
+	// Now try updating the pending authz with a new expiry
+	exp := time.Now().AddDate(0, 0, 1)
+	authz.Expires = &exp
+	err = sa.UpdatePendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Failed to UpdatePendingAuthorization for pendingAuthorizations row")
+
+	// Check that the row was updated successfully
+	dbRow, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Failed to GetAuthorization for pendingAuthorizations row")
+	test.AssertEquals(t, dbRow.Expires.Unix(), exp.Unix())
+
+	secondID := core.NewToken()
+	for secondID == firstID {
+		secondID = core.NewToken()
+	}
+
+	// Add a second pending authz, this time to the "authz" table.
+	authz.ID = secondID
+	newStylePendingAuthz := authzModel{Authorization: authz}
+	tx, err = dbMap.Begin()
+	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
+	err = tx.Insert(&newStylePendingAuthz)
+	if err != nil {
+		err = Rollback(tx, err)
+		t.Fatalf("Failed to insert authz table test authz: %#v\n", err)
+	}
+	_ = tx.Commit()
+
+	// Now try updating this authz table pending authz to a new expiry
+	exp = time.Now().AddDate(0, 0, 3)
+	authz.Expires = &exp
+	err = sa.UpdatePendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Failed to UpdatePendingAuthorization for authz row")
+
+	// Check that the row was updated successfully
+	dbRow, err = sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Failed to GetAuthorization for authz row")
+	test.AssertEquals(t, dbRow.Expires.Unix(), exp.Unix())
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
@@ -651,6 +749,7 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	// Create two pending authz's in the authz table
 	PA1 := CreateDomainAuthWithRegID(t, "a.com", sa, reg.ID)
 	PA2 := CreateDomainAuthWithRegID(t, "a.com", sa, reg.ID)
 
@@ -658,13 +757,37 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	err := sa.FinalizeAuthorization(ctx, PA2)
 	test.AssertNotError(t, err, "Failed to finalize authorization")
 
+	// Make a third authz explicitly in the pendingAuthorizations table
+	exp := time.Now().AddDate(0, 0, 3)
+	PA3 := core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: reg.ID,
+		Status:         core.StatusPending,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "a.com"},
+		Challenges:     []core.Challenge{{}},
+		Expires:        &exp,
+	}
+
+	dbMap := sa.dbMap
+	oldStylePendingAuthz := pendingauthzModel{Authorization: PA3}
+	tx, err := dbMap.Begin()
+	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
+	err = tx.Insert(&oldStylePendingAuthz)
+	if err != nil {
+		err = Rollback(tx, err)
+		t.Fatalf("Failed to insert pendingAuthorizations table test authz: %#v\n", err)
+	}
+	_ = tx.Commit()
+
 	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
 	ar, par, err := sa.RevokeAuthorizationsByDomain(ctx, ident)
 	test.AssertNotError(t, err, "Failed to revoke authorizations for a.com")
-	// Since pending authzs are stored in the "authz" table now, there should be
-	// zero affected "pendingAuthorization" rows
-	test.AssertEquals(t, ar, int64(0))
-	// And there should be two affected "authz" rows
+	// Since we only injected one pendingAuthzModel, there should be only one
+	// affected pendingAuthorizations row
+	test.AssertEquals(t, ar, int64(1))
+	// We used `CreateDomainAuthWithRegID` to create two authzs in the authz table.
+	// One was left pending, and one was finalized giving two affected 'authz'
+	// rows after the revoke
 	test.AssertEquals(t, par, int64(2))
 
 	PA, err := sa.GetAuthorization(ctx, PA1.ID)
