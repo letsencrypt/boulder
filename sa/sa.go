@@ -749,7 +749,6 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	// the legacy finalization process: insert a new final `authz` row, delete the
 	// old `pendingAuthorizations` row
 	if table == "pendingAuthorizations" {
-		oldRow := pendingauthzModel{Authorization: dbAuthz}
 		newRow := &authzModel{authz}
 
 		err = tx.Insert(newRow)
@@ -758,10 +757,16 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 			return
 		}
 
-		_, err = tx.Delete(oldRow)
+		rs, err := tx.Exec("DELETE FROM pendingAuthorizations WHERE id = ?", dbAuthz.ID)
 		if err != nil {
 			err = Rollback(tx, err)
-			return
+			return err
+		}
+		affected, err := rs.RowsAffected()
+		if err != nil || affected != 1 {
+			err = fmt.Errorf("Delete from pendingAuthorizations affected %d rows, not 1", affected)
+			err = Rollback(tx, err)
+			return err
 		}
 	} else if table == "authz" {
 		// Otherwise, for a pending authz found in the authz table we can just
