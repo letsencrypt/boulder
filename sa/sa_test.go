@@ -217,10 +217,10 @@ func TestAddAuthorization(t *testing.T) {
 	// Check that the correct table was used for the new PA
 	tx, err := sa.dbMap.Begin()
 	test.AssertNotError(t, err, "Couldn't create new dbMap tx")
-	defer tx.Commit()
 	_, table, err := getAuthz(tx, PA.ID)
 	test.AssertNotError(t, err, fmt.Sprintf("unexpected error calling getAuthz(%s)", PA.ID))
 	test.AssertEquals(t, table, "authz")
+	_ = tx.Commit()
 
 	dbPa, err := sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
