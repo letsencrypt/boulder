@@ -749,7 +749,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
-			return core.RateLimitedError("Certificate issuance limit reached")
+			return core.RateLimitedError("Global certificate issuance limit reached. Try again in an hour.")
 		}
 		ra.totalCertsStats.Inc("Pass", 1)
 	}

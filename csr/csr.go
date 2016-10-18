@@ -80,7 +80,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 			Type:  core.IdentifierDNS,
 			Value: name,
 		}); err != nil {
-			badNames = append(badNames, name)
+			badNames = append(badNames, fmt.Sprintf("%q", name))
 		}
 	}
 	if len(badNames) > 0 {
