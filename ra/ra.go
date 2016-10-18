@@ -125,7 +125,7 @@ func (ra *RegistrationAuthorityImpl) UpdateIssuedCountForever() error {
 	}
 	go func() {
 		for {
-			ra.updateIssuedCount()
+			_ = ra.updateIssuedCount()
 			time.Sleep(1 * time.Minute)
 		}
 	}()
