@@ -197,7 +197,8 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
-	go rai.UpdateIssuedCountForever()
+	err = rai.UpdateIssuedCountForever()
+	cmd.FailOnError(err, "Updating total issuance count")
 
 	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")

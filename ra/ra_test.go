@@ -131,7 +131,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = blog.UseMock()
+	log = blog.Get()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -830,6 +830,10 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
@@ -871,6 +875,10 @@ func TestTotalCertRateLimit(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	// TODO(jsha): Since we're using a real SA rather than a mock, we call
 	// NewCertificate twice and insert the first result into the SA. Instead we
 	// should mock out the SA and have it return the cert count that we want.
@@ -880,7 +888,9 @@ func TestTotalCertRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
-	ra.updateIssuedCount()
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
 	fmt.Println(ra.rlPolicies.TotalCertificates().Threshold)
 
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)

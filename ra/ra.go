@@ -57,6 +57,7 @@ type RegistrationAuthorityImpl struct {
 	rlPolicies                   ratelimit.Limits
 	tiMu                         *sync.RWMutex
 	totalIssuedCount             int
+	totalIssuedLastUpdate        time.Time
 	maxContactsPerReg            int
 	maxNames                     int
 	forceCNFromSAN               bool
@@ -115,32 +116,41 @@ func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
 	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
 }
 
-// Run this from a goroutine to continually update the totalIssuedCount field of this
-// RA by calling out to the SA.
-func (ra *RegistrationAuthorityImpl) UpdateIssuedCountForever() {
-	for {
-		if limit := ra.rlPolicies.TotalCertificates(); limit.Enabled() {
+// Run this to continually update the totalIssuedCount field of this
+// RA by calling out to the SA. It will run one update before returning, and
+// return an error if that update failed.
+func (ra *RegistrationAuthorityImpl) UpdateIssuedCountForever() error {
+	if err := ra.updateIssuedCount(); err != nil {
+		return err
+	}
+	go func() {
+		for {
 			ra.updateIssuedCount()
 			time.Sleep(1 * time.Minute)
 		}
-	}
+	}()
+	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) updateIssuedCount() {
-	now := ra.clk.Now()
-	totalCertWindow := ra.rlPolicies.TotalCertificates().Window.Duration
-	count, err := ra.SA.CountCertificatesRange(
-		context.Background(),
-		now.Add(-totalCertWindow),
-		now,
-	)
-	if err != nil {
-		ra.log.AuditErr(fmt.Sprintf("updating total issued count: %s", err))
-		return
+func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
+	totalCertLimit := ra.rlPolicies.TotalCertificates()
+	if totalCertLimit.Enabled() {
+		now := ra.clk.Now()
+		count, err := ra.SA.CountCertificatesRange(
+			context.Background(),
+			now.Add(-totalCertLimit.Window.Duration),
+			now,
+		)
+		if err != nil {
+			ra.log.AuditErr(fmt.Sprintf("updating total issued count: %s", err))
+			return err
+		}
+		ra.tiMu.Lock()
+		ra.totalIssuedCount = int(count)
+		ra.totalIssuedLastUpdate = ra.clk.Now()
+		ra.tiMu.Unlock()
 	}
-	ra.tiMu.Lock()
-	defer ra.tiMu.Unlock()
-	ra.totalIssuedCount = int(count)
+	return nil
 }
 
 const (
@@ -728,6 +738,10 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 	ra.tiMu.RLock()
 	defer ra.tiMu.RUnlock()
 	if totalCertLimits.Enabled() && ra.totalIssuedCount > 0 {
+		// If last update of the total issued count was more than a minute ago, fail.
+		if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1 * time.Minute)) {
+			return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
+		}
 		if ra.totalIssuedCount >= totalCertLimits.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
