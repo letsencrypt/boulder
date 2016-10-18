@@ -1,5 +1,5 @@
 {
-    "module": "/usr/local/lib/libpkcs11-proxy.so",
+    "module": "/usr/lib/softhsm/libsofthsm.so",
     "tokenLabel": "root",
     "pin": "5678",
     "privateKeyLabel": "root_key"

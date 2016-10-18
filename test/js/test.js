@@ -31,7 +31,8 @@ var cliOptions = cli.parse({
   email:  ["email", "Email address", "string", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
   challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
-  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null]
+  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null],
+  nextTests: ["next-tests", "Run tests for functionality enabled in test/config-next configurations", "bool", false]
 });
 
 var state = {
@@ -58,6 +59,7 @@ var state = {
   certificateURL: "",
   certFile: cliOptions.certFile,
   keyFile: cliOptions.certKeyFile,
+  nextTests: cliOptions.nextTests,
 };
 
 function parseLink(link) {
@@ -117,6 +119,8 @@ getCertificate
   |
 downloadCertificate
   |
+deactivateAccount
+  |
 saveFiles
 
 
@@ -128,7 +132,7 @@ function main() {
 
 function makeKeyPair() {
   console.log("Generating cert key pair...");
-  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
+  child_process.execFile("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
     if (error) {
       console.log(error);
       process.exit(1);
@@ -410,9 +414,38 @@ function downloadCertificate(err, resp, body) {
       console.log("Error: cert at", certURL, "did not match returned cert.");
     } else {
       console.log("Successfully verified cert at", certURL);
-      saveFiles()
+      if (state.nextTests) {
+        deactivateAccount();
+      } else {
+        saveFiles();
+      }
     }
   });
+}
+
+function deactivateAccount() {
+    post(state.registrationURL, {
+        resource: "reg",
+        status: "deactivated"
+    },
+    function(err, resp, body) {
+        if (err || Math.floor(resp.statusCode / 100) != 2) {
+            console.log(body);
+            console.log("error: " + err);
+            process.exit(1);
+        }
+
+        // Test account is actually deactivated
+        post(state.registrationURL, {resource:"reg"}, function(err, resp, body) {
+            if (resp.statusCode != 403) {
+                console.log(body);
+                console.log("POST to registration URL after deactivating account didn't fail.")
+                process.exit(1);
+            }
+
+            saveFiles();
+        });
+    });
 }
 
 function saveFiles() {
