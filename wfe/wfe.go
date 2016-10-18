@@ -352,25 +352,30 @@ const (
 	unknownKey = "No registration exists matching provided key"
 )
 
-func extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
+		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
 		return nil, nil, errors.New("Parse error reading JWS")
 	}
 
 	if len(parsedJws.Signatures) > 1 {
+		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
 		return nil, nil, errors.New("Too many signatures in POST body")
 	}
 	if len(parsedJws.Signatures) == 0 {
+		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
 		return nil, nil, errors.New("POST JWS not signed")
 	}
 
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	if key == nil {
+		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
 		return nil, nil, errors.New("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
+		wfe.stats.Inc("Errors.InvalidJWK", 1)
 		return nil, nil, errors.New("Invalid JWK in JWS header")
 	}
 
@@ -423,7 +428,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	submittedKey, parsedJws, err := extractJWSKey(body)
+	submittedKey, parsedJws, err := wfe.extractJWSKey(body)
 	if err != nil {
 		logEvent.AddError(err.Error())
 		return nil, nil, reg, probs.Malformed(err.Error())
@@ -1177,7 +1182,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 			return
 		}
 		if bytes.Compare(urk, crk) != 0 {
-			msg := "Key can only be changed using the /acme/key-change endpoint"
+			msg := fmt.Sprintf("Key can only be changed using the %s endpoint", rolloverPath)
 			logEvent.AddError(msg)
 			wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 			return
@@ -1435,7 +1440,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Parse as JWS
-	newKey, parsedJWS, err := extractJWSKey(string(body))
+	newKey, parsedJWS, err := wfe.extractJWSKey(string(body))
 	if err != nil {
 		logEvent.AddError(err.Error())
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)

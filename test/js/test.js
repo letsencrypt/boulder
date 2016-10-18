@@ -230,7 +230,7 @@ function rotateAccountKey() {
                 console.log(body);
                 console.log("error: " + err);
                 console.log("POST to /acme/key-change failed, aborting.");
-            process.exit(1)
+                process.exit(1)
             }
 
             getChallenges({domain: state.domains.pop()});
