@@ -28,7 +28,7 @@ func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []co
 }
 
 func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
-	if id.Value == "bad-name.com" {
+	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
 		return errors.New("")
 	}
 	return nil
@@ -50,9 +50,9 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithLongCN := new(x509.CertificateRequest)
 	*signedReqWithLongCN = *signedReq
 	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", maxCNLength+1)
-	signedReqWithBadName := new(x509.CertificateRequest)
-	*signedReqWithBadName = *signedReq
-	signedReqWithBadName.DNSNames = []string{"bad-name.com"}
+	signedReqWithBadNames := new(x509.CertificateRequest)
+	*signedReqWithBadNames = *signedReq
+	signedReqWithBadNames.DNSNames = []string{"bad-name.com", "other-bad-name.com"}
 	signedReqWithEmailAddress := new(x509.CertificateRequest)
 	*signedReqWithEmailAddress = *signedReq
 	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
@@ -70,7 +70,7 @@ func TestVerifyCSR(t *testing.T) {
 	}{
 		{
 			&x509.CertificateRequest{},
-			0,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -78,7 +78,7 @@ func TestVerifyCSR(t *testing.T) {
 		},
 		{
 			&x509.CertificateRequest{PublicKey: private.PublicKey},
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -86,7 +86,7 @@ func TestVerifyCSR(t *testing.T) {
 		},
 		{
 			brokenSignedReq,
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -94,7 +94,7 @@ func TestVerifyCSR(t *testing.T) {
 		},
 		{
 			signedReq,
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -102,7 +102,7 @@ func TestVerifyCSR(t *testing.T) {
 		},
 		{
 			signedReqWithLongCN,
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -117,16 +117,16 @@ func TestVerifyCSR(t *testing.T) {
 			errors.New("CSR contains more than 1 DNS names"),
 		},
 		{
-			signedReqWithBadName,
-			1,
+			signedReqWithBadNames,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("policy forbids issuing for: \"bad-name.com\""),
+			errors.New("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
 		},
 		{
 			signedReqWithEmailAddress,
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,
@@ -134,7 +134,7 @@ func TestVerifyCSR(t *testing.T) {
 		},
 		{
 			signedReqWithIPAddress,
-			1,
+			100,
 			testingPolicy,
 			&mockPA{},
 			0,

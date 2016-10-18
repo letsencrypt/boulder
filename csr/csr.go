@@ -80,11 +80,11 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 			Type:  core.IdentifierDNS,
 			Value: name,
 		}); err != nil {
-			badNames = append(badNames, name)
+			badNames = append(badNames, fmt.Sprintf("%q", name))
 		}
 	}
 	if len(badNames) > 0 {
-		return fmt.Errorf("policy forbids issuing for: %q", strings.Join(badNames, ", "))
+		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
 	}
 	return nil
 }
