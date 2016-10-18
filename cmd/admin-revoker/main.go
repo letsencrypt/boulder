@@ -216,15 +216,15 @@ func main() {
 		domain := args[0]
 		_, logger, _, sac, stats := setupContext(c)
 		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
-		authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
+		authRowsRevoked, pendingAuthRowsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
 		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
 		logger.Info(fmt.Sprintf(
-			"Revoked %d pending authorizations and %d final authorizations\n",
-			authsRevoked,
-			pendingAuthsRevoked,
+			"Revoked %d pending authorization rows and %d authz rows\n",
+			authRowsRevoked,
+			pendingAuthRowsRevoked,
 		))
-		stats.Inc("RevokedAuthorizations", authsRevoked)
-		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
+		stats.Inc("RevokedAuthorizationRows", authRowsRevoked)
+		stats.Inc("RevokedPendingAuthorizationRows", pendingAuthRowsRevoked)
 
 	default:
 		usage()
