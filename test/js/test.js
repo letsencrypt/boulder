@@ -3,9 +3,8 @@
 // npm install
 // js test.js
 //
-// To test against a live or demo Boulder, edit this file to change
-// newRegistrationURL, then run:
-// sudo js test.js.
+// To test against a live or demo Boulder, pass the argument
+// --directory with the URL of the directory endpoint.
 
 "use strict";
 
@@ -22,10 +21,10 @@ var util = require("./acme-util");
 var Acme = require("./acme");
 
 var cliOptions = cli.parse({
-  // To test against the demo instance, pass --newReg "https://www.letsencrypt-demo.org/acme/new-reg"
+  // To test against the demo instance, pass --directory "https://www.letsencrypt-demo.org/directory"
   // To get a cert from the demo instance, you must be publicly reachable on
   // port 443 under the DNS name you are trying to get, and run test.js as root.
-  newReg:  ["new-reg", "New Registration URL", "string", "http://localhost:4000/acme/new-reg"],
+  directory:  ["directory", "Directory URL", "string", "http://localhost:4000/directory"],
   certKeyFile:  ["certKey", "File for cert key (created if not exists)", "path", "cert-key.pem"],
   certFile:  ["cert", "Path to output certificate (DER format)", "path", "cert.pem"],
   email:  ["email", "Email address", "string", null],
@@ -39,8 +38,10 @@ var state = {
   certPrivateKey: null,
   accountKeyPair: null,
 
-  newRegistrationURL: cliOptions.newReg,
+  directoryURL: cliOptions.directory,
+  newRegistrationURL: "",
   registrationURL: "",
+  keyChangeURL: "",
 
   domains: cliOptions.domains && cliOptions.domains.replace(/\s/g, "").split(/[^\w.-]+/),
   validatedDomains: [],
@@ -141,8 +142,28 @@ function makeKeyPair() {
     state.certPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
     console.log();
-    makeAccountKeyPair("account-key.pem", register)
+    makeAccountKeyPair("account-key.pem", populateURLs)
   });
+}
+
+function populateURLs() {
+    request(state.directoryURL, function (err, resp, body) {
+        if (err || resp.statusCode != 200) {
+            console.log(body);
+            console.log("Failed to retrieve directory, failing.");
+            process.exit(1);
+        }
+        var directory = JSON.parse(body);
+        if (directory['new-reg'] == "" || state.nextTests && directory['key-change'] == "") {
+            console.log(body);
+            console.log("Incomplete directory returned, failing.");
+            process.exit(1);
+        }
+        state.newRegistrationURL = directory['new-reg'];
+        state.keyChangeURL = directory['key-change'];
+
+        register();
+    });
 }
 
 function makeAccountKeyPair(keyName, callback) {
@@ -225,7 +246,7 @@ function rotateAccountKey() {
         }, null, 2)
         var signed = cryptoUtil.generateSignature(state.acme.privateKey, new Buffer(payload), oldAcme.nonces.shift());
         signed.resource = "key-change"
-        oldAcme.post("http://boulder:4000/acme/key-change", signed, function(err, resp, body) {
+        oldAcme.post(state.keyChangeURL, signed, function(err, resp, body) {
             if (err || Math.floor(resp.statusCode / 100) != 2) {
                 console.log(body);
                 console.log("error: " + err);
