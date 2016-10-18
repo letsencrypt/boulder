@@ -697,7 +697,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		updateAuth = &authzModel{Authorization: authz}
 	} else {
 		// Should never happen - we only have two fixed authz tables!
-		err = errors.New("Internal error. Table mismatch updating authz")
+		err = errors.New("Internal error. Unknown table updating authz")
 		err = Rollback(tx, err)
 		return
 	}
