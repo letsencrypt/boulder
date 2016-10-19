@@ -740,9 +740,9 @@ func (ra *RegistrationAuthorityImpl) checkTotalCertificatesLimit() error {
 	totalCertLimits := ra.rlPolicies.TotalCertificates()
 	ra.tiMu.RLock()
 	defer ra.tiMu.RUnlock()
-	// If last update of the total issued count was more than a minute ago,
+	// If last update of the total issued count was more than five minutes ago,
 	// or not yet updated, fail.
-	if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1*time.Minute)) ||
+	if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(5*time.Minute)) ||
 		ra.totalIssuedLastUpdate.IsZero() {
 		return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
 	}
