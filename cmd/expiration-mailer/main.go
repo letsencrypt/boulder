@@ -155,6 +155,15 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		regIDToCerts[cert.RegistrationID] = cs
 	}
 
+	err := m.mailer.Connect()
+	if err != nil {
+		m.log.AuditErr(fmt.Sprintf("Error Connecting to send nag emails: %s", err))
+		return
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
@@ -389,11 +398,6 @@ func main() {
 		scope,
 		*reconnBase,
 		*reconnMax)
-	err = mailClient.Connect()
-	cmd.FailOnError(err, "Couldn't connect to mail server.")
-	defer func() {
-		_ = mailClient.Close()
-	}()
 
 	nagCheckInterval := defaultNagCheckInterval
 	if s := c.Mailer.NagCheckInterval; s != "" {
