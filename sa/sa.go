@@ -100,9 +100,9 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	var model interface{}
 	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap, query, id)
+		model, err = selectRegistrationv2(ssa.dbMap, query, id)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap, query, id)
+		model, err = selectRegistration(ssa.dbMap, query, id)
 	}
 	if err == sql.ErrNoRows {
 		return core.Registration{}, core.NoSuchRegistrationError(
@@ -125,9 +125,9 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 		return core.Registration{}, err
 	}
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap, query, sha)
+		model, err = selectRegistrationv2(ssa.dbMap, query, sha)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap, query, sha)
+		model, err = selectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
@@ -176,7 +176,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 		qmarks[i] = "?"
 	}
 
-	auths, err := SelectAuthzs(ssa.dbMap,
+	auths, err := selectAuthzs(ssa.dbMap,
 		"WHERE registrationID = ? "+
 			"AND expires > ? "+
 			"AND identifier IN ("+strings.Join(qmarks, ",")+") "+
@@ -506,9 +506,9 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	var model interface{}
 	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap, query, reg.ID)
+		model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap, query, reg.ID)
+		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
 	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
@@ -932,7 +932,7 @@ func (e ErrNoReceipt) Error() string {
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	receipt, err = SelectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
+	receipt, err = selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
 	if err == sql.ErrNoRows {
 		err = ErrNoReceipt(err.Error())
 		return

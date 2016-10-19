@@ -28,8 +28,8 @@ type dbSelector interface {
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
 const regFieldsv2 = regFields + ", status"
 
-// Select all fields of one registration model
-func SelectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModelv1, error) {
+// selectRegistration selects all fields of one registration model
+func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModelv1, error) {
 	var model regModelv1
 	err := s.SelectOne(
 		&model,
@@ -39,8 +39,8 @@ func SelectRegistration(s dbOneSelector, q string, args ...interface{}) (*regMod
 	return &model, err
 }
 
-// Select all fields (including v2 migrated fields) of one registration model
-func SelectRegistrationv2(s dbOneSelector, q string, args ...interface{}) (*regModelv2, error) {
+// selectRegistrationv2 selects all fields (including v2 migrated fields) of one registration model
+func selectRegistrationv2(s dbOneSelector, q string, args ...interface{}) (*regModelv2, error) {
 	var model regModelv2
 	err := s.SelectOne(
 		&model,
@@ -48,8 +48,8 @@ func SelectRegistrationv2(s dbOneSelector, q string, args ...interface{}) (*regM
 	return &model, err
 }
 
-// Select all fields of one pending authorization model
-func SelectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendingauthzModel, error) {
+// selectPendingAuthz selects all fields of one pending authorization model
+func selectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendingauthzModel, error) {
 	var model pendingauthzModel
 	err := s.SelectOne(
 		&model,
@@ -61,8 +61,8 @@ func SelectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendin
 
 const authzFields = "id, identifier, registrationID, status, expires, combinations"
 
-// Select all fields of one authorization model
-func SelectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, error) {
+// selectAuthz selects all fields of one authorization model
+func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, error) {
 	var model authzModel
 	err := s.SelectOne(
 		&model,
@@ -72,8 +72,8 @@ func SelectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, e
 	return &model, err
 }
 
-// Select all fields of multiple authorization objects
-func SelectAuthzs(s dbSelector, q string, args ...interface{}) ([]*core.Authorization, error) {
+// selectAuthzs selects all fields of multiple authorization objects
+func selectAuthzs(s dbSelector, q string, args ...interface{}) ([]*core.Authorization, error) {
 	var models []*core.Authorization
 	_, err := s.Select(
 		&models,
@@ -83,8 +83,8 @@ func SelectAuthzs(s dbSelector, q string, args ...interface{}) ([]*core.Authoriz
 	return models, err
 }
 
-// Select all fields of one SignedCertificateTimestamp object
-func SelectSctReceipt(s dbOneSelector, q string, args ...interface{}) (core.SignedCertificateTimestamp, error) {
+// selectSctReceipt selects all fields of one SignedCertificateTimestamp object
+func selectSctReceipt(s dbOneSelector, q string, args ...interface{}) (core.SignedCertificateTimestamp, error) {
 	var model core.SignedCertificateTimestamp
 	err := s.SelectOne(
 		&model,
@@ -96,7 +96,7 @@ func SelectSctReceipt(s dbOneSelector, q string, args ...interface{}) (core.Sign
 
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
-// Select all fields of one certificate object
+// SelectCertificate selects all fields of one certificate object
 func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
@@ -107,7 +107,7 @@ func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Cer
 	return model, err
 }
 
-// Select all fields of multiple certificate objects
+// SelectCertificates selects all fields of multiple certificate objects
 func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]core.Certificate, error) {
 	var models []core.Certificate
 	_, err := s.Select(
@@ -119,7 +119,7 @@ func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]
 const certStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
 const certStatusFieldsv2 = certStatusFields + ", notAfter, isExpired"
 
-// Select all fields of one certificate status model
+// SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (certStatusModelv1, error) {
 	var model certStatusModelv1
 	err := s.SelectOne(
@@ -130,7 +130,7 @@ func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (ce
 	return model, err
 }
 
-// Select all fields (including the v2 migrated fields) of one certificate status model
+// SelectCertificateStatusv2 selects all fields (including the v2 migrated fields) of one certificate status model
 func SelectCertificateStatusv2(s dbOneSelector, q string, args ...interface{}) (certStatusModelv2, error) {
 	var model certStatusModelv2
 	err := s.SelectOne(
@@ -141,7 +141,7 @@ func SelectCertificateStatusv2(s dbOneSelector, q string, args ...interface{}) (
 	return model, err
 }
 
-// Select all fields of multiple certificate status objects
+// SelectCertificateStatuses selects all fields of multiple certificate status objects
 func SelectCertificateStatuses(s dbSelector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
 	var models []core.CertificateStatus
 	_, err := s.Select(
@@ -152,7 +152,7 @@ func SelectCertificateStatuses(s dbSelector, q string, args ...interface{}) ([]c
 	return models, err
 }
 
-// Select all fields (including the v2 migrated fields) of multiple certificate status objects
+// SelectCertificateStatusesv2 selects all fields (including the v2 migrated fields) of multiple certificate status objects
 func SelectCertificateStatusesv2(s dbSelector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
 	var models []core.CertificateStatus
 	_, err := s.Select(

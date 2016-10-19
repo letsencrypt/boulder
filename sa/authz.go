@@ -69,7 +69,7 @@ func getAuthz(tx *gorp.Transaction, id string) (core.Authorization, string, erro
 
 	// First try to find a row from the `pendingAuthorizations` table with
 	// a `pendingauthzModel{}`.
-	pa, err := SelectPendingAuthz(
+	pa, err := selectPendingAuthz(
 		tx,
 		query,
 		id)
@@ -86,7 +86,7 @@ func getAuthz(tx *gorp.Transaction, id string) (core.Authorization, string, erro
 		// But if the err was ErrNoRows, then we need to try looking in the `authz`
 		// table using a `authzModel` since there wasn't a `pendingAuthorization`
 		// row
-		fa, err := SelectAuthz(
+		fa, err := selectAuthz(
 			tx,
 			query,
 			id)
