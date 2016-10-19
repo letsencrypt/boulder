@@ -7,6 +7,7 @@ EXPOSE 4000 4002 4003 8053 8055
 
 ENV PATH /go/bin:/usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 ENV GOPATH /go
+ENV GO15VENDOREXPERIMENT=1
 
 RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt/boulder -q buser
 RUN chown -R buser /go/
