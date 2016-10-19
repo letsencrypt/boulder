@@ -131,7 +131,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = blog.Get()
+	log = blog.UseMock()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -201,8 +201,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
 	fc := clock.NewFake()
-	// Advance past epoch
-	fc.Add(360 * 24 * time.Hour)
+	// Set to some non-zero time.
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
@@ -881,6 +881,9 @@ func TestTotalCertRateLimit(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount not yet called")
+
 	if err := ra.updateIssuedCount(); err != nil {
 		t.Fatal("Updating issuance count:", err)
 	}
@@ -897,10 +900,13 @@ func TestTotalCertRateLimit(t *testing.T) {
 	if err := ra.updateIssuedCount(); err != nil {
 		t.Fatal("Updating issuance count:", err)
 	}
-	fmt.Println(ra.rlPolicies.TotalCertificates().Threshold)
 
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+
+	fc.Add(time.Hour)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount too long out of date")
 }
 
 func TestAuthzRateLimiting(t *testing.T) {

@@ -55,13 +55,14 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.Limits
-	tiMu                         *sync.RWMutex
-	totalIssuedCount             int
-	totalIssuedLastUpdate        time.Time
-	maxContactsPerReg            int
-	maxNames                     int
-	forceCNFromSAN               bool
-	reuseValidAuthz              bool
+	// tiMu protects totalIssuedCount and totalIssuedLastUpdate
+	tiMu                  *sync.RWMutex
+	totalIssuedCount      int
+	totalIssuedLastUpdate time.Time
+	maxContactsPerReg     int
+	maxNames              int
+	forceCNFromSAN        bool
+	reuseValidAuthz       bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -735,11 +736,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	totalCertLimits := ra.rlPolicies.TotalCertificates()
-	ra.tiMu.RLock()
-	defer ra.tiMu.RUnlock()
-	if totalCertLimits.Enabled() && ra.totalIssuedCount > 0 {
-		// If last update of the total issued count was more than a minute ago, fail.
-		if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1 * time.Minute)) {
+	if totalCertLimits.Enabled() {
+		ra.tiMu.RLock()
+		defer ra.tiMu.RUnlock()
+		// If last update of the total issued count was more than a minute ago,
+		// or not yet updated, fail.
+		if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1*time.Minute)) ||
+			ra.totalIssuedLastUpdate.IsZero() {
 			return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
 		}
 		if ra.totalIssuedCount >= totalCertLimits.Threshold {
