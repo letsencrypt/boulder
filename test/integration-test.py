@@ -298,7 +298,7 @@ def run_certificates_per_name_test():
         die(ExitStatus.PythonFailure)
 
     expected = [
-        "urn:acme:error:rateLimited",
+        "urn:ietf:params:acme:error:rateLimited",
         "Error creating new cert :: Too many certificates already issued for: lim.it",
         "429"
     ]

@@ -7,17 +7,17 @@ import (
 
 // Error types that can be used in ACME payloads
 const (
-	ConnectionProblem            = ProblemType("urn:acme:error:connection")
-	MalformedProblem             = ProblemType("urn:acme:error:malformed")
-	ServerInternalProblem        = ProblemType("urn:acme:error:serverInternal")
-	TLSProblem                   = ProblemType("urn:acme:error:tls")
-	UnauthorizedProblem          = ProblemType("urn:acme:error:unauthorized")
-	UnknownHostProblem           = ProblemType("urn:acme:error:unknownHost")
-	RateLimitedProblem           = ProblemType("urn:acme:error:rateLimited")
-	BadNonceProblem              = ProblemType("urn:acme:error:badNonce")
-	InvalidEmailProblem          = ProblemType("urn:acme:error:invalidEmail")
-	RejectedIdentifierProblem    = ProblemType("urn:acme:error:rejectedIdentifier")
-	UnsupportedIdentifierProblem = ProblemType("urn:acme:error:unsupportedIdentifier")
+	ConnectionProblem            = ProblemType("urn:ietf:params:acme:error:connection")
+	MalformedProblem             = ProblemType("urn:ietf:params:acme:error:malformed")
+	ServerInternalProblem        = ProblemType("urn:ietf:params:acme:error:serverInternal")
+	TLSProblem                   = ProblemType("urn:ietf:params:acme:error:tls")
+	UnauthorizedProblem          = ProblemType("urn:ietf:params:acme:error:unauthorized")
+	UnknownHostProblem           = ProblemType("urn:ietf:params:acme:error:unknownHost")
+	RateLimitedProblem           = ProblemType("urn:ietf:params:acme:error:rateLimited")
+	BadNonceProblem              = ProblemType("urn:ietf:params:acme:error:badNonce")
+	InvalidEmailProblem          = ProblemType("urn:ietf:params:acme:error:invalidEmail")
+	RejectedIdentifierProblem    = ProblemType("urn:ietf:params:acme:error:rejectedIdentifier")
+	UnsupportedIdentifierProblem = ProblemType("urn:ietf:params:acme:error:unsupportedIdentifier")
 )
 
 // ProblemType defines the error types in the ACME protocol

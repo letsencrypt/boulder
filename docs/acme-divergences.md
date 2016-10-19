@@ -12,8 +12,6 @@ Boulder does not provide a `Retry-After` header when a user hits a rate-limit, n
 
 ## [Section 5.6.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-5.6)
 
-Boulder doesn't return errors under the `urn:ietf:params:acme:error:` namespace but instead uses the `urn:acme:error:` namespace from [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4).
-
 Boulder uses `invalidEmail` in place of the error `invalidContact` defined in [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4).
 
 Boulder does not implement the `caa` and `dnssec` errors.
@@ -73,7 +71,3 @@ Boulder implements `tls-sni-01` from [draft-ietf-acme-01 Section 7.3](https://to
 ## [Section 7.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.5)
 
 Boulder does not implement the `oob-01` validation method.
-
-## [Section 8.5.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-8.5)
-
-Boulder uses the `urn:acme:` namespace from [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4) for errors instead of `urn:ietf:params:acme:`.
