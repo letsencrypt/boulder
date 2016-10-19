@@ -71,6 +71,21 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	if err != nil {
 		return nil, err
 	}
+	// If a read timeout is set, we set max_statement_time to 95% of that, and
+	// long_query_time to 80% of that. That way we get logs of queries that are
+	// close to timing out but not yet doing so, and our queries get stopped by
+	// max_statement_time before timing out the read. This generates clearer
+	// errors, and avoids unnecessary reconnects.
+	if config.ReadTimeout != 0 {
+		// In MariaDB, max_statement_time and long_query_time are both seconds.
+		// Note: in MySQL (which we don't use), max_statement_time is millis.
+		readTimeout := float64(config.ReadTimeout) / float64(time.Second)
+		_, err := dbmap.Exec("SET max_statement_time = ?, long_query_time = ?;",
+			readTimeout*0.0001, readTimeout*0.80)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return dbmap, err
 }
