@@ -67,7 +67,7 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
-	_, err = dbmap.Exec("SET sql_mode = 'STRICT_ALL_TABLES';")
+	_, err = dbmap.Exec("SET SESSION sql_mode = 'STRICT_ALL_TABLES';")
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +79,9 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	if config.ReadTimeout != 0 {
 		// In MariaDB, max_statement_time and long_query_time are both seconds.
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
-		readTimeout := float64(config.ReadTimeout) / float64(time.Second)
-		_, err := dbmap.Exec("SET max_statement_time = ?, long_query_time = ?;",
-			readTimeout*0.0001, readTimeout*0.80)
+		readTimeout := config.ReadTimeout.Seconds()
+		_, err := dbmap.Exec("SET SESSION max_statement_time = ?, long_query_time = ?;",
+			readTimeout*0.95, readTimeout*0.80)
 		if err != nil {
 			return nil, err
 		}
