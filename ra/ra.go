@@ -137,6 +137,8 @@ func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
 	totalCertLimit := ra.rlPolicies.TotalCertificates()
 	if totalCertLimit.Enabled() {
 		now := ra.clk.Now()
+		// We don't have a Context here, so use the background context. Note that a
+		// timeout is still imposed by our RPC layer.
 		count, err := ra.SA.CountCertificatesRange(
 			context.Background(),
 			now.Add(-totalCertLimit.Window.Duration),
