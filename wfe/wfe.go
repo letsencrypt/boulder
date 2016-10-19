@@ -352,30 +352,25 @@ const (
 	unknownKey = "No registration exists matching provided key"
 )
 
-func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+func extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
 		return nil, nil, errors.New("Parse error reading JWS")
 	}
 
 	if len(parsedJws.Signatures) > 1 {
-		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
 		return nil, nil, errors.New("Too many signatures in POST body")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
 		return nil, nil, errors.New("POST JWS not signed")
 	}
 
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	if key == nil {
-		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
 		return nil, nil, errors.New("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
-		wfe.stats.Inc("Errors.InvalidJWK", 1)
 		return nil, nil, errors.New("Invalid JWK in JWS header")
 	}
 
@@ -428,7 +423,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	submittedKey, parsedJws, err := wfe.extractJWSKey(body)
+	submittedKey, parsedJws, err := extractJWSKey(body)
 	if err != nil {
 		logEvent.AddError(err.Error())
 		return nil, nil, reg, probs.Malformed(err.Error())
@@ -1163,31 +1158,6 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	// If key rollover has been enabled people may try to POST a different key
-	// in the registration update body, if they do so and the key doesn't match
-	// the current registration key that we are going to overwrite the update key
-	// with below then throw an error informing them of the proper endpoint for
-	// key rollover.
-	if features.Enabled(features.AllowKeyRollover) && update.Key.Key != nil {
-		crk, err := x509.MarshalPKIXPublicKey(currReg.Key.Key)
-		if err != nil {
-			logEvent.AddError("unable to marshal registration key: %s", err)
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to marshal registration key"), nil)
-			return
-		}
-		urk, err := x509.MarshalPKIXPublicKey(update.Key.Key)
-		if err != nil {
-			logEvent.AddError("unable to marshal registration key in POST body: %s", err)
-			wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal registration key in POST body"), nil)
-			return
-		}
-		if bytes.Compare(urk, crk) != 0 {
-			msg := fmt.Sprintf("Key can only be changed using the %s endpoint", rolloverPath)
-			logEvent.AddError(msg)
-			wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
-			return
-		}
-	}
 	// Registration objects contain a JWK object, which must be non-nil. We know
 	// the key of the updated registration object is going to be the same as the
 	// key of the current one, so we set it here. This ensures we can cleanly
@@ -1440,7 +1410,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Parse as JWS
-	newKey, parsedJWS, err := wfe.extractJWSKey(string(body))
+	newKey, parsedJWS, err := extractJWSKey(string(body))
 	if err != nil {
 		logEvent.AddError(err.Error())
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)
@@ -1448,11 +1418,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 	payload, err := parsedJWS.Verify(newKey)
 	if err != nil {
-		n := len(body)
-		if n > 100 {
-			n = 100
-		}
-		logEvent.AddError("verification of the inner JWS with the inner JWK failed: %v; body: %s", err, body[:n])
+		logEvent.AddError("verification of the inner JWS with the inner JWK failed: %v", err)
 		wfe.sendError(response, logEvent, probs.Malformed("JWS verification error"), err)
 		return
 	}
