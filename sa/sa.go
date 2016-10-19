@@ -100,9 +100,9 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	var model interface{}
 	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap.SelectOne, query, id)
+		model, err = SelectRegistrationv2(ssa.dbMap, query, id)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap.SelectOne, query, id)
+		model, err = SelectRegistration(ssa.dbMap, query, id)
 	}
 	if err == sql.ErrNoRows {
 		return core.Registration{}, core.NoSuchRegistrationError(
@@ -125,9 +125,9 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 		return core.Registration{}, err
 	}
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap.SelectOne, query, sha)
+		model, err = SelectRegistrationv2(ssa.dbMap, query, sha)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap.SelectOne, query, sha)
+		model, err = SelectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
@@ -176,7 +176,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 		qmarks[i] = "?"
 	}
 
-	auths, err := SelectAuthzs(ssa.dbMap.Select,
+	auths, err := SelectAuthzs(ssa.dbMap,
 		"WHERE registrationID = ? "+
 			"AND expires > ? "+
 			"AND identifier IN ("+strings.Join(qmarks, ",")+") "+
@@ -354,7 +354,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	cert, err := SelectCertificate(ssa.dbMap.SelectOne, "WHERE serial = ?", serial)
+	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
 		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
@@ -458,9 +458,9 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	var statusObj interface{}
 
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err = SelectCertificateStatusv2(tx.SelectOne, statusQuery, serial)
+		statusObj, err = SelectCertificateStatusv2(tx, statusQuery, serial)
 	} else {
-		statusObj, err = SelectCertificateStatus(tx.SelectOne, statusQuery, serial)
+		statusObj, err = SelectCertificateStatus(tx, statusQuery, serial)
 	}
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
@@ -506,9 +506,9 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	var model interface{}
 	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = SelectRegistrationv2(ssa.dbMap.SelectOne, query, reg.ID)
+		model, err = SelectRegistrationv2(ssa.dbMap, query, reg.ID)
 	} else {
-		model, err = SelectRegistration(ssa.dbMap.SelectOne, query, reg.ID)
+		model, err = SelectRegistration(ssa.dbMap, query, reg.ID)
 	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
@@ -932,7 +932,7 @@ func (e ErrNoReceipt) Error() string {
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	receipt, err = SelectSctReceipt(ssa.dbMap.SelectOne, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
+	receipt, err = SelectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
 	if err == sql.ErrNoRows {
 		err = ErrNoReceipt(err.Error())
 		return

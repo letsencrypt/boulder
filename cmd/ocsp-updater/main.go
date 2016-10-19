@@ -237,13 +237,13 @@ func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) (
 	var err error
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap.Select,
+			updater.dbMap,
 			query,
 			batchSize,
 		)
 	} else {
 		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap.Select,
+			updater.dbMap,
 			query,
 			batchSize,
 		)
@@ -261,7 +261,7 @@ type responseMeta struct {
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
 	cert, err := sa.SelectCertificate(
-		updater.dbMap.SelectOne,
+		updater.dbMap,
 		"WHERE serial = ?",
 		status.Serial,
 	)
@@ -366,14 +366,14 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	var err error
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap.Select,
+			updater.dbMap,
 			query,
 			string(core.OCSPStatusRevoked),
 			batchSize,
 		)
 	} else {
 		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap.Select,
+			updater.dbMap,
 			query,
 			string(core.OCSPStatusRevoked),
 			batchSize,

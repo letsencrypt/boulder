@@ -117,7 +117,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		certs, err := sa.SelectCertificates(
-			c.dbMap.Select,
+			c.dbMap,
 			"WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit",
 			args,
 		)
