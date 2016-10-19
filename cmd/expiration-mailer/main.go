@@ -24,7 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -47,7 +47,7 @@ type mailer struct {
 	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
-	mailer        mail.Mailer
+	mailer        bmail.Mailer
 	emailTemplate *template.Template
 	subject       string
 	nagTimes      []time.Duration
@@ -379,7 +379,7 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(
+	mailClient := bmail.New(
 		c.Mailer.Server,
 		c.Mailer.Port,
 		c.Mailer.Username,
