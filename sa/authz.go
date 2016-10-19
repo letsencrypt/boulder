@@ -63,13 +63,16 @@ func authzIdExists(tx *gorp.Transaction, id string) bool {
 * [0] - https://github.com/letsencrypt/boulder/issues/2162
  */
 func getAuthz(tx *gorp.Transaction, id string) (core.Authorization, string, error) {
+	const query = "WHERE ID = ?"
 	var authz core.Authorization
 	var table string
 
 	// First try to find a row from the `pendingAuthorizations` table with
 	// a `pendingauthzModel{}`.
-	var pa pendingauthzModel
-	err := tx.SelectOne(&pa, fmt.Sprintf("SELECT %s FROM pendingAuthorizations WHERE id = ?", pendingAuthzFields), id)
+	pa, err := selectPendingAuthz(
+		tx,
+		query,
+		id)
 	// If there was an error other than "no rows", abort
 	if err != nil && err != sql.ErrNoRows {
 		err = Rollback(tx, err)
@@ -83,8 +86,10 @@ func getAuthz(tx *gorp.Transaction, id string) (core.Authorization, string, erro
 		// But if the err was ErrNoRows, then we need to try looking in the `authz`
 		// table using a `authzModel` since there wasn't a `pendingAuthorization`
 		// row
-		var fa authzModel
-		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		fa, err := selectAuthz(
+			tx,
+			query,
+			id)
 		// If there *still* was no rows, we're out of options. Nothing found
 		if err == sql.ErrNoRows {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)

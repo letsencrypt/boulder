@@ -47,30 +47,6 @@ type authzModel struct {
 	core.Authorization
 }
 
-// We need two certStatus model structs, one for when boulder does *not* have
-// the 20160817143417_CertStatusOptimizations.sql migration applied
-// (certStatusModelv1) and one for when it does (certStatusModelv2)
-//
-// TODO(@cpu): Collapse into one struct once the migration has been applied
-//             & feature flag set.
-type certStatusModelv1 struct {
-	Serial                string            `db:"serial"`
-	SubscriberApproved    bool              `db:"subscriberApproved"`
-	Status                core.OCSPStatus   `db:"status"`
-	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
-	RevokedDate           time.Time         `db:"revokedDate"`
-	RevokedReason         revocation.Reason `db:"revokedReason"`
-	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
-	OCSPResponse          []byte            `db:"ocspResponse"`
-	LockCol               int64             `json:"-"`
-}
-
-type certStatusModelv2 struct {
-	certStatusModelv1
-	NotAfter  time.Time `db:"notAfter"`
-	IsExpired bool      `db:"isExpired"`
-}
-
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
@@ -120,20 +96,14 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	var reg interface{}
-	var fields string
+	const query = "WHERE id = ?"
+	var model interface{}
+	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		reg = &regModelv2{}
-		fields = regV2Fields
+		model, err = selectRegistrationv2(ssa.dbMap, query, id)
 	} else {
-		reg = &regModelv1{}
-		fields = regV1Fields
+		model, err = selectRegistration(ssa.dbMap, query, id)
 	}
-	err := ssa.dbMap.SelectOne(
-		reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields),
-		id,
-	)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, core.NoSuchRegistrationError(
 			fmt.Sprintf("No registrations with ID %d", id),
@@ -142,30 +112,23 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	if err != nil {
 		return core.Registration{}, err
 	}
-	return modelToRegistration(reg)
+	return modelToRegistration(model)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
-	var reg interface{}
-	var fields string
-	if features.Enabled(features.AllowAccountDeactivation) {
-		reg = &regModelv2{}
-		fields = regV2Fields
-	} else {
-		reg = &regModelv1{}
-		fields = regV1Fields
-	}
+	const query = "WHERE jwk_sha256 = ?"
+	var model interface{}
+	var err error
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
 	}
-	err = ssa.dbMap.SelectOne(
-		reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", fields),
-		map[string]interface{}{"key": sha},
-	)
-
+	if features.Enabled(features.AllowAccountDeactivation) {
+		model, err = selectRegistrationv2(ssa.dbMap, query, sha)
+	} else {
+		model, err = selectRegistration(ssa.dbMap, query, sha)
+	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
 		return core.Registration{}, core.NoSuchRegistrationError(msg)
@@ -174,7 +137,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 		return core.Registration{}, err
 	}
 
-	return modelToRegistration(reg)
+	return modelToRegistration(model)
 }
 
 // GetAuthorization obtains an Authorization by ID
@@ -213,18 +176,12 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 		qmarks[i] = "?"
 	}
 
-	var auths []*core.Authorization
-	_, err = ssa.dbMap.Select(
-		&auths,
-		fmt.Sprintf(`
-		SELECT %s FROM authz
-		WHERE registrationID = ?
-		AND expires > ?
-		AND identifier IN (`+strings.Join(qmarks, ",")+`)
-		AND status = 'valid'
-		`, authzFields),
-		append([]interface{}{registrationID, now}, params...)...,
-	)
+	auths, err := selectAuthzs(ssa.dbMap,
+		"WHERE registrationID = ? "+
+			"AND expires > ? "+
+			"AND identifier IN ("+strings.Join(qmarks, ",")+") "+
+			"AND status = 'valid'",
+		append([]interface{}{registrationID, now}, params...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -397,8 +354,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	var cert core.Certificate
-	err := ssa.dbMap.SelectOne(&cert, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", CertificateFields), serial)
+	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
 		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
@@ -498,20 +454,14 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 
+	const statusQuery = "WHERE serial = ?"
 	var statusObj interface{}
-	var fields string
 
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj = &certStatusModelv2{}
-		fields = CertificateStatusFieldsv2
+		statusObj, err = SelectCertificateStatusv2(tx, statusQuery, serial)
 	} else {
-		statusObj = &certStatusModelv1{}
-		fields = CertificateStatusFields
+		statusObj, err = SelectCertificateStatus(tx, statusQuery, serial)
 	}
-	err = tx.SelectOne(
-		statusObj,
-		fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", fields),
-		serial)
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
@@ -522,22 +472,21 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 
+	var n int64
 	now := ssa.clk.Now()
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		status := statusObj.(*certStatusModelv2)
+		status := statusObj.(certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
-		statusObj = status
+		n, err = tx.Update(&status)
 	} else {
-		status := statusObj.(*certStatusModelv1)
+		status := statusObj.(certStatusModelv1)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
-		statusObj = status
+		n, err = tx.Update(&status)
 	}
-
-	n, err := tx.Update(statusObj)
 	if err != nil {
 		err = Rollback(tx, err)
 		return err
@@ -553,16 +502,14 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	var regType interface{}
-	var fields string
+	const query = "WHERE id = ?"
+	var model interface{}
+	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		regType = &regModelv2{}
-		fields = regV2Fields
+		model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
 	} else {
-		regType = &regModelv1{}
-		fields = regV1Fields
+		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
 	}
-	err := ssa.dbMap.SelectOne(regType, fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields), reg.ID)
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
@@ -578,12 +525,12 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	// so that we can copy over the LockCol from one to the other. Once we have copied
 	// that field we reassign to the interface so gorp can properly update it.
 	if features.Enabled(features.AllowAccountDeactivation) {
-		erm := regType.(*regModelv2)
+		erm := model.(*regModelv2)
 		urm := updatedRegModel.(*regModelv2)
 		urm.LockCol = erm.LockCol
 		updatedRegModel = urm
 	} else {
-		erm := regType.(*regModelv1)
+		erm := model.(*regModelv1)
 		urm := updatedRegModel.(*regModelv1)
 		urm.LockCol = erm.LockCol
 		updatedRegModel = urm
@@ -985,20 +932,11 @@ func (e ErrNoReceipt) Error() string {
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
 func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	err = ssa.dbMap.SelectOne(
-		&receipt,
-		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
-		map[string]interface{}{
-			"serial": serial,
-			"logID":  logID,
-		},
-	)
-
+	receipt, err = selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
 	if err == sql.ErrNoRows {
 		err = ErrNoReceipt(err.Error())
 		return
 	}
-
 	return
 }
 
