@@ -734,24 +734,32 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkTotalCertificatesLimit() error {
+	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	ra.tiMu.RLock()
+	defer ra.tiMu.RUnlock()
+	// If last update of the total issued count was more than a minute ago,
+	// or not yet updated, fail.
+	if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1*time.Minute)) ||
+		ra.totalIssuedLastUpdate.IsZero() {
+		return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
+	}
+	if ra.totalIssuedCount >= totalCertLimits.Threshold {
+		ra.totalCertsStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, totalIssued: %d, lastUpdated %s", ra.totalIssuedCount, ra.totalIssuedLastUpdate))
+		return core.RateLimitedError("Global certificate issuance limit reached. Try again in an hour.")
+	}
+	ra.totalCertsStats.Inc("Pass", 1)
+	return nil
+}
+
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	totalCertLimits := ra.rlPolicies.TotalCertificates()
 	if totalCertLimits.Enabled() {
-		ra.tiMu.RLock()
-		defer ra.tiMu.RUnlock()
-		// If last update of the total issued count was more than a minute ago,
-		// or not yet updated, fail.
-		if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(1*time.Minute)) ||
-			ra.totalIssuedLastUpdate.IsZero() {
-			return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
+		err := ra.checkTotalCertificatesLimit()
+		if err != nil {
+			return err
 		}
-		if ra.totalIssuedCount >= totalCertLimits.Threshold {
-			domains := strings.Join(names, ",")
-			ra.totalCertsStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, ra.totalIssuedCount))
-			return core.RateLimitedError("Global certificate issuance limit reached. Try again in an hour.")
-		}
-		ra.totalCertsStats.Inc("Pass", 1)
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
