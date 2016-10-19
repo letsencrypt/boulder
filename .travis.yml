@@ -34,6 +34,7 @@ branches:
 env:
   global:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
+    - GO15VENDOREXPERIMENT=1
   matrix:
     - RUN="vet fmt migrations integration godep-restore errcheck generate"
     # Config changes that have landed in master but not yet been applied to
