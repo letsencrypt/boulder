@@ -21,7 +21,7 @@ var util = require("./acme-util");
 var Acme = require("./acme");
 
 var cliOptions = cli.parse({
-  // To test against the demo instance, pass --directory "https://www.letsencrypt-demo.org/acme/directory"
+  // To test against the demo instance, pass --directory "https://acme-staging.api.letsencrypt.org/acme/directory"
   // To get a cert from the demo instance, you must be publicly reachable on
   // port 443 under the DNS name you are trying to get, and run test.js as root.
   directory:  ["directory", "Directory URL", "string", "http://localhost:4000/directory"],
