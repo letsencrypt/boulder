@@ -216,7 +216,7 @@ func TestHTTP(t *testing.T) {
 	// there appears to be an issue in httptest that trips Go's race detector when
 	// that happens, failing the test. So instead, we live with leaving the server
 	// around till the process exits.
-	// TODO(#661): add hs.Close back, see ticket for blocker
+	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
 
 	goodPort, err := getPort(hs)
