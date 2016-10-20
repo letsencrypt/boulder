@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	ct "github.com/google/certificate-transparency/go"
 
@@ -57,7 +58,7 @@ func main() {
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key)
+		logs[i], err = publisher.NewLog(ld.URI, ld.Key, ld.MaxSPS)
 		cmd.FailOnError(err, "Unable to parse CT log description")
 	}
 
@@ -83,6 +84,12 @@ func main() {
 		logger,
 		scope,
 		sa)
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			pubi.ClearSubmissions()
+		}
+	}()
 
 	go cmd.ProfileCmd(scope)
 
