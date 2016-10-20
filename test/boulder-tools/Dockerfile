@@ -1,4 +1,4 @@
-FROM golang:1.6.3
+FROM golang:1.5
 
 ADD build.sh /tmp/build.sh
 RUN /tmp/build.sh
