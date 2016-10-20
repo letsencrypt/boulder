@@ -798,7 +798,7 @@ func TestIssueCertificate(t *testing.T) {
     }`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 }
 
 func TestGetChallenge(t *testing.T) {
