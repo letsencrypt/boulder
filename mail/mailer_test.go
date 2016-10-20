@@ -144,7 +144,7 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 			// If there was a `goodbyeMsg` specified, write it to the client before
 			// closing the connection. This is a good way to deliver a SMTP error
 			// before closing
-			if strings.TrimSpace(goodbyeMsg) != "" {
+			if goodbyeMsg != "" {
 				_, _ = conn.Write([]byte(fmt.Sprintf("%s\r\n", goodbyeMsg)))
 				fmt.Printf("Wrote goodbye msg: %s\n", goodbyeMsg)
 			}
