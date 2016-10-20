@@ -152,7 +152,7 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	addrs := []string{}
 	for _, a := range to {
 		if !core.IsASCII(a) {
-			return nil, fmt.Errorf("Non-ASCIR email address")
+			return nil, fmt.Errorf("Non-ASCII email address")
 		}
 		addrs = append(addrs, strconv.Quote(a))
 	}
