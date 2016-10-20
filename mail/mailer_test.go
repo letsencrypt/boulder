@@ -244,8 +244,7 @@ func TestReconnectSMTP421(t *testing.T) {
 	const closedConns = 5
 
 	// A SMTP 421 can be generated when the server times out an idle connection.
-	// For more information see Issue #2249[0].
-	// [0] - https://github.com/letsencrypt/boulder/issues/2249
+	// For more information see https://github.com/letsencrypt/boulder/issues/2249
 	smtp421 := "421 1.2.3 green.eggs.and.spam Error: timeout exceeded"
 
 	// Configure a test server that will disconnect the first `closedConns`
