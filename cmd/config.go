@@ -147,6 +147,8 @@ type CAConfig struct {
 	EnableMustStaple bool
 
 	PublisherService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // PAConfig specifies how a policy authority should connect to its

@@ -193,6 +193,24 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *requestEvent, status int, v interface{}) error {
+	jsonReply, err := marshalIndent(v)
+	if err != nil {
+		return err // All callers are responsible for handling this error
+	}
+
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+	_, err = response.Write(jsonReply)
+	if err != nil {
+		// Don't worry about returning this error because the caller will
+		// never handle it.
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
+	}
+	return nil
+}
+
 func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint string) string {
 	var result string
 	proto := "http"
@@ -452,7 +470,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		logEvent.Contacts = reg.Contact
 	}
 
-	if features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
+	// Only check for validity if we are actually checking the registration
+	if regCheck && features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
 		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
@@ -601,7 +620,14 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
 	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID))
-	responseBody, err := marshalIndent(reg)
+
+	response.Header().Add("Location", regURL)
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, reg)
 	if err != nil {
 		// ServerInternal because we just created this registration, and it
 		// should be OK.
@@ -609,16 +635,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling registration"), err)
 		return
 	}
-
-	response.Header().Add("Location", regURL)
-	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
-	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
-	}
-
-	response.WriteHeader(http.StatusCreated)
-	response.Write(responseBody)
 }
 
 // NewAuthorization is used by clients to submit a new ID Authorization
@@ -658,20 +674,15 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
 	wfe.prepAuthorizationForDisplay(request, &authz)
-	responseBody, err := marshalIndent(authz)
+
+	response.Header().Add("Location", authzURL)
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, authz)
 	if err != nil {
 		// ServerInternal because we generated the authz, it should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling authz"), err)
 		return
-	}
-
-	response.Header().Add("Location", authzURL)
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
-	response.Header().Set("Content-Type", "application/json")
-	response.WriteHeader(http.StatusCreated)
-	if _, err = response.Write(responseBody); err != nil {
-		logEvent.AddError(err.Error())
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
@@ -985,23 +996,16 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
-	jsonReply, err := marshalIndent(challenge)
+	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
+	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Link", link(authzURL, "up"))
+
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
 		logEvent.AddError("unable to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
-		return
-	}
-
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
-	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(authzURL, "up"))
-	response.WriteHeader(http.StatusAccepted)
-	if _, err := response.Write(jsonReply); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-		logEvent.AddError(err.Error())
 		return
 	}
 }
@@ -1058,22 +1062,16 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// assumption: UpdateAuthorization does not modify order of challenges
 	challenge := updatedAuthorization.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
-	jsonReply, err := marshalIndent(challenge)
+
+	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
+	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Link", link(authzURL, "up"))
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		logEvent.AddError("failed to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
-		return
-	}
-
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
-	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(authzURL, "up"))
-	response.WriteHeader(http.StatusAccepted)
-	if _, err = response.Write(jsonReply); err != nil {
-		logEvent.AddError(err.Error())
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		return
 	}
 }
@@ -1124,7 +1122,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != currReg.Status) {
+	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != "" && update.Status != currReg.Status) {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
@@ -1162,20 +1160,18 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	jsonReply, err := marshalIndent(updatedReg)
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedReg)
 	if err != nil {
 		// ServerInternal because we just generated the reg, it should be OK
 		logEvent.AddError("unable to marshal updated registration: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
-	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
-	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
-	}
-	response.WriteHeader(http.StatusAccepted)
-	response.Write(jsonReply)
 }
 
 func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *core.Authorization, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) bool {
@@ -1253,19 +1249,14 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
-	jsonReply, err := marshalIndent(authz)
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		logEvent.AddError("Failed to JSON marshal authz: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
 		return
-	}
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
-	response.Header().Set("Content-Type", "application/json")
-	response.WriteHeader(http.StatusOK)
-	if _, err = response.Write(jsonReply); err != nil {
-		logEvent.AddError(err.Error())
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
@@ -1399,14 +1390,12 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		return
 	}
 	reg.Status = core.StatusDeactivated
-	jsonReply, err := marshalIndent(reg)
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, reg)
 	if err != nil {
 		// ServerInternal because registration is from DB and should be fine
 		logEvent.AddError("unable to marshal updated registration: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
-	response.Header().Set("Content-Type", "application/json")
-	response.WriteHeader(http.StatusOK)
-	response.Write(jsonReply)
 }

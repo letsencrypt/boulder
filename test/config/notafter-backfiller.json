@@ -1,0 +1,15 @@
+{
+  "NotAfterBackFiller": {
+    "dbConnectFile": "test/secrets/backfiller_dburl",
+    "maxDBConns": 10
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6
+  }
+}
