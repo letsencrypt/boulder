@@ -332,7 +332,10 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
 	}
-	if features.Enabled(features.AllowKeyRollover) {
+	if features.Enabled(features.AllowKeyRollover) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
+		// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
+		// encounter a directory containing elements they don't expect so we gate adding the key-change
+		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
 		directoryEndpoints["key-change"] = rolloverPath
 	}
 
