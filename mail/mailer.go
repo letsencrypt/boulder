@@ -294,7 +294,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			continue
 		} else if err != nil {
 			/*
-			 *  If the error is an instace of `textproto.Error` with a SMTP error code,
+			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
 			 *
 			 *  The SMTP RFC defines this error code as:
