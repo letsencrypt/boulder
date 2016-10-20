@@ -157,7 +157,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 
 	err := m.mailer.Connect()
 	if err != nil {
-		m.log.AuditErr(fmt.Sprintf("Error Connecting to send nag emails: %s", err))
+		m.log.AuditErr(fmt.Sprintf("Error connecting to send nag emails: %s", err))
 		return
 	}
 	defer func() {
