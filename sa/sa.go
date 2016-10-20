@@ -159,7 +159,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
-func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, errors.New("GetValidAuthorizations: no names received")
 	}
@@ -549,10 +549,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 }
 
 // NewPendingAuthorization stores a new Pending Authorization
-func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (output core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
+	var output core.Authorization
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return output, err
 	}
 
 	authz.ID = core.NewToken()
@@ -574,14 +575,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
 		err = Rollback(tx, err)
-		return
+		return output, err
 	}
 
 	for i, c := range authz.Challenges {
 		challModel, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		// Magic happens here: Gorp will modify challModel, setting challModel.ID
 		// to the auto-increment primary key. This is important because we want
@@ -591,12 +592,12 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		err = tx.Insert(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		challenge, err := modelToChallenge(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		authz.Challenges[i] = challenge
 	}
@@ -604,34 +605,31 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
-	return
+	return output, nil
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return err
 	}
 
 	// If the provided authz isn't Status: pending that's a problem, return early.
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use FinalizeAuthorization() to update to a final status")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the existing authz row isn't pending, we can't update it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot update a non-pending authorization")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	var updateAuth interface{}
@@ -645,51 +643,44 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	} else {
 		// Should never happen - we only have two fixed authz tables!
 		err = errors.New("Internal error. Unknown table updating authz")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	_, err = tx.Update(updateAuth)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return
+	return tx.Commit()
 }
 
 // FinalizeAuthorization converts a Pending Authorization to a final one
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return err
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the existing authz from the DB isn't currently pending, we can't finalize it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot finalize an authorization that is not pending")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the authz update is to a pending status, we can't do that! Use
 	// `UpdatePendingAuthorization`
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize an authorization to a non-final status")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If we found a pending authz in the pendingAuthorizations table, follow
@@ -700,20 +691,17 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 		err = tx.Insert(newRow)
 		if err != nil {
-			err = Rollback(tx, err)
-			return
+			return Rollback(tx, err)
 		}
 
 		rs, err := tx.Exec("DELETE FROM pendingAuthorizations WHERE id = ?", dbAuthz.ID)
 		if err != nil {
-			err = Rollback(tx, err)
-			return err
+			return Rollback(tx, err)
 		}
 		affected, err := rs.RowsAffected()
 		if err != nil || affected != 1 {
 			err = fmt.Errorf("Delete from pendingAuthorizations affected %d rows, not 1", affected)
-			err = Rollback(tx, err)
-			return err
+			return Rollback(tx, err)
 		}
 	} else if table == "authz" {
 		// Otherwise, for a pending authz found in the authz table we can just
@@ -721,25 +709,21 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		updatedRow := &authzModel{authz}
 		_, err = tx.Update(updatedRow)
 		if err != nil {
-			err = Rollback(tx, err)
-			return
+			return Rollback(tx, err)
 		}
 	} else {
 		// Should not happen! There are only two tables defined
 		// `authorizationTables` from `sa/authz.go`
 		err = errors.New("Internal error finalizing authz from unknown table")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		err = Rollback(tx, err)
-		return err
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return err
+	return tx.Commit()
 }
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
@@ -787,14 +771,14 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
-// AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (digest string, err error) {
-	var parsedCertificate *x509.Certificate
-	parsedCertificate, err = x509.ParseCertificate(certDER)
+// AddCertificate stores an issued certificate and returns the digest as
+// a string, or an error if any occured.
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (string, error) {
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return
+		return "", err
 	}
-	digest = core.Fingerprint256(certDER)
+	digest := core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
@@ -836,26 +820,25 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return "", err
 	}
 
-	// TODO Verify that the serial number doesn't yet exist
+	// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
+	// to be fixed by redesign. Reference issue
+	// https://github.com/letsencrypt/boulder/issues/2265 for more
 	err = tx.Insert(cert)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = tx.Insert(certStatusOb)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = addIssuedNames(tx, parsedCertificate)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = addFQDNSet(
@@ -866,18 +849,17 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		parsedCertificate.NotAfter,
 	)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return
+	return digest, tx.Commit()
 }
 
 // CountCertificatesRange returns the number of certificates issued in a specific
 // date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (count int64, err error) {
-	err = ssa.dbMap.SelectOne(
+func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM certificates
 		WHERE issued >= :windowLeft
@@ -931,13 +913,12 @@ func (e ErrNoReceipt) Error() string {
 
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	receipt, err = selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
+func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (core.SignedCertificateTimestamp, error) {
+	receipt, err := selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
 	if err == sql.ErrNoRows {
-		err = ErrNoReceipt(err.Error())
-		return
+		return receipt, ErrNoReceipt(err.Error())
 	}
-	return
+	return receipt, err
 }
 
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
