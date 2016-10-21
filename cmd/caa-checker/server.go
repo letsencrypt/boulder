@@ -248,6 +248,7 @@ func main() {
 	pb.RegisterCAACheckerServer(s, ccs)
 
 	go cmd.DebugServer(c.DebugAddr)
+
 	err = s.Serve(l)
 	cmd.FailOnError(err, "gRPC service failed")
 }
