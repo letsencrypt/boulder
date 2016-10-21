@@ -83,8 +83,6 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	go cmd.DebugServer(c.WFE.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "WFE")
 	defer logger.AuditPanic()
@@ -118,8 +116,6 @@ func main() {
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
 
-	go cmd.ProfileCmd(scope)
-
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
 	h, err := wfe.Handler()
@@ -132,6 +128,9 @@ func main() {
 		Addr:    c.WFE.ListenAddress,
 		Handler: httpMonitor,
 	}
+
+	go cmd.DebugServer(c.WFE.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,

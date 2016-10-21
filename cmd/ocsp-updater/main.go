@@ -617,14 +617,10 @@ func main() {
 
 	conf := c.OCSPUpdater
 
-	go cmd.DebugServer(conf.DebugAddr)
-
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
-
-	go cmd.ProfileCmd(scope)
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
@@ -659,6 +655,9 @@ func main() {
 			}
 		}(l)
 	}
+
+	go cmd.DebugServer(conf.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	// Sleep forever (until signaled)
 	select {}
