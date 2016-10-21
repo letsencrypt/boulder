@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -234,6 +235,8 @@ type config struct {
 		UnexpiredOnly       bool
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
+
+		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
@@ -260,6 +263,9 @@ func main() {
 	var config config
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(config.CertChecker.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
