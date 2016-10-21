@@ -12,10 +12,12 @@
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca2.pem"
+      "CertFile": "test/test-ca2.pem",
+      "NumSessions": 10
     }, {
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca.pem"
+      "CertFile": "test/test-ca.pem",
+      "NumSessions": 10
     }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
