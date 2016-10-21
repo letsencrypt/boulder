@@ -129,7 +129,7 @@ func main() {
 		Handler: httpMonitor,
 	}
 
-	go cmd.DebugServer(c.VA.DebugAddr)
+	go cmd.DebugServer(c.WFE.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
 	hd := &httpdown.HTTP{
