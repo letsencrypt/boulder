@@ -226,8 +226,6 @@ func main() {
 	err = yaml.Unmarshal(configBytes, &c)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
 
-	go cmd.DebugServer(c.DebugAddr)
-
 	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
 	scope := metrics.NewStatsdScope(stats, "CAAService")
@@ -248,6 +246,8 @@ func main() {
 	cmd.FailOnError(err, "Failed to setup gRPC server")
 	ccs := &caaCheckerServer{resolver, scope}
 	pb.RegisterCAACheckerServer(s, ccs)
+
+	go cmd.DebugServer(c.DebugAddr)
 	err = s.Serve(l)
 	cmd.FailOnError(err, "gRPC service failed")
 }

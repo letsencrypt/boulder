@@ -350,8 +350,6 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.Mailer.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
@@ -436,6 +434,8 @@ func main() {
 		limit:         c.Mailer.CertLimit,
 		clk:           cmd.Clock(),
 	}
+
+	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	err = m.findExpiringCertificates()
 	cmd.FailOnError(err, "expiration-mailer has failed")
