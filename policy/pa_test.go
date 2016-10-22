@@ -164,6 +164,14 @@ func TestWillingToIssue(t *testing.T) {
 	// Valid encoding
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
+	// IDN public suffix
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.example.xn--fiqs8s"})
+	test.AssertNotError(t, err, "WillingToIssue failed on a domain with a properly formed IDN public suffix")
+	// Domain is punycoded ICANN TLD
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--d1at.xn--90a3ac"})
+	if err != errICANNTLD {
+		t.Error("Punycoded ICANN TLD identifier was not correctly forbidden", err)
+	}
 	features.Reset()
 
 	// Test domains that are equal to public suffixes
