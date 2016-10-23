@@ -92,7 +92,7 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 }
 
 const (
-	maxLabels = 10
+	maxLabels = 14
 
 	// RFC 1034 says DNS labels have a max of 63 octets, and names have a max of 255
 	// octets: https://tools.ietf.org/html/rfc1035#page-10

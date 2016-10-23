@@ -43,7 +43,7 @@ func TestWillingToIssue(t *testing.T) {
 		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errInvalidDNSCharacter}, // unexpected IPv6 variants
 		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errInvalidDNSCharacter},
 		{`2001:db8::/32`, errInvalidDNSCharacter},
-		{`a.b.c.d.e.f.g.h.i.j.k`, errTooManyLabels}, // Too many labels (>10)
+		{`a.b.c.d.e.f.g.h.i.j.k.l.m.n.o`, errTooManyLabels}, // Too many labels (>14)
 
 		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, errNameTooLong}, // Too long (>255 characters)
 
@@ -122,6 +122,7 @@ func TestWillingToIssue(t *testing.T) {
 		"8675309.com",
 		"web5ite2.com",
 		"www.web-site2.com",
+		"0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa",
 	}
 
 	pa := paImpl(t)
