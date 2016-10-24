@@ -45,7 +45,7 @@ Boulder does not allow `tel` URIs in the registrations `contact` list.
 
 ## [Section 6.2.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.2.1)
 
-Boulder implements draft-03 style key roll-over with a few divergences. Since Boulder doesn't currently use the registration URL to identify users we do not check for that field in the JWS protected header. Boulder also requires the outer JWS payload contains the `"resource": "key-change"` field.
+Boulder implements draft-03 style key roll-over with a few divergences. Since Boulder doesn't currently use the registration URL to identify users we do not check for that field in the JWS protected headers but do check for it in the inner payload. Boulder also requires the outer JWS payload contains the `"resource": "key-change"` field.
 
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3)
 

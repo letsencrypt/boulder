@@ -246,6 +246,7 @@ function rotateAccountKey() {
         var payload = JSON.stringify({
             oldKey: oldAcme.privateKey.publicKey,
             newKey: state.acme.privateKey.publicKey,
+            account: state.registrationURL,
         }, null, 2)
         var signed = cryptoUtil.generateSignature(state.acme.privateKey, new Buffer(payload), oldAcme.nonces.shift());
         signed.resource = "key-change"

@@ -1432,13 +1432,20 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 	var rolloverRequest struct {
-		OldKey jose.JsonWebKey
-		NewKey jose.JsonWebKey
+		OldKey  jose.JsonWebKey
+		NewKey  jose.JsonWebKey
+		Account string
 	}
 	err = json.Unmarshal(payload, &rolloverRequest)
 	if err != nil {
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Request payload did not parse as JSON"), nil)
+		return
+	}
+
+	if wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
+		logEvent.AddError("incorrect account URL provided")
+		wfe.sendError(response, logEvent, probs.Malformed("Incorrect account URL provided in payload"), nil)
 		return
 	}
 
