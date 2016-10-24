@@ -243,7 +243,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, 10*time.Second)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -314,6 +314,9 @@ func TestValidateContacts(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
 	testFailures := []struct {
 		input    string
 		expected string
@@ -321,16 +324,22 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
+		// A timeout during email validation is treated as a success. We treat email
+		// validation during registration as a best-effort. See
+		// https://github.com/letsencrypt/boulder/issues/2260 for more
+		"a@always.timeout",
 	}
 
 	for _, tc := range testFailures {
-		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		problem := ra.validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		if problem == nil {
+			t.Errorf("validateEmail(%q): expected problem type %#v, got nil problem", tc.input, probs.InvalidEmailProblem)
+		}
 		if problem.Type != probs.InvalidEmailProblem {
 			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
 		}
@@ -341,7 +350,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, addr := range testSuccesses {
-		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
+		if prob := ra.validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
 				addr, prob)
 		}

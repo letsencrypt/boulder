@@ -11,6 +11,7 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 300,
     "pendingAuthorizationLifetimeDays": 7,
+    "emailValidationTimeout": "8s",
     "vaService": {
       "serverAddresses": ["boulder:9092"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
