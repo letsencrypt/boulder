@@ -774,7 +774,9 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 	return nil
 }
 
-// UpdateRegistration updates an existing Registration with new values.
+// UpdateRegistration updates an existing Registration with new values. Caller
+// is responsible for making sure that update.Key is only different from base.Key
+// if it is being called from the WFE key change endpoint.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
 	if changed := mergeUpdate(&base, update); !changed {
 		// If merging the update didn't actually change the base then our work is

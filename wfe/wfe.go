@@ -1166,10 +1166,11 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	// Registration objects contain a JWK object, which must be non-nil. We know
-	// the key of the updated registration object is going to be the same as the
-	// key of the current one, so we set it here. This ensures we can cleanly
-	// serialize the update as JSON to send via AMQP to the RA.
+	// Registration objects contain a JWK object which are merged in UpdateRegistration
+	// if it is different from the existing registration key. Since this isn't how you
+	// update the key we just copy the existing one into the update object here. This
+	// ensures the key isn't changed and that we can cleanly serialize the update as
+	// JSON to send via RPC to the RA.
 	update.Key = currReg.Key
 
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
