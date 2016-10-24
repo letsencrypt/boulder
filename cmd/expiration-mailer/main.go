@@ -24,7 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -47,7 +47,7 @@ type mailer struct {
 	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
-	mailer        mail.Mailer
+	mailer        bmail.Mailer
 	emailTemplate *template.Template
 	subject       string
 	nagTimes      []time.Duration
@@ -154,6 +154,15 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		cs = append(cs, cert)
 		regIDToCerts[cert.RegistrationID] = cs
 	}
+
+	err := m.mailer.Connect()
+	if err != nil {
+		m.log.AuditErr(fmt.Sprintf("Error connecting to send nag emails: %s", err))
+		return
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
 
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
@@ -341,8 +350,6 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.Mailer.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
@@ -379,7 +386,7 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(
+	mailClient := bmail.New(
 		c.Mailer.Server,
 		c.Mailer.Port,
 		c.Mailer.Username,
@@ -389,11 +396,6 @@ func main() {
 		scope,
 		*reconnBase,
 		*reconnMax)
-	err = mailClient.Connect()
-	cmd.FailOnError(err, "Couldn't connect to mail server.")
-	defer func() {
-		_ = mailClient.Close()
-	}()
 
 	nagCheckInterval := defaultNagCheckInterval
 	if s := c.Mailer.NagCheckInterval; s != "" {
@@ -432,6 +434,8 @@ func main() {
 		limit:         c.Mailer.CertLimit,
 		clk:           cmd.Clock(),
 	}
+
+	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	err = m.findExpiringCertificates()
 	cmd.FailOnError(err, "expiration-mailer has failed")

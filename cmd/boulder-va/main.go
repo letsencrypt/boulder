@@ -69,14 +69,10 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.VA.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "VA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
-
-	go cmd.ProfileCmd(scope)
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,
@@ -166,6 +162,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to create VA RPC server")
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")
+
+	go cmd.DebugServer(c.VA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = vas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run VA RPC server")

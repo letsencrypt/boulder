@@ -830,7 +830,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 			wfe.sendError(
 				response,
 				logEvent,
-				probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version"),
+				probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
 				nil,
 			)
 			return
