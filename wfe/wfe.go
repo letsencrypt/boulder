@@ -1411,7 +1411,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, oldKey, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
+	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
@@ -1432,7 +1432,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 	var rolloverRequest struct {
-		OldKey  jose.JsonWebKey
 		NewKey  jose.JsonWebKey
 		Account string
 	}
@@ -1449,24 +1448,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 
-	// Check body contains the correct keys
-	pok, err := x509.MarshalPKIXPublicKey(rolloverRequest.OldKey.Key)
-	if err != nil {
-		logEvent.AddError("unable to marshal old key in inner payload: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed old JWK"), nil)
-		return
-	}
-	ok, err := x509.MarshalPKIXPublicKey(oldKey.Key)
-	if err != nil {
-		logEvent.AddError("unable to marshal registration key: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to marshal registration key"), nil)
-		return
-	}
-	if bytes.Compare(pok, ok) != 0 {
-		logEvent.AddError("old key in inner payload doesn't match registration key")
-		wfe.sendError(response, logEvent, probs.Malformed("Old JWK in inner payload doesn't match current JWK"), nil)
-		return
-	}
 	pnk, err := x509.MarshalPKIXPublicKey(rolloverRequest.NewKey.Key)
 	if err != nil {
 		logEvent.AddError("unable to marshal new key in inner payload: %s", err)
