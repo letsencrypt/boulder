@@ -44,7 +44,7 @@ func (d DNSError) Error() string {
 }
 
 // Timeout returns true if the underlying error was a timeout from the network
-// or the context the request was made under
+// or the context the request was made under timed out
 func (d DNSError) Timeout() bool {
 	if netErr, ok := d.underlying.(*net.OpError); ok {
 		return netErr.Timeout()
