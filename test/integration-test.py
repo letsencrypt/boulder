@@ -255,6 +255,9 @@ def single_ocsp_sign():
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
 
+    global ocsp_proc
+    ocsp_proc = p
+
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
     wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
@@ -392,3 +395,8 @@ if __name__ == "__main__":
     except Exception:
         exit_status = ExitStatus.Error
         raise
+
+@atexit.register
+def stop():
+    if ocsp_proc.poll() is None:
+        ocsp_proc.kill()
