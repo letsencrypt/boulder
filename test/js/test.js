@@ -413,11 +413,11 @@ function downloadCertificate(err, resp, body) {
       console.log("Error: cert at", certURL, "did not match returned cert.");
     } else {
       console.log("Successfully verified cert at", certURL);
-        if (state.nextTests) {
-      deactivateAuthorization();
-        } else {
-            saveFiles();
-        }
+      if (state.nextTests) {
+        deactivateAuthorization();
+      } else {
+        saveFiles();
+      }
     }
   });
 }
@@ -435,7 +435,7 @@ function deactivateAuthorization() {
         }
 
         var authz = JSON.parse(body);
-        if (authz.stauts != "deactivated") {
+        if (authz.status != "deactivated") {
             console.log(body);
             console.log("Authorization wasn't properly deactivated");
             process.exit(1);
@@ -449,7 +449,7 @@ function deactivateAuthorization() {
             }
 
             var authz = JSON.parse(body);
-            if (authz.stauts != "deactivated") {
+            if (authz.status != "deactivated") {
                 console.log(body);
                 console.log("Authorization wasn't properly deactivated");
                 process.exit(1);
