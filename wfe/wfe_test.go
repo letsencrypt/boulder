@@ -1980,77 +1980,65 @@ func TestKeyRollover(t *testing.T) {
 		  "status": 400
 		}`)
 
-	inner, err := signer.Sign([]byte(`{}`))
-	test.AssertNotError(t, err, "Unable to sign")
-	innerStr := inner.FullSerialize()
-	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
-	outer := signRequest(t, innerStr, wfe.nonceService)
+	for _, testCase := range []struct {
+		payload          string
+		expectedResponse string
+	}{
+		{
+			// Missing account URL
+			"{}",
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Incorrect account URL provided in payload",
+		     "status": 400
+		   }`,
+		},
+		// Missing new key
+		{
+			`{"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Unable to marshal new JWK",
+		     "status": 400
+		   }`,
+		},
+		// Different key used to sign inner JWS
+		{
+			`{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "New JWK in inner payload doesn't match key used to sign inner JWS",
+		     "status": 400
+		   }`,
+		},
+		// Valid request
+		{
+			`{"newKey":{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "id": 1,
+		     "key": {
+		       "kty": "RSA",
+		       "n": "uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w",
+		       "e": "AQAB"
+		     },
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "Status": "valid"
+		   }`,
+		},
+	} {
+		inner, err := signer.Sign([]byte(testCase.payload))
+		test.AssertNotError(t, err, "Unable to sign")
+		innerStr := inner.FullSerialize()
+		innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+		outer := signRequest(t, innerStr, wfe.nonceService)
 
-	responseWriter.Body.Reset()
-	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-	assertJSONEquals(t,
-		responseWriter.Body.String(),
-		`{
-		  "type": "urn:acme:error:malformed",
-		  "detail": "Incorrect account URL provided in payload",
-		  "status": 400
-		}`)
-
-	inner, err = signer.Sign([]byte(`{"account":"http://localhost/acme/reg/1"}`))
-	test.AssertNotError(t, err, "Unable to sign")
-	innerStr = inner.FullSerialize()
-	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
-	outer = signRequest(t, innerStr, wfe.nonceService)
-
-	responseWriter.Body.Reset()
-	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-	assertJSONEquals(t,
-		responseWriter.Body.String(),
-		`{
-		  "type": "urn:acme:error:malformed",
-		  "detail": "Request payload contained malformed new JWK",
-		  "status": 400
-		}`)
-
-	inner, err = signer.Sign([]byte(`{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`))
-	test.AssertNotError(t, err, "Unable to sign")
-	innerStr = inner.FullSerialize()
-	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
-	outer = signRequest(t, innerStr, wfe.nonceService)
-
-	responseWriter.Body.Reset()
-	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-	assertJSONEquals(t,
-		responseWriter.Body.String(),
-		`{
-		  "type": "urn:acme:error:malformed",
-		  "detail": "New JWK in inner payload doesn't match key used to sign inner JWS",
-		  "status": 400
-		}`)
-
-	inner, err = signer.Sign([]byte(`{"newKey":{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`))
-	test.AssertNotError(t, err, "Unable to sign")
-	innerStr = inner.FullSerialize()
-	innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
-	outer = signRequest(t, innerStr, wfe.nonceService)
-
-	responseWriter.Body.Reset()
-	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-	assertJSONEquals(t,
-		responseWriter.Body.String(),
-		`{
-		  "id": 1,
-		  "key": {
-		    "kty": "RSA",
-		    "n": "uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w",
-		    "e": "AQAB"
-		  },
-		  "contact": [
-		    "mailto:person@mail.com"
-		  ],
-		  "agreement": "http://example.invalid/terms",
-		  "initialIp": "",
-		  "createdAt": "0001-01-01T00:00:00Z",
-		  "Status": "valid"
-		}`)
+		responseWriter.Body.Reset()
+		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
+	}
 }

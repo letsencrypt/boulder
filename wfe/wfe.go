@@ -1409,6 +1409,24 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
+func publicKeysEqual(a, b interface{}) (bool, error) {
+	var err error
+	aBytes, bBytes := []byte{}, []byte{}
+	for _, side := range []struct {
+		key   interface{}
+		bytes *[]byte
+	}{
+		{a, &aBytes},
+		{b, &bBytes},
+	} {
+		*side.bytes, err = x509.MarshalPKIXPublicKey(side.key)
+		if err != nil {
+			return false, err
+		}
+	}
+	return bytes.Compare(aBytes, bBytes) == 0, nil
+}
+
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
@@ -1448,19 +1466,13 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 
-	pnk, err := x509.MarshalPKIXPublicKey(rolloverRequest.NewKey.Key)
+	keysEqual, err := publicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to marshal new key in inner payload: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Request payload contained malformed new JWK"), nil)
+		logEvent.AddError("unable to marshal new key: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
 		return
 	}
-	nk, err := x509.MarshalPKIXPublicKey(newKey.Key)
-	if err != nil {
-		logEvent.AddError("unable to marshal new key used to sign inner payload: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Inner JWS payload signed by malformed JWK"), nil)
-		return
-	}
-	if bytes.Compare(pnk, nk) != 0 {
+	if !keysEqual {
 		logEvent.AddError("new key in inner payload doesn't match key used to sign inner JWS")
 		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
 		return

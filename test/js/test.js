@@ -244,11 +244,10 @@ function rotateAccountKey() {
     var oldAcme = state.acme;
     makeAccountKeyPair("new-account-key.pem", function() {
         var payload = JSON.stringify({
-            oldKey: oldAcme.privateKey.publicKey,
             newKey: state.acme.privateKey.publicKey,
             account: state.registrationURL,
         }, null, 2)
-        var signed = cryptoUtil.generateSignature(state.acme.privateKey, new Buffer(payload), oldAcme.nonces.shift());
+        var signed = cryptoUtil.generateSignature(state.acme.privateKey, new Buffer(payload), null);
         signed.resource = "key-change"
         oldAcme.post(state.keyChangeURL, signed, function(err, resp, body) {
             if (err || Math.floor(resp.statusCode / 100) != 2) {
