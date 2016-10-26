@@ -31,8 +31,7 @@ var cliOptions = cli.parse({
   email:  ["email", "Email address", "string", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
   challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
-  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null],
-  nextTests: ["next-tests", "Run tests for functionality enabled in test/config-next configurations", "bool", false]
+  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null]
 });
 
 var state = {
@@ -59,7 +58,7 @@ var state = {
   certificateURL: "",
   certFile: cliOptions.certFile,
   keyFile: cliOptions.certKeyFile,
-  nextTests: cliOptions.nextTests,
+  nextTests: (process.env.BOULDER_CONFIG_DIR != undefined && process.env.BOULDER_CONFIG_DIR.endsWith("test/config-next")),,
 };
 
 function parseLink(link) {
