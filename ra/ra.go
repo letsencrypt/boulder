@@ -386,6 +386,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 					fmt.Sprintf("unable to get existing authorization for auth ID: %s",
 						existingAuthz.ID))
 				ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+				return authz, outErr
 			}
 
 			// The existing authorization must not expire within the next 24 hours for
