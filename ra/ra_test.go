@@ -495,8 +495,8 @@ func TestReuseAuthorization(t *testing.T) {
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
-	//exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	finalAuthz.Expires = nil
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = core.StatusValid
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
