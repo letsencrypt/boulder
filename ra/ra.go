@@ -189,18 +189,11 @@ func (ra *RegistrationAuthorityImpl) validateEmail(ctx context.Context, address 
 	 */
 	go func() {
 		resultMX, errMX := resolver.LookupMX(timeoutCtx, domain)
-		// No error but an empty DNS response is a problem for MX lookups
-		if errMX == nil && len(resultMX) == 0 {
-			probChan <- probs.InvalidEmail(emptyDNSResponseDetail)
-		} else {
-			probChan <- problemUnlessTimeout(errMX)
-		}
+		probChan <- problemUnlessTimeout(len(resultMX), errMX)
 	}()
 	go func() {
-		_, errA := resolver.LookupHost(timeoutCtx, domain)
-		// Unlike the MX lookup we are OK with an empty A/AAAA response. See
-		// `email.only` mock in `bdns/mocks.go`
-		probChan <- problemUnlessTimeout(errA)
+		resultA, errA := resolver.LookupHost(timeoutCtx, domain)
+		probChan <- problemUnlessTimeout(len(resultA), errA)
 	}()
 
 	select {
@@ -220,10 +213,15 @@ func (ra *RegistrationAuthorityImpl) validateEmail(ctx context.Context, address 
 	return nil
 }
 
-func problemUnlessTimeout(err error) *probs.ProblemDetails {
+func problemUnlessTimeout(numResults int, err error) *probs.ProblemDetails {
 	// No error, no problem!
-	if err == nil {
+	if err == nil && numResults > 0 {
 		return nil
+	}
+
+	// No error but an empty DNS response is a problem
+	if err == nil && numResults == 0 {
+		return probs.InvalidEmail(emptyDNSResponseDetail)
 	}
 
 	// A DNSError caused by a timeout is not a problem.

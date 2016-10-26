@@ -56,11 +56,9 @@ func (t timeoutError) Timeout() bool {
 // Note: see comments on LookupMX regarding email.only
 //
 func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	if hostname == "always.invalid" || hostname == "invalid.invalid" {
-		return []net.IP{}, &DNSError{dns.TypeA, "always.invalid",
-			&net.OpError{Err: errors.New("invalid host error")}, -1}
-	}
-	if hostname == "email.only" {
+	if hostname == "always.invalid" ||
+		hostname == "invalid.invalid" ||
+		hostname == "email.only" {
 		return []net.IP{}, nil
 	}
 	if hostname == "always.timeout" {
