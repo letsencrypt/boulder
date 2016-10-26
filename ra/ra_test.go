@@ -321,12 +321,15 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
+		// A timeout during email validation is treated as a success. We treat email
+		// validation during registration as a best-effort. See
+		// https://github.com/letsencrypt/boulder/issues/2260 for more
+		"a@always.timeout",
 	}
 
 	for _, tc := range testFailures {

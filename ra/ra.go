@@ -162,6 +162,14 @@ const (
 	multipleAddressDetail  = "more than one e-mail address"
 )
 
+func problemIsTimeout(err error) bool {
+	if dnsErr, ok := err.(*bdns.DNSError); ok && dnsErr.Timeout() {
+		return true
+	}
+
+	return false
+}
+
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
@@ -187,18 +195,18 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	}()
 	wg.Wait()
 
-	if errMX != nil {
+	if errMX != nil && !problemIsTimeout(errMX) {
 		prob := bdns.ProblemDetailsFromDNSError(errMX)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
-	} else if len(resultMX) > 0 {
+	} else if len(resultMX) > 0 || problemIsTimeout(errMX) {
 		return nil
 	}
-	if errA != nil {
+	if errA != nil && !problemIsTimeout(errA) {
 		prob := bdns.ProblemDetailsFromDNSError(errA)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
-	} else if len(resultA) > 0 {
+	} else if len(resultA) > 0 || problemIsTimeout(errA) {
 		return nil
 	}
 
