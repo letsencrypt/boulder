@@ -58,7 +58,7 @@ var state = {
   certificateURL: "",
   certFile: cliOptions.certFile,
   keyFile: cliOptions.certKeyFile,
-  nextTests: (process.env.BOULDER_CONFIG_DIR != undefined && process.env.BOULDER_CONFIG_DIR.endsWith("test/config-next")),,
+  nextTests: (process.env.BOULDER_CONFIG_DIR != undefined && process.env.BOULDER_CONFIG_DIR.endsWith("test/config-next")),
 };
 
 function parseLink(link) {
