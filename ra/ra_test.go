@@ -201,8 +201,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
 	fc := clock.NewFake()
-	// Advance past epoch
-	fc.Add(360 * 24 * time.Hour)
+	// Set to some non-zero time.
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
@@ -834,6 +834,10 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
@@ -877,6 +881,13 @@ func TestTotalCertRateLimit(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount not yet called")
+
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	// TODO(jsha): Since we're using a real SA rather than a mock, we call
 	// NewCertificate twice and insert the first result into the SA. Instead we
 	// should mock out the SA and have it return the cert count that we want.
@@ -886,9 +897,16 @@ func TestTotalCertRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
 
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+
+	fc.Add(time.Hour)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount too long out of date")
 }
 
 func TestAuthzRateLimiting(t *testing.T) {

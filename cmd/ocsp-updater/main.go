@@ -232,22 +232,22 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
+	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
 	var statuses []core.CertificateStatus
-	var fields string
+	var err error
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		fields = sa.CertificateStatusFieldsv2
+		statuses, err = sa.SelectCertificateStatusesv2(
+			updater.dbMap,
+			query,
+			batchSize,
+		)
 	} else {
-		fields = sa.CertificateStatusFields
+		statuses, err = sa.SelectCertificateStatuses(
+			updater.dbMap,
+			query,
+			batchSize,
+		)
 	}
-	_, err := updater.dbMap.Select(
-		&statuses,
-		fmt.Sprintf(`SELECT %s FROM certificateStatus
-			 WHERE ocspLastUpdated = 0
-			 LIMIT :limit`, fields),
-		map[string]interface{}{
-			"limit": batchSize,
-		},
-	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -260,11 +260,10 @@ type responseMeta struct {
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	var cert core.Certificate
-	err := updater.dbMap.SelectOne(
-		&cert,
-		fmt.Sprintf("SELECT %s FROM certificates WHERE serial = :serial", sa.CertificateFields),
-		map[string]interface{}{"serial": status.Serial},
+	cert, err := sa.SelectCertificate(
+		updater.dbMap,
+		"WHERE serial = ?",
+		status.Serial,
 	)
 	if err != nil {
 		return nil, err
@@ -362,24 +361,24 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
+	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
 	var statuses []core.CertificateStatus
-	var fields string
+	var err error
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		fields = sa.CertificateStatusFieldsv2
+		statuses, err = sa.SelectCertificateStatusesv2(
+			updater.dbMap,
+			query,
+			string(core.OCSPStatusRevoked),
+			batchSize,
+		)
 	} else {
-		fields = sa.CertificateStatusFields
+		statuses, err = sa.SelectCertificateStatuses(
+			updater.dbMap,
+			query,
+			string(core.OCSPStatusRevoked),
+			batchSize,
+		)
 	}
-	_, err := updater.dbMap.Select(
-		&statuses,
-		fmt.Sprintf(`SELECT %s FROM certificateStatus
-		 WHERE status = :revoked
-		 AND ocspLastUpdated <= revokedDate
-		 LIMIT :limit`, fields),
-		map[string]interface{}{
-			"revoked": string(core.OCSPStatusRevoked),
-			"limit":   batchSize,
-		},
-	)
 	return statuses, err
 }
 
@@ -618,14 +617,10 @@ func main() {
 
 	conf := c.OCSPUpdater
 
-	go cmd.DebugServer(conf.DebugAddr)
-
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
-
-	go cmd.ProfileCmd(scope)
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
@@ -660,6 +655,9 @@ func main() {
 			}
 		}(l)
 	}
+
+	go cmd.DebugServer(conf.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	// Sleep forever (until signaled)
 	select {}

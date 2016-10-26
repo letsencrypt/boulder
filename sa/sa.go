@@ -47,30 +47,6 @@ type authzModel struct {
 	core.Authorization
 }
 
-// We need two certStatus model structs, one for when boulder does *not* have
-// the 20160817143417_CertStatusOptimizations.sql migration applied
-// (certStatusModelv1) and one for when it does (certStatusModelv2)
-//
-// TODO(@cpu): Collapse into one struct once the migration has been applied
-//             & feature flag set.
-type certStatusModelv1 struct {
-	Serial                string            `db:"serial"`
-	SubscriberApproved    bool              `db:"subscriberApproved"`
-	Status                core.OCSPStatus   `db:"status"`
-	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
-	RevokedDate           time.Time         `db:"revokedDate"`
-	RevokedReason         revocation.Reason `db:"revokedReason"`
-	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
-	OCSPResponse          []byte            `db:"ocspResponse"`
-	LockCol               int64             `json:"-"`
-}
-
-type certStatusModelv2 struct {
-	certStatusModelv1
-	NotAfter  time.Time `db:"notAfter"`
-	IsExpired bool      `db:"isExpired"`
-}
-
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
@@ -120,20 +96,14 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	var reg interface{}
-	var fields string
+	const query = "WHERE id = ?"
+	var model interface{}
+	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		reg = &regModelv2{}
-		fields = regV2Fields
+		model, err = selectRegistrationv2(ssa.dbMap, query, id)
 	} else {
-		reg = &regModelv1{}
-		fields = regV1Fields
+		model, err = selectRegistration(ssa.dbMap, query, id)
 	}
-	err := ssa.dbMap.SelectOne(
-		reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields),
-		id,
-	)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, core.NoSuchRegistrationError(
 			fmt.Sprintf("No registrations with ID %d", id),
@@ -142,30 +112,23 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	if err != nil {
 		return core.Registration{}, err
 	}
-	return modelToRegistration(reg)
+	return modelToRegistration(model)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
-	var reg interface{}
-	var fields string
-	if features.Enabled(features.AllowAccountDeactivation) {
-		reg = &regModelv2{}
-		fields = regV2Fields
-	} else {
-		reg = &regModelv1{}
-		fields = regV1Fields
-	}
+	const query = "WHERE jwk_sha256 = ?"
+	var model interface{}
+	var err error
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
 	}
-	err = ssa.dbMap.SelectOne(
-		reg,
-		fmt.Sprintf("SELECT %s FROM registrations WHERE jwk_sha256 = :key", fields),
-		map[string]interface{}{"key": sha},
-	)
-
+	if features.Enabled(features.AllowAccountDeactivation) {
+		model, err = selectRegistrationv2(ssa.dbMap, query, sha)
+	} else {
+		model, err = selectRegistration(ssa.dbMap, query, sha)
+	}
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
 		return core.Registration{}, core.NoSuchRegistrationError(msg)
@@ -174,7 +137,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jo
 		return core.Registration{}, err
 	}
 
-	return modelToRegistration(reg)
+	return modelToRegistration(model)
 }
 
 // GetAuthorization obtains an Authorization by ID
@@ -196,7 +159,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
-func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, errors.New("GetValidAuthorizations: no names received")
 	}
@@ -213,18 +176,12 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 		qmarks[i] = "?"
 	}
 
-	var auths []*core.Authorization
-	_, err = ssa.dbMap.Select(
-		&auths,
-		fmt.Sprintf(`
-		SELECT %s FROM authz
-		WHERE registrationID = ?
-		AND expires > ?
-		AND identifier IN (`+strings.Join(qmarks, ",")+`)
-		AND status = 'valid'
-		`, authzFields),
-		append([]interface{}{registrationID, now}, params...)...,
-	)
+	auths, err := selectAuthzs(ssa.dbMap,
+		"WHERE registrationID = ? "+
+			"AND expires > ? "+
+			"AND identifier IN ("+strings.Join(qmarks, ",")+") "+
+			"AND status = 'valid'",
+		append([]interface{}{registrationID, now}, params...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -397,8 +354,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	var cert core.Certificate
-	err := ssa.dbMap.SelectOne(&cert, fmt.Sprintf("SELECT %s FROM certificates WHERE serial = ?", CertificateFields), serial)
+	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
 		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
@@ -498,20 +454,14 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 
+	const statusQuery = "WHERE serial = ?"
 	var statusObj interface{}
-	var fields string
 
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj = &certStatusModelv2{}
-		fields = CertificateStatusFieldsv2
+		statusObj, err = SelectCertificateStatusv2(tx, statusQuery, serial)
 	} else {
-		statusObj = &certStatusModelv1{}
-		fields = CertificateStatusFields
+		statusObj, err = SelectCertificateStatus(tx, statusQuery, serial)
 	}
-	err = tx.SelectOne(
-		statusObj,
-		fmt.Sprintf("SELECT %s FROM certificateStatus WHERE serial = ?", fields),
-		serial)
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
@@ -522,22 +472,21 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 
+	var n int64
 	now := ssa.clk.Now()
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		status := statusObj.(*certStatusModelv2)
+		status := statusObj.(certStatusModelv2)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
-		statusObj = status
+		n, err = tx.Update(&status)
 	} else {
-		status := statusObj.(*certStatusModelv1)
+		status := statusObj.(certStatusModelv1)
 		status.Status = core.OCSPStatusRevoked
 		status.RevokedDate = now
 		status.RevokedReason = reasonCode
-		statusObj = status
+		n, err = tx.Update(&status)
 	}
-
-	n, err := tx.Update(statusObj)
 	if err != nil {
 		err = Rollback(tx, err)
 		return err
@@ -553,16 +502,14 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	var regType interface{}
-	var fields string
+	const query = "WHERE id = ?"
+	var model interface{}
+	var err error
 	if features.Enabled(features.AllowAccountDeactivation) {
-		regType = &regModelv2{}
-		fields = regV2Fields
+		model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
 	} else {
-		regType = &regModelv1{}
-		fields = regV1Fields
+		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
 	}
-	err := ssa.dbMap.SelectOne(regType, fmt.Sprintf("SELECT %s FROM registrations WHERE id = ?", fields), reg.ID)
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
@@ -578,12 +525,12 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	// so that we can copy over the LockCol from one to the other. Once we have copied
 	// that field we reassign to the interface so gorp can properly update it.
 	if features.Enabled(features.AllowAccountDeactivation) {
-		erm := regType.(*regModelv2)
+		erm := model.(*regModelv2)
 		urm := updatedRegModel.(*regModelv2)
 		urm.LockCol = erm.LockCol
 		updatedRegModel = urm
 	} else {
-		erm := regType.(*regModelv1)
+		erm := model.(*regModelv1)
 		urm := updatedRegModel.(*regModelv1)
 		urm.LockCol = erm.LockCol
 		updatedRegModel = urm
@@ -602,10 +549,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 }
 
 // NewPendingAuthorization stores a new Pending Authorization
-func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (output core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
+	var output core.Authorization
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return output, err
 	}
 
 	authz.ID = core.NewToken()
@@ -627,14 +575,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
 		err = Rollback(tx, err)
-		return
+		return output, err
 	}
 
 	for i, c := range authz.Challenges {
 		challModel, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		// Magic happens here: Gorp will modify challModel, setting challModel.ID
 		// to the auto-increment primary key. This is important because we want
@@ -644,12 +592,12 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		err = tx.Insert(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		challenge, err := modelToChallenge(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return output, err
 		}
 		authz.Challenges[i] = challenge
 	}
@@ -657,34 +605,31 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
-	return
+	return output, nil
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return err
 	}
 
 	// If the provided authz isn't Status: pending that's a problem, return early.
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use FinalizeAuthorization() to update to a final status")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the existing authz row isn't pending, we can't update it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot update a non-pending authorization")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	var updateAuth interface{}
@@ -698,51 +643,44 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	} else {
 		// Should never happen - we only have two fixed authz tables!
 		err = errors.New("Internal error. Unknown table updating authz")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	_, err = tx.Update(updateAuth)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return
+	return tx.Commit()
 }
 
 // FinalizeAuthorization converts a Pending Authorization to a final one
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return err
 	}
 
 	dbAuthz, table, err := getAuthz(tx, authz.ID)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the existing authz from the DB isn't currently pending, we can't finalize it
 	if !statusIsPending(dbAuthz.Status) {
 		err = errors.New("Cannot finalize an authorization that is not pending")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If the authz update is to a pending status, we can't do that! Use
 	// `UpdatePendingAuthorization`
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize an authorization to a non-final status")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	// If we found a pending authz in the pendingAuthorizations table, follow
@@ -753,20 +691,17 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 		err = tx.Insert(newRow)
 		if err != nil {
-			err = Rollback(tx, err)
-			return
+			return Rollback(tx, err)
 		}
 
 		rs, err := tx.Exec("DELETE FROM pendingAuthorizations WHERE id = ?", dbAuthz.ID)
 		if err != nil {
-			err = Rollback(tx, err)
-			return err
+			return Rollback(tx, err)
 		}
 		affected, err := rs.RowsAffected()
 		if err != nil || affected != 1 {
 			err = fmt.Errorf("Delete from pendingAuthorizations affected %d rows, not 1", affected)
-			err = Rollback(tx, err)
-			return err
+			return Rollback(tx, err)
 		}
 	} else if table == "authz" {
 		// Otherwise, for a pending authz found in the authz table we can just
@@ -774,25 +709,21 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		updatedRow := &authzModel{authz}
 		_, err = tx.Update(updatedRow)
 		if err != nil {
-			err = Rollback(tx, err)
-			return
+			return Rollback(tx, err)
 		}
 	} else {
 		// Should not happen! There are only two tables defined
 		// `authorizationTables` from `sa/authz.go`
 		err = errors.New("Internal error finalizing authz from unknown table")
-		err = Rollback(tx, err)
-		return
+		return Rollback(tx, err)
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		err = Rollback(tx, err)
-		return err
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return err
+	return tx.Commit()
 }
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
@@ -840,14 +771,14 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
-// AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (digest string, err error) {
-	var parsedCertificate *x509.Certificate
-	parsedCertificate, err = x509.ParseCertificate(certDER)
+// AddCertificate stores an issued certificate and returns the digest as
+// a string, or an error if any occured.
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (string, error) {
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return
+		return "", err
 	}
-	digest = core.Fingerprint256(certDER)
+	digest := core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
@@ -889,26 +820,25 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return "", err
 	}
 
-	// TODO Verify that the serial number doesn't yet exist
+	// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
+	// to be fixed by redesign. Reference issue
+	// https://github.com/letsencrypt/boulder/issues/2265 for more
 	err = tx.Insert(cert)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = tx.Insert(certStatusOb)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = addIssuedNames(tx, parsedCertificate)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
 	err = addFQDNSet(
@@ -919,18 +849,17 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		parsedCertificate.NotAfter,
 	)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return "", Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	return
+	return digest, tx.Commit()
 }
 
 // CountCertificatesRange returns the number of certificates issued in a specific
 // date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (count int64, err error) {
-	err = ssa.dbMap.SelectOne(
+func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM certificates
 		WHERE issued >= :windowLeft
@@ -984,22 +913,12 @@ func (e ErrNoReceipt) Error() string {
 
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
-	err = ssa.dbMap.SelectOne(
-		&receipt,
-		fmt.Sprintf("SELECT %s FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID", sctFields),
-		map[string]interface{}{
-			"serial": serial,
-			"logID":  logID,
-		},
-	)
-
+func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (core.SignedCertificateTimestamp, error) {
+	receipt, err := selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
 	if err == sql.ErrNoRows {
-		err = ErrNoReceipt(err.Error())
-		return
+		return receipt, ErrNoReceipt(err.Error())
 	}
-
-	return
+	return receipt, err
 }
 
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table

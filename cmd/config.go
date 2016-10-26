@@ -189,6 +189,9 @@ type IssuerConfig struct {
 	File       string
 	PKCS11     *pkcs11key.Config
 	CertFile   string
+	// Number of sessions to open with the HSM. For maximum performance,
+	// this should be equal to the number of cores in the HSM. Defaults to 1.
+	NumSessions int
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.

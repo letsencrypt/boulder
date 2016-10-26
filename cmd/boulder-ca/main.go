@@ -116,7 +116,11 @@ func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
 		pkcs11Config.PrivateKeyLabel == "" {
 		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 	}
-	return pkcs11key.New(pkcs11Config.Module,
+	numSessions := issuerConfig.NumSessions
+	if numSessions <= 0 {
+		numSessions = 1
+	}
+	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
 }
 
@@ -134,8 +138,6 @@ func main() {
 
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-
-	go cmd.DebugServer(c.CA.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "CA")
@@ -166,8 +168,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
-	go cmd.ProfileCmd(scope)
-
 	amqpConf := c.CA.AMQP
 	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
@@ -196,6 +196,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to create CA RPC server")
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
+
+	go cmd.DebugServer(c.CA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = cas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run CA RPC server")

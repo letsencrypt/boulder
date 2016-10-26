@@ -45,8 +45,6 @@ func main() {
 	err = features.Set(c.SA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	go cmd.DebugServer(c.SA.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "SA")
 	defer logger.AuditPanic()
@@ -65,14 +63,15 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	go cmd.ProfileCmd(scope)
-
 	amqpConf := saConf.AMQP
 	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
 	err = rpc.NewStorageAuthorityServer(sas, sai)
 	cmd.FailOnError(err, "Unable to setup SA RPC server")
+
+	go cmd.DebugServer(c.SA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = sas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run SA RPC server")
