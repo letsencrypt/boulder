@@ -373,6 +373,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				fmt.Sprintf("unable to get existing validations for regID: %d, identifier: %s",
 					regID, identifier.Value))
 			ra.log.Warning(string(outErr))
+			return authz, outErr
 		}
 
 		if existingAuthz, ok := auths[identifier.Value]; ok {
