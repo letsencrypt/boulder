@@ -131,7 +131,7 @@ function main() {
 
 function makeKeyPair() {
   console.log("Generating cert key pair...");
-  child_process.execFile("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
+  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
     if (error) {
       console.log(error);
       process.exit(1);
