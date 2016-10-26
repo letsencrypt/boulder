@@ -95,9 +95,11 @@ const (
 	maxLabels = 10
 
 	// RFC 1034 says DNS labels have a max of 63 octets, and names have a max of 255
-	// octets: https://tools.ietf.org/html/rfc1035#page-10
+	// octets: https://tools.ietf.org/html/rfc1035#page-10. Since two of those octets
+	// are taken up by the leading length byte and the trailing root period the actual
+	// max length becomes 253.
 	maxLabelLength         = 63
-	maxDNSIdentifierLength = 255
+	maxDNSIdentifierLength = 253
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
