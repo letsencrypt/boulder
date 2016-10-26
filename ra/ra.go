@@ -176,63 +176,61 @@ func (ra *RegistrationAuthorityImpl) validateEmail(ctx context.Context, address 
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	probChan := make(chan *probs.ProblemDetails, 2)
+
+	probChan := make(chan *probs.ProblemDetails)
 	timeoutCtx, _ := context.WithTimeout(ctx, ra.emailValidationTimeout)
 
-	/*
-	 * Note: we use `problemUnlessTimeout` here because we are OK with treating
-	 * a timeout during email validation as a non-error. We perform the email
-	 * address validation as a best-effort check for typos and not as a strong
-	 * control. This helps avoid spurious RPC timeouts in the WFE from slow DNS
-	 * lookups.
-	 * See https://github.com/letsencrypt/boulder/issues/2260 for more.
-	 */
 	go func() {
+		// First perform an MX lookup for the domain
 		resultMX, errMX := resolver.LookupMX(timeoutCtx, domain)
-		probChan <- problemUnlessTimeout(len(resultMX), errMX)
-	}()
-	go func() {
+		// If there was an error, and it wasn't a timeout, return that problem
+		// immediately
+		if errMX != nil && !problemIsTimeout(errMX) {
+			prob := bdns.ProblemDetailsFromDNSError(err)
+			prob.Type = probs.InvalidEmailProblem
+			probChan <- prob
+			// If there was a good non-empty result, or it was a timeout, return no
+			// problem.
+		} else if len(resultMX) > 0 {
+			probChan <- nil
+		}
+
+		// Next do a A/AAAA lookup for the domain
 		resultA, errA := resolver.LookupHost(timeoutCtx, domain)
-		probChan <- problemUnlessTimeout(len(resultA), errA)
+		// If there was an error, and it wasn't a timeout, return that problem
+		// immediately
+		if errA != nil && !problemIsTimeout(errA) {
+			prob := bdns.ProblemDetailsFromDNSError(err)
+			prob.Type = probs.InvalidEmailProblem
+			probChan <- prob
+			// If there was a good non-empty result, or it was a timeout, return no
+			// problem.
+		} else if len(resultA) > 0 || problemIsTimeout(errA) {
+			probChan <- nil
+		}
+
+		// If there was no errMX and no errA, and we didn't have a len(resultMX) or
+		// a len(resultA) then return empty DNS response problem.
+		probChan <- probs.InvalidEmail(emptyDNSResponseDetail)
 	}()
 
 	select {
 	case p := <-probChan:
-		// If the MX or A record lookup produced a problem within the deadline,
-		// return it!
-		if p != nil {
-			return p
-		}
+		return p
 	case <-ctx.Done():
-		// Exceeding the deadline is a timeout, and not a problem for the same
-		// reason as described above when mentioning `problemUnlessTimeout`
+		// If the MX or Host validation deadline was exceeded, treat it as
+		// a successful validation.
 		return nil
 	}
-
-	// The MX and A succeeded! No problems to report.
-	return nil
 }
 
-func problemUnlessTimeout(numResults int, err error) *probs.ProblemDetails {
-	// No error, no problem!
-	if err == nil && numResults > 0 {
-		return nil
-	}
-
-	// No error but an empty DNS response is a problem
-	if err == nil && numResults == 0 {
-		return probs.InvalidEmail(emptyDNSResponseDetail)
-	}
-
+func problemIsTimeout(err error) bool {
 	// A DNSError caused by a timeout is not a problem.
 	if dnsErr, ok := err.(*bdns.DNSError); ok && dnsErr.Timeout() {
-		return nil
+		return true
 	}
 
-	// Anything else is a problem
-	prob := bdns.ProblemDetailsFromDNSError(err)
-	prob.Type = probs.InvalidEmailProblem
-	return prob
+	return false
 }
 
 type certificateRequestEvent struct {

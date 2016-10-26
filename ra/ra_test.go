@@ -324,7 +324,7 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
+		{"a@always.error", "server failure at resolver"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
