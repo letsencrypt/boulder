@@ -1410,19 +1410,13 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 }
 
 func publicKeysEqual(a, b interface{}) (bool, error) {
-	var err error
-	aBytes, bBytes := []byte{}, []byte{}
-	for _, side := range []struct {
-		key   interface{}
-		bytes *[]byte
-	}{
-		{a, &aBytes},
-		{b, &bBytes},
-	} {
-		*side.bytes, err = x509.MarshalPKIXPublicKey(side.key)
-		if err != nil {
-			return false, err
-		}
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false, err
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false, err
 	}
 	return bytes.Compare(aBytes, bBytes) == 0, nil
 }
