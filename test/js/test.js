@@ -427,7 +427,7 @@ function deactivateAuthorization() {
         resource: "authz",
         status: "deactivated"
     }, function(err, resp, body) {
-        if (err || resp.statuscode != 200) {
+        if (err || resp.statusCode != 200) {
             console.log(body);
             console.log("error: " + err);
             console.log("Couldn't deactivate authorization")
@@ -442,7 +442,7 @@ function deactivateAuthorization() {
         }
 
         request.get(state.authorizationURL, function(err, resp, body) {
-            if (err || resp.statuscode != 200) {
+            if (err || resp.statusCode != 200) {
                 console.log(body);
                 console.log("Unable to retrieve deactivated authorization")
                 process.exit(1);
