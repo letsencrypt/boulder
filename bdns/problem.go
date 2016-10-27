@@ -27,6 +27,8 @@ func (d DNSError) Error() string {
 			} else {
 				detail = detailDNSNetFailure
 			}
+			// Note: we check d.underlying here even though `Timeout()` does this because the call to `netErr.Timeout()` above only
+			// happens for `*net.OpError` underlying types!
 		} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
 			detail = detailDNSTimeout
 		} else {
@@ -41,10 +43,13 @@ func (d DNSError) Error() string {
 		dns.TypeToString[d.recordType], d.hostname)
 }
 
-// Timeout returns true if the underlying error was a timeout
+// Timeout returns true if the underlying error was a timeout from the network
+// or the context the request was made under timed out
 func (d DNSError) Timeout() bool {
 	if netErr, ok := d.underlying.(*net.OpError); ok {
 		return netErr.Timeout()
+	} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
+		return true
 	}
 	return false
 }

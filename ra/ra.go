@@ -57,6 +57,8 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.Limits
+	// How long do we allow email address validation to take?
+	emailValidationTimeout time.Duration
 	// tiMu protects totalIssuedCount and totalIssuedLastUpdate
 	tiMu                  *sync.RWMutex
 	totalIssuedCount      int
@@ -84,6 +86,7 @@ func NewRegistrationAuthorityImpl(
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	emailValidationTimeout time.Duration,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
@@ -91,6 +94,7 @@ func NewRegistrationAuthorityImpl(
 		log:   logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
+		emailValidationTimeout:       emailValidationTimeout,
 		rlPolicies:                   ratelimit.New(),
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
@@ -164,7 +168,7 @@ const (
 	multipleAddressDetail  = "more than one e-mail address"
 )
 
-func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+func (ra *RegistrationAuthorityImpl) validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
 		return probs.InvalidEmail(unparseableEmailDetail)
@@ -174,37 +178,61 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var resultMX []string
-	var resultA []net.IP
-	var errMX, errA error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		resultMX, errMX = resolver.LookupMX(ctx, domain)
-		wg.Done()
-	}()
-	go func() {
-		resultA, errA = resolver.LookupHost(ctx, domain)
-		wg.Done()
-	}()
-	wg.Wait()
 
-	if errMX != nil {
-		prob := bdns.ProblemDetailsFromDNSError(errMX)
-		prob.Type = probs.InvalidEmailProblem
-		return prob
-	} else if len(resultMX) > 0 {
+	probChan := make(chan *probs.ProblemDetails)
+	timeoutCtx, _ := context.WithTimeout(ctx, ra.emailValidationTimeout)
+
+	go func() {
+		// First perform an MX lookup for the domain
+		resultMX, errMX := resolver.LookupMX(timeoutCtx, domain)
+		// If there was an error, and it wasn't a timeout, return that problem
+		// immediately
+		if errMX != nil && !problemIsTimeout(errMX) {
+			prob := bdns.ProblemDetailsFromDNSError(err)
+			prob.Type = probs.InvalidEmailProblem
+			probChan <- prob
+			// If there was a good non-empty result, or it was a timeout, return no
+			// problem.
+		} else if len(resultMX) > 0 {
+			probChan <- nil
+		}
+
+		// Next do a A/AAAA lookup for the domain
+		resultA, errA := resolver.LookupHost(timeoutCtx, domain)
+		// If there was an error, and it wasn't a timeout, return that problem
+		// immediately
+		if errA != nil && !problemIsTimeout(errA) {
+			prob := bdns.ProblemDetailsFromDNSError(err)
+			prob.Type = probs.InvalidEmailProblem
+			probChan <- prob
+			// If there was a good non-empty result, or it was a timeout, return no
+			// problem.
+		} else if len(resultA) > 0 || problemIsTimeout(errA) {
+			probChan <- nil
+		}
+
+		// If there was no errMX and no errA, and we didn't have a len(resultMX) or
+		// a len(resultA) then return empty DNS response problem.
+		probChan <- probs.InvalidEmail(emptyDNSResponseDetail)
+	}()
+
+	select {
+	case p := <-probChan:
+		return p
+	case <-ctx.Done():
+		// If the MX or Host validation deadline was exceeded, treat it as
+		// a successful validation.
 		return nil
 	}
-	if errA != nil {
-		prob := bdns.ProblemDetailsFromDNSError(errA)
-		prob.Type = probs.InvalidEmailProblem
-		return prob
-	} else if len(resultA) > 0 {
-		return nil
+}
+
+func problemIsTimeout(err error) bool {
+	// A DNSError caused by a timeout is not a problem.
+	if dnsErr, ok := err.(*bdns.DNSError); ok && dnsErr.Timeout() {
+		return true
 	}
 
-	return probs.InvalidEmail(emptyDNSResponseDetail)
+	return false
 }
 
 type certificateRequestEvent struct {
@@ -309,7 +337,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 		start := ra.clk.Now()
 		ra.stats.Inc("ValidateEmail.Calls", 1)
-		problem := validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
+		problem := ra.validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
 		ra.stats.TimingDuration("ValidateEmail.Latency", ra.clk.Now().Sub(start))
 		if problem != nil {
 			ra.stats.Inc("ValidateEmail.Errors", 1)

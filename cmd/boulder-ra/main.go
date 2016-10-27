@@ -66,6 +66,17 @@ type config struct {
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
 
+		// EmailValidationTimeout defines how long the RA will wait trying to
+		// validate a subscriber's email address via its MX and A/AAAA records. This
+		// value should be set *lower* than the WFE's request/RPC timeouts for the
+		// RA such that the email validation can timeout without the overall request
+		// timing out. See Issue 2260[0] for more information. We only check the
+		// email opportunistically to prevent typos and can accept timeouts without
+		// alerting the user.
+		//
+		// [0]: https://github.com/letsencrypt/boulder/issues/2260
+		EmailValidationTimeout cmd.ConfigDuration
+
 		Features map[string]bool
 	}
 
@@ -150,6 +161,13 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
+	// TODO(cpu): remove once RA.EmailValidationTimeout is deployed.
+	//            Using 8s here since the WFE's timeout is 10s.
+	emailValidationTimeout := time.Second * 8
+	if c.RA.EmailValidationTimeout.Duration != 0 {
+		emailValidationTimeout = c.RA.EmailValidationTimeout.Duration
+	}
+
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
@@ -160,7 +178,8 @@ func main() {
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
-		pendingAuthorizationLifetime)
+		pendingAuthorizationLifetime,
+		emailValidationTimeout)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
