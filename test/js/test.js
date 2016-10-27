@@ -125,6 +125,8 @@ getCertificate
   |
 downloadCertificate
   |
+deactivateAuthorization
+  |
 deactivateAccount
   |
 saveFiles
@@ -469,12 +471,46 @@ function downloadCertificate(err, resp, body) {
     } else {
       console.log("Successfully verified cert at", certURL);
       if (state.nextTests) {
-        deactivateAccount();
+        deactivateAuthorization();
       } else {
         saveFiles();
       }
     }
   });
+}
+
+function deactivateAuthorization() {
+    post(state.authorizationURL, {
+        resource: "authz",
+        status: "deactivated"
+    }, function(err, resp, body) {
+        if (err || resp.statusCode != 200) {
+            console.log("error: " + err);
+            console.log("Couldn't deactivate authorization")
+            process.exit(1);
+        }
+
+        var authz = JSON.parse(body);
+        if (authz.status != "deactivated") {
+            console.log("Authorization wasn't properly deactivated");
+            process.exit(1);
+        }
+
+        request.get(state.authorizationURL, function(err, resp, body) {
+            if (err || resp.statusCode != 200) {
+                console.log("Unable to retrieve deactivated authorization")
+                process.exit(1);
+            }
+
+            var authz = JSON.parse(body);
+            if (authz.status != "deactivated") {
+                console.log("Authorization wasn't properly deactivated");
+                process.exit(1);
+            }
+
+            deactivateAccount();
+        });
+    });
 }
 
 function deactivateAccount() {
