@@ -15,6 +15,7 @@ const (
 	IDNASupport
 	AllowAccountDeactivation
 	CertStatusOptimizationsMigrated
+	AllowKeyRollover
 )
 
 // List of features and their default value, protected by fMu
@@ -23,6 +24,7 @@ var features = map[FeatureFlag]bool{
 	IDNASupport:                     false,
 	AllowAccountDeactivation:        false,
 	CertStatusOptimizationsMigrated: false,
+	AllowKeyRollover:                false,
 }
 
 var fMu = new(sync.RWMutex)

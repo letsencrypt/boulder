@@ -190,6 +190,9 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
+	if reg.Key != updated.Key {
+		reg.Key = updated.Key
+	}
 	return reg, nil
 }
 
@@ -573,6 +576,8 @@ func TestDirectory(t *testing.T) {
 	// This tests to ensure the `Host` in the following `http.Request` is not
 	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
 	// and expecting `localhost` in the JSON result.
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
@@ -588,10 +593,27 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+
+	responseWriter.Body.Reset()
+	url, _ = url.Parse("/directory")
+	headers := map[string][]string{
+		"User-Agent": {"LetsEncryptPythonClient"},
+	}
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+		Header: headers,
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 }
 
 func TestRelativeDirectory(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
@@ -602,15 +624,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
 	}
 
 	for _, tt := range dirTests {
@@ -1446,6 +1468,8 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
@@ -1931,4 +1955,90 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "detail": "Registration is not valid, has status 'deactivated'",
 		  "status": 403
 		}`)
+}
+
+func TestKeyRollover(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+
+	key, err := jose.LoadPrivateKey([]byte(test3KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Parse error reading JWS",
+		  "status": 400
+		}`)
+
+	for _, testCase := range []struct {
+		payload          string
+		expectedResponse string
+	}{
+		{
+			// Missing account URL
+			"{}",
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Incorrect account URL provided in payload",
+		     "status": 400
+		   }`,
+		},
+		// Missing new key
+		{
+			`{"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Unable to marshal new JWK",
+		     "status": 400
+		   }`,
+		},
+		// Different key used to sign inner JWS
+		{
+			`{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "New JWK in inner payload doesn't match key used to sign inner JWS",
+		     "status": 400
+		   }`,
+		},
+		// Valid request
+		{
+			`{"newKey":{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			`{
+		     "id": 1,
+		     "key": {
+		       "kty": "RSA",
+		       "n": "uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w",
+		       "e": "AQAB"
+		     },
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "Status": "valid"
+		   }`,
+		},
+	} {
+		inner, err := signer.Sign([]byte(testCase.payload))
+		test.AssertNotError(t, err, "Unable to sign")
+		innerStr := inner.FullSerialize()
+		innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
+		outer := signRequest(t, innerStr, wfe.nonceService)
+
+		responseWriter.Body.Reset()
+		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
+		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
+	}
 }

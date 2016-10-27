@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/square/go-jose"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -782,7 +784,9 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 	return nil
 }
 
-// UpdateRegistration updates an existing Registration with new values.
+// UpdateRegistration updates an existing Registration with new values. Caller
+// is responsible for making sure that update.Key is only different from base.Key
+// if it is being called from the WFE key change endpoint.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
 	if changed := mergeUpdate(&base, update); !changed {
 		// If merging the update didn't actually change the base then our work is
@@ -835,6 +839,8 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	return true
 }
 
+var emptyKey jose.JsonWebKey
+
 // MergeUpdate copies a subset of information from the input Registration
 // into the Registration r. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -857,6 +863,12 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		r.Agreement = input.Agreement
 		changed = true
 	}
+
+	if features.Enabled(features.AllowKeyRollover) && input.Key != emptyKey && input.Key != r.Key {
+		r.Key = input.Key
+		changed = true
+	}
+
 	return changed
 }
 
