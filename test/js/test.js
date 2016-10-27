@@ -59,7 +59,6 @@ var state = {
   certificateURL: "",
   certFile: cliOptions.certFile,
   keyFile: cliOptions.certKeyFile,
-
   nextTests: (process.env.BOULDER_CONFIG_DIR != undefined && process.env.BOULDER_CONFIG_DIR.endsWith("test/config-next")),
 };
 
@@ -125,6 +124,8 @@ ensureValidation
 getCertificate
   |
 downloadCertificate
+  |
+deactivateAuthorization
   |
 saveFiles
 
@@ -467,9 +468,48 @@ function downloadCertificate(err, resp, body) {
       console.log("Error: cert at", certURL, "did not match returned cert.");
     } else {
       console.log("Successfully verified cert at", certURL);
-      saveFiles()
+      if (state.nextTests) {
+        deactivateAuthorization();
+      } else {
+        saveFiles();
+      }
     }
   });
+}
+
+function deactivateAuthorization() {
+    post(state.authorizationURL, {
+        resource: "authz",
+        status: "deactivated"
+    }, function(err, resp, body) {
+        if (err || resp.statusCode != 200) {
+            console.log("error: " + err);
+            console.log("Couldn't deactivate authorization")
+            process.exit(1);
+        }
+
+        var authz = JSON.parse(body);
+        if (authz.status != "deactivated") {
+            console.log("Authorization wasn't properly deactivated");
+            process.exit(1);
+        }
+
+        request.get(state.authorizationURL, function(err, resp, body) {
+            if (err || resp.statusCode != 200) {
+                console.log("Unable to retrieve deactivated authorization")
+                process.exit(1);
+            }
+
+            var authz = JSON.parse(body);
+            if (authz.status != "deactivated") {
+                console.log("Authorization wasn't properly deactivated");
+                process.exit(1);
+            }
+
+            saveFiles();
+        });
+
+    });
 }
 
 function saveFiles() {
