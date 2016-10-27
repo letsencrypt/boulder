@@ -428,7 +428,6 @@ function deactivateAuthorization() {
         status: "deactivated"
     }, function(err, resp, body) {
         if (err || resp.statusCode != 200) {
-            console.log(body);
             console.log("error: " + err);
             console.log("Couldn't deactivate authorization")
             process.exit(1);
@@ -436,21 +435,18 @@ function deactivateAuthorization() {
 
         var authz = JSON.parse(body);
         if (authz.status != "deactivated") {
-            console.log(body);
             console.log("Authorization wasn't properly deactivated");
             process.exit(1);
         }
 
         request.get(state.authorizationURL, function(err, resp, body) {
             if (err || resp.statusCode != 200) {
-                console.log(body);
                 console.log("Unable to retrieve deactivated authorization")
                 process.exit(1);
             }
 
             var authz = JSON.parse(body);
             if (authz.status != "deactivated") {
-                console.log(body);
                 console.log("Authorization wasn't properly deactivated");
                 process.exit(1);
             }
