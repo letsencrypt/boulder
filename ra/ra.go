@@ -164,6 +164,14 @@ const (
 	multipleAddressDetail  = "more than one e-mail address"
 )
 
+func problemIsTimeout(err error) bool {
+	if dnsErr, ok := err.(*bdns.DNSError); ok && dnsErr.Timeout() {
+		return true
+	}
+
+	return false
+}
+
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
@@ -188,6 +196,12 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		wg.Done()
 	}()
 	wg.Wait()
+
+	// We treat timeouts as non-failures for best-effort email validation
+	// See: https://github.com/letsencrypt/boulder/issues/2260
+	if problemIsTimeout(errMX) || problemIsTimeout(errA) {
+		return nil
+	}
 
 	if errMX != nil {
 		prob := bdns.ProblemDetailsFromDNSError(errMX)
