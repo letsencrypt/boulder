@@ -20,7 +20,7 @@ Boulder does not implement the `caa` and `dnssec` errors.
 
 ## [Section 6.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1)
 
-Boulder does not implement the `new-application` or `key-change` resources. Instead of `new-application` Boulder implements the `new-cert` resource that is defined in [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement the `new-application` resource. Instead of `new-application` Boulder implements the `new-cert` resource that is defined in [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
 
 ## [Section 6.1.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.1.1)
 
@@ -45,7 +45,7 @@ Boulder does not allow `tel` URIs in the registrations `contact` list.
 
 ## [Section 6.2.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.2.1)
 
-Boulder does not implement key roll-over.
+Boulder implements draft-03 style key roll-over with a few divergences. Since Boulder doesn't currently use the registration URL to identify users we do not check for that field in the JWS protected headers but do check for it in the inner payload. Boulder also requires the outer JWS payload contains the `"resource": "key-change"` field.
 
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3)
 

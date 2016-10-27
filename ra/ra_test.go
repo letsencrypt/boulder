@@ -321,12 +321,15 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
+		// A timeout during email validation is treated as a success. We treat email
+		// validation during registration as a best-effort. See
+		// https://github.com/letsencrypt/boulder/issues/2260 for more
+		"a@always.timeout",
 	}
 
 	for _, tc := range testFailures {
@@ -545,6 +548,35 @@ func TestReuseAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+}
+
+type mockSAWithBadGetValidAuthz struct {
+	mocks.StorageAuthority
+}
+
+func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string,
+	now time.Time) (map[string]*core.Authorization, error) {
+	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
+}
+
+func TestReuseAuthorizationFaultySA(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Use a mock SA that always fails `GetValidAuthorizations`
+	mockSA := &mockSAWithBadGetValidAuthz{}
+	ra.SA = mockSA
+
+	// We expect that calling NewAuthorization will fail gracefully with an error
+	// about the existing validations
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -1187,6 +1219,31 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	test.AssertEquals(t, changed, false)
 	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
 	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
+}
+
+func TestRegistrationKeyUpdate(t *testing.T) {
+	rA, rB := core.Registration{Key: jose.JsonWebKey{KeyID: "id"}}, core.Registration{}
+	changed := mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
+	}
+
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
+
+	changed = mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with empty update")
+	}
+
+	rB.Key.KeyID = "other-id"
+	changed = mergeUpdate(&rA, rB)
+	if !changed {
+		t.Fatal("mergeUpdate didn't change the key with non-empty update")
+	}
+	if rA.Key.KeyID != "other-id" {
+		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
+	}
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports

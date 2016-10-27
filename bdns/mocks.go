@@ -150,6 +150,11 @@ func (mock *MockDNSResolver) LookupMX(_ context.Context, domain string) ([]strin
 		fallthrough
 	case "email.com":
 		return []string{"mail.email.com"}, nil
+	case "always.error":
+		return []string{}, &DNSError{dns.TypeA, "always.error",
+			&net.OpError{Err: errors.New("always.error always errors")}, -1}
+	case "always.timeout":
+		return []string{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
 	}
 	return nil, nil
 }
