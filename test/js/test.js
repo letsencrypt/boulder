@@ -127,6 +127,8 @@ downloadCertificate
   |
 deactivateAuthorization
   |
+deactivateAccount
+  |
 saveFiles
 
 
@@ -506,9 +508,31 @@ function deactivateAuthorization() {
                 process.exit(1);
             }
 
+            deactivateAccount();
+        });
+    });
+}
+
+function deactivateAccount() {
+    post(state.registrationURL, {
+        resource: "reg",
+        status: "deactivated"
+    },
+    function(err, resp, body) {
+        if (err || Math.floor(resp.statusCode / 100) != 2) {
+            console.log("error: " + err);
+            process.exit(1);
+        }
+
+        // Test account is actually deactivated
+        post(state.registrationURL, {resource:"reg"}, function(err, resp, body) {
+            if (resp.statusCode != 403) {
+                console.log("POST to registration URL after deactivating account didn't fail.")
+                process.exit(1);
+            }
+
             saveFiles();
         });
-
     });
 }
 
