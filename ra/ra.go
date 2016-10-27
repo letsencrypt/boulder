@@ -195,18 +195,24 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	}()
 	wg.Wait()
 
-	if errMX != nil && !problemIsTimeout(errMX) {
+	// We treat timeouts as non-failures for best-effort email validation
+	// See: https://github.com/letsencrypt/boulder/issues/2260
+	if problemIsTimeout(errMX) || problemIsTimeout(errA) {
+		return nil
+	}
+
+	if errMX != nil {
 		prob := bdns.ProblemDetailsFromDNSError(errMX)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
-	} else if len(resultMX) > 0 || problemIsTimeout(errMX) {
+	} else if len(resultMX) > 0 {
 		return nil
 	}
-	if errA != nil && !problemIsTimeout(errA) {
+	if errA != nil {
 		prob := bdns.ProblemDetailsFromDNSError(errA)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
-	} else if len(resultA) > 0 || problemIsTimeout(errA) {
+	} else if len(resultA) > 0 {
 		return nil
 	}
 
