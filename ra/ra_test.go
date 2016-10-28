@@ -547,6 +547,35 @@ func TestReuseAuthorization(t *testing.T) {
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
 
+type mockSAWithBadGetValidAuthz struct {
+	mocks.StorageAuthority
+}
+
+func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string,
+	now time.Time) (map[string]*core.Authorization, error) {
+	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
+}
+
+func TestReuseAuthorizationFaultySA(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Use a mock SA that always fails `GetValidAuthorizations`
+	mockSA := &mockSAWithBadGetValidAuthz{}
+	ra.SA = mockSA
+
+	// We expect that calling NewAuthorization will fail gracefully with an error
+	// about the existing validations
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
+}
+
 func TestReuseAuthorizationDisabled(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
