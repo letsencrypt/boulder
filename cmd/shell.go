@@ -35,6 +35,7 @@ import (
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -202,6 +203,7 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
+	http.Handle("/metrics", promhttp.Handler())
 	err = http.Serve(ln, nil)
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
