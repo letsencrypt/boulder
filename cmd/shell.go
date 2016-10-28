@@ -35,7 +35,6 @@ import (
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
-	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
