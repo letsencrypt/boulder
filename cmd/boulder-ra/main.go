@@ -97,8 +97,6 @@ func main() {
 	err = features.Set(c.RA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	go cmd.DebugServer(c.RA.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "RA")
 	defer logger.AuditPanic()
@@ -115,8 +113,6 @@ func main() {
 	}
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
-
-	go cmd.ProfileCmd(scope)
 
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
@@ -197,10 +193,16 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
+	err = rai.UpdateIssuedCountForever()
+	cmd.FailOnError(err, "Updating total issuance count")
+
 	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")
 	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 	cmd.FailOnError(err, "Unable to setup RA RPC server")
+
+	go cmd.DebugServer(c.RA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = ras.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run RA RPC server")

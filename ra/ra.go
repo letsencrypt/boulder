@@ -55,13 +55,14 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.Limits
-	tiMu                         *sync.RWMutex
-	totalIssuedCache             int
-	lastIssuedCount              *time.Time
-	maxContactsPerReg            int
-	maxNames                     int
-	forceCNFromSAN               bool
-	reuseValidAuthz              bool
+	// tiMu protects totalIssuedCount and totalIssuedLastUpdate
+	tiMu                  *sync.RWMutex
+	totalIssuedCount      int
+	totalIssuedLastUpdate time.Time
+	maxContactsPerReg     int
+	maxNames              int
+	forceCNFromSAN        bool
+	reuseValidAuthz       bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -114,6 +115,45 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 
 func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
 	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
+}
+
+// Run this to continually update the totalIssuedCount field of this
+// RA by calling out to the SA. It will run one update before returning, and
+// return an error if that update failed.
+func (ra *RegistrationAuthorityImpl) UpdateIssuedCountForever() error {
+	if err := ra.updateIssuedCount(); err != nil {
+		return err
+	}
+	go func() {
+		for {
+			_ = ra.updateIssuedCount()
+			time.Sleep(1 * time.Minute)
+		}
+	}()
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
+	totalCertLimit := ra.rlPolicies.TotalCertificates()
+	if totalCertLimit.Enabled() {
+		now := ra.clk.Now()
+		// We don't have a Context here, so use the background context. Note that a
+		// timeout is still imposed by our RPC layer.
+		count, err := ra.SA.CountCertificatesRange(
+			context.Background(),
+			now.Add(-totalCertLimit.Window.Duration),
+			now,
+		)
+		if err != nil {
+			ra.log.AuditErr(fmt.Sprintf("updating total issued count: %s", err))
+			return err
+		}
+		ra.tiMu.Lock()
+		ra.totalIssuedCount = int(count)
+		ra.totalIssuedLastUpdate = ra.clk.Now()
+		ra.tiMu.Unlock()
+	}
+	return nil
 }
 
 const (
@@ -179,48 +219,6 @@ type certificateRequestEvent struct {
 	RequestTime         time.Time `json:",omitempty"`
 	ResponseTime        time.Time `json:",omitempty"`
 	Error               string    `json:",omitempty"`
-}
-
-var issuanceCountCacheLife = 1 * time.Minute
-
-// issuanceCountInvalid checks if the current issuance count is invalid either
-// because it hasn't been set yet or because it has expired. This method expects
-// that the caller holds either a R or W ra.tiMu lock.
-func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
-	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
-}
-
-func (ra *RegistrationAuthorityImpl) getIssuanceCount(ctx context.Context) (int, error) {
-	ra.tiMu.RLock()
-	if ra.issuanceCountInvalid(ra.clk.Now()) {
-		ra.tiMu.RUnlock()
-		return ra.setIssuanceCount(ctx)
-	}
-	count := ra.totalIssuedCache
-	ra.tiMu.RUnlock()
-	return count, nil
-}
-
-func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int, error) {
-	ra.tiMu.Lock()
-	defer ra.tiMu.Unlock()
-
-	totalCertWindow := ra.rlPolicies.TotalCertificates().Window.Duration
-
-	now := ra.clk.Now()
-	if ra.issuanceCountInvalid(now) {
-		count, err := ra.SA.CountCertificatesRange(
-			ctx,
-			now.Add(-totalCertWindow),
-			now,
-		)
-		if err != nil {
-			return 0, err
-		}
-		ra.totalIssuedCache = int(count)
-		ra.lastIssuedCount = &now
-	}
-	return ra.totalIssuedCache, nil
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -738,20 +736,32 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkTotalCertificatesLimit() error {
+	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	ra.tiMu.RLock()
+	defer ra.tiMu.RUnlock()
+	// If last update of the total issued count was more than five minutes ago,
+	// or not yet updated, fail.
+	if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(5*time.Minute)) ||
+		ra.totalIssuedLastUpdate.IsZero() {
+		return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
+	}
+	if ra.totalIssuedCount >= totalCertLimits.Threshold {
+		ra.totalCertsStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, totalIssued: %d, lastUpdated %s", ra.totalIssuedCount, ra.totalIssuedLastUpdate))
+		return core.RateLimitedError("Global certificate issuance limit reached. Try again in an hour.")
+	}
+	ra.totalCertsStats.Inc("Pass", 1)
+	return nil
+}
+
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	totalCertLimits := ra.rlPolicies.TotalCertificates()
 	if totalCertLimits.Enabled() {
-		totalIssued, err := ra.getIssuanceCount(ctx)
+		err := ra.checkTotalCertificatesLimit()
 		if err != nil {
 			return err
 		}
-		if totalIssued >= totalCertLimits.Threshold {
-			domains := strings.Join(names, ",")
-			ra.totalCertsStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
-			return core.RateLimitedError("Certificate issuance limit reached")
-		}
-		ra.totalCertsStats.Inc("Pass", 1)
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()

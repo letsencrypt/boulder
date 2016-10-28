@@ -48,8 +48,6 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.Publisher.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Publisher")
 	defer logger.AuditPanic()
@@ -84,8 +82,6 @@ func main() {
 		scope,
 		sa)
 
-	go cmd.ProfileCmd(scope)
-
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
 		cmd.FailOnError(err, "Failed to setup gRPC server")
@@ -101,6 +97,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to create Publisher RPC server")
 	err = rpc.NewPublisherServer(pubs, pubi)
 	cmd.FailOnError(err, "Unable to setup Publisher RPC server")
+
+	go cmd.DebugServer(c.Publisher.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = pubs.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run Publisher RPC server")

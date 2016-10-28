@@ -34,7 +34,7 @@ func TestPurgeAuthzs(t *testing.T) {
 
 	p := expiredAuthzPurger{stats, log, fc, dbMap, 1}
 
-	rows, err := p.purgeAuthzs(time.Time{}, true)
+	rows, err := p.purgeAuthzs(time.Time{}, true, "authz")
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	test.AssertEquals(t, rows, int64(0))
 
@@ -48,10 +48,10 @@ func TestPurgeAuthzs(t *testing.T) {
 	_, err = ssa.NewPendingAuthorization(context.Background(), core.Authorization{RegistrationID: reg.ID, Expires: &new})
 	test.AssertNotError(t, err, "NewPendingAuthorization failed")
 
-	rows, err = p.purgeAuthzs(fc.Now(), true)
+	rows, err = p.purgeAuthzs(fc.Now(), true, "authz")
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	test.AssertEquals(t, rows, int64(2))
-	rows, err = p.purgeAuthzs(fc.Now().Add(time.Hour), true)
+	rows, err = p.purgeAuthzs(fc.Now().Add(time.Hour), true, "authz")
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	test.AssertEquals(t, rows, int64(1))
 }
