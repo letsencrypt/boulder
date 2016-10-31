@@ -257,10 +257,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
-	AuthzFinal.Status = core.StatusValid
+	AuthzFinal.Status = "valid"
 	exp := time.Now().Add(365 * 24 * time.Hour)
 	AuthzFinal.Expires = &exp
-	AuthzFinal.Challenges[0].Status = core.StatusValid
+	AuthzFinal.Challenges[0].Status = "valid"
 
 	return va, ssa, ra, fc, cleanUp
 }
@@ -498,13 +498,13 @@ func TestReuseAuthorization(t *testing.T) {
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = core.StatusValid
+	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	finalAuthz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -585,13 +585,13 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = core.StatusValid
+	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	finalAuthz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -618,13 +618,13 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 
 	// Create one finalized authorization that expires in 12 hours from now
 	expiringAuth := AuthzInitial
+	expiringAuth.Status = "valid"
 	exp := ra.clk.Now().Add(12 * time.Hour)
 	expiringAuth.Expires = &exp
-	expiringAuth.Challenges[0].Status = core.StatusValid
+	expiringAuth.Challenges[0].Status = "valid"
 	expiringAuth.RegistrationID = Registration.ID
 	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	expiringAuth.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -791,7 +791,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
-	authz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
 	certRequest := core.CertificateRequest{
@@ -812,7 +811,6 @@ func TestAuthorizationRequired(t *testing.T) {
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -834,7 +832,6 @@ func TestNewCertificate(t *testing.T) {
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -843,7 +840,6 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
 	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
-	authzFinalWWW.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -896,7 +892,6 @@ func TestTotalCertRateLimit(t *testing.T) {
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 
 	// Inject another final authorization to cover www.not-example.com
@@ -904,7 +899,6 @@ func TestTotalCertRateLimit(t *testing.T) {
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
 	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
-	authzFinalWWW.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
 
