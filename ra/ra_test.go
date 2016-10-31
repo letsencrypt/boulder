@@ -257,10 +257,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
-	AuthzFinal.Status = core.StatusValid
+	AuthzFinal.Status = "valid"
 	exp := time.Now().Add(365 * 24 * time.Hour)
 	AuthzFinal.Expires = &exp
-	AuthzFinal.Challenges[0].Status = core.StatusValid
+	AuthzFinal.Challenges[0].Status = "valid"
 
 	return va, ssa, ra, fc, cleanUp
 }
@@ -321,12 +321,15 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
+		// A timeout during email validation is treated as a success. We treat email
+		// validation during registration as a best-effort. See
+		// https://github.com/letsencrypt/boulder/issues/2260 for more
+		"a@always.timeout",
 	}
 
 	for _, tc := range testFailures {
@@ -495,13 +498,13 @@ func TestReuseAuthorization(t *testing.T) {
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = core.StatusValid
+	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	finalAuthz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -582,13 +585,13 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = core.StatusValid
+	finalAuthz.Challenges[0].Status = "valid"
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	finalAuthz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -615,13 +618,13 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 
 	// Create one finalized authorization that expires in 12 hours from now
 	expiringAuth := AuthzInitial
+	expiringAuth.Status = "valid"
 	exp := ra.clk.Now().Add(12 * time.Hour)
 	expiringAuth.Expires = &exp
-	expiringAuth.Challenges[0].Status = core.StatusValid
+	expiringAuth.Challenges[0].Status = "valid"
 	expiringAuth.RegistrationID = Registration.ID
 	expiringAuth, err := sa.NewPendingAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	expiringAuth.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, expiringAuth)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
@@ -788,7 +791,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
-	authz.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
 	certRequest := core.CertificateRequest{
@@ -809,7 +811,6 @@ func TestAuthorizationRequired(t *testing.T) {
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -831,7 +832,6 @@ func TestNewCertificate(t *testing.T) {
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -840,7 +840,6 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
 	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
-	authzFinalWWW.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -893,7 +892,6 @@ func TestTotalCertRateLimit(t *testing.T) {
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
 	test.AssertNotError(t, err, "Could not store test data")
-	AuthzFinal.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 
 	// Inject another final authorization to cover www.not-example.com
@@ -901,7 +899,6 @@ func TestTotalCertRateLimit(t *testing.T) {
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
 	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
-	authzFinalWWW.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
 	test.AssertNotError(t, err, "Could not store test data")
 
@@ -1216,6 +1213,31 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	test.AssertEquals(t, changed, false)
 	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
 	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
+}
+
+func TestRegistrationKeyUpdate(t *testing.T) {
+	rA, rB := core.Registration{Key: jose.JsonWebKey{KeyID: "id"}}, core.Registration{}
+	changed := mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
+	}
+
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
+
+	changed = mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with empty update")
+	}
+
+	rB.Key.KeyID = "other-id"
+	changed = mergeUpdate(&rA, rB)
+	if !changed {
+		t.Fatal("mergeUpdate didn't change the key with non-empty update")
+	}
+	if rA.Key.KeyID != "other-id" {
+		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
+	}
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
