@@ -9,9 +9,9 @@ import (
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -40,16 +40,23 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 	if ok := clientCAs.AppendCertsFromPEM(clientIssuerBytes); !ok {
 		return nil, nil, errors.New("Failed to parse client issuer certificates")
 	}
-	servConf := &tls.Config{
+	servTLSConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    clientCAs,
 	}
-	creds := credentials.NewTLS(servConf)
+
+	whitelist := make(map[string]struct{})
+	for _, subjCN := range c.ClientWhitelist {
+		whitelist[subjCN] = struct{}{}
+	}
+
+	creds := bcreds.New(nil, servTLSConfig, whitelist)
 	l, err := net.Listen("tcp", c.Address)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	si := &serverInterceptor{stats.NewScope("gRPCServer"), clock.Default()}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
 }

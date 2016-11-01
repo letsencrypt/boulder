@@ -14,10 +14,78 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestTransportCredentials(t *testing.T) {
+func TestServerTransportCredentials(t *testing.T) {
+	var bcreds *transportCredentials
+
+	whitelist := map[string]struct{}{
+		"boulder": struct{}{},
+	}
+
+	goodCert, err := core.LoadCert("../../test/grpc-creds/client.pem")
+	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/client.pem') failed")
+	badCert, err := core.LoadCert("../../test/test-root.pem")
+	test.AssertNotError(t, err, "core.LoadCert('../../test-root.pem') failed")
+
+	servTLSConfig := &tls.Config{}
+
+	// A creds with a nil serverTLSConfig should return an error if we try to use
+	// it for a server handshake
+	bcreds = &transportCredentials{nil, nil, whitelist}
+	_, _, err = bcreds.ServerHandshake(nil)
+	test.AssertEquals(t, err.Error(),
+		"boulder/grpc/creds: Server-side handshake not supported without non-nil `serverConfig`")
+
+	// A creds with a nil whitelist should consider any peer whitelisted
+	bcreds = &transportCredentials{nil, servTLSConfig, nil}
+	emptyState := tls.ConnectionState{}
+	whitelisted, err := bcreds.peerIsWhitelisted(emptyState)
+	test.AssertNotError(t, err, "peerIsWhitelisted() errored for emptyState")
+	test.AssertEquals(t, whitelisted, true)
+
+	// A creds with a whitelist should reject peers without VerifiedChains
+	bcreds = &transportCredentials{nil, servTLSConfig, whitelist}
+	whitelisted, err = bcreds.peerIsWhitelisted(emptyState)
+	test.AssertError(t, err, "peer had zero VerifiedChains")
+	test.AssertEquals(t, whitelisted, false)
+
+	// A creds with a whitelist should reject peers that don't have any
+	// VerifiedChains that begin with a whitelisted subject CN leaf cert
+	wrongState := tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{badCert}},
+	}
+	whitelisted, err = bcreds.peerIsWhitelisted(wrongState)
+	test.AssertError(t, err, "peer's verified TLS chains did not include a "+
+		"leaf certificate with a whitelisted subject CN")
+	test.AssertEquals(t, whitelisted, false)
+
+	// A creds with a whitelist should accept peers that have a VerifiedChains
+	// chain that *does* have a whitelisted leaf cert
+	rightState := tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{goodCert}},
+	}
+	whitelisted, err = bcreds.peerIsWhitelisted(rightState)
+	test.AssertNotError(t, err, "peerIsWhitelisted(rightState) failed")
+	test.AssertEquals(t, whitelisted, true)
+
+	// A creds with a whitelist should accept peers that have a VerifiedChains
+	// chain that *does* have a whitelisted leaf cert, even if one of the other
+	// chains does not
+	twoChainzState := tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{
+			[]*x509.Certificate{badCert},
+			[]*x509.Certificate{goodCert},
+		},
+	}
+	whitelisted, err = bcreds.peerIsWhitelisted(twoChainzState)
+	test.AssertNotError(t, err, "peerIsWhitelisted(twoChainzState) failed")
+	test.AssertEquals(t, whitelisted, true)
+}
+
+func TestClientTransportCredentials(t *testing.T) {
 	priv, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey failed")
 
@@ -49,7 +117,11 @@ func TestTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	tc := New(roots, nil)
+	clientTLSConfig := &tls.Config{
+		RootCAs:      roots,
+		Certificates: []tls.Certificate{},
+	}
+	tc := New(clientTLSConfig, nil, nil)
 
 	serverA.StartTLS()
 	defer serverA.Close()

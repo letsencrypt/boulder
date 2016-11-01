@@ -25,9 +25,12 @@
     },
     "grpc": {
       "address": "boulder:9092",
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
       "serverCertificatePath": "test/grpc-creds/server.pem",
       "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
+      "clientWhitelist": [
+        "boulder"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
