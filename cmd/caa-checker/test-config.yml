@@ -11,3 +11,5 @@ grpc:
   server-certificate-path: test/grpc-creds/server.pem
   server-key-path: test/grpc-creds/key.pem
   client-issuer-path: test/grpc-creds/ca.pem
+  client-whitelist:
+    - boulder

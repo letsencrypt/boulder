@@ -50,6 +50,14 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 	if err != nil {
 		return nil, nil, err
 	}
-	si := &serverInterceptor{stats.NewScope("gRPCServer"), clock.Default()}
-	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
+	statsScope := stats.NewScope("gRPCServer")
+
+	whitelist := make(map[string]struct{})
+	for _, subjCN := range c.ClientWhitelist {
+		whitelist[subjCN] = struct{}{}
+	}
+
+	statsIntercept := &serverStatsInterceptor{statsScope, clock.Default()}
+	whitelistIntercept := &serverWhitelistInterceptor{statsScope, whitelist, statsIntercept.intercept}
+	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(whitelistIntercept.intercept)), l, nil
 }
