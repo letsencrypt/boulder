@@ -325,10 +325,11 @@ type GRPCClientConfig struct {
 
 // GRPCServerConfig contains the information needed to run a gRPC service
 type GRPCServerConfig struct {
-	Address               string `json:"address" yaml:"address"`
-	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
-	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
-	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	Address               string   `json:"address" yaml:"address"`
+	ServerCertificatePath string   `json:"serverCertificatePath" yaml:"server-certificate-path"`
+	ServerKeyPath         string   `json:"serverKeyPath" yaml:"server-key-path"`
+	ClientIssuerPath      string   `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	ClientWhitelist       []string `json:"clientWhitelist" yaml:"client-whitelist"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

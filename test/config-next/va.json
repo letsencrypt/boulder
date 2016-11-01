@@ -27,7 +27,10 @@
       "address": "boulder:9092",
       "serverCertificatePath": "test/grpc-creds/server.pem",
       "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
+      "clientWhitelist": [
+        "boulder"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

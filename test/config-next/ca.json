@@ -8,7 +8,10 @@
       "address": "boulder:9093",
       "clientIssuerPath": "test/grpc-creds/ca.pem",
       "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem"
+      "serverKeyPath": "test/grpc-creds/key.pem",
+      "clientWhitelist": [
+        "boulder"
+      ]
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
