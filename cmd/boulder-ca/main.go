@@ -176,7 +176,7 @@ func main() {
 		conn, err := bgrpc.ClientSetup(c.CA.PublisherService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
-	} else {
+	} else if amqpConf.Publisher != nil {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}

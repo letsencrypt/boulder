@@ -42,8 +42,9 @@ type config struct {
 		// will be turned into 1.
 		DNSTries int
 
-		VAService *cmd.GRPCClientConfig
-		CAService *cmd.GRPCClientConfig
+		VAService        *cmd.GRPCClientConfig
+		CAService        *cmd.GRPCClientConfig
+		PublisherService *cmd.GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -135,6 +136,13 @@ func main() {
 		cmd.FailOnError(err, "Unable to create CA client")
 	}
 
+	var pubc core.Publisher
+	if c.RA.PublisherService != nil {
+		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+	}
+
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create SA client")
 
@@ -192,6 +200,7 @@ func main() {
 	rai.VA = vac
 	rai.CA = cac
 	rai.SA = sac
+	rai.Publisher = pubc
 
 	err = rai.UpdateIssuedCountForever()
 	cmd.FailOnError(err, "Updating total issuance count")

@@ -113,13 +113,6 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
-    "publisherService": {
-      "serverAddresses": ["boulder:9091"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
-      "timeout": "10s"
-    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

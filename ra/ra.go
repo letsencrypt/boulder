@@ -48,6 +48,7 @@ type RegistrationAuthorityImpl struct {
 	VA          core.ValidationAuthority
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
+	Publisher   core.Publisher
 	stats       metrics.Scope
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
@@ -638,6 +639,12 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	if cert, err = ra.CA.IssueCertificate(ctx, *csr, regID); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
+	}
+
+	if ra.Publisher != nil {
+		go func() {
+			_ = ra.Publisher.SubmitToCT(context.Background(), cert.DER)
+		}()
 	}
 
 	err = ra.MatchesCSR(cert, csr)
