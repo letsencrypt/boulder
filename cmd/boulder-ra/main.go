@@ -17,6 +17,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/rpc"
 )
@@ -140,7 +141,7 @@ func main() {
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.RA.PublisherService.Timeout.Duration)
 	}
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
