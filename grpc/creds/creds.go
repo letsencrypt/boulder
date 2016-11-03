@@ -63,16 +63,16 @@ func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string
 	}
 }
 
-func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState) (bool, error) {
+func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState) error {
 	// If there's no whitelist, all clients are OK
 	if tc.whitelist == nil {
-		return true, nil
+		return nil
 	}
 
 	// Otherwise its time to start inspecting the peer's `VerifiedChains`
 	chains := peerState.VerifiedChains
 	if len(chains) < 1 {
-		return false, fmt.Errorf("boulder/grpc/creds: peer had zero VerifiedChains")
+		return fmt.Errorf("boulder/grpc/creds: peer had zero VerifiedChains")
 	}
 
 	/*
@@ -99,13 +99,13 @@ func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState)
 	// If none of the peer's validated chains had a leaf certificate with a
 	// whitelisted CN then we have to reject the connection
 	if !whitelisted {
-		return false, fmt.Errorf(
+		return fmt.Errorf(
 			"boulder/grpc/creds: peer's verified TLS chains did not include a leaf " +
 				"certificate with a whitelisted subject CN")
 	}
 
 	// Otherwise, the peer is whitelisted! Come on in!
-	return true, nil
+	return nil
 }
 
 // ServerHandshake performs the TLS handshake for a server <- client connection
@@ -125,7 +125,7 @@ func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, cre
 	}
 
 	// If the peer isn't whitelisted, abort and return an error
-	if whitelisted, err := tc.peerIsWhitelisted(conn.ConnectionState()); !whitelisted {
+	if err := tc.peerIsWhitelisted(conn.ConnectionState()); err != nil {
 		return nil, nil, err
 	}
 

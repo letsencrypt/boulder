@@ -42,34 +42,30 @@ func TestServerTransportCredentials(t *testing.T) {
 	// A creds with a nil whitelist should consider any peer whitelisted
 	bcreds = &transportCredentials{nil, servTLSConfig, nil}
 	emptyState := tls.ConnectionState{}
-	whitelisted, err := bcreds.peerIsWhitelisted(emptyState)
+	err = bcreds.peerIsWhitelisted(emptyState)
 	test.AssertNotError(t, err, "peerIsWhitelisted() errored for emptyState")
-	test.AssertEquals(t, whitelisted, true)
 
 	// A creds with a whitelist should reject peers without VerifiedChains
 	bcreds = &transportCredentials{nil, servTLSConfig, whitelist}
-	whitelisted, err = bcreds.peerIsWhitelisted(emptyState)
+	err = bcreds.peerIsWhitelisted(emptyState)
 	test.AssertError(t, err, "peer had zero VerifiedChains")
-	test.AssertEquals(t, whitelisted, false)
 
 	// A creds with a whitelist should reject peers that don't have any
 	// VerifiedChains that begin with a whitelisted subject CN leaf cert
 	wrongState := tls.ConnectionState{
 		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{badCert}},
 	}
-	whitelisted, err = bcreds.peerIsWhitelisted(wrongState)
+	err = bcreds.peerIsWhitelisted(wrongState)
 	test.AssertError(t, err, "peer's verified TLS chains did not include a "+
 		"leaf certificate with a whitelisted subject CN")
-	test.AssertEquals(t, whitelisted, false)
 
 	// A creds with a whitelist should accept peers that have a VerifiedChains
 	// chain that *does* have a whitelisted leaf cert
 	rightState := tls.ConnectionState{
 		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{goodCert}},
 	}
-	whitelisted, err = bcreds.peerIsWhitelisted(rightState)
+	err = bcreds.peerIsWhitelisted(rightState)
 	test.AssertNotError(t, err, "peerIsWhitelisted(rightState) failed")
-	test.AssertEquals(t, whitelisted, true)
 
 	// A creds with a whitelist should accept peers that have a VerifiedChains
 	// chain that *does* have a whitelisted leaf cert, even if one of the other
@@ -80,9 +76,8 @@ func TestServerTransportCredentials(t *testing.T) {
 			[]*x509.Certificate{goodCert},
 		},
 	}
-	whitelisted, err = bcreds.peerIsWhitelisted(twoChainzState)
+	err = bcreds.peerIsWhitelisted(twoChainzState)
 	test.AssertNotError(t, err, "peerIsWhitelisted(twoChainzState) failed")
-	test.AssertEquals(t, whitelisted, true)
 }
 
 func TestClientTransportCredentials(t *testing.T) {
