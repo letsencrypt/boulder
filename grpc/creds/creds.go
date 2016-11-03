@@ -24,6 +24,14 @@ func New(clientConfig, serverConfig *tls.Config, whitelist map[string]struct{}) 
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
 func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	// If there's no `clientConfig` this is a server-only `transportCredentials`
+	// and we should return an error
+	if tc.clientConfig == nil {
+		return nil, nil, fmt.Errorf(
+			"boulder/grpc/creds: Client-side handshake not supported without non-nil " +
+				"`clientConfig`")
+	}
+
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, nil, err

@@ -117,6 +117,13 @@ func TestClientTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
+	// A creds with a nil `clientConfig` should return an error if we try to use
+	// it for a client handshake
+	nilTC := New(nil, nil, nil)
+	_, _, err = nilTC.ClientHandshake(nil, "", nil)
+	test.AssertEquals(t, err.Error(),
+		"boulder/grpc/creds: Client-side handshake not supported without non-nil `clientConfig`")
+
 	clientTLSConfig := &tls.Config{
 		RootCAs:      roots,
 		Certificates: []tls.Certificate{},
