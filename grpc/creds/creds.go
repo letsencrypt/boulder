@@ -72,7 +72,7 @@ func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState)
 	// Otherwise its time to start inspecting the peer's `VerifiedChains`
 	chains := peerState.VerifiedChains
 	if len(chains) < 1 {
-		return false, fmt.Errorf("peer had zero VerifiedChains")
+		return false, fmt.Errorf("boulder/grpc/creds: peer had zero VerifiedChains")
 	}
 
 	/*
@@ -100,8 +100,8 @@ func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState)
 	// whitelisted CN then we have to reject the connection
 	if !whitelisted {
 		return false, fmt.Errorf(
-			"peer's verified TLS chains did not include a leaf certificate " +
-				"with a whitelisted subject CN")
+			"boulder/grpc/creds: peer's verified TLS chains did not include a leaf " +
+				"certificate with a whitelisted subject CN")
 	}
 
 	// Otherwise, the peer is whitelisted! Come on in!
@@ -126,7 +126,7 @@ func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, cre
 
 	// If the peer isn't whitelisted, abort and return an error
 	if whitelisted, err := tc.peerIsWhitelisted(conn.ConnectionState()); !whitelisted {
-		return nil, nil, fmt.Errorf("boulder/grpc/creds: %s", err.Error())
+		return nil, nil, err
 	}
 
 	return conn, credentials.TLSInfo{conn.ConnectionState()}, nil
