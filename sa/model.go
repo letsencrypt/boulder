@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
