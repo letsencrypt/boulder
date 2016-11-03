@@ -140,7 +140,7 @@ func main() {
 	var pubc core.Publisher
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.RA.PublisherService.Timeout.Duration)
 	}
 

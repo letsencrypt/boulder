@@ -643,6 +643,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	if ra.Publisher != nil {
 		go func() {
+			// since we don't want this method to be canceled if the parent context
+			// expires pass a background context to it and run it in a goroutine
 			_ = ra.Publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
 	}
