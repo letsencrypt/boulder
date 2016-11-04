@@ -8,8 +8,8 @@
       "clientIssuerPath": "test/grpc-creds/minica.pem",
       "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
       "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
-      "clientWhitelist": [
-        "boulder"
+      "clientNames": [
+        "boulder-client"
       ]
     },
     "amqp": {

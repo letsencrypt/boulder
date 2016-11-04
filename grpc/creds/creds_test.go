@@ -39,7 +39,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	bcreds = &serverTransportCredentials{servTLSConfig, nil}
 	emptyState := tls.ConnectionState{}
 	err = bcreds.validateClient(emptyState)
-	test.AssertNotError(t, err, "peerIsWhitelisted() errored for emptyState")
+	test.AssertNotError(t, err, "validateClient() errored for emptyState")
 
 	// A creds given an empty TLS ConnectionState to verify should return an error
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
@@ -53,8 +53,7 @@ func TestServerTransportCredentials(t *testing.T) {
 		PeerCertificates: []*x509.Certificate{badCert},
 	}
 	err = bcreds.validateClient(wrongState)
-	test.AssertError(t, err, "peer's verified TLS chains did not include a "+
-		"leaf certificate with a whitelisted subject CN")
+	test.AssertError(t, err, "validateClient(wrongState) did not produce an error")
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list

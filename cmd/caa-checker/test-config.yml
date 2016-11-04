@@ -11,5 +11,5 @@ grpc:
   server-certificate-path: test/grpc-creds/boulder-server/cert.pem
   server-key-path: test/grpc-creds/boulder-server/key.pem
   client-issuer-path: test/grpc-creds/minica.pem
-  client-whitelist:
-    - boulder
+  client-names:
+    - boulder-client

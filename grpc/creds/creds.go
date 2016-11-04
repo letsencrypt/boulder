@@ -81,7 +81,7 @@ func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
 }
 
 // serverTransportCredentials is a grpc/credentials.TransportCredentials which supports
-// filtering acceptable peer connections by a client certificate SAN whitelist.
+// filtering acceptable peer connections by a list of accepted client certificate SANs
 type serverTransportCredentials struct {
 	serverConfig *tls.Config
 	acceptedSANs map[string]struct{}
@@ -118,19 +118,19 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 
 	// Since we call `conn.Handshake()` before `validateClient` and ensure
 	// a non-error response we don't need to validate anything except the presence
-	// of a whitelisted SAN in the leaf entry of `PeerCertificates`. The tls
+	// of an accepted SAN in the leaf entry of `PeerCertificates`. The tls
 	// package's `serverHandshake` and in particular, `processCertsFromClient`
 	// will address everything else as an error returned from `Handshake()`.
 	var valid bool
 	leaf := peerState.PeerCertificates[0]
 
-	// First check the DNS subject alternate names against the whitelist
+	// First check the DNS subject alternate names against the accepted list
 	for _, dnsName := range leaf.DNSNames {
 		if _, ok := tc.acceptedSANs[dnsName]; ok {
 			valid = true
 		}
 	}
-	// Next check the IP address subject alternate names against the whitelist
+	// Next check the IP address subject alternate names against the accepted list
 	for _, ip := range leaf.IPAddresses {
 		if _, ok := tc.acceptedSANs[ip.String()]; ok {
 			valid = true
@@ -138,7 +138,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	}
 
 	// If none of the DNS or IP SANs on the leaf certificate matched the
-	// whitelist, the client isn't valid and we error
+	// accepted list, the client isn't valid and we error
 	if !valid {
 		return fmt.Errorf(
 			"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
