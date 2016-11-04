@@ -70,10 +70,11 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		readTimeout := config.ReadTimeout.Seconds()
 		prefix = fmt.Sprintf(
 			"SET STATEMENT max_statement_time=%g, long_query_time=%g, sql_mode='STRICT_ALL_TABLES' FOR ",
-			readTimeout*0.95, readTimeout*0.80)
+			readTimeout*0.0001, readTimeout*0.80)
 	}
 
-	driverName := prefix
+	// Choose a random driver name to avoid conflicts.
+	driverName := fmt.Sprintf("mysql-%d", rand.Int(rand.Reader, big.NewInt(math.MaxInt64)))
 	sql.Register(driverName, prefixed_db.New(prefix, mysql.MySQLDriver{}))
 
 	db, err := sqlOpen(driverName, config.FormatDSN())
