@@ -6,9 +6,9 @@
     "debugAddr": "localhost:8001",
     "grpc": {
       "address": "boulder:9093",
-      "clientIssuerPath": "test/grpc-creds/ca.pem",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
       "clientWhitelist": [
         "boulder"
       ]
@@ -118,9 +118,9 @@
     "maxConcurrentRPCServerRequests": 16,
     "publisherService": {
       "serverAddresses": ["boulder:9091"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "10s"
     },
     "amqp": {

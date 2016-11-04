@@ -19,65 +19,60 @@ import (
 )
 
 func TestServerTransportCredentials(t *testing.T) {
-	var bcreds *serverTransportCredentials
-
-	whitelist := map[string]struct{}{
-		"boulder": struct{}{},
+	acceptedSANs := map[string]struct{}{
+		"boulder-client": struct{}{},
 	}
-
-	goodCert, err := core.LoadCert("../../test/grpc-creds/client.pem")
-	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/client.pem') failed")
+	goodCert, err := core.LoadCert("../../test/grpc-creds/boulder-client/cert.pem")
+	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/boulder-client/cert.pem') failed")
 	badCert, err := core.LoadCert("../../test/test-root.pem")
 	test.AssertNotError(t, err, "core.LoadCert('../../test-root.pem') failed")
-
 	servTLSConfig := &tls.Config{}
 
 	// A creds with a nil serverTLSConfig should return an error if we try to use
 	// it for a server handshake
-	bcreds = &serverTransportCredentials{nil, whitelist}
+	bcreds := &serverTransportCredentials{nil, acceptedSANs}
 	_, _, err = bcreds.ServerHandshake(nil)
 	test.AssertEquals(t, err.Error(),
 		"boulder/grpc/creds: `serverConfig` must not be nil")
 
-	// A creds with a nil whitelist should consider any peer whitelisted
+	// A creds with a nil acceptedSANs list should consider any peer valid
 	bcreds = &serverTransportCredentials{servTLSConfig, nil}
 	emptyState := tls.ConnectionState{}
-	err = bcreds.peerIsWhitelisted(emptyState)
+	err = bcreds.validateClient(emptyState)
 	test.AssertNotError(t, err, "peerIsWhitelisted() errored for emptyState")
 
-	// A creds with a whitelist should reject peers without VerifiedChains
-	bcreds = &serverTransportCredentials{servTLSConfig, whitelist}
-	err = bcreds.peerIsWhitelisted(emptyState)
-	test.AssertError(t, err, "peer had zero VerifiedChains")
+	// A creds given an empty TLS ConnectionState to verify should return an error
+	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
+	err = bcreds.validateClient(emptyState)
+	test.AssertError(t, err, "Empty TLS ConnectionState didn't produce a "+
+		"`validateClient` error")
 
-	// A creds with a whitelist should reject peers that don't have any
-	// VerifiedChains that begin with a whitelisted subject CN leaf cert
+	// A creds should reject peers that don't have a leaf certificate with
+	// a SAN on the accepted list.
 	wrongState := tls.ConnectionState{
-		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{badCert}},
+		PeerCertificates: []*x509.Certificate{badCert},
 	}
-	err = bcreds.peerIsWhitelisted(wrongState)
+	err = bcreds.validateClient(wrongState)
 	test.AssertError(t, err, "peer's verified TLS chains did not include a "+
 		"leaf certificate with a whitelisted subject CN")
 
-	// A creds with a whitelist should accept peers that have a VerifiedChains
-	// chain that *does* have a whitelisted leaf cert
+	// A creds should accept peers that have a leaf certificate with a SAN
+	// that is on the accepted list
 	rightState := tls.ConnectionState{
-		VerifiedChains: [][]*x509.Certificate{[]*x509.Certificate{goodCert}},
+		PeerCertificates: []*x509.Certificate{goodCert},
 	}
-	err = bcreds.peerIsWhitelisted(rightState)
-	test.AssertNotError(t, err, "peerIsWhitelisted(rightState) failed")
+	err = bcreds.validateClient(rightState)
+	test.AssertNotError(t, err, "validateClient(rightState) failed")
 
-	// A creds with a whitelist should accept peers that have a VerifiedChains
-	// chain that *does* have a whitelisted leaf cert, even if one of the other
-	// chains does not
-	twoChainzState := tls.ConnectionState{
-		VerifiedChains: [][]*x509.Certificate{
-			[]*x509.Certificate{badCert},
-			[]*x509.Certificate{goodCert},
-		},
+	// A creds configured with an IP SAN in the accepted list should accept a peer
+	// that has a leaf certificate containing an IP address SAN present in the
+	// accepted list.
+	acceptedIPSans := map[string]struct{}{
+		"127.0.0.1": struct{}{},
 	}
-	err = bcreds.peerIsWhitelisted(twoChainzState)
-	test.AssertNotError(t, err, "peerIsWhitelisted(twoChainzState) failed")
+	bcreds = &serverTransportCredentials{servTLSConfig, acceptedIPSans}
+	err = bcreds.validateClient(rightState)
+	test.AssertNotError(t, err, "validateClient(rightState) failed with an IP accepted SAN list")
 }
 
 func TestClientTransportCredentials(t *testing.T) {

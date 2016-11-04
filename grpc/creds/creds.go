@@ -17,12 +17,15 @@ type clientTransportCredentials struct {
 	clients []tls.Certificate
 }
 
-// New returns a new initialized grpc/credentials.TransportCredentials for client usage
+// NewClientTransport returns a new initialized grpc/credentials.TransportCredentials for client usage
 func NewClientTransport(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
 	return &clientTransportCredentials{rootCAs, clientCerts}
 }
 
-// ClientHandshake performs the TLS handshake for a client -> server connection
+// ClientHandshake does the authentication handshake specified by the corresponding
+// authentication protocol on rawConn for clients. It returns the authenticated
+// connection and the corresponding auth information about the connection.
+// Implementations must use the provided context to implement timely cancellation.
 func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -51,7 +54,8 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	}
 }
 
-//ServerHandshake performs the TLS handshake for a server <- client connection
+// ServerHandshake is not implemented for a `clientTransportCredentials`, use
+// a `serverTransportCredentials` if you require `ServerHandshake`.
 func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	return nil, nil, fmt.Errorf(
 		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
@@ -76,88 +80,109 @@ func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
 	return true
 }
 
-// clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
-// filtering acceptable peers by client certificate SAN.
+// serverTransportCredentials is a grpc/credentials.TransportCredentials which supports
+// filtering acceptable peer connections by a client certificate SAN whitelist.
 type serverTransportCredentials struct {
 	serverConfig *tls.Config
-	whitelist    map[string]struct{}
+	acceptedSANs map[string]struct{}
 }
 
-func NewServerTransport(serverConfig *tls.Config, whitelist map[string]struct{}) credentials.TransportCredentials {
-	return &serverTransportCredentials{serverConfig, whitelist}
+// NewServerTransport returns a new initialized grpc/credentials.TransportCredentials for server usage
+func NewServerTransport(serverConfig *tls.Config, acceptedSANs map[string]struct{}) credentials.TransportCredentials {
+	return &serverTransportCredentials{serverConfig, acceptedSANs}
 }
 
-func (tc *serverTransportCredentials) peerIsWhitelisted(peerState tls.ConnectionState) error {
-	// If there's no whitelist, all clients are OK
-	if tc.whitelist == nil {
+// validateClient checks a peer's client certificate's SAN entries against
+// a list of accepted SANs. If the client certificate does not have a SAN on the
+// list it is rejected.
+//
+// Note 1: This function *only* verifies the SAN entries! Callers are expected to
+// have provided the `tls.ConnectionState` from returned from a validate (e.g.
+// non-error producing) `conn.Handshake()`.
+//
+// Note 2: We do *not* consider the client certificate subject common name. The
+// CN field is deprecated and should be present as a DNS SAN!
+func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionState) error {
+	// If there's no list of accepted SANs, all clients are OK
+	if tc.acceptedSANs == nil {
 		return nil
 	}
 
-	// Otherwise its time to start inspecting the peer's `VerifiedChains`
-	chains := peerState.VerifiedChains
-	if len(chains) < 1 {
-		return fmt.Errorf("boulder/grpc/creds: peer had zero VerifiedChains")
+	// If `conn.Handshake()` is called before `validateClient` this should not
+	// occur. We return an error in this event primarily for unit tests that may
+	// call `validateClient` with manufactured & artificial connection states.
+	if len(peerState.PeerCertificates) < 1 {
+		return fmt.Errorf(
+			"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
 	}
 
-	/*
-	 * For each of the peer's verified chains we can look at the chain's leaf
-	 * certificate and check whether the subject common name is in the whitelist.
-	 * At least one chain must have a leaf certificate with a subject CN that
-	 * matches the whitelist
-	 *
-	 * Its important we process `VerifiedChains` instead of processing
-	 * `PeerCertificates` to ensure that we match the subject CN of the
-	 * leaf certificate that was verified in `conn.Handshake()`. To do otherwise
-	 * would allow an attacker to include a whitelisted certificate in
-	 * `PeerCertificates` that matched the whitelist but wasn't used in the chain
-	 * the server validated.
-	 */
-	var whitelisted bool
-	for _, chain := range chains {
-		leafSubjectCN := chain[0].Subject.CommonName
-		if _, ok := tc.whitelist[leafSubjectCN]; ok {
-			whitelisted = true
+	// Since we call `conn.Handshake()` before `validateClient` and ensure
+	// a non-error response we don't need to validate anything except the presence
+	// of a whitelisted SAN in the leaf entry of `PeerCertificates`. The tls
+	// package's `serverHandshake` and in particular, `processCertsFromClient`
+	// will address everything else as an error returned from `Handshake()`.
+	var valid bool
+	leaf := peerState.PeerCertificates[0]
+
+	// First check the DNS subject alternate names against the whitelist
+	for _, dnsName := range leaf.DNSNames {
+		if _, ok := tc.acceptedSANs[dnsName]; ok {
+			valid = true
+		}
+	}
+	// Next check the IP address subject alternate names against the whitelist
+	for _, ip := range leaf.IPAddresses {
+		if _, ok := tc.acceptedSANs[ip.String()]; ok {
+			valid = true
 		}
 	}
 
-	// If none of the peer's validated chains had a leaf certificate with a
-	// whitelisted CN then we have to reject the connection
-	if !whitelisted {
+	// If none of the DNS or IP SANs on the leaf certificate matched the
+	// whitelist, the client isn't valid and we error
+	if !valid {
 		return fmt.Errorf(
-			"boulder/grpc/creds: peer's verified TLS chains did not include a leaf " +
-				"certificate with a whitelisted subject CN")
+			"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
+				"any entries on accepted SAN list.")
 	}
 
-	// Otherwise, the peer is whitelisted! Come on in!
+	// Otherwise, the peer is valid!
 	return nil
 }
 
-// ServerHandshake performs the TLS handshake for a server <- client connection
+// ServerHandshake does the authentication handshake for servers. It returns
+// the authenticated connection and the corresponding auth information about
+// the connection.
 func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	// If the `serverConfig` is nil we can't do anything further and must error
 	if tc.serverConfig == nil {
 		return nil, nil, fmt.Errorf("boulder/grpc/creds: `serverConfig` must not be nil")
 	}
 
-	// Perform the server <- client TLS handshake
+	// Perform the server <- client TLS handshake. This will validate the peer's
+	// client certificate.
 	conn := tls.Server(rawConn, tc.serverConfig)
 	if err := conn.Handshake(); err != nil {
 		return nil, nil, err
 	}
 
-	// If the peer isn't whitelisted, abort and return an error
-	if err := tc.peerIsWhitelisted(conn.ConnectionState()); err != nil {
+	// In addition to the validation from `conn.Handshake()` we apply further
+	// constraints on what constitutes a valid peer
+	if err := tc.validateClient(conn.ConnectionState()); err != nil {
 		return nil, nil, err
 	}
 
 	return conn, credentials.TLSInfo{conn.ConnectionState()}, nil
 }
 
+// ClientHandshake is not implemented for a `serverTransportCredentials`, use
+// a `clientTransportCredentials` if you require `ClientHandshake`.
 func (tc *serverTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	return nil, nil, fmt.Errorf(
 		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
 			"serverTransportCredentials")
 }
 
+// Info provides the ProtocolInfo of this TransportCredentials.
 func (tc *serverTransportCredentials) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
