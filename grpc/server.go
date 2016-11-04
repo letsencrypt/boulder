@@ -51,7 +51,7 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 		whitelist[subjCN] = struct{}{}
 	}
 
-	creds := bcreds.New(nil, servTLSConfig, whitelist)
+	creds := bcreds.NewServerTransport(servTLSConfig, whitelist)
 	l, err := net.Listen("tcp", c.Address)
 	if err != nil {
 		return nil, nil, err

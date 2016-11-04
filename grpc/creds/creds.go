@@ -9,29 +9,19 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// transportCredentials is a grpc/credentials.TransportCredentials which supports
+// clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
-type transportCredentials struct {
+type clientTransportCredentials struct {
 	clientConfig *tls.Config
-	serverConfig *tls.Config
-	whitelist    map[string]struct{}
 }
 
 // New returns a new initialized grpc/credentials.TransportCredentials
-func New(clientConfig, serverConfig *tls.Config, whitelist map[string]struct{}) credentials.TransportCredentials {
-	return &transportCredentials{clientConfig, serverConfig, whitelist}
+func NewClientTransport(clientConfig *tls.Config) credentials.TransportCredentials {
+	return &clientTransportCredentials{clientConfig}
 }
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
-func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	// If there's no `clientConfig` this is a server-only `transportCredentials`
-	// and we should return an error
-	if tc.clientConfig == nil {
-		return nil, nil, fmt.Errorf(
-			"boulder/grpc/creds: Client-side handshake not supported without non-nil " +
-				"`clientConfig`")
-	}
-
+func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +53,43 @@ func (tc *transportCredentials) ClientHandshake(ctx context.Context, addr string
 	}
 }
 
-func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState) error {
+//ServerHandshake performs the TLS handshake for a server <- client connection
+func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return nil, nil, fmt.Errorf(
+		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
+			"clientTransportCredentials")
+}
+
+// Info returns information about the transport protocol used
+func (tc *clientTransportCredentials) Info() credentials.ProtocolInfo {
+	return credentials.ProtocolInfo{
+		SecurityProtocol: "tls",
+		SecurityVersion:  "1.2", // We *only* support TLS 1.2
+	}
+}
+
+// GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
+func (tc *clientTransportCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return nil, nil
+}
+
+// RequireTransportSecurity always returns true because TLS is transport security
+func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
+	return true
+}
+
+// clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
+// filtering acceptable peers by client certificate SAN.
+type serverTransportCredentials struct {
+	serverConfig *tls.Config
+	whitelist    map[string]struct{}
+}
+
+func NewServerTransport(serverConfig *tls.Config, whitelist map[string]struct{}) credentials.TransportCredentials {
+	return &serverTransportCredentials{serverConfig, whitelist}
+}
+
+func (tc *serverTransportCredentials) peerIsWhitelisted(peerState tls.ConnectionState) error {
 	// If there's no whitelist, all clients are OK
 	if tc.whitelist == nil {
 		return nil
@@ -109,13 +135,9 @@ func (tc *transportCredentials) peerIsWhitelisted(peerState tls.ConnectionState)
 }
 
 // ServerHandshake performs the TLS handshake for a server <- client connection
-func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	// If there's no `serverConfig` this is a client-only `transportCredentials`
-	// and we should return an error
+func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	if tc.serverConfig == nil {
-		return nil, nil, fmt.Errorf(
-			"boulder/grpc/creds: Server-side handshake not supported without non-nil " +
-				"`serverConfig`")
+		return nil, nil, fmt.Errorf("boulder/grpc/creds: `serverConfig` must not be nil")
 	}
 
 	// Perform the server <- client TLS handshake
@@ -132,8 +154,13 @@ func (tc *transportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, cre
 	return conn, credentials.TLSInfo{conn.ConnectionState()}, nil
 }
 
-// Info returns information about the transport protocol used
-func (tc *transportCredentials) Info() credentials.ProtocolInfo {
+func (tc *serverTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return nil, nil, fmt.Errorf(
+		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
+			"serverTransportCredentials")
+}
+
+func (tc *serverTransportCredentials) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "tls",
 		SecurityVersion:  "1.2", // We *only* support TLS 1.2
@@ -141,11 +168,11 @@ func (tc *transportCredentials) Info() credentials.ProtocolInfo {
 }
 
 // GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
-func (tc *transportCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (tc *serverTransportCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	return nil, nil
 }
 
 // RequireTransportSecurity always returns true because TLS is transport security
-func (tc *transportCredentials) RequireTransportSecurity() bool {
+func (tc *serverTransportCredentials) RequireTransportSecurity() bool {
 	return true
 }

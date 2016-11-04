@@ -19,7 +19,7 @@ import (
 )
 
 func TestServerTransportCredentials(t *testing.T) {
-	var bcreds *transportCredentials
+	var bcreds *serverTransportCredentials
 
 	whitelist := map[string]struct{}{
 		"boulder": struct{}{},
@@ -34,19 +34,19 @@ func TestServerTransportCredentials(t *testing.T) {
 
 	// A creds with a nil serverTLSConfig should return an error if we try to use
 	// it for a server handshake
-	bcreds = &transportCredentials{nil, nil, whitelist}
+	bcreds = &serverTransportCredentials{nil, whitelist}
 	_, _, err = bcreds.ServerHandshake(nil)
 	test.AssertEquals(t, err.Error(),
-		"boulder/grpc/creds: Server-side handshake not supported without non-nil `serverConfig`")
+		"boulder/grpc/creds: `serverConfig` must not be nil")
 
 	// A creds with a nil whitelist should consider any peer whitelisted
-	bcreds = &transportCredentials{nil, servTLSConfig, nil}
+	bcreds = &serverTransportCredentials{servTLSConfig, nil}
 	emptyState := tls.ConnectionState{}
 	err = bcreds.peerIsWhitelisted(emptyState)
 	test.AssertNotError(t, err, "peerIsWhitelisted() errored for emptyState")
 
 	// A creds with a whitelist should reject peers without VerifiedChains
-	bcreds = &transportCredentials{nil, servTLSConfig, whitelist}
+	bcreds = &serverTransportCredentials{servTLSConfig, whitelist}
 	err = bcreds.peerIsWhitelisted(emptyState)
 	test.AssertError(t, err, "peer had zero VerifiedChains")
 
@@ -112,18 +112,11 @@ func TestClientTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	// A creds with a nil `clientConfig` should return an error if we try to use
-	// it for a client handshake
-	nilTC := New(nil, nil, nil)
-	_, _, err = nilTC.ClientHandshake(nil, "", nil)
-	test.AssertEquals(t, err.Error(),
-		"boulder/grpc/creds: Client-side handshake not supported without non-nil `clientConfig`")
-
 	clientTLSConfig := &tls.Config{
 		RootCAs:      roots,
 		Certificates: []tls.Certificate{},
 	}
-	tc := New(clientTLSConfig, nil, nil)
+	tc := NewClientTransport(clientTLSConfig)
 
 	serverA.StartTLS()
 	defer serverA.Close()
