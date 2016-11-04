@@ -112,11 +112,7 @@ func TestClientTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	clientTLSConfig := &tls.Config{
-		RootCAs:      roots,
-		Certificates: []tls.Certificate{},
-	}
-	tc := NewClientTransport(clientTLSConfig)
+	tc := NewClientTransport(roots, []tls.Certificate{})
 
 	serverA.StartTLS()
 	defer serverA.Close()

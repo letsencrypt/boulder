@@ -2,6 +2,7 @@ package creds
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 
@@ -12,12 +13,13 @@ import (
 // clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
 type clientTransportCredentials struct {
-	clientConfig *tls.Config
+	roots   *x509.CertPool
+	clients []tls.Certificate
 }
 
-// New returns a new initialized grpc/credentials.TransportCredentials
-func NewClientTransport(clientConfig *tls.Config) credentials.TransportCredentials {
-	return &clientTransportCredentials{clientConfig}
+// New returns a new initialized grpc/credentials.TransportCredentials for client usage
+func NewClientTransport(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
+	return &clientTransportCredentials{rootCAs, clientCerts}
 }
 
 // ClientHandshake performs the TLS handshake for a client -> server connection
@@ -26,17 +28,13 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	if err != nil {
 		return nil, nil, err
 	}
-	// We need to set the `ServerName` attribute for the tls.Config. Since we
-	// can't modify the existing `tc.clientConfig` we create a new one and port over
-	// the few fields we were using the `clientConfig` as a container for.
-	tlsConfig := &tls.Config{
+	conn := tls.Client(rawConn, &tls.Config{
+		ServerName:   host,
+		RootCAs:      tc.roots,
+		Certificates: tc.clients,
 		MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
 		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
-		ServerName:   host,
-		RootCAs:      tc.clientConfig.RootCAs,
-		Certificates: tc.clientConfig.Certificates,
-	}
-	conn := tls.Client(rawConn, tlsConfig)
+	})
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- conn.Handshake()
