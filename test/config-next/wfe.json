@@ -27,7 +27,8 @@
       }
     },
     "features": {
-      "AllowAccountDeactivation": true
+      "AllowAccountDeactivation": true,
+      "AllowKeyRollover": true
     }
   },
 

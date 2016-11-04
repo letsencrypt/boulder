@@ -116,7 +116,11 @@ func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
 		pkcs11Config.PrivateKeyLabel == "" {
 		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 	}
-	return pkcs11key.New(pkcs11Config.Module,
+	numSessions := issuerConfig.NumSessions
+	if numSessions <= 0 {
+		numSessions = 1
+	}
+	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
 }
 

@@ -69,7 +69,6 @@ GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Expired authorization purger
 GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
-GRANT SELECT,DELETE ON authz TO 'purger'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

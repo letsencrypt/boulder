@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -43,6 +44,7 @@ const (
 	termsPath      = "/terms"
 	issuerPath     = "/acme/issuer-cert"
 	buildIDPath    = "/build"
+	rolloverPath   = "/acme/key-change"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -281,6 +283,9 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
+	if features.Enabled(features.AllowKeyRollover) {
+		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+	}
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -345,6 +350,12 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
 	}
+	if features.Enabled(features.AllowKeyRollover) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
+		// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
+		// encounter a directory containing elements they don't expect so we gate adding the key-change
+		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
+		directoryEndpoints["key-change"] = rolloverPath
+	}
 
 	response.Header().Set("Content-Type", "application/json")
 
@@ -361,6 +372,36 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 const (
 	unknownKey = "No registration exists matching provided key"
 )
+
+func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+	parsedJws, err := jose.ParseSigned(body)
+	if err != nil {
+		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
+		return nil, nil, errors.New("Parse error reading JWS")
+	}
+
+	if len(parsedJws.Signatures) > 1 {
+		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
+		return nil, nil, errors.New("Too many signatures in POST body")
+	}
+	if len(parsedJws.Signatures) == 0 {
+		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
+		return nil, nil, errors.New("POST JWS not signed")
+	}
+
+	key := parsedJws.Signatures[0].Header.JsonWebKey
+	if key == nil {
+		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
+		return nil, nil, errors.New("No JWK in JWS header")
+	}
+
+	if !key.Valid() {
+		wfe.stats.Inc("Errors.InvalidJWK", 1)
+		return nil, nil, errors.New("Invalid JWK in JWS header")
+	}
+
+	return key, parsedJws, nil
+}
 
 // verifyPOST reads and parses the request body, looks up the Registration
 // corresponding to its JWK, verifies the JWS signature, checks that the
@@ -401,13 +442,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	body := string(bodyBytes)
-	// Parse as JWS
-	parsedJws, err := jose.ParseSigned(body)
-	if err != nil {
-		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
-		logEvent.AddError("could not JSON parse body into JWS: %s", err)
-		return nil, nil, reg, probs.Malformed("Parse error reading JWS")
-	}
 
 	// Verify JWS
 	// NOTE: It might seem insecure for the WFE to be trusted to verify
@@ -415,28 +449,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	if len(parsedJws.Signatures) > 1 {
-		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
-		logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
-		return nil, nil, reg, probs.Malformed("Too many signatures in POST body")
-	}
-	if len(parsedJws.Signatures) == 0 {
-		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
-		logEvent.AddError("no signatures in POST body")
-		return nil, nil, reg, probs.Malformed("POST JWS not signed")
-	}
-
-	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
-	if submittedKey == nil {
-		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
-		logEvent.AddError("no JWK in JWS signature header in POST body")
-		return nil, nil, reg, probs.Malformed("No JWK in JWS header")
-	}
-
-	if !submittedKey.Valid() {
-		wfe.stats.Inc("Errors.InvalidJWK", 1)
-		logEvent.AddError("invalid JWK in JWS signature header in POST body")
-		return nil, nil, reg, probs.Malformed("Invalid JWK in JWS header")
+	submittedKey, parsedJws, err := wfe.extractJWSKey(body)
+	if err != nil {
+		logEvent.AddError(err.Error())
+		return nil, nil, reg, probs.Malformed(err.Error())
 	}
 
 	var key *jose.JsonWebKey
@@ -1147,10 +1163,11 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	// Registration objects contain a JWK object, which must be non-nil. We know
-	// the key of the updated registration object is going to be the same as the
-	// key of the current one, so we set it here. This ensures we can cleanly
-	// serialize the update as JSON to send via AMQP to the RA.
+	// Registration objects contain a JWK object which are merged in UpdateRegistration
+	// if it is different from the existing registration key. Since this isn't how you
+	// update the key we just copy the existing one into the update object here. This
+	// ensures the key isn't changed and that we can cleanly serialize the update as
+	// JSON to send via RPC to the RA.
 	update.Key = currReg.Key
 
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
@@ -1380,6 +1397,88 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+func publicKeysEqual(a, b interface{}) (bool, error) {
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false, err
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Compare(aBytes, bBytes) == 0, nil
+}
+
+// KeyRollover allows a user to change their signing key
+func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Parse as JWS
+	newKey, parsedJWS, err := wfe.extractJWSKey(string(body))
+	if err != nil {
+		logEvent.AddError(err.Error())
+		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)
+		return
+	}
+	payload, err := parsedJWS.Verify(newKey)
+	if err != nil {
+		logEvent.AddError("verification of the inner JWS with the inner JWK failed: %v", err)
+		wfe.sendError(response, logEvent, probs.Malformed("JWS verification error"), err)
+		return
+	}
+	var rolloverRequest struct {
+		NewKey  jose.JsonWebKey
+		Account string
+	}
+	err = json.Unmarshal(payload, &rolloverRequest)
+	if err != nil {
+		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Request payload did not parse as JSON"), nil)
+		return
+	}
+
+	if wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
+		logEvent.AddError("incorrect account URL provided")
+		wfe.sendError(response, logEvent, probs.Malformed("Incorrect account URL provided in payload"), nil)
+		return
+	}
+
+	keysEqual, err := publicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
+	if err != nil {
+		logEvent.AddError("unable to marshal new key: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
+		return
+	}
+	if !keysEqual {
+		logEvent.AddError("new key in inner payload doesn't match key used to sign inner JWS")
+		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
+		return
+	}
+
+	// Update registration key
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: *newKey})
+	if err != nil {
+		logEvent.AddError("unable to update registration: %s", err)
+		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		return
+	}
+
+	jsonReply, err := marshalIndent(updatedReg)
+	if err != nil {
+		logEvent.AddError("unable to marshal updated registration: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	response.Write(jsonReply)
 }
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
