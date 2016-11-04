@@ -17,7 +17,6 @@ func TestPrefixing(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
@@ -33,4 +32,5 @@ func TestPrefixing(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	_ = db.Close()
 }
