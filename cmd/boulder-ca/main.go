@@ -22,7 +22,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -172,11 +171,7 @@ func main() {
 	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	if c.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.PublisherService, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
-	} else if amqpConf.Publisher != nil {
+	if amqpConf.Publisher != nil {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}

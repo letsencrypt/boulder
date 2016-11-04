@@ -689,7 +689,9 @@ func TestIssueCertificate(t *testing.T) {
 		true,
 		false,
 		300*24*time.Hour,
-		7*24*time.Hour)
+		7*24*time.Hour,
+		nil,
+	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,

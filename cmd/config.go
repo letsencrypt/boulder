@@ -146,8 +146,6 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
-	PublisherService *GRPCClientConfig
-
 	Features map[string]bool
 }
 

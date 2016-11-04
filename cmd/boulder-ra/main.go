@@ -169,7 +169,8 @@ func main() {
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
-		pendingAuthorizationLifetime)
+		pendingAuthorizationLifetime,
+		pubc)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
@@ -201,7 +202,6 @@ func main() {
 	rai.VA = vac
 	rai.CA = cac
 	rai.SA = sac
-	rai.Publisher = pubc
 
 	err = rai.UpdateIssuedCountForever()
 	cmd.FailOnError(err, "Updating total issuance count")

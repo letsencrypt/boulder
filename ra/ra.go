@@ -44,11 +44,12 @@ var issuanceExpvar = expvar.NewInt("lastIssuance")
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA          core.CertificateAuthority
-	VA          core.ValidationAuthority
-	SA          core.StorageAuthority
-	PA          core.PolicyAuthority
-	Publisher   core.Publisher
+	CA        core.CertificateAuthority
+	VA        core.ValidationAuthority
+	SA        core.StorageAuthority
+	PA        core.PolicyAuthority
+	publisher core.Publisher
+
 	stats       metrics.Scope
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
@@ -85,6 +86,7 @@ func NewRegistrationAuthorityImpl(
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	pubc core.Publisher,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
@@ -103,6 +105,7 @@ func NewRegistrationAuthorityImpl(
 		pendAuthByRegIDStats:         stats.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          stats.NewScope("RA", "RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RA", "RateLimit", "TotalCertificates"),
+		publisher:                    pubc,
 	}
 	return ra
 }
@@ -641,11 +644,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	if ra.Publisher != nil {
+	if ra.publisher != nil {
 		go func() {
-			// since we don't want this method to be canceled if the parent context
-			// expires pass a background context to it and run it in a goroutine
-			_ = ra.Publisher.SubmitToCT(context.Background(), cert.DER)
+			// Since we don't want this method to be canceled if the parent context
+			// expires, pass a background context to it and run it in a goroutine.
+			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
 	}
 
