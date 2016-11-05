@@ -77,7 +77,11 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	}
 
 	// Choose a random driver name to avoid conflicts.
-	driverName := fmt.Sprintf("mysql-%d", rand.Int(rand.Reader, big.NewInt(math.MaxInt64)))
+	driverNum, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		return nil, err
+	}
+	driverName := fmt.Sprintf("mysql-%d", driverNum)
 	sql.Register(driverName, prefixed_db.New(prefix, mysql.MySQLDriver{}))
 
 	db, err := sqlOpen(driverName, config.FormatDSN())
