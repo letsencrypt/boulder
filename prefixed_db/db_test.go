@@ -23,13 +23,13 @@ func TestPrefixing(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i) {
 			_, err := db.Exec("SELECT 1 FROM (SELECT SLEEP(?)) as subselect;", i)
 			if err == nil || !strings.HasPrefix(err.Error(), "Error 1969:") {
 				t.Error("Expected to get Error 1969 (timeout), got", err)
 			}
 			wg.Done()
-		}()
+		}(i)
 	}
 	wg.Wait()
 	_ = db.Close()
