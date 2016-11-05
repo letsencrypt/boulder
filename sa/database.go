@@ -73,7 +73,7 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		readTimeout := config.ReadTimeout.Seconds()
 		prefix = fmt.Sprintf(
 			"SET STATEMENT max_statement_time=%g, long_query_time=%g, sql_mode='STRICT_ALL_TABLES' FOR ",
-			readTimeout*0.0001, readTimeout*0.80)
+			readTimeout*0.95, readTimeout*0.80)
 	}
 
 	// Choose a random driver name to avoid conflicts.
