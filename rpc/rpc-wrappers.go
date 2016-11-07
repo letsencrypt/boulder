@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"

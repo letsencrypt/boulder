@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 func algorithmForKey(key *jose.JsonWebKey) (string, error) {
