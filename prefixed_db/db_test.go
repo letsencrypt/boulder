@@ -12,7 +12,7 @@ import (
 )
 
 func TestPrefixing(t *testing.T) {
-	sql.Register("prefixedmysql", New("SET STATEMENT max_statement_time=0.1 FOR ", mysql.MySQLDriver{}))
+	sql.Register("prefixedmysql", New("SET STATEMENT max_statement_time=0.1 FOR", mysql.MySQLDriver{}))
 	db, err := sql.Open("prefixedmysql", vars.DBConnSA)
 	if err != nil {
 		log.Fatal(err)

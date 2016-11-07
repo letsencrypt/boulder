@@ -35,8 +35,7 @@ type prefixedConn struct {
 }
 
 func (c *prefixedConn) Prepare(query string) (driver.Stmt, error) {
-	query = c.prefix + query
-	return c.conn.Prepare(query)
+	return c.conn.Prepare(c.prefix + " " + query)
 }
 
 func (c *prefixedConn) Close() error {

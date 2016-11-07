@@ -76,7 +76,13 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 			readTimeout*0.95, readTimeout*0.80)
 	}
 
-	// Choose a random driver name to avoid conflicts.
+	// The way we generate a customized database driver means that we need to
+	// choose a name to register the driver with. Because this function can be
+	// called multiple times with different parameters, we choose a random name
+	// each time we register to avoid conflicts with other DB instances.
+	// We use crypto/rand rather than math.Rand not out of a particular necessity
+	// for high-quality randomness, but simply because using non-crypto rand is a
+	// code smell.
 	driverNum, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		return nil, err
