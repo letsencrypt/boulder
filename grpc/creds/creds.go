@@ -88,8 +88,12 @@ type serverTransportCredentials struct {
 }
 
 // NewServerTransport returns a new initialized grpc/credentials.TransportCredentials for server usage
-func NewServerTransport(serverConfig *tls.Config, acceptedSANs map[string]struct{}) credentials.TransportCredentials {
-	return &serverTransportCredentials{serverConfig, acceptedSANs}
+func NewServerTransport(serverConfig *tls.Config, acceptedSANs map[string]struct{}) (credentials.TransportCredentials, error) {
+	if serverConfig == nil {
+		return nil, fmt.Errorf("boulder/grpc/creds: `serverConfig` must not be nil")
+	}
+
+	return &serverTransportCredentials{serverConfig, acceptedSANs}, nil
 }
 
 // validateClient checks a peer's client certificate's SAN entries against
@@ -103,7 +107,13 @@ func NewServerTransport(serverConfig *tls.Config, acceptedSANs map[string]struct
 // Note 2: We do *not* consider the client certificate subject common name. The
 // CN field is deprecated and should be present as a DNS SAN!
 func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionState) error {
-	// If there's no list of accepted SANs, all clients are OK
+	/*
+	 * If there's no list of accepted SANs, all clients are OK
+	 *
+	 * TODO(@cpu): This should be converted to a hard error at initialization time
+	 * once we have deployed & updated all gRPC configurations to have an accepted
+	 * SAN list configured
+	 */
 	if tc.acceptedSANs == nil {
 		return nil
 	}
@@ -153,11 +163,6 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 // the authenticated connection and the corresponding auth information about
 // the connection.
 func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	// If the `serverConfig` is nil we can't do anything further and must error
-	if tc.serverConfig == nil {
-		return nil, nil, fmt.Errorf("boulder/grpc/creds: `serverConfig` must not be nil")
-	}
-
 	// Perform the server <- client TLS handshake. This will validate the peer's
 	// client certificate.
 	conn := tls.Server(rawConn, tc.serverConfig)

@@ -28,15 +28,13 @@ func TestServerTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "core.LoadCert('../../test-root.pem') failed")
 	servTLSConfig := &tls.Config{}
 
-	// A creds with a nil serverTLSConfig should return an error if we try to use
-	// it for a server handshake
-	bcreds := &serverTransportCredentials{nil, acceptedSANs}
-	_, _, err = bcreds.ServerHandshake(nil)
+	// NewServerTransport with a nil serverTLSConfig should return an error
+	_, err = NewServerTransport(nil, acceptedSANs)
 	test.AssertEquals(t, err.Error(),
 		"boulder/grpc/creds: `serverConfig` must not be nil")
 
 	// A creds with a nil acceptedSANs list should consider any peer valid
-	bcreds = &serverTransportCredentials{servTLSConfig, nil}
+	bcreds := &serverTransportCredentials{servTLSConfig, nil}
 	emptyState := tls.ConnectionState{}
 	err = bcreds.validateClient(emptyState)
 	test.AssertNotError(t, err, "validateClient() errored for emptyState")

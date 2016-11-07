@@ -51,7 +51,11 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 		acceptedSANs[name] = struct{}{}
 	}
 
-	creds := bcreds.NewServerTransport(servTLSConfig, acceptedSANs)
+	creds, err := bcreds.NewServerTransport(servTLSConfig, acceptedSANs)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	l, err := net.Listen("tcp", c.Address)
 	if err != nil {
 		return nil, nil, err
