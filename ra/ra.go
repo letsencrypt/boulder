@@ -878,7 +878,7 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	}
 
 	if features.Enabled(features.AllowKeyRollover) &&
-		input.Key != nil && r.Key.Key != input.Key.Key {
+		input.Key != nil && !core.PublicKeysEqual(r.Key.Key, input.Key.Key) {
 		r.Key = input.Key
 		changed = true
 	}

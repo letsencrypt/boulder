@@ -1236,17 +1236,20 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 
 	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	rB.Key = &jose.JsonWebKey{Key: newKey}
+	rB.Key = &jose.JsonWebKey{Key: newKey.Public()}
 
 	changed = mergeUpdate(&rA, rB)
 	if !changed {
 		t.Fatal("mergeUpdate didn't change the key with non-empty update")
 	}
-	if rA.Key.Key != newKey {
+
+	same, err := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
+	if err != nil {
+		t.Fatal("Err was %#v\n", err)
+	}
+	if !same {
 		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
 	}
-
-	fmt.Printf("Cool no panic\n")
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports

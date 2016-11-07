@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
@@ -208,6 +209,20 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 		return false
 	}
 	return digestJ == digestK
+}
+
+// PublicKeysEqual determines whether two public keys have the same marshalled
+// bytes as one another
+func PublicKeysEqual(a, b interface{}) bool {
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Compare(aBytes, bBytes) == 0
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String
