@@ -193,18 +193,6 @@
 			"Rev": "abf152e5f3e97f2fafac028d2cc06c1feb87ffa5"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
-			"ImportPath": "github.com/square/go-jose/cipher",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
-			"ImportPath": "github.com/square/go-jose/json",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 		},
