@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -190,7 +190,7 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
-	if reg.Key != updated.Key {
+	if reg.Key.Key != updated.Key.Key {
 		reg.Key = updated.Key
 	}
 	return reg, nil

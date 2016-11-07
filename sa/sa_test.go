@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"

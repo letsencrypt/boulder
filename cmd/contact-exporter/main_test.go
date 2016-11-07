@@ -23,7 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 var (

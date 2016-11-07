@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
@@ -16,8 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -1216,7 +1217,10 @@ func TestRegistrationContactUpdate(t *testing.T) {
 }
 
 func TestRegistrationKeyUpdate(t *testing.T) {
-	rA, rB := core.Registration{Key: jose.JsonWebKey{KeyID: "id"}}, core.Registration{}
+	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
+
+	rA, rB := core.Registration{Key: jose.JsonWebKey{Key: oldKey}}, core.Registration{}
 	changed := mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
@@ -1230,12 +1234,15 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 		t.Fatal("mergeUpdate changed the key with empty update")
 	}
 
-	rB.Key.KeyID = "other-id"
+	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
+	rB.Key.Key = newKey
+
 	changed = mergeUpdate(&rA, rB)
 	if !changed {
 		t.Fatal("mergeUpdate didn't change the key with non-empty update")
 	}
-	if rA.Key.KeyID != "other-id" {
+	if rA.Key.Key != newKey {
 		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
 	}
 }

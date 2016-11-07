@@ -19,8 +19,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
 	"gopkg.in/gorp.v1"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"

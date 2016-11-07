@@ -24,7 +24,7 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 )
 
 // Package Variables Variables

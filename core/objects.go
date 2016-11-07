@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
