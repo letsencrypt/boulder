@@ -1,9 +1,6 @@
 package prefixed_db
 
-import (
-	"database/sql/driver"
-	"log"
-)
+import "database/sql/driver"
 
 // New clones a database driver to create a new driver with the property that
 // every statement executed will have the given prefix prepended.
@@ -39,7 +36,6 @@ type prefixedConn struct {
 
 func (c *prefixedConn) Prepare(query string) (driver.Stmt, error) {
 	query = c.prefix + query
-	log.Print(query)
 	return c.conn.Prepare(query)
 }
 
