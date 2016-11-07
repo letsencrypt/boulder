@@ -147,7 +147,7 @@ type Registration struct {
 	ID int64 `json:"id" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key"`
+	Key *jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
 	Contact *[]string `json:"contact,omitempty"`

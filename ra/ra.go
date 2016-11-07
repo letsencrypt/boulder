@@ -878,7 +878,7 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	}
 
 	if features.Enabled(features.AllowKeyRollover) &&
-		input.Key.Key != nil && r.Key.Key != input.Key.Key {
+		input.Key != nil && r.Key.Key != input.Key.Key {
 		r.Key = input.Key
 		changed = true
 	}
@@ -928,7 +928,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Recompute the key authorization field provided by the client and
 	// check it against the value provided
-	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(&reg.Key)
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		err = core.InternalServerError("Could not compute expected key authorization value")
 		return

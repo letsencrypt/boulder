@@ -456,7 +456,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	var key *jose.JsonWebKey
-	reg, err = wfe.SA.GetRegistrationByKey(ctx, *submittedKey)
+	reg, err = wfe.SA.GetRegistrationByKey(ctx, submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
@@ -481,7 +481,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		return nil, nil, reg, core.ProblemDetailsForError(err, "")
 	} else {
 		// If the lookup was successful, use that key.
-		key = &reg.Key
+		key = reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
 	}
@@ -592,7 +592,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, *key); err == nil {
+	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
 		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
@@ -610,7 +610,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
-	init.Key = *key
+	init.Key = key
 	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
 	if init.InitialIP == nil {
 		host, _, err := net.SplitHostPort(request.RemoteAddr)
@@ -1463,7 +1463,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Update registration key
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: *newKey})
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)

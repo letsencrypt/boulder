@@ -806,7 +806,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodGetRegistrationByKey, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var jwk jose.JsonWebKey
+		var jwk *jose.JsonWebKey
 		if err = json.Unmarshal(req, &jwk); err != nil {
 			improperMessage(MethodGetRegistrationByKey, err, req)
 			return
@@ -1173,7 +1173,7 @@ func (cac StorageAuthorityClient) GetRegistration(ctx context.Context, id int64)
 }
 
 // GetRegistrationByKey sends a request to get a registration by JWK
-func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (reg core.Registration, err error) {
+func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (reg core.Registration, err error) {
 	jsonKey, err := key.MarshalJSON()
 	if err != nil {
 		return

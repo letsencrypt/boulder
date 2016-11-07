@@ -65,7 +65,7 @@ func TestRANewRegistration(t *testing.T) {
 
 	reg := core.Registration{
 		ID:  1,
-		Key: jwk,
+		Key: &jwk,
 	}
 
 	_, err = client.NewRegistration(ctx, reg)

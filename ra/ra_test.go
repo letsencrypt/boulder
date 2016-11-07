@@ -236,7 +236,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
-		Key:       AccountKeyA,
+		Key:       &AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
 		Status:    core.StatusValid,
 	})
@@ -358,7 +358,7 @@ func TestNewRegistration(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		Contact:   &[]string{mailto},
-		Key:       AccountKeyB,
+		Key:       &AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
@@ -383,7 +383,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		ID:        23,
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
@@ -399,7 +399,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	id := result.ID
 	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
 		ID:  33,
-		Key: ShortKey,
+		Key: &ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
 	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
@@ -412,7 +412,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		Contact: &[]string{mailto},
-		Key:     ShortKey,
+		Key:     &ShortKey,
 	}
 
 	_, err := ra.NewRegistration(ctx, input)
@@ -434,7 +434,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 
 	// Make a new registration with AccountKeyC and a Contact
 	input := core.Registration{
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
@@ -449,7 +449,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// Make an update to the registration with the same Contact & Agreement values.
 	updateSame := core.Registration{
 		ID:        id,
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 	}
@@ -1220,7 +1220,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
 
-	rA, rB := core.Registration{Key: jose.JsonWebKey{Key: oldKey}}, core.Registration{}
+	rA, rB := core.Registration{Key: &jose.JsonWebKey{Key: oldKey}}, core.Registration{}
 	changed := mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
@@ -1236,7 +1236,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 
 	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	rB.Key.Key = newKey
+	rB.Key = &jose.JsonWebKey{Key: newKey}
 
 	changed = mergeUpdate(&rA, rB)
 	if !changed {
@@ -1245,6 +1245,8 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	if rA.Key.Key != newKey {
 		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
 	}
+
+	fmt.Printf("Cool no panic\n")
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports

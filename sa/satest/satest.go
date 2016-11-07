@@ -24,13 +24,13 @@ var theKey = `{
 // SQLSAImpl. Long term, when the CA tests no longer need
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
-func GoodJWK() jose.JsonWebKey {
+func GoodJWK() *jose.JsonWebKey {
 	var jwk jose.JsonWebKey
 	err := json.Unmarshal([]byte(theKey), &jwk)
 	if err != nil {
 		panic("known-good theKey is no longer known-good")
 	}
-	return jwk
+	return &jwk
 }
 
 // CreateWorkingRegistration inserts a new, correct Registration into

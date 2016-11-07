@@ -170,7 +170,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	regB = core.Registration{
@@ -178,7 +178,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyB,
+		Key:       &keyB,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	regC = core.Registration{
@@ -186,7 +186,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailC,
 		},
-		Key:       keyC,
+		Key:       &keyC,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	// Reg D has a `tel:` contact ACME URL
@@ -195,7 +195,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			tel,
 		},
-		Key:       keyD,
+		Key:       &keyD,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 

@@ -1177,7 +1177,7 @@ type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
 	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
 }
 
@@ -1715,7 +1715,7 @@ type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }
 
-func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)
 	var parsedKey jose.JsonWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
@@ -1724,7 +1724,7 @@ func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk
 	}
 
 	return core.Registration{
-		Key: parsedKey,
+		Key: &parsedKey,
 	}, nil
 }
 

@@ -305,7 +305,7 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 	}
 	r := core.Registration{
 		ID:        rm.ID,
-		Key:       *k,
+		Key:       k,
 		Contact:   contact,
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),

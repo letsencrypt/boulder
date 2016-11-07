@@ -255,7 +255,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regB := core.Registration{
@@ -263,7 +263,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyB,
+		Key:       &keyB,
 		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regC := core.Registration{
@@ -271,7 +271,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyC,
+		Key:       &keyC,
 		InitialIP: net.ParseIP("210.3.2.3"),
 	}
 	bg := context.Background()
@@ -598,7 +598,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("1.2.2.1"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
@@ -703,7 +703,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
@@ -759,7 +759,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
