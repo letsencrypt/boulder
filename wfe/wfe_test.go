@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -190,7 +190,8 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
-	if reg.Key != updated.Key {
+	keysMatch, _ := core.PublicKeysEqual(reg.Key.Key, updated.Key.Key)
+	if !keysMatch {
 		reg.Key = updated.Key
 	}
 	return reg, nil
@@ -1179,7 +1180,7 @@ type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
 	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
 }
 
@@ -1717,7 +1718,7 @@ type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }
 
-func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)
 	var parsedKey jose.JsonWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
@@ -1726,7 +1727,7 @@ func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk
 	}
 
 	return core.Registration{
-		Key: parsedKey,
+		Key: &parsedKey,
 	}, nil
 }
 

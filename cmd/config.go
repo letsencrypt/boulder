@@ -327,6 +327,10 @@ type GRPCServerConfig struct {
 	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
 	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
 	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	// ClientNames is a list of allowed client certificate subject alternate names
+	// (SANs). The server will reject clients that do not present a certificate
+	// with a SAN present on the `ClientNames` list.
+	ClientNames []string `json:"clientNames" yaml:"client-names"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

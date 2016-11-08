@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -305,7 +305,7 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 	}
 	r := core.Registration{
 		ID:        rm.ID,
-		Key:       *k,
+		Key:       k,
 		Contact:   contact,
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),

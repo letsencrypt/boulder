@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -456,7 +456,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	var key *jose.JsonWebKey
-	reg, err = wfe.SA.GetRegistrationByKey(ctx, *submittedKey)
+	reg, err = wfe.SA.GetRegistrationByKey(ctx, submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
@@ -481,7 +481,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		return nil, nil, reg, core.ProblemDetailsForError(err, "")
 	} else {
 		// If the lookup was successful, use that key.
-		key = &reg.Key
+		key = reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
 	}
@@ -592,7 +592,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, *key); err == nil {
+	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
 		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
@@ -610,7 +610,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
-	init.Key = *key
+	init.Key = key
 	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
 	if init.InitialIP == nil {
 		host, _, err := net.SplitHostPort(request.RemoteAddr)
@@ -1399,18 +1399,6 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
-func publicKeysEqual(a, b interface{}) (bool, error) {
-	aBytes, err := x509.MarshalPKIXPublicKey(a)
-	if err != nil {
-		return false, err
-	}
-	bBytes, err := x509.MarshalPKIXPublicKey(b)
-	if err != nil {
-		return false, err
-	}
-	return bytes.Compare(aBytes, bBytes) == 0, nil
-}
-
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
@@ -1450,7 +1438,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 
-	keysEqual, err := publicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
+	keysEqual, err := core.PublicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
 	if err != nil {
 		logEvent.AddError("unable to marshal new key: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
@@ -1463,7 +1451,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Update registration key
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: *newKey})
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)

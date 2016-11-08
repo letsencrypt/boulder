@@ -6,9 +6,12 @@
     "debugAddr": "localhost:8001",
     "grpc": {
       "address": "boulder:9093",
-      "clientIssuerPath": "test/grpc-creds/ca.pem",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem"
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
