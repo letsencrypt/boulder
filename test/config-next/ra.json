@@ -25,6 +25,13 @@
       "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "90s"
     },
+    "publisherService": {
+      "serverAddresses": ["boulder:9091"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
