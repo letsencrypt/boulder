@@ -28,10 +28,9 @@ func TestServerTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "core.LoadCert('../../test-root.pem') failed")
 	servTLSConfig := &tls.Config{}
 
-	// NewServerTransport with a nil serverTLSConfig should return an error
-	_, err = NewServerTransport(nil, acceptedSANs)
-	test.AssertEquals(t, err.Error(),
-		"boulder/grpc/creds: `serverConfig` must not be nil")
+	// NewServerCredentials with a nil serverTLSConfig should return an error
+	_, err = NewServerCredentials(nil, acceptedSANs)
+	test.AssertEquals(t, err, NilServerConfigErr)
 
 	// A creds with a nil acceptedSANs list should consider any peer valid
 	bcreds := &serverTransportCredentials{servTLSConfig, nil}
@@ -42,8 +41,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	// A creds given an empty TLS ConnectionState to verify should return an error
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
 	err = bcreds.validateClient(emptyState)
-	test.AssertError(t, err, "Empty TLS ConnectionState didn't produce a "+
-		"`validateClient` error")
+	test.AssertEquals(t, err, EmptyPeerCertsErr)
 
 	// A creds should reject peers that don't have a leaf certificate with
 	// a SAN on the accepted list.
@@ -51,7 +49,7 @@ func TestServerTransportCredentials(t *testing.T) {
 		PeerCertificates: []*x509.Certificate{badCert},
 	}
 	err = bcreds.validateClient(wrongState)
-	test.AssertError(t, err, "validateClient(wrongState) did not produce an error")
+	test.AssertEquals(t, err, SANNotAcceptedErr)
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list
@@ -104,7 +102,7 @@ func TestClientTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	tc := NewClientTransport(roots, []tls.Certificate{})
+	tc := NewClientCredentials(roots, []tls.Certificate{})
 
 	serverA.StartTLS()
 	defer serverA.Close()

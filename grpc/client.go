@@ -39,7 +39,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn
 		return nil, err
 	}
 	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default()}
-	creds := bcreds.NewClientTransport(rootCAs, []tls.Certificate{clientCert})
+	creds := bcreds.NewClientCredentials(rootCAs, []tls.Certificate{clientCert})
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
 		grpc.WithTransportCredentials(creds),

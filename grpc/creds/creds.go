@@ -3,6 +3,7 @@ package creds
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 
@@ -17,8 +18,8 @@ type clientTransportCredentials struct {
 	clients []tls.Certificate
 }
 
-// NewClientTransport returns a new initialized grpc/credentials.TransportCredentials for client usage
-func NewClientTransport(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
+// NewClientCredentials returns a new initialized grpc/credentials.TransportCredentials for client usage
+func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
 	return &clientTransportCredentials{rootCAs, clientCerts}
 }
 
@@ -54,12 +55,26 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	}
 }
 
+var (
+	ClientHandshakeNopErr = errors.New(
+		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
+			"serverTransportCredentials")
+	ServerHandshakeNopErr = errors.New(
+		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
+			"clientTransportCredentials")
+	NilServerConfigErr = errors.New(
+		"boulder/grpc/creds: `serverConfig` must not be nil")
+	EmptyPeerCertsErr = errors.New(
+		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
+	SANNotAcceptedErr = errors.New(
+		"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
+			"any entries on accepted SAN list.")
+)
+
 // ServerHandshake is not implemented for a `clientTransportCredentials`, use
 // a `serverTransportCredentials` if you require `ServerHandshake`.
 func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, fmt.Errorf(
-		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
-			"clientTransportCredentials")
+	return nil, nil, ServerHandshakeNopErr
 }
 
 // Info returns information about the transport protocol used
@@ -87,10 +102,10 @@ type serverTransportCredentials struct {
 	acceptedSANs map[string]struct{}
 }
 
-// NewServerTransport returns a new initialized grpc/credentials.TransportCredentials for server usage
-func NewServerTransport(serverConfig *tls.Config, acceptedSANs map[string]struct{}) (credentials.TransportCredentials, error) {
+// NewServerCredentials returns a new initialized grpc/credentials.TransportCredentials for server usage
+func NewServerCredentials(serverConfig *tls.Config, acceptedSANs map[string]struct{}) (credentials.TransportCredentials, error) {
 	if serverConfig == nil {
-		return nil, fmt.Errorf("boulder/grpc/creds: `serverConfig` must not be nil")
+		return nil, NilServerConfigErr
 	}
 
 	return &serverTransportCredentials{serverConfig, acceptedSANs}, nil
@@ -122,8 +137,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	// occur. We return an error in this event primarily for unit tests that may
 	// call `validateClient` with manufactured & artificial connection states.
 	if len(peerState.PeerCertificates) < 1 {
-		return fmt.Errorf(
-			"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
+		return EmptyPeerCertsErr
 	}
 
 	// Since we call `conn.Handshake()` before `validateClient` and ensure
@@ -150,9 +164,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	// If none of the DNS or IP SANs on the leaf certificate matched the
 	// accepted list, the client isn't valid and we error
 	if !valid {
-		return fmt.Errorf(
-			"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
-				"any entries on accepted SAN list.")
+		return SANNotAcceptedErr
 	}
 
 	// Otherwise, the peer is valid!
@@ -182,9 +194,7 @@ func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Con
 // ClientHandshake is not implemented for a `serverTransportCredentials`, use
 // a `clientTransportCredentials` if you require `ClientHandshake`.
 func (tc *serverTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, fmt.Errorf(
-		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
-			"serverTransportCredentials")
+	return nil, nil, ClientHandshakeNopErr
 }
 
 // Info provides the ProtocolInfo of this TransportCredentials.
