@@ -1242,12 +1242,8 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	if !changed {
 		t.Fatal("mergeUpdate didn't change the key with non-empty update")
 	}
-
-	same, err := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
-	if err != nil {
-		t.Fatal("Err was %#v\n", err)
-	}
-	if !same {
+	keysMatch, _ := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
+	if !keysMatch {
 		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
 	}
 }

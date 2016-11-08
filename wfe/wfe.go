@@ -1438,7 +1438,12 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 
-	keysEqual := core.PublicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
+	keysEqual, err := core.PublicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
+	if err != nil {
+		logEvent.AddError("unable to marshal new key: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
+		return
+	}
 	if !keysEqual {
 		logEvent.AddError("new key in inner payload doesn't match key used to sign inner JWS")
 		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)

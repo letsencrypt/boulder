@@ -213,16 +213,19 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 
 // PublicKeysEqual determines whether two public keys have the same marshalled
 // bytes as one another
-func PublicKeysEqual(a, b interface{}) bool {
+func PublicKeysEqual(a, b interface{}) (bool, error) {
+	if a == nil || b == nil {
+		return false, errors.New("One or more nil arguments to PublicKeysEqual")
+	}
 	aBytes, err := x509.MarshalPKIXPublicKey(a)
 	if err != nil {
-		return false
+		return false, err
 	}
 	bBytes, err := x509.MarshalPKIXPublicKey(b)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return bytes.Compare(aBytes, bBytes) == 0
+	return bytes.Compare(aBytes, bBytes) == 0, nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String
