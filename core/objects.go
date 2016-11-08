@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -147,7 +147,7 @@ type Registration struct {
 	ID int64 `json:"id" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key"`
+	Key *jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
 	Contact *[]string `json:"contact,omitempty"`

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -855,8 +854,6 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	return true
 }
 
-var emptyKey jose.JsonWebKey
-
 // MergeUpdate copies a subset of information from the input Registration
 // into the Registration r. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -880,9 +877,12 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		changed = true
 	}
 
-	if features.Enabled(features.AllowKeyRollover) && input.Key != emptyKey && input.Key != r.Key {
-		r.Key = input.Key
-		changed = true
+	if features.Enabled(features.AllowKeyRollover) && input.Key != nil {
+		sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
+		if !sameKey {
+			r.Key = input.Key
+			changed = true
+		}
 	}
 
 	return changed
@@ -930,7 +930,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Recompute the key authorization field provided by the client and
 	// check it against the value provided
-	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(&reg.Key)
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		err = core.InternalServerError("Could not compute expected key authorization value")
 		return

@@ -15,8 +15,8 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/revocation"
@@ -84,7 +84,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 
 	return core.Registration{
 		ID:        id,
-		Key:       parsedKey,
+		Key:       &parsedKey,
 		Agreement: agreementURL,
 		InitialIP: net.ParseIP("5.6.7.8"),
 		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
@@ -93,7 +93,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 }
 
 // GetRegistrationByKey is a mock
-func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
+func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
 	var test3KeyPublic jose.JsonWebKey
@@ -158,7 +158,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.Jso
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
-	return core.Registration{ID: 1, Key: test1KeyPublic, Agreement: agreementURL}, nil
+	return core.Registration{ID: 1, Key: &test1KeyPublic, Agreement: agreementURL}, nil
 }
 
 // GetAuthorization is a mock
