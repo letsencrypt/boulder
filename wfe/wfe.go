@@ -782,7 +782,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		correctKey = !missingNames
 		if missingNames {
 			wfe.sendError(response, logEvent,
-				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by a account key of an account that holds valid authorizations for all names in the certificate."),
+				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the "+
+					"account key of the account that issued it, or by the account key of an account that holds valid "+
+					"authorizations for all names in the certificate."),
 				nil)
 			return
 		}
