@@ -60,6 +60,11 @@ const (
      "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
    }`
 	test3KeyPublicJSON = `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
+	test4KeyPublicJSON = `{
+    "kty":"RSA",
+    "n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw",
+    "e":"AQAB"
+  }`
 
 	agreementURL = "http://example.invalid/terms"
 )
@@ -97,6 +102,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
 	var test3KeyPublic jose.JsonWebKey
+	var test4KeyPublic jose.JsonWebKey
 	var testE1KeyPublic jose.JsonWebKey
 	var testE2KeyPublic jose.JsonWebKey
 	var err error
@@ -109,6 +115,10 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 		return core.Registration{}, err
 	}
 	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -136,6 +146,11 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
 		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test4KeyPublic) {
+		// No key found
+		return core.Registration{ID: 5}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
@@ -311,8 +326,12 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 			}
 		}
 		return auths, nil
+	} else if regID == 2 {
+		return map[string]*core.Authorization{}, nil
+	} else if regID == 5 {
+		return map[string]*core.Authorization{"bad.example.com": nil}, nil
 	}
-	return nil, errors.New("no authz")
+	return nil, nil
 }
 
 // CountCertificatesRange is a mock

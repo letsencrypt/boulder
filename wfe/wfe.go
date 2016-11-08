@@ -704,7 +704,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
@@ -766,13 +765,27 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// TODO: Implement method of revocation by authorizations on account.
-	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
-		registration.ID == cert.RegistrationID) {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."),
-			nil)
-		return
+	correctKey := core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.ID == cert.RegistrationID
+	if !correctKey {
+		authz, err := wfe.SA.GetValidAuthorizations(ctx, registration.ID, parsedCertificate.DNSNames, wfe.clk.Now())
+		if err != nil {
+			logEvent.AddError("GetValidAuthorizations failed: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve authorizations"), nil)
+			return
+		}
+		missingNames := false
+		for _, name := range parsedCertificate.DNSNames {
+			if _, present := authz[name]; !present {
+				missingNames = true
+			}
+		}
+		correctKey = !missingNames
+		if missingNames {
+			wfe.sendError(response, logEvent,
+				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by a account key of an account that holds valid authorizations for all names in the certificate."),
+				nil)
+			return
+		}
 	}
 
 	reason := revocation.Reason(0)
