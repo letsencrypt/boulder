@@ -9,17 +9,12 @@ your certificate before then, or visitors to your website will encounter errors.
 For any questions or support, please visit https://community.letsencrypt.org/.
 Unfortunately, we can't provide support by email.
 
-This reminder is sent if this exact certificate has not been renewed. That
-means it is sent if there's no newer certificate covering precisely the
-same names. If you've replaced this certificate with one that covers
-more or fewer names than the list above, this reminder does not apply
-to the other certificate, and you may be able to ignore this message.
-
-If you check the certificate currently running on your website, and it
-shows the correct date, no further action is needed.
-
 For details about when we send these emails, please visit
-https://letsencrypt.org/docs/expiration-emails/.
+https://letsencrypt.org/docs/expiration-emails/. In particular, note
+that this reminder email is still sent if you've obtained a slightly
+different certificate by adding or removing names. If you've replaced
+this certificate with a newer one that covers more or fewer names than
+the list above, you may be able to ignore this message.
 
 If you want to stop receiving all email from this address, click
 |UNSUB:https://mandrillapp.com/unsub|
