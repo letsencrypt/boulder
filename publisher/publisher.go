@@ -20,6 +20,7 @@ import (
 
 // Log contains the CT client and signature verifier for a particular CT log
 type Log struct {
+	logID    string
 	uri      string
 	statName string
 	client   *ctClient.LogClient
@@ -54,6 +55,7 @@ func NewLog(uri, b64PK string) (*Log, error) {
 	sanitizedPath = strings.Replace(sanitizedPath, "/", ".", -1)
 
 	return &Log{
+		logID:    b64PK,
 		uri:      uri,
 		statName: fmt.Sprintf("%s.%s", url.Host, sanitizedPath),
 		client:   client,
@@ -100,9 +102,10 @@ func New(
 	}
 }
 
-// SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs (AMQP RPC method).
-func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
+// SubmitToSingleCT will submit the certificate represented by certDER to one
+// configured log specified by log ID (the base64 of the CT log's public key DER
+// bytes)
+func (pub *Impl) SubmitToSingleCT(ctx context.Context, logID string, der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		pub.log.AuditErr(fmt.Sprintf("Failed to parse certificate: %s", err))
@@ -111,16 +114,45 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 
 	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
 	defer cancel()
+
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
+
+	ctLog := pub.logIDToLog(logID)
+	if ctLog == nil {
+		err := fmt.Errorf("Failed to find log matching ID: %s", logID)
+		pub.log.AuditErr(err.Error())
+		return err
+	}
+
+	stats := pub.stats.NewScope(ctLog.statName)
+	stats.Inc("Submits", 1)
+	start := time.Now()
+	err = pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
+	stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
+	if err != nil {
+		pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+		stats.Inc("Errors", 1)
+	}
+
+	return nil
+}
+
+// SubmitToCT will submit the certificate represented by certDER to any CT
+// logs configured in pub.CT.Logs (AMQP RPC method).
+func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	for _, ctLog := range pub.ctLogs {
-		stats := pub.stats.NewScope(ctLog.statName)
-		stats.Inc("Submits", 1)
-		start := time.Now()
-		err := pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
-		stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
+		err := pub.SubmitToSingleCT(ctx, ctLog.logID, der)
 		if err != nil {
-			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-			stats.Inc("Errors", 1)
+			return err
+		}
+	}
+	return nil
+}
+
+func (pub *Impl) logIDToLog(logID string) *Log {
+	for _, ctLog := range pub.ctLogs {
+		if ctLog.logID == logID {
+			return ctLog
 		}
 	}
 	return nil

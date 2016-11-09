@@ -66,6 +66,7 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
+	MethodSubmitToSingleCT                  = "SubmitToSingleCT"                  // Pub
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
@@ -667,6 +668,25 @@ func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats metri
 // SubmitToCT sends a request to submit a certifcate to CT logs
 func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err error) {
 	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
+	return
+}
+
+// SubmitToSingleCT sends a request to submit a certificate to one CT log
+// specified by ID
+func (pub PublisherClient) SubmitToSingleCT(ctx context.Context, logID string, der []byte) (err error) {
+
+	var ctReq struct {
+		LogID string
+		Der   []byte
+	}
+
+	ctReq.LogID = logID
+	ctReq.Der = der
+	data, err := json.Marshal(ctReq)
+	if err != nil {
+		return
+	}
+	_, err = pub.rpc.DispatchSync(MethodSubmitToSingleCT, data)
 	return
 }
 

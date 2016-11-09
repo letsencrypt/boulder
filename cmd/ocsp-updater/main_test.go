@@ -9,13 +9,16 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/publisher/mock_publisher"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -37,24 +40,41 @@ func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningReques
 }
 
 type mockPub struct {
-	sa core.StorageAuthority
+	sa   core.StorageAuthority
+	logs []cmd.LogDescription
 }
 
 func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
+	// Add an SCT for every configured log
+	for _, log := range p.logs {
+		sct := core.SignedCertificateTimestamp{
+			SCTVersion:        0,
+			LogID:             log.Key,
+			Timestamp:         0,
+			Extensions:        []byte{},
+			Signature:         []byte{0},
+			CertificateSerial: "00",
+		}
+		err := p.sa.AddSCTReceipt(ctx, sct)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *mockPub) SubmitToSingleCT(_ context.Context, logID string, _ []byte) error {
+	// Add an SCT for the provided log ID
 	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
-		LogID:             "id",
+		LogID:             logID,
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
 		CertificateSerial: "00",
 	}
 	err := p.sa.AddSCTReceipt(ctx, sct)
-	if err != nil {
-		return err
-	}
-	sct.LogID = "another-id"
-	return p.sa.AddSCTReceipt(ctx, sct)
+	return err
 }
 
 var log = blog.UseMock()
@@ -72,12 +92,27 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 
 	cleanUp := test.ResetSATestDatabase(t)
 
+	logs := []cmd.LogDescription{
+		cmd.LogDescription{
+			URI: "test",
+			Key: "test",
+		},
+		cmd.LogDescription{
+			URI: "test2",
+			Key: "test2",
+		},
+		cmd.LogDescription{
+			URI: "test3",
+			Key: "test3",
+		},
+	}
+
 	updater, err := newUpdater(
 		metrics.NewNoopScope(),
 		fc,
 		dbMap,
 		&mockCA{},
-		&mockPub{sa},
+		&mockPub{sa, logs},
 		sa,
 		cmd.OCSPUpdaterConfig{
 			NewCertificateBatchSize: 1,
@@ -87,7 +122,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 			OldOCSPWindow:           cmd.ConfigDuration{Duration: time.Second},
 			MissingSCTWindow:        cmd.ConfigDuration{Duration: time.Second},
 		},
-		0,
+		logs,
 		"",
 		blog.NewMock(),
 	)
@@ -264,24 +299,85 @@ func TestMissingReceiptsTick(t *testing.T) {
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	updater.numLogs = 1
 	updater.oldestIssuedSCT = 2 * time.Hour
 
 	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
 	test.AssertNotError(t, err, "Failed to retrieve serials")
 	test.AssertEquals(t, len(serials), 1)
 
+	// Run the missing receipts tick
 	err = updater.missingReceiptsTick(ctx, 5)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 
-	count, err := updater.getNumberOfReceipts("00")
-	test.AssertNotError(t, err, "Couldn't get number of receipts")
-	test.AssertEquals(t, count, 2)
+	// We have three logs configured from setup, and with the
+	// ResubmitMissingSCTsOnly feature flag disabled we expect that we submitted
+	// to all three logs.
+	logIDs, err := updater.getSubmittedReceipts("00")
+	test.AssertNotError(t, err, "Couldn't get submitted receipts for serial 00")
+	test.AssertEquals(t, len(logIDs), 3)
+	test.AssertEquals(t, logIDs[0], "test")
+	test.AssertEquals(t, logIDs[1], "test2")
+	test.AssertEquals(t, logIDs[2], "test3")
 
 	// make sure we don't spin forever after reducing the
 	// number of logs we submit to
-	updater.numLogs = 1
+	updater.logs = []cmd.LogDescription{
+		cmd.LogDescription{
+			URI: "test",
+			Key: "test",
+		},
+	}
 	err = updater.missingReceiptsTick(ctx, 10)
+	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
+}
+
+func TestMissingOnlyReceiptsTick(t *testing.T) {
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	fc.Set(parsedCert.NotBefore.Add(time.Minute))
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	updater.oldestIssuedSCT = 2 * time.Hour
+
+	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
+	test.AssertNotError(t, err, "Failed to retrieve serials")
+	test.AssertEquals(t, len(serials), 1)
+
+	// Enable the ResubmitMissingSCTsOnly feature flag for this test run
+	_ = features.Set(map[string]bool{"ResubmitMissingSCTsOnly": true})
+	defer features.Reset()
+
+	// Use a mock publisher so we can EXPECT specific calls
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockPub := mock_publisher.NewMockPublisher(ctrl)
+	updater.pubc = mockPub
+
+	// Add an SCT for one of the three logs (test2)
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        0,
+		LogID:             "test2",
+		Timestamp:         0,
+		Extensions:        []byte{},
+		Signature:         []byte{0},
+		CertificateSerial: core.SerialToString(parsedCert.SerialNumber),
+	}
+	err = sa.AddSCTReceipt(ctx, sct)
+	test.AssertNotError(t, err, "Failed to AddSCTReceipt")
+
+	// We expect that there are only going to be TWO calls to SubmitSingleCT, one
+	// for each of the missing logs. We do NOT expect a call for "test2" since we
+	// already added a SCT for that log!
+	mockPub.EXPECT().SubmitToSingleCT(ctx, "test", parsedCert.Raw)
+	mockPub.EXPECT().SubmitToSingleCT(ctx, "test3", parsedCert.Raw)
+
+	// Run the missing receipts tick, with the correct EXPECT's there should be no errors
+	err = updater.missingReceiptsTick(ctx, 5)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 }
 
@@ -317,7 +413,6 @@ func TestMissingReceiptsTickTerminate(t *testing.T) {
 	// conditions that cause the termination bug described in
 	// https://github.com/letsencrypt/boulder/issues/1872 are met
 	updater.dbMap = inexhaustibleDB{}
-	updater.numLogs = 1
 	updater.oldestIssuedSCT = 2 * time.Hour
 
 	// Note: Must use a batch size larger than the # of rows returned by
