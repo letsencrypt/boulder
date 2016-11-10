@@ -152,6 +152,13 @@ func TestCountPendingAuthorizations(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	pendingAuthz.Status = core.StatusPending
+	pendingAuthz, err = sa.NewPendingAuthorization(ctx, pendingAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
 	fc.Add(2 * time.Hour)
