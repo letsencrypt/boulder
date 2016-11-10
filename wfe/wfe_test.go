@@ -142,6 +142,36 @@ F7o5b7y92NlxO5kwQzRKEAhwS5PbKJdx90iCuG+JlI1YgWlA1VcJMw==
 -----END RSA PRIVATE KEY-----
 `
 
+	test4KeyPrivatePEM = `
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAqih+cx32M0wq8MhhN+kBi2xPE+wnw4/iIg1hWO5wtBfpt2Pt
+WikgPuBT6jvK9oyQwAWbSfwqlVZatMPY/+3IyytMNb9R9OatNr6o5HROBoyZnDVS
+iC4iMRd7bRl/PWSIqj/MjhPNa9cYwBdW5iC3jM5TaOgmp0+YFm4tkLGirDcIBDkQ
+Ylnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw+YtPsPPlj4Ih3Sv
+K4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6+yRa/10kMZyYQatY1
+eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzwIDAQABAoIBAQCYWNsmTHwjX53O
+qUnJ2jfE0ftXNghAIvHvVRWEny+PPx3FUZWwNMQnJ4haXqCQ8DelhR+NNVYXERLz
+Z6pBMm+l4CVCtgI2B9ar/jaPHMbDPF1IK8GyJcP9Oi4K91oh6IIoFCkcSASS+imx
+yvPF5SMR0aWCduAsyqm743euZizkjIZ4ZzjJzhvtO17BLXpjD2Al8CBfeaaPFfPB
+X86BRH5khuNaRbjG9MVg4h+D752/PuivE6+wBW+F2CYCbFMCYTFSFyHzrVdkw59C
+RbHl6Pk7aTA9z0CR3zNI5k0bGd6z/o0rMei6tWO5OBTQRq5tpW9Gim0uVLH/XJlf
+XmJoze+RAoGBAMNrcbPlWlSpd3C1fwYiztXwIe7TaaJIpQ+UhCZE2NuXmEZFGqD5
+5mrZYV3iIq1cDdeV/BkzkB8ggEuQusZ4d7JfEw/j6I8C3ZRmw4W/bb8LPJMX3Ea7
+SgzFv9e+PqqX/3oHZvUN+kH1FSI+UDpkIdegqUBUyWPvd98SDH0/HaY5AoGBAN7o
+SfwWExIPEYQvpPjiSVxPuuv50z0BZB+vrQL6U2y4FIohuYSfBVvMiy/Q3Coo2yej
+Js4M2bj79lGG86/E+ejdN/YExKWK7qiVnVkOjKnQeJ+bm0+aQWxgetN7RCosqu4T
+Dp+Ih2fmhH9r5CInWjbY8js41c/KmYeMa9ZsehBHAoGAdNGg6eJ8KkoYDXdh1MAw
+FvHyxvr4lbuJeJPWn63eWP75V2Bt97cLx+nk66OICUwTNkIBrusFB6Z9Ky78iDJx
+k16EXaZnWj5jSRhZX3W83EySTHgiBOJm9NWtxgGDIqW0YjVUlb9iT9V7aboIaa98
+D5OKOdu1fBkl9mKqtqBpT/kCgYAugjT9nfV4rSAwfmhjbYN0+UW8+rEyZ1nmqpbk
+qipB4t6WO5cjrrJFhxX7cg6d1Ux0prvv/gpnaFrqg8fQgr7J8W49rJ0DFUvabO0Z
+qcl7nP2t/5+WKk9AN5kpCu0cB5nadqt0ad4mtZgrpe1BmwhdrUJNTPx/kHwcJhZR
+9Ow6/QKBgGzypcqehhIKPjOR7PR8uf0Lb8j5hlLH5akfxVDlUozr5j68cZA3nPW9
+ikuuM4LqU1dlaAp+c51nye7t4hhIw+JtGSWI2fl5NXxB71LOTvN/sN6sGCbNG3pe
+xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
+-----END RSA PRIVATE KEY-----
+`
+
 	testE1KeyPublicJSON = `{
     "kty":"EC",
     "crv":"P-256",
@@ -1322,7 +1352,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 403)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it.","status":403}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by the account key of an account that holds valid authorizations for all names in the certificate.","status":403}`)
 }
 
 // Valid revocation request for already-revoked cert
@@ -1363,6 +1393,26 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 	assertJSONEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Certificate already revoked","status":409}`)
+}
+
+func TestRevokeCertificateWithAuthz(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	test4JWK, err := jose.LoadPrivateKey([]byte(test4KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	test4Key, ok := test4JWK.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	accountKeySigner, err := jose.NewSigner("RS256", test4Key)
+	test.AssertNotError(t, err, "Failed to make signer")
+	accountKeySigner.SetNonceSource(wfe.nonceService)
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Unable to create revoke request")
+
+	result, _ := accountKeySigner.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
 func TestAuthorization(t *testing.T) {

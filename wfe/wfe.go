@@ -702,9 +702,25 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
+	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+	if err != nil {
+		return false, err
+	}
+	if len(names) != len(authz) {
+		return false, nil
+	}
+	missingNames := false
+	for _, name := range names {
+		if _, present := authz[name]; !present {
+			missingNames = true
+		}
+	}
+	return !missingNames, nil
+}
+
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
@@ -766,13 +782,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// TODO: Implement method of revocation by authorizations on account.
-	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
-		registration.ID == cert.RegistrationID) {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."),
-			nil)
-		return
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.ID == cert.RegistrationID) {
+		valid, err := wfe.regHoldsAuthorizations(ctx, registration.ID, parsedCertificate.DNSNames)
+		if err != nil {
+			logEvent.AddError("regHoldsAuthorizations failed: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve authorizations for names in certificate"), err)
+			return
+		}
+		if !valid {
+			wfe.sendError(response, logEvent,
+				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the "+
+					"account key of the account that issued it, or by the account key of an account that holds valid "+
+					"authorizations for all names in the certificate."),
+				nil)
+			return
+		}
 	}
 
 	reason := revocation.Reason(0)
