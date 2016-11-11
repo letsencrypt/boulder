@@ -963,9 +963,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
-		// This can pretty much only happen when the client corrupts the Challenge
-		// data.
-		err = core.MalformedRequestError("Challenge data was corrupted")
+		ra.log.Warning(fmt.Sprintf(
+			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
+		err = core.InternalServerError("Could not update pending authorization")
 		return
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
