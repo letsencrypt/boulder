@@ -17,6 +17,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/rpc"
 )
@@ -42,8 +43,9 @@ type config struct {
 		// will be turned into 1.
 		DNSTries int
 
-		VAService *cmd.GRPCClientConfig
-		CAService *cmd.GRPCClientConfig
+		VAService        *cmd.GRPCClientConfig
+		CAService        *cmd.GRPCClientConfig
+		PublisherService *cmd.GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -135,6 +137,13 @@ func main() {
 		cmd.FailOnError(err, "Unable to create CA client")
 	}
 
+	var pubc core.Publisher
+	if c.RA.PublisherService != nil {
+		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.RA.PublisherService.Timeout.Duration)
+	}
+
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 	cmd.FailOnError(err, "Unable to create SA client")
 
@@ -160,7 +169,8 @@ func main() {
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
-		pendingAuthorizationLifetime)
+		pendingAuthorizationLifetime,
+		pubc)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")

@@ -8,8 +8,8 @@ package grpc
 import (
 	"net"
 
-	"github.com/square/go-jose"
 	"google.golang.org/grpc/codes"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"

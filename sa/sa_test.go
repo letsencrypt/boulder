@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -112,7 +112,7 @@ func TestAddRegistration(t *testing.T) {
 	var anotherJWK jose.JsonWebKey
 	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
 	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
-	_, err = sa.GetRegistrationByKey(ctx, anotherJWK)
+	_, err = sa.GetRegistrationByKey(ctx, &anotherJWK)
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
@@ -151,6 +151,13 @@ func TestCountPendingAuthorizations(t *testing.T) {
 	pendingAuthz, err := sa.NewPendingAuthorization(ctx, pendingAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	pendingAuthz.Status = core.StatusPending
+	pendingAuthz, err = sa.NewPendingAuthorization(ctx, pendingAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
@@ -595,19 +602,19 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	contact := "mailto:foo@example.com"
 
 	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})

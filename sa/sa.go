@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
 	gorp "gopkg.in/gorp.v1"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -132,10 +132,13 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (core.Registration, error) {
 	const query = "WHERE jwk_sha256 = ?"
 	var model interface{}
 	var err error
+	if key == nil {
+		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
+	}
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
@@ -882,11 +885,13 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, star
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
-		 WHERE registrationID = :regID AND
-				expires > :now`,
+		WHERE registrationID = :regID AND
+		expires > :now AND
+		status = :pending`,
 		map[string]interface{}{
-			"regID": regID,
-			"now":   ssa.clk.Now(),
+			"regID":   regID,
+			"now":     ssa.clk.Now(),
+			"pending": string(core.StatusPending),
 		})
 	return
 }

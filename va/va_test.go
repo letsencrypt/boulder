@@ -23,8 +23,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
