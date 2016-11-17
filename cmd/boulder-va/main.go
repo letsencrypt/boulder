@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -147,6 +148,7 @@ func main() {
 		logger)
 
 	amqpConf := c.VA.AMQP
+	var grpcSrv *grpc.Server
 	if c.VA.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.VA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
@@ -156,10 +158,19 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "VA gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		vas.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")
 
