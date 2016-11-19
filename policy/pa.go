@@ -227,12 +227,20 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		}
 	}
 
+	unicodeDomain := domain
+	if features.Enabled(features.IDNASupport) {
+		var err error
+		unicodeDomain, err = idna.ToUnicode(domain)
+		if err != nil {
+			return errMalformedIDN
+		}
+	}
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := extractDomainIANASuffix(domain)
+	icannTLD, err := extractDomainIANASuffix(unicodeDomain)
 	if err != nil {
 		return errNonPublic
 	}
-	if icannTLD == domain {
+	if icannTLD == unicodeDomain {
 		return errICANNTLD
 	}
 
