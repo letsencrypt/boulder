@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -205,14 +204,14 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 }
 
 type config struct {
-	GRPC cmd.GRPCServerConfig
+	GRPC   cmd.GRPCServerConfig
+	Statsd cmd.StatsdConfig
+	Syslog cmd.SyslogConfig
 
 	DebugAddr             string             `yaml:"debug-addr"`
 	DNSResolver           string             `yaml:"dns-resolver"`
 	DNSNetwork            string             `yaml:"dns-network"`
 	DNSTimeout            cmd.ConfigDuration `yaml:"dns-timeout"`
-	StatsdServer          string             `yaml:"statsd-server"`
-	StatsdPrefix          string             `yaml:"statsd-prefix"`
 	CAASERVFAILExceptions string             `yaml:"caa-servfail-exceptions"`
 }
 
@@ -226,9 +225,10 @@ func main() {
 	err = yaml.Unmarshal(configBytes, &c)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
 
-	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
-	cmd.FailOnError(err, "Failed to create StatsD client")
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "CAAService")
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString("CAA-Checker"))
 
 	caaSERVFAILExceptions, err := bdns.ReadHostList(c.CAASERVFAILExceptions)
 	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
@@ -247,6 +247,7 @@ func main() {
 	ccs := &caaCheckerServer{resolver, scope}
 	pb.RegisterCAACheckerServer(s, ccs)
 
+	go cmd.CatchSignals(logger, s.GracefulStop)
 	go cmd.DebugServer(c.DebugAddr)
 
 	err = s.Serve(l)

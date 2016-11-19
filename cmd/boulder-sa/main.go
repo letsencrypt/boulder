@@ -67,6 +67,8 @@ func main() {
 	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
+	go cmd.CatchSignals(logger, sas.Stop)
+
 	err = rpc.NewStorageAuthorityServer(sas, sai)
 	cmd.FailOnError(err, "Unable to setup SA RPC server")
 
