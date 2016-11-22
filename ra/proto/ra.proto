@@ -1,0 +1,71 @@
+syntax = "proto2";
+
+package ra;
+option go_package = "proto";
+
+import "core/proto/core.proto";
+
+service RegistrationAuthority {
+        rpc NewRegistration(Registration) returns (Registration) {}
+        rpc NewAuthorization(NewAuthorizationRequest) returns (Authorization) {}
+        rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
+        rpc UpdateRegistration(UpdateRegistrationRequest) returns (Registration) {}
+        rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (Authorization) {}
+        rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
+        rpc DeactivateRegistration(Registration) returns (core.Empty) {}
+        rpc DeactivateAuthorization(Authorization) returns (core.Empty) {}
+        rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (core.Empty) {}
+}
+
+message Registration {
+        optional int64 id = 1;
+        optional bytes key = 2;
+        repeated string contact = 3;
+        optional string agreement = 4;
+        optional bytes initialIP = 5;
+        optional int64 createdAt = 6; // Unix timestamp (nanoseconds)
+        optional string status = 7;
+}
+
+message Authorization {
+        optional string id = 1;
+        optional string identifier = 2;
+        optional int64 registrationID = 3;
+        optional string status = 4;
+        optional int64 expires = 5; // Unix timestamp (nanoseconds)
+        repeated core.Challenge challenges = 6;
+        optional bytes combinations = 7;
+}
+
+message NewAuthorizationRequest {
+        optional Authorization authz = 1;
+        optional int64 regID = 2;
+}
+
+message NewCertificateRequest {
+        optional bytes csr = 1;
+        optional int64 regID = 2;
+}
+
+message UpdateRegistrationRequest {
+        optional Registration base = 1;
+        optional Registration update = 2;
+}
+
+message UpdateAuthorizationRequest {
+        optional Authorization authz = 1;
+        optional int64 challengeIndex = 2;
+        optional core.Challenge response = 3;
+}
+
+message RevokeCertificateWithRegRequest {
+        optional bytes cert = 1;
+        optional int64 code = 2;
+        optional int64 regID = 3;
+}
+
+message AdministrativelyRevokeCertificateRequest {
+        optional bytes cert = 1;
+        optional int64 code = 2;
+        optional string adminName = 3;
+}

@@ -30,3 +30,14 @@ message ProblemDetails {
 	optional string detail = 2;
 	optional int32 httpStatus = 3;
 }
+
+message Certificate {
+  optional int64 registrationID = 1;
+  optional string serial = 2;
+  optional string digest = 3;
+  optional bytes der = 4;
+  optional int64 issued = 5;  // Unix timestamp (nanoseconds)
+  optional int64 expires = 6; // Unix timestamp (nanoseconds)
+}
+
+message Empty {}

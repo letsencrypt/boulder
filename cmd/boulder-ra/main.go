@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -19,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -206,10 +208,28 @@ func main() {
 	err = rai.UpdateIssuedCountForever()
 	cmd.FailOnError(err, "Updating total issuance count")
 
+	var grpcSrv *grpc.Server
+	if c.RA.GRPC != nil {
+		s, l, err := bgrpc.NewServer(c.RA.GRPC, scope)
+		cmd.FailOnError(err, "Unable to setup RA gRPC server")
+		gw := bgrpc.NewRegistrationAuthorityServer(rai)
+		rapb.RegisterRegistrationAuthorityServer(s, gw)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "RA gRPC service failed")
+		}()
+		grpcSrv = s
+	}
+
 	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create RA RPC server")
 
-	go cmd.CatchSignals(logger, ras.Stop)
+	go cmd.CatchSignals(logger, func() {
+		ras.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
 
 	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 	cmd.FailOnError(err, "Unable to setup RA RPC server")
