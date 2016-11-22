@@ -99,8 +99,8 @@
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-171-g267b128",
-			"Rev": "267b128680c46286b9ca13475c3cca5de8f79bd7"
+			"Comment": "v1.2-213-g665b834",
+			"Rev": "665b83488b90b902ce0a305ef6652e599771cdf9"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
