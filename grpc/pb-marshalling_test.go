@@ -93,7 +93,7 @@ func TestProblemDetails(t *testing.T) {
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 
-func TestVAChallenge(t *testing.T) {
+func TestChallenge(t *testing.T) {
 	var jwk jose.JsonWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
@@ -105,19 +105,19 @@ func TestVAChallenge(t *testing.T) {
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
-	pb, err := vaChallengeToPB(chall)
-	test.AssertNotError(t, err, "vaChallengeToPB failed")
+	pb, err := challengeToPB(chall)
+	test.AssertNotError(t, err, "challengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
-	recon, err := pbToVAChallenge(pb)
-	test.AssertNotError(t, err, "pbToVAChallenge failed")
+	recon, err := pbToChallenge(pb)
+	test.AssertNotError(t, err, "pbToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
-	_, err = pbToVAChallenge(nil)
-	test.AssertError(t, err, "pbToVAChallenge did not fail")
+	_, err = pbToChallenge(nil)
+	test.AssertError(t, err, "pbToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToVAChallenge(&corepb.Challenge{})
-	test.AssertError(t, err, "pbToVAChallenge did not fail")
+	_, err = pbToChallenge(&corepb.Challenge{})
+	test.AssertError(t, err, "pbToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 
