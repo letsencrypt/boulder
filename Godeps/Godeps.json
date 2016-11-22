@@ -12,8 +12,8 @@
 		},
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
-			"Comment": "v2.0.0-21-gea76b31",
-			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
+			"Comment": "v2.0.2",
+			"Rev": "26a31053503dcd96f51363a90eb03e0b32406e26"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
