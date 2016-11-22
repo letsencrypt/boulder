@@ -850,7 +850,6 @@ func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 		&cmd.PortConfig{},
 		nil,
 		nil,
-		nil,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
@@ -873,7 +872,6 @@ func TestCheckCAAFallback(t *testing.T) {
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
-		nil,
 		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
