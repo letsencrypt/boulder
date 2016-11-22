@@ -249,10 +249,14 @@ func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
 	}
 	createdAt := reg.CreatedAt.UnixNano()
 	status := string(reg.Status)
+	var contacts []string
+	if reg.Contact != nil {
+		contacts = *reg.Contact
+	}
 	return &rapb.Registration{
 		Id:        &reg.ID,
 		Key:       keyBytes,
-		Contact:   *reg.Contact,
+		Contact:   contacts,
 		Agreement: &reg.Agreement,
 		InitialIP: ipBytes,
 		CreatedAt: &createdAt,
@@ -284,19 +288,22 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 
 func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
 	challs := make([]*corepb.Challenge, len(authz.Challenges))
-	for _, c := range authz.Challenges {
+	for i, c := range authz.Challenges {
 		pbChall, err := challengeToPB(c)
 		if err != nil {
 			return nil, err
 		}
-		challs = append(challs, pbChall)
+		challs[i] = pbChall
 	}
 	comboBytes, err := json.Marshal(authz.Combinations)
 	if err != nil {
 		return nil, err
 	}
 	status := string(authz.Status)
-	expires := authz.Expires.UnixNano()
+	var expires int64
+	if authz.Expires != nil {
+		expires = authz.Expires.UnixNano()
+	}
 	return &rapb.Authorization{
 		Id:             &authz.ID,
 		Identifier:     &authz.Identifier.Value,
@@ -310,12 +317,12 @@ func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
 
 func pbToAuthz(pb *rapb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
-	for _, c := range pb.Challenges {
+	for i, c := range pb.Challenges {
 		chall, err := pbToChallenge(c)
 		if err != nil {
 			return core.Authorization{}, err
 		}
-		challs = append(challs, chall)
+		challs[i] = chall
 	}
 	var combos [][]int
 	err := json.Unmarshal(pb.Combinations, &combos)

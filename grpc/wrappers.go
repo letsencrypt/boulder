@@ -490,7 +490,7 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 	if err != nil {
 		return nil, err
 	}
-	return nil, ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
+	return &corepb.Empty{}, ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *rapb.Registration) (*corepb.Empty, error) {
@@ -498,7 +498,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	return nil, ras.inner.DeactivateRegistration(ctx, reg)
+	return &corepb.Empty{}, ras.inner.DeactivateRegistration(ctx, reg)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *rapb.Authorization) (*corepb.Empty, error) {
@@ -506,7 +506,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	return nil, ras.inner.DeactivateAuthorization(ctx, authz)
+	return &corepb.Empty{}, ras.inner.DeactivateAuthorization(ctx, authz)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
@@ -514,5 +514,5 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 	if err != nil {
 		return nil, err
 	}
-	return nil, ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
+	return &corepb.Empty{}, ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
 }
