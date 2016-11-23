@@ -5,16 +5,13 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 // gRPC error codes used by Boulder. While the gRPC codes
 // end at 16 we start at 100 to provide a little leeway
 // in case they ever decide to add more
 const (
-	DNSQueryTimeout codes.Code = iota + 100 // DNSQueryTimeout is used when DNS queries timeout
-	DNSError                                // DNSError is used when DNS queries fail for some reason
-	MalformedRequestError
+	MalformedRequestError = iota + 100
 	NotSupportedError
 	UnauthorizedError
 	NotFoundError
@@ -25,34 +22,6 @@ const (
 	NoSuchRegistrationError
 	InternalServerError
 )
-
-// CodeToProblem takes a gRPC error code and translates it to
-// a Boulder ProblemType
-func CodeToProblem(c codes.Code) probs.ProblemType {
-	switch c {
-	case DNSQueryTimeout, DNSError:
-		return probs.ConnectionProblem
-	case MalformedRequestError, LengthRequiredError, SignatureValidationError:
-		return probs.MalformedProblem
-	case UnauthorizedError:
-		return probs.UnauthorizedProblem
-	case RateLimitedError:
-		return probs.RateLimitedProblem
-	case BadNonceError:
-		return probs.BadNonceProblem
-	default:
-		return probs.ServerInternalProblem
-	}
-}
-
-// ErrorToProb converts a error returned by a gRPC call to a
-// probs.ProblemDetails
-func ErrorToProb(err error) *probs.ProblemDetails {
-	return &probs.ProblemDetails{
-		Type:   CodeToProblem(grpc.Code(err)),
-		Detail: grpc.ErrorDesc(err),
-	}
-}
 
 func errorToCode(err error) codes.Code {
 	switch err.(type) {
@@ -74,6 +43,8 @@ func errorToCode(err error) codes.Code {
 		return BadNonceError
 	case core.NoSuchRegistrationError:
 		return NoSuchRegistrationError
+	case core.InternalServerError:
+		return InternalServerError
 	default:
 		return codes.Unknown
 	}
@@ -103,6 +74,10 @@ func unwrapError(err error) error {
 		return core.NoSuchRegistrationError(errBody)
 	case RateLimitedError:
 		return core.RateLimitedError(errBody)
+	case LengthRequiredError:
+		return core.LengthRequiredError(errBody)
+	case BadNonceError:
+		return core.BadNonceError(errBody)
 	default:
 		return err
 	}
