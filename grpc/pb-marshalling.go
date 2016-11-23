@@ -278,8 +278,14 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var contacts *[]string
-	if *pb.ContactsPresent && len(pb.Contact) > 0 {
-		contacts = &pb.Contact
+	if *pb.ContactsPresent {
+		if len(pb.Contact) != 0 {
+			contacts = &pb.Contact
+		} else {
+			// de-nil the slice so it is properly encoded
+			empty := []string{}
+			contacts = &empty
+		}
 	}
 	return core.Registration{
 		ID:        *pb.Id,

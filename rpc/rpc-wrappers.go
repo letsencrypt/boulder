@@ -459,11 +459,12 @@ func (rac RegistrationAuthorityClient) UpdateRegistration(ctx context.Context, b
 	if err != nil {
 		return
 	}
-
+	fmt.Println("DEBUG Reg -> JSON", string(data))
 	newRegData, err := rac.rpc.DispatchSync(MethodUpdateRegistration, data)
 	if err != nil {
 		return
 	}
+	fmt.Println("DEBUG JSON -> Reg", string(newRegData))
 
 	err = json.Unmarshal(newRegData, &newReg)
 	return
