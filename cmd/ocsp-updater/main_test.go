@@ -612,16 +612,16 @@ func TestMissingLogIDs(t *testing.T) {
 		GivenIDs           []string
 		ExpectedMissingIDs []string
 	}{
+		// With `nil` logs, no log IDs are ever missing
+		{
+			Logs:               nil,
+			GivenIDs:           []string{"test", "test2"},
+			ExpectedMissingIDs: []string{},
+		},
 		// No configured logs, no log IDs are ever missing
 		{
 			Logs:               noLogs,
 			GivenIDs:           []string{"test", "test2"},
-			ExpectedMissingIDs: []string{},
-		},
-		// One configured log, given that log ID, none are missing
-		{
-			Logs:               oneLog,
-			GivenIDs:           []string{"test"},
 			ExpectedMissingIDs: []string{},
 		},
 		// One configured log, given no log IDs, one is missing
@@ -629,6 +629,18 @@ func TestMissingLogIDs(t *testing.T) {
 			Logs:               oneLog,
 			GivenIDs:           []string{},
 			ExpectedMissingIDs: []string{"test"},
+		},
+		// One configured log, given `nil` log IDs, one is missing
+		{
+			Logs:               oneLog,
+			GivenIDs:           nil,
+			ExpectedMissingIDs: []string{"test"},
+		},
+		// One configured log, given that log ID, none are missing
+		{
+			Logs:               oneLog,
+			GivenIDs:           []string{"test"},
+			ExpectedMissingIDs: []string{},
 		},
 		// Two configured logs, given one log ID, one is missing
 		{
