@@ -48,6 +48,8 @@ const (
 	rolloverPath   = "/acme/key-change"
 )
 
+var ProblemDetailsForError = core.ProblemDetailsForError
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
