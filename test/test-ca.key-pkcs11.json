@@ -1,5 +1,5 @@
 {
-    "module": "/usr/lib/softhsm/libsofthsm.so",
+    "module": "/usr/local/lib/libpkcs11-proxy.so",
     "tokenLabel": "intermediate",
     "pin": "5678",
     "privateKeyLabel": "intermediate_key"
