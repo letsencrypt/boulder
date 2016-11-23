@@ -1,12 +1,10 @@
 package grpc
 
 import (
-	"fmt"
-	"net/http"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -24,6 +22,8 @@ const (
 	SignatureValidationError
 	RateLimitedError
 	BadNonceError
+	NoSuchRegistrationError
+	InternalServerError
 )
 
 // CodeToProblem takes a gRPC error code and translates it to
@@ -54,33 +54,56 @@ func ErrorToProb(err error) *probs.ProblemDetails {
 	}
 }
 
-func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	switch grpc.Code(err) {
-	case MalformedRequestError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case NotSupportedError:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
-	case UnauthorizedError:
-		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
-	case NotFoundError:
-		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
-	case LengthRequiredError:
-		prob := probs.Malformed("missing Content-Length header")
-		prob.HTTPStatus = http.StatusLengthRequired
-		return prob
-	case SignatureValidationError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case RateLimitedError:
-		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case BadNonceError:
-		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
+func errorToCode(err error) codes.Code {
+	switch err.(type) {
+	case core.MalformedRequestError:
+		return MalformedRequestError
+	case core.NotSupportedError:
+		return NotSupportedError
+	case core.UnauthorizedError:
+		return UnauthorizedError
+	case core.NotFoundError:
+		return NotFoundError
+	case core.LengthRequiredError:
+		return LengthRequiredError
+	case core.SignatureValidationError:
+		return SignatureValidationError
+	case core.RateLimitedError:
+		return RateLimitedError
+	case core.BadNonceError:
+		return BadNonceError
+	case core.NoSuchRegistrationError:
+		return NoSuchRegistrationError
 	default:
-		// Internal server error messages may include sensitive data, so we do
-		// not include it.
-		return probs.ServerInternal(msg)
+		return codes.Unknown
+	}
+}
+
+func wrapError(err error) error {
+	return grpc.Errorf(errorToCode(err), err.Error())
+}
+
+func unwrapError(err error) error {
+	code := grpc.Code(err)
+	errBody := grpc.ErrorDesc(err)
+	switch code {
+	case InternalServerError:
+		return core.InternalServerError(errBody)
+	case NotSupportedError:
+		return core.NotSupportedError(errBody)
+	case MalformedRequestError:
+		return core.MalformedRequestError(errBody)
+	case UnauthorizedError:
+		return core.UnauthorizedError(errBody)
+	case NotFoundError:
+		return core.NotFoundError(errBody)
+	case SignatureValidationError:
+		return core.SignatureValidationError(errBody)
+	case NoSuchRegistrationError:
+		return core.NoSuchRegistrationError(errBody)
+	case RateLimitedError:
+		return core.RateLimitedError(errBody)
+	default:
+		return err
 	}
 }

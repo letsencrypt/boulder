@@ -240,7 +240,7 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 
 	response, err := rac.inner.NewRegistration(localCtx, req)
 	if err != nil {
-		return core.Registration{}, err
+		return core.Registration{}, unwrapError(err)
 	}
 
 	return pbToRegistration(response)
@@ -256,7 +256,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 
 	response, err := rac.inner.NewAuthorization(localCtx, &rapb.NewAuthorizationRequest{Authz: req, RegID: &regID})
 	if err != nil {
-		return core.Authorization{}, err
+		return core.Authorization{}, unwrapError(err)
 	}
 
 	return pbToAuthz(response)
@@ -267,7 +267,7 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 
 	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
-		return core.Certificate{}, err
+		return core.Certificate{}, unwrapError(err)
 	}
 
 	return core.Certificate{
@@ -294,7 +294,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 
 	response, err := rac.inner.UpdateRegistration(localCtx, &rapb.UpdateRegistrationRequest{Base: basePB, Update: updatePB})
 	if err != nil {
-		return core.Registration{}, err
+		return core.Registration{}, unwrapError(err)
 	}
 
 	return pbToRegistration(response)
@@ -320,7 +320,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 		Response:       challPB,
 	})
 	if err != nil {
-		return core.Authorization{}, err
+		return core.Authorization{}, unwrapError(err)
 	}
 
 	return pbToAuthz(response)
@@ -336,7 +336,7 @@ func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx conte
 		RegID: &regID,
 	})
 	if err != nil {
-		return err
+		return unwrapError(err)
 	}
 
 	return nil
@@ -352,7 +352,7 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context
 
 	_, err = rac.inner.DeactivateRegistration(localCtx, regPB)
 	if err != nil {
-		return err
+		return unwrapError(err)
 	}
 
 	return nil
@@ -368,7 +368,7 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx contex
 
 	_, err = rac.inner.DeactivateAuthorization(localCtx, authzPB)
 	if err != nil {
-		return err
+		return unwrapError(err)
 	}
 
 	return nil
@@ -384,7 +384,7 @@ func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(
 		AdminName: &adminName,
 	})
 	if err != nil {
-		return err
+		return unwrapError(err)
 	}
 
 	return nil
@@ -406,7 +406,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 	}
 	newReg, err := ras.inner.NewRegistration(ctx, reg)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return registrationToPB(newReg)
 }
@@ -418,7 +418,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 	}
 	newAuthz, err := ras.inner.NewAuthorization(ctx, authz, *request.RegID)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return authzToPB(newAuthz)
 }
@@ -430,7 +430,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 	}
 	cert, err := ras.inner.NewCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: request.Csr}, *request.RegID)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	issued := cert.Issued.UnixNano()
 	expires := cert.Expires.UnixNano()
@@ -455,7 +455,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 	}
 	newReg, err := ras.inner.UpdateRegistration(ctx, base, update)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return registrationToPB(newReg)
 }
@@ -471,7 +471,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.C
 	}
 	newAuthz, err := ras.inner.UpdateAuthorization(ctx, authz, int(*request.ChallengeIndex), chall)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return authzToPB(newAuthz)
 }
@@ -481,7 +481,11 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
+	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *rapb.Registration) (*corepb.Empty, error) {
@@ -489,7 +493,11 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, ras.inner.DeactivateRegistration(ctx, reg)
+	err = ras.inner.DeactivateRegistration(ctx, reg)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *rapb.Authorization) (*corepb.Empty, error) {
@@ -497,7 +505,11 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, ras.inner.DeactivateAuthorization(ctx, authz)
+	err = ras.inner.DeactivateAuthorization(ctx, authz)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
 }
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
@@ -505,5 +517,9 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
+	err = ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
 }
