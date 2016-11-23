@@ -35,9 +35,8 @@ var _ = math.Inf
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type Request struct {
-	Der              []byte  `protobuf:"bytes,1,opt,name=der" json:"der,omitempty"`
-	LogID            *string `protobuf:"bytes,2,opt,name=LogID" json:"LogID,omitempty"`
-	XXX_unrecognized []byte  `json:"-"`
+	Der              []byte `protobuf:"bytes,1,opt,name=der" json:"der,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *Request) Reset()                    { *m = Request{} }
@@ -50,13 +49,6 @@ func (m *Request) GetDer() []byte {
 		return m.Der
 	}
 	return nil
-}
-
-func (m *Request) GetLogID() string {
-	if m != nil && m.LogID != nil {
-		return *m.LogID
-	}
-	return ""
 }
 
 type Empty struct {
@@ -85,7 +77,6 @@ const _ = grpc.SupportPackageIsVersion3
 
 type PublisherClient interface {
 	SubmitToCT(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Empty, error)
-	SubmitToSingleCT(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type publisherClient struct {
@@ -105,20 +96,10 @@ func (c *publisherClient) SubmitToCT(ctx context.Context, in *Request, opts ...g
 	return out, nil
 }
 
-func (c *publisherClient) SubmitToSingleCT(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
-	err := grpc.Invoke(ctx, "/Publisher/SubmitToSingleCT", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // Server API for Publisher service
 
 type PublisherServer interface {
 	SubmitToCT(context.Context, *Request) (*Empty, error)
-	SubmitToSingleCT(context.Context, *Request) (*Empty, error)
 }
 
 func RegisterPublisherServer(s *grpc.Server, srv PublisherServer) {
@@ -143,24 +124,6 @@ func _Publisher_SubmitToCT_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Publisher_SubmitToSingleCT_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(PublisherServer).SubmitToSingleCT(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/Publisher/SubmitToSingleCT",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PublisherServer).SubmitToSingleCT(ctx, req.(*Request))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 var _Publisher_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "Publisher",
 	HandlerType: (*PublisherServer)(nil),
@@ -168,10 +131,6 @@ var _Publisher_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitToCT",
 			Handler:    _Publisher_SubmitToCT_Handler,
-		},
-		{
-			MethodName: "SubmitToSingleCT",
-			Handler:    _Publisher_SubmitToSingleCT_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -181,14 +140,12 @@ var _Publisher_serviceDesc = grpc.ServiceDesc{
 func init() { proto.RegisterFile("publisher.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 135 bytes of a gzipped FileDescriptorProto
+	// 107 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xe2, 0xe2, 0x2f, 0x28, 0x4d, 0xca,
-	0xc9, 0x2c, 0xce, 0x48, 0x2d, 0xd2, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x57, 0x52, 0xe5, 0x62, 0x0f,
+	0xc9, 0x2c, 0xce, 0x48, 0x2d, 0xd2, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x57, 0x12, 0xe3, 0x62, 0x0f,
 	0x4a, 0x2d, 0x2c, 0x4d, 0x2d, 0x2e, 0x11, 0xe2, 0xe6, 0x62, 0x4e, 0x49, 0x2d, 0x92, 0x60, 0x54,
-	0x60, 0xd4, 0xe0, 0x11, 0xe2, 0xe5, 0x62, 0xf5, 0xc9, 0x4f, 0xf7, 0x74, 0x91, 0x60, 0x02, 0x72,
-	0x39, 0x95, 0xd8, 0xb9, 0x58, 0x5d, 0x73, 0x0b, 0x4a, 0x2a, 0x8d, 0x42, 0xb9, 0x38, 0x03, 0x60,
-	0x46, 0x08, 0x29, 0x70, 0x71, 0x05, 0x97, 0x26, 0xe5, 0x66, 0x96, 0x84, 0xe4, 0x3b, 0x87, 0x08,
-	0x71, 0xe8, 0x41, 0x4d, 0x92, 0x62, 0xd3, 0x03, 0x2b, 0x56, 0x62, 0x10, 0x52, 0xe3, 0x12, 0x80,
-	0xa9, 0x08, 0xce, 0xcc, 0x4b, 0xcf, 0x49, 0xc5, 0xae, 0x0e, 0x10, 0x00, 0x00, 0xff, 0xff, 0xee,
-	0xbc, 0x16, 0x76, 0x98, 0x00, 0x00, 0x00,
+	0x60, 0xd4, 0xe0, 0x51, 0x62, 0xe7, 0x62, 0x75, 0xcd, 0x2d, 0x28, 0xa9, 0x34, 0xd2, 0xe5, 0xe2,
+	0x0c, 0x80, 0xe9, 0x11, 0x52, 0xe0, 0xe2, 0x0a, 0x2e, 0x4d, 0xca, 0xcd, 0x2c, 0x09, 0xc9, 0x77,
+	0x0e, 0x11, 0xe2, 0xd0, 0x83, 0x6a, 0x95, 0x62, 0xd3, 0x03, 0x2b, 0x56, 0x62, 0x00, 0x04, 0x00,
+	0x00, 0xff, 0xff, 0x19, 0x50, 0xa9, 0x22, 0x61, 0x00, 0x00, 0x00,
 }
