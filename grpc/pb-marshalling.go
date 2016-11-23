@@ -278,7 +278,7 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var contacts *[]string
-	if *pb.ContactsPresent {
+	if *pb.ContactsPresent && len(pb.Contact) > 0 {
 		contacts = &pb.Contact
 	}
 	return core.Registration{
