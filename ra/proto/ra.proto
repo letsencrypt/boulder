@@ -21,10 +21,11 @@ message Registration {
         optional int64 id = 1;
         optional bytes key = 2;
         repeated string contact = 3;
-        optional string agreement = 4;
-        optional bytes initialIP = 5;
-        optional int64 createdAt = 6; // Unix timestamp (nanoseconds)
-        optional string status = 7;
+        optional bool contactsPresent = 4;
+        optional string agreement = 5;
+        optional bytes initialIP = 6;
+        optional int64 createdAt = 7; // Unix timestamp (nanoseconds)
+        optional string status = 8;
 }
 
 message Authorization {

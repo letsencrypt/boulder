@@ -253,14 +253,16 @@ func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
+	contactsPresent := reg.Contact != nil
 	return &rapb.Registration{
-		Id:        &reg.ID,
-		Key:       keyBytes,
-		Contact:   contacts,
-		Agreement: &reg.Agreement,
-		InitialIP: ipBytes,
-		CreatedAt: &createdAt,
-		Status:    &status,
+		Id:              &reg.ID,
+		Key:             keyBytes,
+		Contact:         contacts,
+		ContactsPresent: &contactsPresent,
+		Agreement:       &reg.Agreement,
+		InitialIP:       ipBytes,
+		CreatedAt:       &createdAt,
+		Status:          &status,
 	}, nil
 }
 
@@ -275,10 +277,14 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 	if err != nil {
 		return core.Registration{}, err
 	}
+	var contacts *[]string
+	if *pb.ContactsPresent {
+		contacts = &pb.Contact
+	}
 	return core.Registration{
 		ID:        *pb.Id,
 		Key:       &key,
-		Contact:   &pb.Contact,
+		Contact:   contacts,
 		Agreement: *pb.Agreement,
 		InitialIP: initialIP,
 		CreatedAt: time.Unix(0, *pb.CreatedAt),
