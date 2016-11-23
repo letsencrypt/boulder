@@ -353,7 +353,7 @@ func main() {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
-	logger.Info(clientName)
+	logger.Info(cmd.VersionString(clientName))
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
