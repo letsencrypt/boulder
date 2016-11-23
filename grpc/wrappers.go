@@ -231,8 +231,7 @@ func NewRegistrationAuthorityClient(inner rapb.RegistrationAuthorityClient, time
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	req, err := registrationToPB(reg)
 	if err != nil {
@@ -248,8 +247,7 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	req, err := authzToPB(authz)
 	if err != nil {
@@ -265,8 +263,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64) (core.Certificate, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
@@ -284,8 +281,7 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	basePB, err := registrationToPB(base)
 	if err != nil {
@@ -305,8 +301,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Context, authz core.Authorization, challengeIndex int, chall core.Challenge) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	authzPB, err := authzToPB(authz)
 	if err != nil {
@@ -332,8 +327,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 }
 
 func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	reason := int64(code)
 	_, err := rac.inner.RevokeCertificateWithReg(localCtx, &rapb.RevokeCertificateWithRegRequest{
@@ -349,8 +343,7 @@ func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx conte
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	regPB, err := registrationToPB(reg)
 	if err != nil {
@@ -366,8 +359,7 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	authzPB, err := authzToPB(auth)
 	if err != nil {
@@ -383,8 +375,7 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
+	localCtx, _ := context.WithTimeout(ctx, rac.timeout)
 
 	reason := int64(code)
 	_, err := rac.inner.AdministrativelyRevokeCertificate(localCtx, &rapb.AdministrativelyRevokeCertificateRequest{
