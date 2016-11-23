@@ -532,3 +532,142 @@ func TestLoopTickBackoff(t *testing.T) {
 	test.AssertEquals(t, l.failures, 0)
 	test.AssertEquals(t, l.clk.Now(), start)
 }
+
+func TestGetSubmittedReceipts(t *testing.T) {
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	fc.Set(parsedCert.NotBefore.Add(time.Minute))
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	// Before adding any SCTs, there should be no receipts or errors for serial 00
+	receipts, err := updater.getSubmittedReceipts("00")
+	test.AssertNotError(t, err, "getSubmittedReceipts('00') failed")
+	test.AssertEquals(t, len(receipts), 0)
+
+	// Add one SCT
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        0,
+		LogID:             "test",
+		Timestamp:         0,
+		Extensions:        []byte{},
+		Signature:         []byte{0},
+		CertificateSerial: "00",
+	}
+	err = sa.AddSCTReceipt(ctx, sct)
+	test.AssertNotError(t, err, "Failed to AddSCTReceipt")
+
+	// After adding one SCTs, there should be one receipt for log "test"
+	receipts, err = updater.getSubmittedReceipts("00")
+	test.AssertNotError(t, err, "getSubmittedReceipts('00') failed")
+	test.AssertEquals(t, len(receipts), 1)
+	test.AssertEquals(t, receipts[0], "test")
+
+	// Add another SCT
+	sct = core.SignedCertificateTimestamp{
+		SCTVersion:        0,
+		LogID:             "test2",
+		Timestamp:         0,
+		Extensions:        []byte{},
+		Signature:         []byte{0},
+		CertificateSerial: "00",
+	}
+	err = sa.AddSCTReceipt(ctx, sct)
+	test.AssertNotError(t, err, "Failed to AddSCTReceipt")
+
+	// After adding a second SCTs, there should be two receipts for logs "test"
+	// and "test2"
+	receipts, err = updater.getSubmittedReceipts("00")
+	test.AssertNotError(t, err, "getSubmittedReceipts('00') failed")
+	test.AssertEquals(t, len(receipts), 2)
+	test.AssertEquals(t, receipts[0], "test")
+	test.AssertEquals(t, receipts[1], "test2")
+}
+
+func TestMissingLogIDs(t *testing.T) {
+	updater, _, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	noLogs := []cmd.LogDescription{}
+	oneLog := []cmd.LogDescription{
+		cmd.LogDescription{
+			URI: "test",
+			Key: "test",
+		},
+	}
+	twoLogs := []cmd.LogDescription{
+		oneLog[0],
+		cmd.LogDescription{
+			URI: "test2",
+			Key: "test2",
+		},
+	}
+
+	testCases := []struct {
+		Logs               []cmd.LogDescription
+		GivenIDs           []string
+		ExpectedMissingIDs []string
+	}{
+		// No configured logs, no log IDs are ever missing
+		{
+			Logs:               noLogs,
+			GivenIDs:           []string{"test", "test2"},
+			ExpectedMissingIDs: []string{},
+		},
+		// One configured log, given that log ID, none are missing
+		{
+			Logs:               oneLog,
+			GivenIDs:           []string{"test"},
+			ExpectedMissingIDs: []string{},
+		},
+		// One configured log, given no log IDs, one is missing
+		{
+			Logs:               oneLog,
+			GivenIDs:           []string{},
+			ExpectedMissingIDs: []string{"test"},
+		},
+		// Two configured logs, given one log ID, one is missing
+		{
+			Logs:               twoLogs,
+			GivenIDs:           []string{"test"},
+			ExpectedMissingIDs: []string{"test2"},
+		},
+		// Two configured logs, given no log IDs, two are missing
+		{
+			Logs:               twoLogs,
+			GivenIDs:           []string{},
+			ExpectedMissingIDs: []string{"test", "test2"},
+		},
+		// Two configured logs, given two matching log IDs, none are missing
+		{
+			Logs:               twoLogs,
+			GivenIDs:           []string{"test", "test2"},
+			ExpectedMissingIDs: []string{},
+		},
+		// Two configured logs, given unknown log, two are missing
+		{
+			Logs:               twoLogs,
+			GivenIDs:           []string{"wha?"},
+			ExpectedMissingIDs: []string{"test", "test2"},
+		},
+		// Two configured logs, given one unknown log, one known, one is missing
+		{
+			Logs:               twoLogs,
+			GivenIDs:           []string{"wha?", "test2"},
+			ExpectedMissingIDs: []string{"test"},
+		},
+	}
+
+	for _, tc := range testCases {
+		updater.logs = tc.Logs
+		missingIDs := updater.missingLogIDs(tc.GivenIDs)
+		test.AssertEquals(t, len(missingIDs), len(tc.ExpectedMissingIDs))
+		for i, expectedID := range tc.ExpectedMissingIDs {
+			test.AssertEquals(t, missingIDs[i], expectedID)
+		}
+	}
+}
