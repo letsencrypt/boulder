@@ -11,7 +11,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -33,8 +32,6 @@ type config struct {
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *cmd.GoogleSafeBrowsingConfig
-
-		CAAService *cmd.GRPCClientConfig
 
 		CAADistributedResolver *cmd.CAADistributedResolverConfig
 
@@ -90,13 +87,6 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	var caaClient caaPB.CAACheckerClient
-	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		caaClient = caaPB.NewCAACheckerClient(conn)
-	}
-
 	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 
 	var cdrClient *cdr.CAADistributedResolver
@@ -138,7 +128,6 @@ func main() {
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
-		caaClient,
 		cdrClient,
 		resolver,
 		c.VA.UserAgent,
