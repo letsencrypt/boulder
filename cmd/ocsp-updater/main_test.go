@@ -678,7 +678,6 @@ func TestMissingLogs(t *testing.T) {
 	for _, tc := range testCases {
 		updater.logs = tc.Logs
 		missingLogs := updater.missingLogs(tc.GivenIDs)
-		fmt.Printf("Test Case: %#v\n", tc)
 		test.AssertEquals(t, len(missingLogs), len(tc.ExpectedMissingLogs))
 		for i, expectedLog := range tc.ExpectedMissingLogs {
 			test.AssertEquals(t, missingLogs[i].URI, expectedLog.URI)
