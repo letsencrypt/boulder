@@ -64,6 +64,13 @@ func (c *logCache) GetLog(b64PK string) *Log {
 	return nil
 }
 
+// Len returns the number of logs in the logCache
+func (c *logCache) Len() int {
+	c.RLock()
+	defer c.RUnlock()
+	return len(c.logs)
+}
+
 // NewLog returns an initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
 	url, err := url.Parse(uri)
