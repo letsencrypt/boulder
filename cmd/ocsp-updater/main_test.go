@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
