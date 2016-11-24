@@ -247,48 +247,48 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/codes",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/credentials",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/grpclog",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/internal",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/metadata",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/naming",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/peer",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/transport",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",

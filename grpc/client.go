@@ -5,13 +5,14 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	"net"
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/letsencrypt/boulder/metrics"
+	"google.golang.org/grpc/credentials"
 )
 
 // ClientSetup loads various TLS certificates and creates a
@@ -39,7 +40,23 @@ func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn
 		return nil, err
 	}
 	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default()}
-	creds := bcreds.NewClientCredentials(rootCAs, []tls.Certificate{clientCert})
+
+	//TODO(@cpu): It's janky to only look at the first server address here. Do we
+	//need to restore the `clientTransportCredentials`?
+	host, _, err := net.SplitHostPort(c.ServerAddresses[0])
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs:      rootCAs,
+		Certificates: []tls.Certificate{clientCert},
+		MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
+		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
+	}
+	creds := credentials.NewTLS(tlsConfig)
+	creds.OverrideServerName(host)
+
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
 		grpc.WithTransportCredentials(creds),
