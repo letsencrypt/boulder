@@ -39,12 +39,12 @@ func (_mr *_MockPublisherRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.Ca
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "SubmitToCT", arg0, arg1)
 }
 
-func (_m *MockPublisher) SubmitToSingleCT(_param0 context.Context, _param1 string, _param2 []byte) error {
-	ret := _m.ctrl.Call(_m, "SubmitToSingleCT", _param0, _param1, _param2)
+func (_m *MockPublisher) SubmitToSingleCT(_param0 context.Context, _param1 string, _param2 string, _param3 []byte) error {
+	ret := _m.ctrl.Call(_m, "SubmitToSingleCT", _param0, _param1, _param2, _param3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-func (_mr *_MockPublisherRecorder) SubmitToSingleCT(arg0, arg1, arg2 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "SubmitToSingleCT", arg0, arg1, arg2)
+func (_mr *_MockPublisherRecorder) SubmitToSingleCT(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "SubmitToSingleCT", arg0, arg1, arg2, arg3)
 }

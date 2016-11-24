@@ -7,7 +7,8 @@ service Publisher {
 
 message Request {
         optional bytes der = 1;
-        optional string LogID = 2;
+        optional string LogURL = 2;
+        optional string LogPublicKey = 3;
 }
 
 message Empty {

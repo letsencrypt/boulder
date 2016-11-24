@@ -487,11 +487,11 @@ func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error
 }
 
 // missingLogIDs examines a list of log IDs that have given a SCT receipt for
-// a certificate and returns a list of the configured log IDs that are not
+// a certificate and returns a list of the configured logs that are not
 // present. This is the set of logs we need to resubmit this certificate to in
 // order to obtain a full compliment of SCTs
-func (updater *OCSPUpdater) missingLogIDs(logIDs []string) []string {
-	var missingIDs []string
+func (updater *OCSPUpdater) missingLogs(logIDs []string) []cmd.LogDescription {
+	var missingLogs []cmd.LogDescription
 
 	presentMap := make(map[string]bool)
 	for _, logID := range logIDs {
@@ -500,11 +500,11 @@ func (updater *OCSPUpdater) missingLogIDs(logIDs []string) []string {
 
 	for _, logDesc := range updater.logs {
 		if _, present := presentMap[logDesc.Key]; !present {
-			missingIDs = append(missingIDs, logDesc.Key)
+			missingLogs = append(missingLogs, logDesc)
 		}
 	}
 
-	return missingIDs
+	return missingLogs
 }
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
@@ -529,8 +529,8 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 
 		// Next, check if any of the configured CT logs are missing from the list of
 		// logs that have given SCTs for this serial
-		missingIDs := updater.missingLogIDs(logIDs)
-		if len(missingIDs) == 0 {
+		missingLogs := updater.missingLogs(logIDs)
+		if len(missingLogs) == 0 {
 			// If all of the logs have provided a SCT we're done for this serial
 			continue
 		}
@@ -547,8 +547,8 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		// logs using the `SubmitToSingleCT` endpoint that was added for this
 		// purpose
 		if features.Enabled(features.ResubmitMissingSCTsOnly) {
-			for _, logID := range missingIDs {
-				_ = updater.pubc.SubmitToSingleCT(ctx, logID, cert.DER)
+			for _, log := range missingLogs {
+				_ = updater.pubc.SubmitToSingleCT(ctx, log.URI, log.Key, cert.DER)
 			}
 		} else {
 			// Otherwise, use the classic behaviour and submit the certificate to

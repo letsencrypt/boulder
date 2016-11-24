@@ -356,7 +356,7 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 }
 
 // SubmitToSingleCT is a mock
-func (*Publisher) SubmitToSingleCT(_ context.Context, _ string, _ []byte) error {
+func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
 	return nil
 }
 
