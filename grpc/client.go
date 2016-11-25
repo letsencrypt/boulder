@@ -55,7 +55,10 @@ func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn
 		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
 	}
 	creds := credentials.NewTLS(tlsConfig)
-	creds.OverrideServerName(host)
+	err = creds.OverrideServerName(host)
+	if err != nil {
+		return nil, err
+	}
 
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
