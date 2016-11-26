@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -50,4 +51,35 @@ func TestPAConfigUnmarshal(t *testing.T) {
 	err = json.Unmarshal(emptyChallengesPAConfig, &pc4)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
 	test.AssertError(t, pc4.CheckChallenges(), "Disallow empty challenges map")
+}
+
+func TestMysqlLogger(t *testing.T) {
+	log := blog.UseMock()
+	mysqlLogger := mysqlLogger{log}
+
+	testCases := []struct {
+		args     []interface{}
+		expected string
+	}{
+		{
+			[]interface{}{nil},
+			`ERR: [AUDIT] [mysql] <nil>`,
+		},
+		{
+			[]interface{}{""},
+			`ERR: [AUDIT] [mysql] `,
+		},
+		{
+			[]interface{}{"Sup ", 12345, " Sup sup"},
+			`ERR: [AUDIT] [mysql] Sup 12345 Sup sup`,
+		},
+	}
+
+	for _, tc := range testCases {
+		mysqlLogger.Print(tc.args...)
+		logged := log.GetAll()
+		test.AssertEquals(t, len(logged), 1)
+		test.AssertEquals(t, logged[0], tc.expected)
+		log.Clear()
+	}
 }
