@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
+	"runtime"
 	"testing"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -116,4 +119,14 @@ func TestCfsslLogger(t *testing.T) {
 		test.AssertEquals(t, logged[1], tc.expected)
 		log.Clear()
 	}
+}
+
+func TestVersionString(t *testing.T) {
+	core.BuildID = "TestBuildID"
+	core.BuildTime = "RightNow!"
+	core.BuildHost = "Localhost"
+
+	versionStr := VersionString("test")
+	expected := fmt.Sprintf("Versions: test=(TestBuildID RightNow!) Golang=(%s) BuildHost=(Localhost)", runtime.Version())
+	test.AssertEquals(t, versionStr, expected)
 }
