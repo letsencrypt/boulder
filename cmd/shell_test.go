@@ -160,3 +160,23 @@ func TestLoadCert(t *testing.T) {
 	test.AssertNotError(t, err, "LoadCert(../test/test-ca.pem) errored")
 	test.AssertNotEquals(t, len(bytes), 0)
 }
+
+func TestReadConfigFile(t *testing.T) {
+	err := ReadConfigFile("", nil)
+	test.AssertError(t, err, "ReadConfigFile('') did not error")
+
+	type config struct {
+		NotifyMailer struct {
+			DBConfig
+			PasswordConfig
+			SMTPConfig
+		}
+		Statsd StatsdConfig
+		Syslog SyslogConfig
+	}
+	var c config
+	err = ReadConfigFile("../test/config/notify-mailer.json", &c)
+	test.AssertNotError(t, err, "ReadConfigFile(../test/config/notify-mailer.json) errored")
+	test.AssertEquals(t, c.NotifyMailer.SMTPConfig.Server, "localhost")
+	test.AssertEquals(t, c.Syslog.StdoutLevel, 6)
+}
