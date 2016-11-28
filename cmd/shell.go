@@ -29,8 +29,10 @@ import (
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
+	"syscall"
 	"time"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
@@ -224,4 +226,29 @@ func ReadConfigFile(filename string, out interface{}) error {
 // VersionString produces a friendly Application version string.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
+// method before exiting
+func CatchSignals(logger blog.Logger, callback func()) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+
+	if callback != nil {
+		callback()
+	}
+
+	logger.Info("Exiting")
+	os.Exit(0)
 }

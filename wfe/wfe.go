@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -153,6 +154,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 				logEvent.ResponseNonce = nonce
 			} else {
 				logEvent.AddError("unable to make nonce: %s", err)
+			}
+
+			logEvent.Endpoint = pattern
+			if request.URL != nil {
+				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
 			}
 
 			switch request.Method {

@@ -12,8 +12,8 @@
 		},
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
-			"Comment": "v2.0.0-21-gea76b31",
-			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
+			"Comment": "v2.0.2",
+			"Rev": "26a31053503dcd96f51363a90eb03e0b32406e26"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
@@ -99,8 +99,8 @@
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-171-g267b128",
-			"Rev": "267b128680c46286b9ca13475c3cca5de8f79bd7"
+			"Comment": "v1.2-213-g665b834",
+			"Rev": "665b83488b90b902ce0a305ef6652e599771cdf9"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
@@ -132,7 +132,7 @@
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
-			"Comment": "v1.0-4-g880ee4c",
+			"Comment": "v1.1",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
 		},
 		{
@@ -198,7 +198,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Rev": "3316aa3feceb68fa73009112eddd387500cd40c0"
+			"Comment": "v0.3.0",
+			"Rev": "49fe4b0e8276b314e6703300ac26940d9c090a06"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",

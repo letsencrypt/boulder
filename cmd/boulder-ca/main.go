@@ -12,6 +12,7 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/ca"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -176,6 +177,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
+	var grpcSrv *grpc.Server
 	if c.CA.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
@@ -185,10 +187,19 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		cas.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
 

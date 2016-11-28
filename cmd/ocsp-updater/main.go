@@ -589,15 +589,9 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	var pubc core.Publisher
-	if c.Publisher != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
-	} else {
-		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create Publisher client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 	return cac, pubc, sac

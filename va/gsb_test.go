@@ -35,7 +35,6 @@ func TestIsSafeDomain(t *testing.T) {
 		sbc,
 		nil,
 		nil,
-		nil,
 		"user agent 1.0",
 		"letsencrypt.org",
 		stats,
@@ -83,7 +82,6 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats := metrics.NewNoopScope()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
-		nil,
 		nil,
 		nil,
 		nil,
