@@ -280,10 +280,12 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 	uri := fmt.Sprintf("http://localhost:%d/ct", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
-	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
+	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), 0)
 	test.AssertNotError(t, err, "Couldn't create log")
 	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d/ct", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
+	v := int64(0)
+	pub.submissions[newLog.statName] = &v
 }
 
 func TestBasicSuccessful(t *testing.T) {
@@ -432,4 +434,48 @@ func TestBadServer(t *testing.T) {
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ecdsa signature")), 1)
+}
+
+func TestRateLimiting(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	scope := mock_metrics.NewMockScope(ctrl)
+	pub.stats = scope
+
+	server := logSrv(leaf.Raw, k)
+	defer server.Close()
+	port, err := getPort(server)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	addLog(t, pub, port, &k.PublicKey)
+
+	statName := pub.ctLogs[0].statName
+	pub.ctLogs[0].maxSPS = 1
+
+	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
+	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+
+	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().Inc("AtSubmissionLimit", int64(1)).Return(nil)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
+	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+
+	pub.ClearSubmissions()
+
+	log.Clear()
+	scope.EXPECT().NewScope(statName).Return(scope)
+	scope.EXPECT().Inc("Submits", int64(1)).Return(nil)
+	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any()).Return(nil)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
+	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }

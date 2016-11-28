@@ -308,8 +308,9 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // LogDescription contains the information needed to submit certificates
 // to a CT log and verify returned receipts
 type LogDescription struct {
-	URI string
-	Key string
+	URI    string
+	Key    string
+	MaxSPS int64
 }
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service

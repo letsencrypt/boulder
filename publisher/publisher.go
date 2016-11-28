@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	ct "github.com/google/certificate-transparency/go"
@@ -24,10 +25,11 @@ type Log struct {
 	statName string
 	client   *ctClient.LogClient
 	verifier *ct.SignatureVerifier
+	maxSPS   int64
 }
 
 // NewLog returns an initialized Log struct
-func NewLog(uri, b64PK string) (*Log, error) {
+func NewLog(uri, b64PK string, maxSPS int64) (*Log, error) {
 	url, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
@@ -58,6 +60,7 @@ func NewLog(uri, b64PK string) (*Log, error) {
 		statName: fmt.Sprintf("%s.%s", url.Host, sanitizedPath),
 		client:   client,
 		verifier: verifier,
+		maxSPS:   maxSPS,
 	}, nil
 }
 
@@ -73,6 +76,8 @@ type Impl struct {
 	issuerBundle      []ct.ASN1Cert
 	ctLogs            []*Log
 	submissionTimeout time.Duration
+
+	submissions map[string]*int64
 
 	sa core.StorageAuthority
 }
@@ -90,13 +95,28 @@ func New(
 	if submissionTimeout == 0 {
 		submissionTimeout = time.Hour * 12
 	}
-	return &Impl{
+	pub := &Impl{
 		submissionTimeout: submissionTimeout,
 		issuerBundle:      bundle,
 		ctLogs:            logs,
 		log:               logger,
 		stats:             stats,
 		sa:                sa,
+		submissions:       make(map[string]*int64, len(logs)),
+	}
+	for _, log := range logs {
+		v := int64(0)
+		pub.submissions[log.statName] = &v
+	}
+	return pub
+}
+
+// ClearSubmissions clears the pub.submissions map used to track the
+// per log submission rates
+func (pub *Impl) ClearSubmissions() {
+	for _, v := range pub.submissions {
+		atomic.StoreInt64(v, 0)
+		time.Sleep(time.Second)
 	}
 }
 
@@ -116,12 +136,17 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 		stats := pub.stats.NewScope(ctLog.statName)
 		stats.Inc("Submits", 1)
 		start := time.Now()
+		if ctLog.maxSPS != 0 && atomic.LoadInt64(pub.submissions[ctLog.statName]) >= ctLog.maxSPS {
+			stats.Inc("AtSubmissionLimit", 1)
+			continue
+		}
 		err := pub.singleLogSubmit(localCtx, chain, core.SerialToString(cert.SerialNumber), ctLog)
 		stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
 		if err != nil {
 			pub.log.AuditErr(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
 			stats.Inc("Errors", 1)
 		}
+		atomic.AddInt64(pub.submissions[ctLog.statName], 1)
 	}
 	return nil
 }
