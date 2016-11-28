@@ -250,10 +250,13 @@ func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
 	createdAt := reg.CreatedAt.UnixNano()
 	status := string(reg.Status)
 	var contacts []string
+	// Since the default value of rapb.Registration.Contact is a slice
+	// we need a indicator as to if the value is actually important on
+	// the other side (pb -> reg).
+	contactsPresent := reg.Contact != nil
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	contactsPresent := reg.Contact != nil
 	return &rapb.Registration{
 		Id:              &reg.ID,
 		Key:             keyBytes,
@@ -282,7 +285,9 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 		if len(pb.Contact) != 0 {
 			contacts = &pb.Contact
 		} else {
-			// de-nil the slice so it is properly encoded
+			// When gRPC creates an empty slice it is actually a nil slice, since
+			// certain things boulder uses, like encoding/json, differentiate between
+			// these we need to de-nil these slices.
 			empty := []string{}
 			contacts = &empty
 		}

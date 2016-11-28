@@ -9,7 +9,6 @@ package grpc
 import (
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"time"
 
 	"golang.org/x/net/context"
@@ -246,7 +245,6 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 	}
 
 	r, err := pbToRegistration(response)
-	fmt.Println("DEBUG, final contacts", r.Contact)
 	return r, err
 }
 
