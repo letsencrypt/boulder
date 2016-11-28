@@ -38,30 +38,29 @@ type logCache struct {
 // AddLog adds a *Log to the cache by constructing the statName, client and
 // verifier for the given uri & base64 public key.
 func (c *logCache) AddLog(uri, b64PK string) (*Log, error) {
+	// Lock the mutex for reading to check the cache
+	c.RLock()
+	// If we have already added this log, give it back
+	if log, present := c.logs[b64PK]; present {
+		// Make sure to RUnlock() after return
+		defer c.RUnlock()
+		return log, nil
+	}
+	// If it wasn't in the cache we didn't defer an RUnlock() and need to unlock
+	// now before we can Lock for write.
+	c.RUnlock()
+
+	// Lock the mutex for writing to add to the cache
 	c.Lock()
 	defer c.Unlock()
 
-	// If we have already added this log, give it back
-	if log, present := c.logs[b64PK]; present {
-		return log, nil
-	}
-
+	// Construct a Log, add it to the cache, and return it to the caller
 	log, err := NewLog(uri, b64PK)
 	if err != nil {
 		return nil, err
 	}
 	c.logs[b64PK] = log
 	return log, nil
-}
-
-// GetLog returns a *Log from the logCache
-func (c *logCache) GetLog(b64PK string) *Log {
-	c.RLock()
-	defer c.RUnlock()
-	if l, present := c.logs[b64PK]; present {
-		return l
-	}
-	return nil
 }
 
 // Len returns the number of logs in the logCache
@@ -169,16 +168,13 @@ func (pub *Impl) SubmitToSingleCT(
 
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 
-	// Try to find a *Log from the cache for this logURL. If this is the first
-	// request to submit to this log then add it to the cache
-	var ctLog *Log
-	if ctLog = pub.ctLogsCache.GetLog(logPublicKey); ctLog == nil {
-		var err error
-		ctLog, err = pub.ctLogsCache.AddLog(logURL, logPublicKey)
-		if err != nil {
-			pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
-			return err
-		}
+	// Add a log URL/pubkey to the cache, if already present the
+	// existing *Log will be returned, otherwise one will be constructed, added
+	// and returned.
+	ctLog, err := pub.ctLogsCache.AddLog(logURL, logPublicKey)
+	if err != nil {
+		pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
+		return err
 	}
 
 	stats := pub.stats.NewScope(ctLog.statName)
