@@ -176,9 +176,7 @@ func (pub *Impl) SubmitToSingleCT(
 		var err error
 		ctLog, err = pub.ctLogsCache.AddLog(logURL, logPublicKey)
 		if err != nil {
-			pub.log.AuditErr(
-				fmt.Sprintf("Failed to add log to cache, logURL or logPublicKey malformed: %s",
-					err))
+			pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
 			return err
 		}
 	}
