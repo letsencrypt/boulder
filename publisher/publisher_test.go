@@ -434,17 +434,6 @@ func TestBadServer(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ecdsa signature")), 1)
 }
 
-/*
-*
-// logCache contains a cache of *Log's that are constructed as required by
-// `SubmitToSingleCT`
-type logCache struct {
-	sync.RWMutex
-	logs map[string]*Log
-}
-
-*/
-
 func TestLogCache(t *testing.T) {
 	cache := logCache{
 		logs: make(map[string]*Log),
