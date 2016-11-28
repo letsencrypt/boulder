@@ -40,15 +40,13 @@ type logCache struct {
 func (c *logCache) AddLog(uri, b64PK string) (*Log, error) {
 	// Lock the mutex for reading to check the cache
 	c.RLock()
+	log, present := c.logs[b64PK]
+	c.RUnlock()
+
 	// If we have already added this log, give it back
-	if log, present := c.logs[b64PK]; present {
-		// Make sure to RUnlock() after return
-		defer c.RUnlock()
+	if present {
 		return log, nil
 	}
-	// If it wasn't in the cache we didn't defer an RUnlock() and need to unlock
-	// now before we can Lock for write.
-	c.RUnlock()
 
 	// Lock the mutex for writing to add to the cache
 	c.Lock()
