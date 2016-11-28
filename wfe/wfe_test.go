@@ -1479,7 +1479,7 @@ func TestAuthorization(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
