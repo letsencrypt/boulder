@@ -860,3 +860,22 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }
+
+func TestReverseName(t *testing.T) {
+	testCases := []struct {
+		inputDomain   string
+		inputReversed string
+	}{
+		{"", ""},
+		{"...", "..."},
+		{"com", "com"},
+		{"example.com", "com.example"},
+		{"www.example.com", "com.example.www"},
+		{"world.wide.web.example.com", "com.example.web.wide.world"},
+	}
+
+	for _, tc := range testCases {
+		output := reverseName(tc.inputDomain)
+		test.AssertEquals(t, output, tc.inputReversed)
+	}
+}

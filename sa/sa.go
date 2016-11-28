@@ -362,6 +362,14 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	return ret, nil
 }
 
+func reverseName(domain string) string {
+	labels := strings.Split(domain, ".")
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+	}
+	return strings.Join(labels, ".")
+}
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
@@ -382,7 +390,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 		 AND notBefore > :earliest AND notBefore <= :latest
 		 LIMIT :limit;`,
 		map[string]interface{}{
-			"reversedDomain": core.ReverseName(domain),
+			"reversedDomain": reverseName(domain),
 			"earliest":       earliest,
 			"latest":         latest,
 			"limit":          max + 1,
@@ -950,7 +958,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
-			core.ReverseName(name),
+			reverseName(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore)
 		qmarks = append(qmarks, "(?, ?, ?)")
