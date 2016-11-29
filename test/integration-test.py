@@ -166,8 +166,6 @@ def verify_ct_submission(expectedSubmissions, url):
     print("\nChecking url {0}\n".format(url))
     resp = urllib2.urlopen(url)
     submissionStr = resp.read()
-    if expectedSubmissions == 2:
-        submissionStr = "4"
     print "\nExpected %d submissions, found %d\n" % (expectedSubmissions, int(submissionStr))
     if int(submissionStr) != expectedSubmissions:
         print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
