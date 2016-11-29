@@ -1,0 +1,128 @@
+syntax = "proto2";
+
+package sa;
+option go_package = "proto";
+
+service SA {
+        // Getters
+        rpc GetRegistration(RegistrationID) returns (core.Registration) {}
+        rpc GetRegistrationByKey(JsonWebKey) returns (core.Registration) {}
+        rpc GetAuthorization(AuthorizationID) returns (core.Authorization) {}
+        rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
+        rpc GetCertificate(Serial) returns (core.Certificate) {}
+        rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
+        rpc CountCertificatesRange(CountCertificatesRangeRequest) returns (Count) {}
+        rpc CountCertificatesByNames(Range) returns (CountByNames) {}
+        rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
+        rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
+        rpc GetSCTReceipt(GetSCTReceiptRequest) returns (SignedCertificateTimestamp) {}
+        rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
+        rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
+        // Adders
+        rpc NewRegistration(core.Registration) returns (core.Registration) {}
+        rpc UpdateRegistration(core.Registration) returns (core.Empty) {}
+        rpc NewPendingAuthorization(core.Authorization) returns (core.Authorization) {}
+        rpc UpdatePendingAuthorization(core.Authorization) returns (core.Empty) {}
+        rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
+        rpc MarkCertificateRevoked(MarkCertificateRevokedRequest) returns (core.Empty) {}
+        rpc AddCertificate(core.CertificateRequest) returns (AddCertificateResponse) {}
+        rpc AddSCTReceipt(SignedCertificateTimestamp) returns (core.Empty) {}
+        rpc RevokeAuthorizationsByDomain(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
+        rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
+        rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
+}
+
+message RegistrationID {
+        optional int64 id = 1;
+}
+
+message JsonWebKey {
+        optional string jwk = 1; 
+}
+
+message AuthorizationID {
+        optional string id = 1;
+}
+
+message GetValidAuthorizationsRequest {
+        optional int64 registrationID = 1;
+        repeated string domains = 2;
+        optional int64 now = 3; // Unix timestamp (nanoseconds)
+}
+
+message Serial {
+        optional string serial = 1;
+}
+
+message Range {
+        optional int64 earliest = 1; // Unix timestamp (nanoseconds)
+        optional int64 latest = 2;   // Unix timestamp (nanoseconds)
+}
+
+message Count {
+        optional int64 count = 1;
+}
+
+message CountCertificatesByNamesRequest {
+        optional Range range = 1;
+        repeated string names = 2;
+}
+
+message CountByNames {
+        message MapElement {
+                optional string name = 1;
+                optional int64 count = 2;
+        }
+        repeated MapElement countByNames = 1;
+}
+
+message CountRegistrationsByIPRequest {
+        optional string ip = 1;
+        optional Range range = 2;
+}
+
+message GetSCTReceiptRequest {
+        optional string serial = 1;
+        optional string logID = 2;
+}
+
+message CountFQDNSetsRequest {
+        optional int64 window = 1;
+        repeated string domains = 2;
+}
+
+message FQDNSetExistsRequest {
+        repeated string domains = 1;
+}
+
+message Exists {
+        optional bool exists = 1;
+}
+
+message MarkCertificateRevokedRequest {
+        optional string serial = 1;
+        optional int64 code = 2;
+}
+
+message AddCertificateResponse {
+        optional string digest = 1;
+}
+
+message SignedCertificateTimestamp {
+        optional int64 id = 1;
+        optional uint8 sctVersion = 2;
+        optional string logID = 3;
+        optional int64 timestamp = 4;
+        optional bytes extensions = 5;
+        optional bytes signature = 6;
+        optional string certificateSerial = 7;
+}
+
+message RevokeAuthorizationsByDomainRequest {
+        optional string domain = 1;
+}
+
+message RevokeAuthorizationsByDomainResponse {
+        optional int64 finalized = 1;
+        optional int64 pending = 2;
+}
