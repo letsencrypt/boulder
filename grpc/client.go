@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"net"
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
@@ -13,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/letsencrypt/boulder/metrics"
-	"google.golang.org/grpc/credentials"
 )
 
 // ClientSetup loads various TLS certificates and creates a
