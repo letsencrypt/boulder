@@ -7,7 +7,6 @@ package grpc
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"time"
 
@@ -286,9 +285,11 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 		if len(pb.Contact) != 0 {
 			contacts = &pb.Contact
 		} else {
-			// When gRPC creates an empty slice it is actually a nil slice, since
+			// When gRPC creates an empty slice it is actually a nil slice. Since
 			// certain things boulder uses, like encoding/json, differentiate between
-			// these we need to de-nil these slices.
+			// these we need to de-nil these slices. Without this we are unable to
+			// properly do registration updates as contacts would always be removed
+			// as we use the difference between a nil and empty slice in ra.mergeUpdate.
 			empty := []string{}
 			contacts = &empty
 		}
@@ -364,6 +365,5 @@ func registrationValid(reg *rapb.Registration) bool {
 }
 
 func authorizationValid(authz *rapb.Authorization) bool {
-	fmt.Printf("DEBUG %#v\n", authz)
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }
