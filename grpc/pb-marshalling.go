@@ -7,6 +7,7 @@ package grpc
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"time"
 
@@ -356,4 +357,13 @@ func pbToAuthz(pb *rapb.Authorization) (core.Authorization, error) {
 		Challenges:     challs,
 		Combinations:   combos,
 	}, nil
+}
+
+func registrationValid(reg *rapb.Registration) bool {
+	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
+}
+
+func authorizationValid(authz *rapb.Authorization) bool {
+	fmt.Printf("DEBUG %#v\n", authz)
+	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }

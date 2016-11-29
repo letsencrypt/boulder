@@ -459,6 +459,7 @@ func (rac RegistrationAuthorityClient) UpdateRegistration(ctx context.Context, b
 	if err != nil {
 		return
 	}
+
 	newRegData, err := rac.rpc.DispatchSync(MethodUpdateRegistration, data)
 	if err != nil {
 		return
