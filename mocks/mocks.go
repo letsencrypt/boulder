@@ -458,7 +458,7 @@ func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
 		resp := core.GPDNSResponse{
 			Status: dns.RcodeSuccess,
 			Answer: []core.GPDNSAnswer{
-				{r.URL.Query().Get("name"), 257, 10, "0 issue \"ca.com\""},
+				{Name: r.URL.Query().Get("name"), Type: 257, TTL: 10, Data: "0 issue \"ca.com\""},
 			},
 		}
 		data, err := json.Marshal(resp)
@@ -478,7 +478,7 @@ func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
 		resp := core.GPDNSResponse{
 			Status: dns.RcodeSuccess,
 			Answer: []core.GPDNSAnswer{
-				{r.URL.Query().Get("name"), 257, 10, strconv.Itoa(mrand.Int())},
+				{Name: r.URL.Query().Get("name"), Type: 257, TTL: 10, Data: strconv.Itoa(mrand.Int())},
 			},
 		}
 		data, err := json.Marshal(resp)
