@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -210,15 +211,15 @@ func main() {
 
 	var grpcSrv *grpc.Server
 	if c.RA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.RA.GRPC, scope)
+		var listener net.Listener
+		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup RA gRPC server")
 		gw := bgrpc.NewRegistrationAuthorityServer(rai)
-		rapb.RegisterRegistrationAuthorityServer(s, gw)
+		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
 		go func() {
-			err = s.Serve(l)
+			err = grpcSrv.Serve(listener)
 			cmd.FailOnError(err, "RA gRPC service failed")
 		}()
-		grpcSrv = s
 	}
 
 	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
