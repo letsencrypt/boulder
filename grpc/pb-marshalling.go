@@ -6,7 +6,9 @@
 package grpc
 
 import (
+	"encoding/json"
 	"net"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"gopkg.in/square/go-jose.v1"
@@ -14,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -85,7 +88,7 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 	return prob, nil
 }
 
-func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
+func challengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	st := string(challenge.Status)
 	return &corepb.Challenge{
 		Id:               &challenge.ID,
@@ -96,7 +99,7 @@ func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	}, nil
 }
 
-func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
+func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
@@ -206,7 +209,7 @@ func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain strin
 		return
 	}
 	domain = *in.Domain
-	challenge, err = pbToVAChallenge(in.Challenge)
+	challenge, err = pbToChallenge(in.Challenge)
 	if err != nil {
 		return
 	}
@@ -219,7 +222,7 @@ func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain strin
 }
 
 func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
-	pbChall, err := vaChallengeToPB(challenge)
+	pbChall, err := challengeToPB(challenge)
 	if err != nil {
 		return nil, err
 	}
@@ -233,4 +236,134 @@ func argsToPerformValidationRequest(domain string, challenge core.Challenge, aut
 		Authz:     authzMeta,
 	}, nil
 
+}
+
+func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
+	keyBytes, err := reg.Key.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	ipBytes, err := reg.InitialIP.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	createdAt := reg.CreatedAt.UnixNano()
+	status := string(reg.Status)
+	var contacts []string
+	// Since the default value of rapb.Registration.Contact is a slice
+	// we need a indicator as to if the value is actually important on
+	// the other side (pb -> reg).
+	contactsPresent := reg.Contact != nil
+	if reg.Contact != nil {
+		contacts = *reg.Contact
+	}
+	return &rapb.Registration{
+		Id:              &reg.ID,
+		Key:             keyBytes,
+		Contact:         contacts,
+		ContactsPresent: &contactsPresent,
+		Agreement:       &reg.Agreement,
+		InitialIP:       ipBytes,
+		CreatedAt:       &createdAt,
+		Status:          &status,
+	}, nil
+}
+
+func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
+	var key jose.JsonWebKey
+	err := key.UnmarshalJSON(pb.Key)
+	if err != nil {
+		return core.Registration{}, err
+	}
+	var initialIP net.IP
+	err = initialIP.UnmarshalText(pb.InitialIP)
+	if err != nil {
+		return core.Registration{}, err
+	}
+	var contacts *[]string
+	if *pb.ContactsPresent {
+		if len(pb.Contact) != 0 {
+			contacts = &pb.Contact
+		} else {
+			// When gRPC creates an empty slice it is actually a nil slice. Since
+			// certain things boulder uses, like encoding/json, differentiate between
+			// these we need to de-nil these slices. Without this we are unable to
+			// properly do registration updates as contacts would always be removed
+			// as we use the difference between a nil and empty slice in ra.mergeUpdate.
+			empty := []string{}
+			contacts = &empty
+		}
+	}
+	return core.Registration{
+		ID:        *pb.Id,
+		Key:       &key,
+		Contact:   contacts,
+		Agreement: *pb.Agreement,
+		InitialIP: initialIP,
+		CreatedAt: time.Unix(0, *pb.CreatedAt),
+		Status:    core.AcmeStatus(*pb.Status),
+	}, nil
+}
+
+func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
+	challs := make([]*corepb.Challenge, len(authz.Challenges))
+	for i, c := range authz.Challenges {
+		pbChall, err := challengeToPB(c)
+		if err != nil {
+			return nil, err
+		}
+		challs[i] = pbChall
+	}
+	comboBytes, err := json.Marshal(authz.Combinations)
+	if err != nil {
+		return nil, err
+	}
+	status := string(authz.Status)
+	var expires int64
+	if authz.Expires != nil {
+		expires = authz.Expires.UnixNano()
+	}
+	return &rapb.Authorization{
+		Id:             &authz.ID,
+		Identifier:     &authz.Identifier.Value,
+		RegistrationID: &authz.RegistrationID,
+		Status:         &status,
+		Expires:        &expires,
+		Challenges:     challs,
+		Combinations:   comboBytes,
+	}, nil
+}
+
+func pbToAuthz(pb *rapb.Authorization) (core.Authorization, error) {
+	challs := make([]core.Challenge, len(pb.Challenges))
+	for i, c := range pb.Challenges {
+		chall, err := pbToChallenge(c)
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		challs[i] = chall
+	}
+	var combos [][]int
+	err := json.Unmarshal(pb.Combinations, &combos)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	expires := time.Unix(0, *pb.Expires)
+	return core.Authorization{
+		ID:             *pb.Id,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: *pb.Identifier},
+		RegistrationID: *pb.RegistrationID,
+		Status:         core.AcmeStatus(*pb.Status),
+		Expires:        &expires,
+		Challenges:     challs,
+		Combinations:   combos,
+	}, nil
+}
+
+func registrationValid(reg *rapb.Registration) bool {
+	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
+}
+
+func authorizationValid(authz *rapb.Authorization) bool {
+	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }

@@ -2,13 +2,16 @@
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
     "maxDBConns": 1,
+    "raService": {
+      "serverAddresses": ["boulder:9094"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "90s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

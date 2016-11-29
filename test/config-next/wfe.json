@@ -13,13 +13,16 @@
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
+    "raService": {
+      "serverAddresses": ["boulder:9094"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

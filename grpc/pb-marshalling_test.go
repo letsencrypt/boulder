@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	"testing"
+	"time"
 
 	"gopkg.in/square/go-jose.v1"
 
@@ -93,7 +94,7 @@ func TestProblemDetails(t *testing.T) {
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 
-func TestVAChallenge(t *testing.T) {
+func TestChallenge(t *testing.T) {
 	var jwk jose.JsonWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
@@ -105,19 +106,19 @@ func TestVAChallenge(t *testing.T) {
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
-	pb, err := vaChallengeToPB(chall)
-	test.AssertNotError(t, err, "vaChallengeToPB failed")
+	pb, err := challengeToPB(chall)
+	test.AssertNotError(t, err, "challengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
-	recon, err := pbToVAChallenge(pb)
-	test.AssertNotError(t, err, "pbToVAChallenge failed")
+	recon, err := pbToChallenge(pb)
+	test.AssertNotError(t, err, "pbToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
-	_, err = pbToVAChallenge(nil)
-	test.AssertError(t, err, "pbToVAChallenge did not fail")
+	_, err = pbToChallenge(nil)
+	test.AssertError(t, err, "pbToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToVAChallenge(&corepb.Challenge{})
-	test.AssertError(t, err, "pbToVAChallenge did not fail")
+	_, err = pbToChallenge(&corepb.Challenge{})
+	test.AssertError(t, err, "pbToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 
@@ -195,4 +196,83 @@ func TestPerformValidationReq(t *testing.T) {
 	test.AssertEquals(t, reconDomain, domain)
 	test.AssertDeepEquals(t, reconChall, chall)
 	test.AssertDeepEquals(t, reconAuthz, authz)
+}
+
+func TestRegistration(t *testing.T) {
+	contacts := []string{"email"}
+	var key jose.JsonWebKey
+	err := json.Unmarshal([]byte(`
+		{
+			"e": "AQAB",
+			"kty": "RSA",
+			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+		}
+	`), &key)
+	test.AssertNotError(t, err, "Could not unmarshal testing key")
+	inReg := core.Registration{
+		ID:        1,
+		Key:       &key,
+		Contact:   &contacts,
+		Agreement: "yup",
+		InitialIP: net.ParseIP("1.1.1.1"),
+		CreatedAt: time.Now(),
+		Status:    core.StatusValid,
+	}
+	pbReg, err := registrationToPB(inReg)
+	test.AssertNotError(t, err, "registrationToPB failed")
+	outReg, err := pbToRegistration(pbReg)
+	test.AssertNotError(t, err, "pbToRegistration failed")
+	test.AssertDeepEquals(t, inReg, outReg)
+
+	inReg.Contact = nil
+	pbReg, err = registrationToPB(inReg)
+	test.AssertNotError(t, err, "registrationToPB failed")
+	pbReg.Contact = []string{}
+	outReg, err = pbToRegistration(pbReg)
+	test.AssertNotError(t, err, "pbToRegistration failed")
+	test.AssertDeepEquals(t, inReg, outReg)
+
+	var empty []string
+	inReg.Contact = &empty
+	pbReg, err = registrationToPB(inReg)
+	test.AssertNotError(t, err, "registrationToPB failed")
+	outReg, err = pbToRegistration(pbReg)
+	test.AssertNotError(t, err, "pbToRegistration failed")
+	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+}
+
+func TestAuthz(t *testing.T) {
+	exp := time.Now().AddDate(0, 0, 1)
+	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"}
+	combos := make([][]int, 1)
+	combos[0] = []int{0, 1}
+	challA := core.Challenge{
+		ID:     10,
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd",
+		ProvidedKeyAuthorization: "keyauth",
+	}
+	challB := core.Challenge{
+		ID:     11,
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd2",
+		ProvidedKeyAuthorization: "keyauth4",
+	}
+	inAuthz := core.Authorization{
+		ID:             "1",
+		Identifier:     identifier,
+		RegistrationID: 5,
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Challenges:     []core.Challenge{challA, challB},
+		Combinations:   combos,
+	}
+
+	pbAuthz, err := authzToPB(inAuthz)
+	test.AssertNotError(t, err, "authzToPB failed")
+	outAuthz, err := pbToAuthz(pbAuthz)
+	test.AssertNotError(t, err, "pbToAuthz failed")
+	test.AssertDeepEquals(t, inAuthz, outAuthz)
 }
