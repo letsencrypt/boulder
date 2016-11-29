@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -155,6 +156,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 				logEvent.AddError("unable to make nonce: %s", err)
 			}
 
+			logEvent.Endpoint = pattern
+			if request.URL != nil {
+				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
+			}
+
 			switch request.Method {
 			case "HEAD":
 				// Go's net/http (and httptest) servers will strip out the body
@@ -269,7 +275,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
+func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
@@ -294,7 +300,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(wfe.Index),
 	})
-	return m, nil
+	return m
 }
 
 // Method implementations
@@ -702,9 +708,25 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
+	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+	if err != nil {
+		return false, err
+	}
+	if len(names) != len(authz) {
+		return false, nil
+	}
+	missingNames := false
+	for _, name := range names {
+		if _, present := authz[name]; !present {
+			missingNames = true
+		}
+	}
+	return !missingNames, nil
+}
+
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
@@ -766,13 +788,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// TODO: Implement method of revocation by authorizations on account.
-	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
-		registration.ID == cert.RegistrationID) {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."),
-			nil)
-		return
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.ID == cert.RegistrationID) {
+		valid, err := wfe.regHoldsAuthorizations(ctx, registration.ID, parsedCertificate.DNSNames)
+		if err != nil {
+			logEvent.AddError("regHoldsAuthorizations failed: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve authorizations for names in certificate"), err)
+			return
+		}
+		if !valid {
+			wfe.sendError(response, logEvent,
+				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the "+
+					"account key of the account that issued it, or by the account key of an account that holds valid "+
+					"authorizations for all names in the certificate."),
+				nil)
+			return
+		}
 	}
 
 	reason := revocation.Reason(0)

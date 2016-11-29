@@ -152,6 +152,13 @@ func TestCountPendingAuthorizations(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	pendingAuthz.Status = core.StatusPending
+	pendingAuthz, err = sa.NewPendingAuthorization(ctx, pendingAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
 	fc.Add(2 * time.Hour)
@@ -852,4 +859,23 @@ func TestDeactivateAccount(t *testing.T) {
 	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+}
+
+func TestReverseName(t *testing.T) {
+	testCases := []struct {
+		inputDomain   string
+		inputReversed string
+	}{
+		{"", ""},
+		{"...", "..."},
+		{"com", "com"},
+		{"example.com", "com.example"},
+		{"www.example.com", "com.example.www"},
+		{"world.wide.web.example.com", "com.example.web.wide.world"},
+	}
+
+	for _, tc := range testCases {
+		output := reverseName(tc.inputDomain)
+		test.AssertEquals(t, output, tc.inputReversed)
+	}
 }

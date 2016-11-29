@@ -118,8 +118,7 @@ func main() {
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
-	h, err := wfe.Handler()
-	cmd.FailOnError(err, "Problem setting up HTTP handlers")
+	h := wfe.Handler()
 
 	httpMonitor := metrics.NewHTTPMonitor(scope, h)
 
@@ -137,6 +136,11 @@ func main() {
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
 		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
-	err = httpdown.ListenAndServe(srv, hd)
+	hdSrv, err := hd.ListenAndServe(srv)
 	cmd.FailOnError(err, "Error starting HTTP server")
+
+	go cmd.CatchSignals(logger, func() { _ = hdSrv.Stop() })
+
+	forever := make(chan struct{}, 1)
+	<-forever
 }

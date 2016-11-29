@@ -164,6 +164,9 @@ func TestWillingToIssue(t *testing.T) {
 	// Valid encoding
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
+	// IDN TLD
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
+	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test domains that are equal to public suffixes

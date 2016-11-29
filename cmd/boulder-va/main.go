@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -32,8 +32,6 @@ type config struct {
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *cmd.GoogleSafeBrowsingConfig
-
-		CAAService *cmd.GRPCClientConfig
 
 		CAADistributedResolver *cmd.CAADistributedResolverConfig
 
@@ -89,13 +87,6 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	var caaClient caaPB.CAACheckerClient
-	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		caaClient = caaPB.NewCAACheckerClient(conn)
-	}
-
 	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 
 	var cdrClient *cdr.CAADistributedResolver
@@ -137,7 +128,6 @@ func main() {
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
-		caaClient,
 		cdrClient,
 		resolver,
 		c.VA.UserAgent,
@@ -147,6 +137,7 @@ func main() {
 		logger)
 
 	amqpConf := c.VA.AMQP
+	var grpcSrv *grpc.Server
 	if c.VA.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.VA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
@@ -156,10 +147,19 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "VA gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		vas.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")
 
