@@ -10,7 +10,6 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "checkMalformedCSR": true,
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": "localhost:8000",
