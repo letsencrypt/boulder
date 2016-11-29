@@ -1,6 +1,7 @@
 package creds
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -11,8 +12,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
