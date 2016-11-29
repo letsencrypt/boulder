@@ -133,7 +133,7 @@ func initialize(modulePath string) (ctx, error) {
 
 	newModule := pkcs11.New(modulePath)
 	if newModule == nil {
-		return nil, fmt.Errorf("unable to load PKCS#11 module")
+		return nil, fmt.Errorf("unable to load PKCS#11 module from %q", modulePath)
 	}
 
 	err := newModule.Initialize()

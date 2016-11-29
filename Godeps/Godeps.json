@@ -142,7 +142,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
-			"Rev": "bda7cf218ae2225f745ead23f9b65901dfebbf45"
+			"Comment": "v1.0.0",
+			"Rev": "c47dab18ddd8c4d4267661870d3ba331cddc57c9"
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
