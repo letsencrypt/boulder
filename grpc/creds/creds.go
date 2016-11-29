@@ -2,7 +2,9 @@ package creds
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 
 	"golang.org/x/net/context"
@@ -13,9 +15,11 @@ var (
 	ClientHandshakeNopErr = errors.New(
 		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
 			"serverTransportCredentials")
+	ServerHandshakeNopErr = errors.New(
+		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
+			"clientTransportCredentials")
 	OverrideServerNameNopErr = errors.New(
-		"boulder/grpc/creds: OverrideServerName() is not implemented with " +
-			"serverTransportCredentials")
+		"boulder/grpc/creds: OverrideServerName() is not implemented")
 	NilServerConfigErr = errors.New(
 		"boulder/grpc/creds: `serverConfig` must not be nil")
 	EmptyPeerCertsErr = errors.New(
@@ -24,6 +28,84 @@ var (
 		"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
 			"any entries on accepted SAN list.")
 )
+
+// clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
+// connecting to, and verifying multiple DNS names
+type clientTransportCredentials struct {
+	roots   *x509.CertPool
+	clients []tls.Certificate
+}
+
+// NewClientCredentials returns a new initialized grpc/credentials.TransportCredentials for client usage
+func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
+	return &clientTransportCredentials{rootCAs, clientCerts}
+}
+
+// ClientHandshake does the authentication handshake specified by the corresponding
+// authentication protocol on rawConn for clients. It returns the authenticated
+// connection and the corresponding auth information about the connection.
+// Implementations must use the provided context to implement timely cancellation.
+func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn := tls.Client(rawConn, &tls.Config{
+		ServerName:   host,
+		RootCAs:      tc.roots,
+		Certificates: tc.clients,
+		MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
+		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
+	})
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- conn.Handshake()
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, nil, fmt.Errorf("boulder/grpc/creds: %s", ctx.Err())
+	case err := <-errChan:
+		if err != nil {
+			_ = rawConn.Close()
+			return nil, nil, fmt.Errorf("boulder/grpc/creds: TLS handshake failed: %s", err)
+		}
+		return conn, nil, nil
+	}
+}
+
+// ServerHandshake is not implemented for a `clientTransportCredentials`, use
+// a `serverTransportCredentials` if you require `ServerHandshake`.
+func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return nil, nil, ServerHandshakeNopErr
+}
+
+// Info returns information about the transport protocol used
+func (tc *clientTransportCredentials) Info() credentials.ProtocolInfo {
+	return credentials.ProtocolInfo{
+		SecurityProtocol: "tls",
+		SecurityVersion:  "1.2", // We *only* support TLS 1.2
+	}
+}
+
+// GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
+func (tc *clientTransportCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return nil, nil
+}
+
+// RequireTransportSecurity always returns true because TLS is transport security
+func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
+	return true
+}
+
+// Clone returns a copy of the clientTransportCredentials
+func (tc *clientTransportCredentials) Clone() credentials.TransportCredentials {
+	return NewClientCredentials(tc.roots, tc.clients)
+}
+
+// OverrideServerName is not implemented and here only to satisfy the interface
+func (tc *clientTransportCredentials) OverrideServerName(serverNameOverride string) error {
+	return OverrideServerNameNopErr
+}
 
 // serverTransportCredentials is a grpc/credentials.TransportCredentials which supports
 // filtering acceptable peer connections by a list of accepted client certificate SANs
