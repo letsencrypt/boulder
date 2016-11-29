@@ -3,7 +3,7 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
-    "dnsTries": 3,
+    "dnsTries": 2,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
@@ -13,10 +13,24 @@
     "pendingAuthorizationLifetimeDays": 7,
     "vaService": {
       "serverAddresses": ["boulder:9092"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "90s"
+    },
+    "caService": {
+      "serverAddresses": ["boulder:9093"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "90s"
+    },
+    "publisherService": {
+      "serverAddresses": ["boulder:9091"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "10s"
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -34,6 +48,10 @@
         "server": "CA.server",
         "rpcTimeout": "15s"
       }
+    },
+    "features": {
+      "IDNASupport": true,
+      "AllowKeyRollover": true
     }
   },
 
@@ -57,7 +75,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
+    "dnsTimeout": "5s",
     "dnsAllowLoopbackAddresses": true
   }
 }

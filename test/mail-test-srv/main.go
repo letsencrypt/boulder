@@ -101,11 +101,25 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 		case "MAIL":
 			srv.connNumberMutex.RLock()
 			if srv.connNumber <= srv.closeFirst {
-				log.Printf(
-					"mail-test-srv: connection # %d < -closeFirst parameter %d, disconnecting client. Bye!\n",
-					srv.connNumber, srv.closeFirst)
-				clearState()
-				conn.Close()
+				// Half of the time, close cleanly to simulate the server side closing
+				// unexpectedly.
+				if srv.connNumber%2 == 0 {
+					log.Printf(
+						"mail-test-srv: connection # %d < -closeFirst parameter %d, disconnecting client. Bye!\n",
+						srv.connNumber, srv.closeFirst)
+					clearState()
+					conn.Close()
+				} else {
+					// The rest of the time, simulate a stale connection timeout by sending
+					// a SMTP 421 message. This replicates the timeout/close from issue
+					// 2249 - https://github.com/letsencrypt/boulder/issues/2249
+					log.Printf(
+						"mail-test-srv: connection # %d < -closeFirst parameter %d, disconnecting with 421. Bye!\n",
+						srv.connNumber, srv.closeFirst)
+					clearState()
+					conn.Write([]byte("421 1.2.3 foo.bar.baz Error: timeout exceeded \r\n"))
+					conn.Close()
+				}
 			}
 			srv.connNumberMutex.RUnlock()
 			clearState()

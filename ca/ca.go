@@ -374,7 +374,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(
+		&csr,
+		ca.maxNames,
+		&ca.keyPolicy,
+		ca.PA,
+		ca.forceCNFromSAN,
+		regID,
+	); err != nil {
 		ca.log.AuditErr(err.Error())
 		return emptyCert, core.MalformedRequestError(err.Error())
 	}
@@ -497,11 +504,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	// Submit the certificate to any configured CT logs
-	go func() {
-		// since we don't want this method to be canceled if the parent context
-		// expires pass a background context to it
-		_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
-	}()
+	if ca.Publisher != nil {
+		go func() {
+			// since we don't want this method to be canceled if the parent context
+			// expires pass a background context to it
+			_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
+		}()
+	}
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

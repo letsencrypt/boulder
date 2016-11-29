@@ -5,6 +5,7 @@ import (
 	"os"
 
 	ct "github.com/google/certificate-transparency/go"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -45,10 +46,8 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
-	go cmd.DebugServer(c.Publisher.DebugAddr)
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Publisher")
@@ -84,8 +83,7 @@ func main() {
 		scope,
 		sa)
 
-	go cmd.ProfileCmd(scope)
-
+	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
 		cmd.FailOnError(err, "Failed to setup gRPC server")
@@ -95,12 +93,24 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create Publisher RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		pubs.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewPublisherServer(pubs, pubi)
 	cmd.FailOnError(err, "Unable to setup Publisher RPC server")
+
+	go cmd.DebugServer(c.Publisher.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = pubs.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run Publisher RPC server")

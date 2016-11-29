@@ -3,6 +3,15 @@
     "maxConcurrentRPCServerRequests": 16,
     "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
+    "grpc": {
+      "address": "boulder:9091",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -27,7 +36,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500/",
+          "uri": "http://127.0.0.1:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],

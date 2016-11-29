@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -91,11 +92,6 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period
 	return c
 }
 
-const (
-	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now"
-	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit"
-)
-
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
@@ -108,7 +104,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
-		getCertsCountQuery,
+		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
@@ -121,10 +117,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["limit"] = batchSize
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
-		var certs []core.Certificate
-		_, err = c.dbMap.Select(
-			&certs,
-			getCertsQuery,
+		certs, err := sa.SelectCertificates(
+			c.dbMap,
+			"WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit",
 			args,
 		)
 		if err != nil {
@@ -239,6 +234,8 @@ type config struct {
 		UnexpiredOnly       bool
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
+
+		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
@@ -263,8 +260,11 @@ func main() {
 	}
 
 	var config config
-	err := cmd.ReadJSONFile(*configFile, &config)
+	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(config.CertChecker.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")

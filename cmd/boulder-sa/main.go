@@ -7,6 +7,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -20,6 +21,8 @@ type config struct {
 		cmd.DBConfig
 
 		MaxConcurrentRPCServerRequests int64
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -36,10 +39,11 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.SA.DebugAddr)
+	err = features.Set(c.SA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "SA")
@@ -59,14 +63,17 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	go cmd.ProfileCmd(scope)
-
 	amqpConf := saConf.AMQP
 	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create SA RPC server")
 
+	go cmd.CatchSignals(logger, sas.Stop)
+
 	err = rpc.NewStorageAuthorityServer(sas, sai)
 	cmd.FailOnError(err, "Unable to setup SA RPC server")
+
+	go cmd.DebugServer(c.SA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = sas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run SA RPC server")

@@ -146,7 +146,7 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
-	PublisherService *GRPCClientConfig
+	Features map[string]bool
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -187,6 +187,9 @@ type IssuerConfig struct {
 	File       string
 	PKCS11     *pkcs11key.Config
 	CertFile   string
+	// Number of sessions to open with the HSM. For maximum performance,
+	// this should be equal to the number of cores in the HSM. Defaults to 1.
+	NumSessions int
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
@@ -324,6 +327,10 @@ type GRPCServerConfig struct {
 	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
 	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
 	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	// ClientNames is a list of allowed client certificate subject alternate names
+	// (SANs). The server will reject clients that do not present a certificate
+	// with a SAN present on the `ClientNames` list.
+	ClientNames []string `json:"clientNames" yaml:"client-names"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

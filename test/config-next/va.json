@@ -8,27 +8,17 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
-    "caaService": {
-      "serverAddresses": ["boulder:9090"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem"
-    },
-    "caaPublicResolver": {
-        "timeout": "10s",
-        "keepalive": "30s",
-        "maxFailures": 1,
-        "proxies": []
-    },
     "grpc": {
       "address": "boulder:9092",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -220,7 +220,7 @@ func improperMessage(method string, err error, obj interface{}) {
 }
 func errorCondition(method string, err error, obj interface{}) {
 	log := blog.Get()
-	log.AuditErr(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Sprintf("RPC internal error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
@@ -373,10 +373,6 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 			return
 		}
 		err = impl.DeactivateAuthorization(ctx, authz)
-		if err != nil {
-			errorCondition(MethodDeactivateAuthorization, err, req)
-			return
-		}
 		return
 	})
 
@@ -388,10 +384,6 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 			return
 		}
 		err = impl.DeactivateRegistration(ctx, reg)
-		if err != nil {
-			errorCondition(MethodDeactivateRegistration, err, req)
-			return
-		}
 		return
 	})
 
@@ -814,7 +806,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodGetRegistrationByKey, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var jwk jose.JsonWebKey
+		var jwk *jose.JsonWebKey
 		if err = json.Unmarshal(req, &jwk); err != nil {
 			improperMessage(MethodGetRegistrationByKey, err, req)
 			return
@@ -1100,7 +1092,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 		count, err := impl.CountFQDNSets(ctx, r.Window, r.Names)
 		if err != nil {
-			errorCondition(MethodCountFQDNSets, err, req)
 			return
 		}
 
@@ -1122,7 +1113,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 		exists, err := impl.FQDNSetExists(ctx, r.Names)
 		if err != nil {
-			errorCondition(MethodFQDNSetExists, err, req)
 			return
 		}
 		response, err = json.Marshal(fqdnSetExistsResponse{exists})
@@ -1136,10 +1126,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 
 	rpc.Handle(MethodDeactivateAuthorizationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
 		err = impl.DeactivateAuthorization(ctx, string(req))
-		if err != nil {
-			errorCondition(MethodDeactivateAuthorizationSA, err, req)
-			return
-		}
 		return
 	})
 
@@ -1150,10 +1136,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 		err = impl.DeactivateRegistration(ctx, drReq.ID)
-		if err != nil {
-			errorCondition(MethodDeactivateRegistrationSA, err, req)
-			return
-		}
 		return
 	})
 
@@ -1191,7 +1173,7 @@ func (cac StorageAuthorityClient) GetRegistration(ctx context.Context, id int64)
 }
 
 // GetRegistrationByKey sends a request to get a registration by JWK
-func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (reg core.Registration, err error) {
+func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (reg core.Registration, err error) {
 	jsonKey, err := key.MarshalJSON()
 	if err != nil {
 		return

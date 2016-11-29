@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -204,9 +205,14 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
+	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
+	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT cs.*
+		`SELECT
+			 cs.serial,
+			 cs.status,
+			 cs.revokedDate
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
@@ -226,16 +232,22 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
+	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
 	var statuses []core.CertificateStatus
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT * FROM certificateStatus
-			 WHERE ocspLastUpdated = 0
-			 LIMIT :limit`,
-		map[string]interface{}{
-			"limit": batchSize,
-		},
-	)
+	var err error
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		statuses, err = sa.SelectCertificateStatusesv2(
+			updater.dbMap,
+			query,
+			batchSize,
+		)
+	} else {
+		statuses, err = sa.SelectCertificateStatuses(
+			updater.dbMap,
+			query,
+			batchSize,
+		)
+	}
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -248,11 +260,10 @@ type responseMeta struct {
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	var cert core.Certificate
-	err := updater.dbMap.SelectOne(
-		&cert,
-		"SELECT * FROM certificates WHERE serial = :serial",
-		map[string]interface{}{"serial": status.Serial},
+	cert, err := sa.SelectCertificate(
+		updater.dbMap,
+		"WHERE serial = ?",
+		status.Serial,
 	)
 	if err != nil {
 		return nil, err
@@ -350,18 +361,24 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
+	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
 	var statuses []core.CertificateStatus
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT * FROM certificateStatus
-		 WHERE status = :revoked
-		 AND ocspLastUpdated <= revokedDate
-		 LIMIT :limit`,
-		map[string]interface{}{
-			"revoked": string(core.OCSPStatusRevoked),
-			"limit":   batchSize,
-		},
-	)
+	var err error
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		statuses, err = sa.SelectCertificateStatusesv2(
+			updater.dbMap,
+			query,
+			string(core.OCSPStatusRevoked),
+			batchSize,
+		)
+	} else {
+		statuses, err = sa.SelectCertificateStatuses(
+			updater.dbMap,
+			query,
+			string(core.OCSPStatusRevoked),
+			batchSize,
+		)
+	}
 	return statuses, err
 }
 
@@ -572,15 +589,9 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	var pubc core.Publisher
-	if c.Publisher != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
-	} else {
-		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create Publisher client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 	return cac, pubc, sac
@@ -595,19 +606,15 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	conf := c.OCSPUpdater
-
-	go cmd.DebugServer(conf.DebugAddr)
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
-
-	go cmd.ProfileCmd(scope)
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
@@ -642,6 +649,9 @@ func main() {
 			}
 		}(l)
 	}
+
+	go cmd.DebugServer(conf.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	// Sleep forever (until signaled)
 	select {}

@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	_ "expvar" // For DebugServer, below.
+	"expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -29,14 +29,18 @@ import (
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
+	"syscall"
 	"time"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -47,15 +51,10 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(Version())
+			fmt.Println(VersionString(os.Args[0]))
 			os.Exit(0)
 		}
 	}
-}
-
-// Version returns a string representing the version of boulder running.
-func Version() string {
-	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
@@ -192,6 +191,8 @@ func LoadCert(path string) (cert []byte, err error) {
 //
 //   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
+	m := expvar.NewMap("enabled-features")
+	features.Export(m)
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
 	}
@@ -199,28 +200,50 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
+	http.Handle("/metrics", promhttp.Handler())
 	err = http.Serve(ln, nil)
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
 }
 
-// ReadJSONFile takes a file path as an argument and attempts to
+// ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component.
-func ReadJSONFile(filename string, out interface{}) error {
+func ReadConfigFile(filename string, out interface{}) error {
 	configData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(configData, out)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(configData, out)
 }
 
 // VersionString produces a friendly Application version string.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
+// method before exiting
+func CatchSignals(logger blog.Logger, callback func()) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+
+	if callback != nil {
+		callback()
+	}
+
+	logger.Info("Exiting")
+	os.Exit(0)
 }

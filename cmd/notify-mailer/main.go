@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -98,6 +99,14 @@ func (m *mailer) run() error {
 		return err
 	}
 
+	err = m.mailer.Connect()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
@@ -171,6 +180,9 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 		map[string]interface{}{
 			"id": id,
 		})
+	if err == sql.ErrNoRows {
+		return []string{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -341,13 +353,6 @@ func main() {
 			*reconnBase,
 			*reconnMax)
 	}
-	err = mailClient.Connect()
-	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",
-		cfg.NotifyMailer.Server, cfg.NotifyMailer.Port))
-	defer func() {
-		err = mailClient.Close()
-		cmd.FailOnError(err, "Closing mail client")
-	}()
 
 	m := mailer{
 		clk:           cmd.Clock(),

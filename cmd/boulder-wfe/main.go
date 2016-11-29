@@ -10,6 +10,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -40,6 +41,8 @@ type config struct {
 		CheckMalformedCSR      bool
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -74,10 +77,11 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.WFE.DebugAddr)
+	err = features.Set(c.WFE.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "WFE")
@@ -112,12 +116,9 @@ func main() {
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
 
-	go cmd.ProfileCmd(scope)
-
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
-	h, err := wfe.Handler()
-	cmd.FailOnError(err, "Problem setting up HTTP handlers")
+	h := wfe.Handler()
 
 	httpMonitor := metrics.NewHTTPMonitor(scope, h)
 
@@ -127,11 +128,19 @@ func main() {
 		Handler: httpMonitor,
 	}
 
+	go cmd.DebugServer(c.WFE.DebugAddr)
+	go cmd.ProfileCmd(scope)
+
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
 		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
-	err = httpdown.ListenAndServe(srv, hd)
+	hdSrv, err := hd.ListenAndServe(srv)
 	cmd.FailOnError(err, "Error starting HTTP server")
+
+	go cmd.CatchSignals(logger, func() { _ = hdSrv.Stop() })
+
+	forever := make(chan struct{}, 1)
+	<-forever
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 )
 
 var log = blog.UseMock()
@@ -65,7 +65,7 @@ func TestRANewRegistration(t *testing.T) {
 
 	reg := core.Registration{
 		ID:  1,
-		Key: jwk,
+		Key: &jwk,
 	}
 
 	_, err = client.NewRegistration(ctx, reg)
