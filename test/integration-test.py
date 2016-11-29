@@ -162,14 +162,20 @@ def get_expiry_time(cert_file):
     return datetime.datetime.strptime(output.split('\n')[0].split('=')[1], '%b %d %H:%M:%S %Y %Z')
 
 def verify_ct_submission(expectedSubmissions, url):
+    print("\n!!!Verifying ct submissions!!!\n")
+    print("\nChecking url {0}\n".format(url))
     resp = urllib2.urlopen(url)
     submissionStr = resp.read()
+    if expectedSubmissions == 2:
+        submissionStr = "4"
+    print "\nExpected %d submissions, found %d\n" % (expectedSubmissions, int(submissionStr))
     if int(submissionStr) != expectedSubmissions:
         print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
         die(ExitStatus.CTFailure)
     return 0
 
 def run_node_test(domain, chall_type, expected_ct_submissions):
+    print("\n\n\n run_node_test - domain {0}. chall_type {1}, expected cts: {2}\n\n\n".format(domain, chall_type, expected_ct_submissions))
     email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -354,15 +360,20 @@ def main():
         domain = "www." + subprocess.check_output("openssl rand -hex 6", shell=True).strip() + "-TEST.com"
         challenge_types = ["http-01", "dns-01"]
 
+        print("\n\nStarting expected_ct_submissions at 1\n\n")
         expected_ct_submissions = 1
         resp = urllib2.urlopen("http://localhost:4500/submissions")
         submissionStr = resp.read()
         if int(submissionStr) > 0:
+            print("\n\nlocalhost:4500/submissions says {0}\n\n".format(submissionStr))
             expected_ct_submissions = int(submissionStr)+1
+            print("\n\nSo updating expected_ct_submissions to {0}\n\n".format(expected_ct_submissions))
         for chall_type in challenge_types:
             if run_node_test(domain, chall_type, expected_ct_submissions) != 0:
                 die(ExitStatus.NodeFailure)
+            print("\n\nrun_node_test returned 0, so bumping expected_ct_submissions by 1\n\n")
             expected_ct_submissions += 1
+            print("\n\nexpected_ct_submissions is now {0}\n\n".format(expected_ct_submissions))
 
         if run_node_test("good-caa-reserved.com", challenge_types[0], expected_ct_submissions) != 0:
             print("\nDidn't issue certificate for domain with good CAA records")
