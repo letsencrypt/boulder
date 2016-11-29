@@ -30,6 +30,7 @@ type ValidationAuthorityGRPCServer struct {
 }
 
 var errIncompleteRequest = errors.New("Incomplete gRPC request message")
+var errIncompleteResponse = errors.New("Incomplete gRPC response message")
 
 func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationResult, error) {
 	domain, challenge, authz, err := performValidationReqToArgs(in)
@@ -246,6 +247,10 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 		return core.Registration{}, unwrapError(err)
 	}
 
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
 	r, err := pbToRegistration(response)
 	return r, err
 }
@@ -264,6 +269,10 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 		return core.Authorization{}, unwrapError(err)
 	}
 
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
 	return pbToAuthz(response)
 }
 
@@ -274,6 +283,10 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
 		return core.Certificate{}, unwrapError(err)
+	}
+
+	if response == nil || response.RegistrationID == nil || response.Serial == nil || response.Digest == nil || response.Der == nil || response.Issued == nil || response.Expires == nil {
+		return core.Certificate{}, errIncompleteResponse
 	}
 
 	return core.Certificate{
@@ -304,6 +317,10 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 		return core.Registration{}, unwrapError(err)
 	}
 
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
 	return pbToRegistration(response)
 }
 
@@ -329,6 +346,10 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 	})
 	if err != nil {
 		return core.Authorization{}, unwrapError(err)
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
 	}
 
 	return pbToAuthz(response)
