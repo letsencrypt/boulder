@@ -86,8 +86,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	// Feature gates
-	CheckMalformedCSR      bool
 	AcceptRevocationReason bool
 	AllowAuthzDeactivation bool
 }
@@ -872,15 +870,13 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
 		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
-		if wfe.CheckMalformedCSR {
-			wfe.sendError(
-				response,
-				logEvent,
-				probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
-				nil,
-			)
-			return
-		}
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
+			nil,
+		)
+		return
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}

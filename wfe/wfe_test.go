@@ -839,8 +839,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
-	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
-	wfe.CheckMalformedCSR = true
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,

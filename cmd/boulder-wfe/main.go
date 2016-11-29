@@ -38,7 +38,6 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		CheckMalformedCSR      bool
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
 
@@ -102,7 +101,6 @@ func main() {
 	}
 
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 
