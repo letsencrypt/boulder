@@ -548,11 +548,13 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		// purpose
 		if features.Enabled(features.ResubmitMissingSCTsOnly) {
 			for _, log := range missingLogs {
+				updater.log.AuditErr(fmt.Sprintf("calling SubmitToSingleCT(%#v) for %#v\n\n", log.URI, serial))
 				_ = updater.pubc.SubmitToSingleCT(ctx, log.URI, log.Key, cert.DER)
 			}
 		} else {
 			// Otherwise, use the classic behaviour and submit the certificate to
 			// every log to get SCTS using the pre-existing `SubmitToCT` endpoint
+			updater.log.AuditErr(fmt.Sprintf("calling SubmitToCT() for %#v\n\n", serial))
 			_ = updater.pubc.SubmitToCT(ctx, cert.DER)
 		}
 	}
