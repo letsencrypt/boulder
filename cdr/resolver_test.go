@@ -24,8 +24,8 @@ var log = blog.UseMock()
 
 func TestParseAnswer(t *testing.T) {
 	as := []core.GPDNSAnswer{
-		{"a", 257, 10, "0 issue \"ca.com\""},
-		{"b", 1, 10, "1.1.1.1"},
+		{Name: "a", Type: 257, TTL: 10, Data: "0 issue \"ca.com\""},
+		{Name: "b", Type: 1, TTL: 10, Data: "1.1.1.1"},
 	}
 
 	r, err := parseAnswer(as)

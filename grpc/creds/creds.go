@@ -200,7 +200,7 @@ func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Con
 		return nil, nil, err
 	}
 
-	return conn, credentials.TLSInfo{conn.ConnectionState()}, nil
+	return conn, credentials.TLSInfo{State: conn.ConnectionState()}, nil
 }
 
 // ClientHandshake is not implemented for a `serverTransportCredentials`, use

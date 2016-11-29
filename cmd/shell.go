@@ -51,15 +51,10 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(Version())
+			fmt.Println(VersionString(os.Args[0]))
 			os.Exit(0)
 		}
 	}
-}
-
-// Version returns a string representing the version of boulder running.
-func Version() string {
-	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
