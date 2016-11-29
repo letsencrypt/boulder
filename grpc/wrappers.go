@@ -16,9 +16,11 @@ import (
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
@@ -26,6 +28,9 @@ import (
 type ValidationAuthorityGRPCServer struct {
 	impl core.ValidationAuthority
 }
+
+var errIncompleteRequest = errors.New("Incomplete gRPC request message")
+var errIncompleteResponse = errors.New("Incomplete gRPC response message")
 
 func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationResult, error) {
 	domain, challenge, authz, err := performValidationReqToArgs(in)
@@ -185,7 +190,7 @@ func NewCertificateAuthorityServer(inner core.CertificateAuthority) *Certificate
 	return &CertificateAuthorityServerWrapper{inner}
 }
 
-func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.Certificate, error) {
+func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*corepb.Certificate, error) {
 	csr, err := x509.ParseCertificateRequest(request.Csr)
 	if err != nil {
 		return nil, err
@@ -195,7 +200,7 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Conte
 		return nil, err
 	}
 	issued, expires := res.Issued.UnixNano(), res.Expires.UnixNano()
-	return &caPB.Certificate{
+	return &corepb.Certificate{
 		RegistrationID: &res.RegistrationID,
 		Serial:         &res.Serial,
 		Digest:         &res.Digest,
@@ -216,4 +221,365 @@ func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, 
 		return nil, err
 	}
 	return &caPB.OCSPResponse{Response: res}, nil
+}
+
+// RegistrationAuthorityClientWrapper is the gRPC version of a core.RegistrationAuthority client
+type RegistrationAuthorityClientWrapper struct {
+	inner   rapb.RegistrationAuthorityClient
+	timeout time.Duration
+}
+
+func NewRegistrationAuthorityClient(inner rapb.RegistrationAuthorityClient, timeout time.Duration) *RegistrationAuthorityClientWrapper {
+	return &RegistrationAuthorityClientWrapper{inner, timeout}
+}
+
+func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	req, err := registrationToPB(reg)
+	if err != nil {
+		return core.Registration{}, err
+	}
+
+	response, err := rac.inner.NewRegistration(localCtx, req)
+	if err != nil {
+		return core.Registration{}, unwrapError(err)
+	}
+
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
+	r, err := pbToRegistration(response)
+	return r, err
+}
+
+func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	req, err := authzToPB(authz)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+
+	response, err := rac.inner.NewAuthorization(localCtx, &rapb.NewAuthorizationRequest{Authz: req, RegID: &regID})
+	if err != nil {
+		return core.Authorization{}, unwrapError(err)
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
+	return pbToAuthz(response)
+}
+
+func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64) (core.Certificate, error) {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
+	if err != nil {
+		return core.Certificate{}, unwrapError(err)
+	}
+
+	if response == nil || response.RegistrationID == nil || response.Serial == nil || response.Digest == nil || response.Der == nil || response.Issued == nil || response.Expires == nil {
+		return core.Certificate{}, errIncompleteResponse
+	}
+
+	return core.Certificate{
+		RegistrationID: *response.RegistrationID,
+		Serial:         *response.Serial,
+		Digest:         *response.Digest,
+		DER:            response.Der,
+		Issued:         time.Unix(0, *response.Issued),
+		Expires:        time.Unix(0, *response.Expires),
+	}, nil
+}
+
+func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	basePB, err := registrationToPB(base)
+	if err != nil {
+		return core.Registration{}, err
+	}
+	updatePB, err := registrationToPB(updates)
+	if err != nil {
+		return core.Registration{}, err
+	}
+
+	response, err := rac.inner.UpdateRegistration(localCtx, &rapb.UpdateRegistrationRequest{Base: basePB, Update: updatePB})
+	if err != nil {
+		return core.Registration{}, unwrapError(err)
+	}
+
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
+	return pbToRegistration(response)
+}
+
+func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Context, authz core.Authorization, challengeIndex int, chall core.Challenge) (core.Authorization, error) {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	authzPB, err := authzToPB(authz)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	challPB, err := challengeToPB(chall)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+
+	ind := int64(challengeIndex)
+
+	response, err := rac.inner.UpdateAuthorization(localCtx, &rapb.UpdateAuthorizationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &ind,
+		Response:       challPB,
+	})
+	if err != nil {
+		return core.Authorization{}, unwrapError(err)
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
+	return pbToAuthz(response)
+}
+
+func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	reason := int64(code)
+	_, err := rac.inner.RevokeCertificateWithReg(localCtx, &rapb.RevokeCertificateWithRegRequest{
+		Cert:  cert.Raw,
+		Code:  &reason,
+		RegID: &regID,
+	})
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	regPB, err := registrationToPB(reg)
+	if err != nil {
+		return err
+	}
+
+	_, err = rac.inner.DeactivateRegistration(localCtx, regPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	authzPB, err := authzToPB(auth)
+	if err != nil {
+		return err
+	}
+
+	_, err = rac.inner.DeactivateAuthorization(localCtx, authzPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error {
+	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
+	defer cancel()
+
+	reason := int64(code)
+	_, err := rac.inner.AdministrativelyRevokeCertificate(localCtx, &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      &reason,
+		AdminName: &adminName,
+	})
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+// RegistrationAuthorityServerWrapper is the gRPC version of a core.RegistrationAuthority server
+type RegistrationAuthorityServerWrapper struct {
+	inner core.RegistrationAuthority
+}
+
+func NewRegistrationAuthorityServer(inner core.RegistrationAuthority) *RegistrationAuthorityServerWrapper {
+	return &RegistrationAuthorityServerWrapper{inner}
+}
+
+func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *rapb.Registration) (*rapb.Registration, error) {
+	if request == nil || !registrationValid(request) {
+		return nil, errIncompleteRequest
+	}
+	reg, err := pbToRegistration(request)
+	if err != nil {
+		return nil, err
+	}
+	newReg, err := ras.inner.NewRegistration(ctx, reg)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return registrationToPB(newReg)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*rapb.Authorization, error) {
+	if request == nil || !authorizationValid(request.Authz) || request.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	authz, err := pbToAuthz(request.Authz)
+	if err != nil {
+		return nil, err
+	}
+	newAuthz, err := ras.inner.NewAuthorization(ctx, authz, *request.RegID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return authzToPB(newAuthz)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	if request == nil || request.Csr == nil || request.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	csr, err := x509.ParseCertificateRequest(request.Csr)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := ras.inner.NewCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: request.Csr}, *request.RegID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	issued := cert.Issued.UnixNano()
+	expires := cert.Expires.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: &cert.RegistrationID,
+		Serial:         &cert.Serial,
+		Digest:         &cert.Digest,
+		Der:            cert.DER,
+		Issued:         &issued,
+		Expires:        &expires,
+	}, nil
+}
+
+func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*rapb.Registration, error) {
+	if request == nil || !registrationValid(request.Base) || !registrationValid(request.Update) {
+		return nil, errIncompleteRequest
+	}
+	base, err := pbToRegistration(request.Base)
+	if err != nil {
+		return nil, err
+	}
+	update, err := pbToRegistration(request.Update)
+	if err != nil {
+		return nil, err
+	}
+	newReg, err := ras.inner.UpdateRegistration(ctx, base, update)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return registrationToPB(newReg)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.Context, request *rapb.UpdateAuthorizationRequest) (*rapb.Authorization, error) {
+	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil || request.Response == nil {
+		return nil, errIncompleteRequest
+	}
+	authz, err := pbToAuthz(request.Authz)
+	if err != nil {
+		return nil, err
+	}
+	chall, err := pbToChallenge(request.Response)
+	if err != nil {
+		return nil, err
+	}
+	newAuthz, err := ras.inner.UpdateAuthorization(ctx, authz, int(*request.ChallengeIndex), chall)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return authzToPB(newAuthz)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+	if request == nil || request.Cert == nil || request.Code == nil || request.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	cert, err := x509.ParseCertificate(request.Cert)
+	if err != nil {
+		return nil, err
+	}
+	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
+}
+
+func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *rapb.Registration) (*corepb.Empty, error) {
+	if request == nil || !registrationValid(request) {
+		return nil, errIncompleteRequest
+	}
+	reg, err := pbToRegistration(request)
+	if err != nil {
+		return nil, err
+	}
+	err = ras.inner.DeactivateRegistration(ctx, reg)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
+}
+
+func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *rapb.Authorization) (*corepb.Empty, error) {
+	if request == nil || !authorizationValid(request) {
+		return nil, errIncompleteRequest
+	}
+	authz, err := pbToAuthz(request)
+	if err != nil {
+		return nil, err
+	}
+	err = ras.inner.DeactivateAuthorization(ctx, authz)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
+}
+
+func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
+	if request == nil || request.Cert == nil || request.Code == nil || request.AdminName == nil {
+		return nil, errIncompleteRequest
+	}
+	cert, err := x509.ParseCertificate(request.Cert)
+	if err != nil {
+		return nil, err
+	}
+	err = ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &corepb.Empty{}, nil
 }
