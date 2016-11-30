@@ -353,12 +353,13 @@ func TestMissingReceiptsTick(t *testing.T) {
 
 	// make sure we don't spin forever after reducing the
 	// number of logs we submit to
-	updater.logs = []cmd.LogDescription{
+	logA, err := newLog(
 		cmd.LogDescription{
 			URI: "test",
 			Key: testLogAPK,
-		},
-	}
+		})
+	test.AssertNotError(t, err, "Failed to newLog test log A")
+	updater.logs = []*ctLog{logA}
 	err = updater.missingReceiptsTick(ctx, 10)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 }
@@ -624,96 +625,98 @@ func TestMissingLogs(t *testing.T) {
 	updater, _, _, _, cleanUp := setup(t)
 	defer cleanUp()
 
-	noLogs := []cmd.LogDescription{}
-	oneLog := []cmd.LogDescription{
-		cmd.LogDescription{
-			URI: "test",
-			Key: testLogAPK,
+	noLogs := []*ctLog{}
+	oneLog := []*ctLog{
+		&ctLog{
+			uri:   "test",
+			key:   testLogAPK,
+			logID: testLogAID,
 		},
 	}
-	twoLogs := []cmd.LogDescription{
+	twoLogs := []*ctLog{
 		oneLog[0],
-		cmd.LogDescription{
-			URI: "test2",
-			Key: testLogBPK,
+		&ctLog{
+			uri:   "test2",
+			key:   testLogBPK,
+			logID: testLogBID,
 		},
 	}
 
 	testCases := []struct {
-		Logs                []cmd.LogDescription
+		Logs                []*ctLog
 		GivenIDs            []string
-		ExpectedMissingLogs []cmd.LogDescription
+		ExpectedMissingLogs []*ctLog
 	}{
 		// With `nil` logs, no log IDs are ever missing
 		{
 			Logs:                nil,
 			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []cmd.LogDescription{},
+			ExpectedMissingLogs: []*ctLog{},
 		},
 		// No configured logs, no log IDs are ever missing
 		{
 			Logs:                noLogs,
 			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []cmd.LogDescription{},
+			ExpectedMissingLogs: []*ctLog{},
 		},
 		// One configured log, given no log IDs, one is missing
 		{
 			Logs:                oneLog,
 			GivenIDs:            []string{},
-			ExpectedMissingLogs: []cmd.LogDescription{oneLog[0]},
+			ExpectedMissingLogs: []*ctLog{oneLog[0]},
 		},
 		// One configured log, given `nil` log IDs, one is missing
 		{
 			Logs:                oneLog,
 			GivenIDs:            nil,
-			ExpectedMissingLogs: []cmd.LogDescription{oneLog[0]},
+			ExpectedMissingLogs: []*ctLog{oneLog[0]},
 		},
 		// One configured log, given that log ID, none are missing
 		{
 			Logs:                oneLog,
 			GivenIDs:            []string{testLogAID},
-			ExpectedMissingLogs: []cmd.LogDescription{},
+			ExpectedMissingLogs: []*ctLog{},
 		},
 		// Two configured logs, given one log ID, one is missing
 		{
 			Logs:                twoLogs,
 			GivenIDs:            []string{testLogAID},
-			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[1]},
+			ExpectedMissingLogs: []*ctLog{twoLogs[1]},
 		},
 		// Two configured logs, given no log IDs, two are missing
 		{
 			Logs:                twoLogs,
 			GivenIDs:            []string{},
-			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[0], twoLogs[1]},
+			ExpectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
 		},
 		// Two configured logs, given two matching log IDs, none are missing
 		{
 			Logs:                twoLogs,
 			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []cmd.LogDescription{},
+			ExpectedMissingLogs: []*ctLog{},
 		},
 		// Two configured logs, given unknown log, two are missing
 		{
 			Logs:                twoLogs,
 			GivenIDs:            []string{"wha?"},
-			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[0], twoLogs[1]},
+			ExpectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
 		},
 		// Two configured logs, given one unknown log, one known, one is missing
 		{
 			Logs:                twoLogs,
 			GivenIDs:            []string{"wha?", testLogBID},
-			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[0]},
+			ExpectedMissingLogs: []*ctLog{twoLogs[0]},
 		},
 	}
 
 	for _, tc := range testCases {
 		updater.logs = tc.Logs
-		missingLogs, err := updater.missingLogs(tc.GivenIDs)
-		test.AssertNotError(t, err, "updater.missingLogs() errored")
+		missingLogs := updater.missingLogs(tc.GivenIDs)
 		test.AssertEquals(t, len(missingLogs), len(tc.ExpectedMissingLogs))
 		for i, expectedLog := range tc.ExpectedMissingLogs {
-			test.AssertEquals(t, missingLogs[i].URI, expectedLog.URI)
-			test.AssertEquals(t, missingLogs[i].Key, expectedLog.Key)
+			test.AssertEquals(t, missingLogs[i].uri, expectedLog.uri)
+			test.AssertEquals(t, missingLogs[i].key, expectedLog.key)
+			test.AssertEquals(t, missingLogs[i].logID, expectedLog.logID)
 		}
 	}
 }

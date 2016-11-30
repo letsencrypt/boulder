@@ -56,7 +56,7 @@ type OCSPUpdater struct {
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
 	// Logs we expect to have SCT receipts for. Missing logs will be resubmitted to.
-	logs []cmd.LogDescription
+	logs []*ctLog
 
 	loops []*looper
 
@@ -74,7 +74,7 @@ func newUpdater(
 	pub core.Publisher,
 	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
-	logs []cmd.LogDescription,
+	logConfigs []cmd.LogDescription,
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
@@ -87,6 +87,15 @@ func newUpdater(
 		config.OldOCSPWindow.Duration == 0 ||
 		config.MissingSCTWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
+	}
+
+	logs := make([]*ctLog, len(logConfigs))
+	for i, logConfig := range logConfigs {
+		l, err := newLog(logConfig)
+		if err != nil {
+			return nil, err
+		}
+		logs[i] = l
 	}
 
 	updater := OCSPUpdater{
@@ -491,29 +500,21 @@ func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error
 // a certificate and returns a list of the configured logs that are not
 // present. This is the set of logs we need to resubmit this certificate to in
 // order to obtain a full compliment of SCTs
-func (updater *OCSPUpdater) missingLogs(logIDs []string) ([]cmd.LogDescription, error) {
-	var missingLogs []cmd.LogDescription
+func (updater *OCSPUpdater) missingLogs(logIDs []string) []*ctLog {
+	var missingLogs []*ctLog
 
 	presentMap := make(map[string]bool)
 	for _, logID := range logIDs {
 		presentMap[logID] = true
 	}
 
-	for _, logDesc := range updater.logs {
-		logPK, err := base64.StdEncoding.DecodeString(logDesc.Key)
-		if err != nil {
-			return nil, err
-		}
-
-		logPKHash := sha256.Sum256(logPK)
-		logID := base64.StdEncoding.EncodeToString(logPKHash[:])
-
-		if _, present := presentMap[logID]; !present {
-			missingLogs = append(missingLogs, logDesc)
+	for _, l := range updater.logs {
+		if _, present := presentMap[l.logID]; !present {
+			missingLogs = append(missingLogs, l)
 		}
 	}
 
-	return missingLogs, nil
+	return missingLogs
 }
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
@@ -538,17 +539,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 
 		// Next, check if any of the configured CT logs are missing from the list of
 		// logs that have given SCTs for this serial
-		missingLogs, err := updater.missingLogs(logIDs)
-		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf(
-				"Failed to compute missingLogs(): %s", err))
-			// We `return err` here rather than `continue` because an error from
-			// `missingLogs` indicates that one of the configured logs has an invalid
-			// public key and this won't resolve itself on subsequent iterations of
-			// this loop
-			return err
-		}
-
+		missingLogs := updater.missingLogs(logIDs)
 		if len(missingLogs) == 0 {
 			// If all of the logs have provided a SCT we're done for this serial
 			continue
@@ -567,7 +558,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		// purpose
 		if features.Enabled(features.ResubmitMissingSCTsOnly) {
 			for _, log := range missingLogs {
-				_ = updater.pubc.SubmitToSingleCT(ctx, log.URI, log.Key, cert.DER)
+				_ = updater.pubc.SubmitToSingleCT(ctx, log.uri, log.key, cert.DER)
 			}
 		} else {
 			// Otherwise, use the classic behaviour and submit the certificate to
@@ -627,6 +618,25 @@ func (l *looper) loop() error {
 	for {
 		l.tick()
 	}
+}
+
+// a ctLog contains the pre-processed logID and URI for a CT log. The ocsp-updater
+// creates these out of cmd.LogDescription's from its config
+type ctLog struct {
+	logID string
+	key   string
+	uri   string
+}
+
+func newLog(logConfig cmd.LogDescription) (*ctLog, error) {
+	logPK, err := base64.StdEncoding.DecodeString(logConfig.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	logPKHash := sha256.Sum256(logPK)
+	logID := base64.StdEncoding.EncodeToString(logPKHash[:])
+	return &ctLog{logID: logID, key: logConfig.Key, uri: logConfig.URI}, nil
 }
 
 const clientName = "OCSP"
