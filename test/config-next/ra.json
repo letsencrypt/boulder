@@ -51,11 +51,7 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "RA.server",
-      "VA": {
-        "server": "VA.server",
-        "rpcTimeout": "60s"
-      }
+      "serviceQueue": "RA.server"
     },
     "features": {
       "IDNASupport": true,
