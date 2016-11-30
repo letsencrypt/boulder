@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/akamai"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -587,8 +588,17 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create CA client")
+
+	var cac core.CertificateAuthority
+	if c.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn), c.CAService.Timeout.Duration)
+	} else {
+		var err error
+		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create CA client")
+	}
 
 	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")

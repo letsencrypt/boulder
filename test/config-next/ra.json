@@ -55,10 +55,6 @@
       "VA": {
         "server": "VA.server",
         "rpcTimeout": "60s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
       }
     },
     "features": {

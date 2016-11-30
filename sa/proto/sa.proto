@@ -63,7 +63,7 @@ message ValidAuthorizations {
 message CertificateStatus {
         optional string serial = 1;
         optional bool subscriberApproved = 2;
-        optional int64 status = 3;
+        optional string status = 3;
         optional int64 ocspLastUpdated = 4;
         optional int64 revokedDate = 5;
         optional int64 revokedReason = 6;

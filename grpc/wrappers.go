@@ -9,6 +9,7 @@ package grpc
 import (
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -701,12 +702,15 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	}
 
 	if response == nil || response.Serial == nil || response.SubscriberApproved == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+		fmt.Println("DO DOO")
+		fmt.Printf("%#v\n", response)
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 
 	return core.CertificateStatus{
 		Serial:                *response.Serial,
 		SubscriberApproved:    *response.SubscriberApproved,
+		Status:                core.OCSPStatus(*response.Status),
 		OCSPLastUpdated:       time.Unix(0, *response.OcspLastUpdated),
 		RevokedDate:           time.Unix(0, *response.RevokedDate),
 		RevokedReason:         revocation.Reason(*response.RevokedReason),
@@ -1152,10 +1156,12 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 	lastExpirationNagSentNano := certStatus.LastExpirationNagSent.UnixNano()
 	notAfterNano := certStatus.NotAfter.UnixNano()
 	reason := int64(certStatus.RevokedReason)
+	status := string(certStatus.Status)
 
 	return &sapb.CertificateStatus{
 		Serial:                &certStatus.Serial,
 		SubscriberApproved:    &certStatus.SubscriberApproved,
+		Status:                &status,
 		OcspLastUpdated:       &ocspLastUpdatedNano,
 		RevokedDate:           &revokedDateNano,
 		RevokedReason:         &reason,
