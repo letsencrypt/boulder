@@ -661,7 +661,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
-	return output, nil
+	return output, err
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
