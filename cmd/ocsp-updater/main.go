@@ -481,8 +481,7 @@ func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error
 		&logIDs,
 		`SELECT logID
 		FROM sctReceipts
-		WHERE certificateSerial = :serial
-		ORDER BY timestamp DESC`,
+		WHERE certificateSerial = :serial`,
 		map[string]interface{}{"serial": serial},
 	)
 	return logIDs, err
@@ -503,7 +502,7 @@ func (updater *OCSPUpdater) missingLogs(logIDs []string) ([]cmd.LogDescription, 
 	for _, logDesc := range updater.logs {
 		logPK, err := base64.StdEncoding.DecodeString(logDesc.Key)
 		if err != nil {
-			return []cmd.LogDescription{}, err
+			return nil, err
 		}
 
 		logPKHash := sha256.Sum256(logPK)
