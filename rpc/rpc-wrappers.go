@@ -674,7 +674,6 @@ func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err erro
 // SubmitToSingleCT sends a request to submit a certificate to one CT log
 // specified by URL and public key
 func (pub PublisherClient) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) (err error) {
-
 	var ctReq struct {
 		LogURL       string
 		LogPublicKey string

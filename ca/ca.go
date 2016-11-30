@@ -508,7 +508,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		go func() {
 			// since we don't want this method to be canceled if the parent context
 			// expires pass a background context to it
-			ca.log.AuditErr(fmt.Sprintf("calling SubmitToCT() for %#v\n\n", serialHex))
 			_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
 		}()
 	}

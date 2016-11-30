@@ -163,7 +163,6 @@ func (pub *Impl) SubmitToSingleCT(
 
 	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
 	defer cancel()
-
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
