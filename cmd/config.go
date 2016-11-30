@@ -146,6 +146,8 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
+	SAService *GRPCClientConfig
+
 	Features map[string]bool
 }
 
@@ -236,6 +238,7 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffMax    ConfigDuration
 
 	Publisher *GRPCClientConfig
+	SAService *GRPCClientConfig
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the

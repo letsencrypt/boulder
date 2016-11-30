@@ -25,6 +25,7 @@ import (
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 /*
@@ -592,8 +593,17 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create SA client")
+
+	var sac core.StorageAuthority
+	if c.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.SAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), c.SAService.Timeout.Duration)
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
+
 	return cac, pubc, sac
 }
 
