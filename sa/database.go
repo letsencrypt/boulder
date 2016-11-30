@@ -17,7 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/prefixed_db"
+	"github.com/letsencrypt/boulder/prefixedDatabase"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
@@ -88,7 +88,7 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		return nil, err
 	}
 	driverName := fmt.Sprintf("mysql-%d", driverNum)
-	sql.Register(driverName, prefixed_db.New(prefix, mysql.MySQLDriver{}))
+	sql.Register(driverName, prefixedDatabase.New(prefix, mysql.MySQLDriver{}))
 
 	db, err := sqlOpen(driverName, config.FormatDSN())
 	if err != nil {

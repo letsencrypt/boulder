@@ -1,4 +1,4 @@
-package prefixed_db
+package prefixedDatabase
 
 import "database/sql/driver"
 
