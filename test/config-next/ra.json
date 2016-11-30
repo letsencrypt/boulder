@@ -45,16 +45,8 @@
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "RA.server",
-      "VA": {
-        "server": "VA.server",
-        "rpcTimeout": "60s"
-      },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
         "rpcTimeout": "15s"
       }
     },
