@@ -788,7 +788,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
-// a string, or an error if any occured.
+// a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (string, error) {
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {

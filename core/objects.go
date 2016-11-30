@@ -466,7 +466,7 @@ type CertificateStatus struct {
 
 	// For performance reasons[0] we duplicate the `Expires` field of the
 	// `Certificates` object/table in `CertificateStatus` to avoid a costly `JOIN`
-	// later on just to retreive this `Time` value. This helps both the OCSP
+	// later on just to retrieve this `Time` value. This helps both the OCSP
 	// updater and the expiration-mailer stay performant.
 	//
 	// Similarly, we add an explicit `IsExpired` boolean to `CertificateStatus`
