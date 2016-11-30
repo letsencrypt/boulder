@@ -563,9 +563,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		// interface value. See, e.g.
 		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
 		return records, nil
-	} else {
-		return records, prob
 	}
+
+	return records, prob
 }
 
 // CAASet consists of filtered CAA records
