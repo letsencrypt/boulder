@@ -372,14 +372,45 @@ func certificateValid(cert *corepb.Certificate) bool {
 	return !(cert.RegistrationID == nil || cert.Serial == nil || cert.Digest == nil || cert.Der == nil || cert.Issued == nil || cert.Expires == nil)
 }
 
-func sctToPB(sct core.SignedCertificateTimestamp) (*sapb.SignedCertificateTimestamp, error) {
-	return nil, nil
+func sctToPB(sct core.SignedCertificateTimestamp) *sapb.SignedCertificateTimestamp {
+	id := int64(sct.ID)
+	version := int64(sct.SCTVersion)
+	timestamp := int64(sct.Timestamp)
+	return &sapb.SignedCertificateTimestamp{
+		Id:                &id,
+		SctVersion:        &version,
+		LogID:             &sct.LogID,
+		Timestamp:         &timestamp,
+		Extensions:        sct.Extensions,
+		Signature:         sct.Signature,
+		CertificateSerial: &sct.CertificateSerial,
+	}
 }
 
-func pbToSCT(pb *sapb.SignedCertificateTimestamp) (core.SignedCertificateTimestamp, error) {
-	return core.SignedCertificateTimestamp{}, nil
+func pbToSCT(pb *sapb.SignedCertificateTimestamp) core.SignedCertificateTimestamp {
+	return core.SignedCertificateTimestamp{
+		ID:                int(*pb.Id),
+		SCTVersion:        uint8(*pb.SctVersion),
+		LogID:             *pb.LogID,
+		Timestamp:         uint64(*pb.Timestamp),
+		Extensions:        pb.Extensions,
+		Signature:         pb.Signature,
+		CertificateSerial: *pb.CertificateSerial,
+	}
 }
 
 func sctValid(sct *sapb.SignedCertificateTimestamp) bool {
-	return true
+	return !(sct.Id == nil || sct.SctVersion == nil || sct.LogID == nil || sct.Timestamp == nil || sct.Signature == nil || sct.CertificateSerial == nil)
+}
+
+func certToPB(cert core.Certificate) *corepb.Certificate {
+	issued, expires := cert.Issued.UnixNano(), cert.Expires.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: &cert.RegistrationID,
+		Serial:         &cert.Serial,
+		Digest:         &cert.Digest,
+		Der:            cert.DER,
+		Issued:         &issued,
+		Expires:        &expires,
+	}
 }
