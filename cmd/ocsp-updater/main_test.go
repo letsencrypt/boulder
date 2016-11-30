@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -44,18 +46,33 @@ type mockPub struct {
 	logs []cmd.LogDescription
 }
 
+func logPublicKeyToID(logPK string) (string, error) {
+	logPKBytes, err := base64.StdEncoding.DecodeString(logPK)
+	if err != nil {
+		return "", err
+	}
+
+	logPKHash := sha256.Sum256(logPKBytes)
+	logID := base64.StdEncoding.EncodeToString(logPKHash[:])
+	return logID, nil
+}
+
 func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 	// Add an SCT for every configured log
 	for _, log := range p.logs {
+		logID, err := logPublicKeyToID(log.Key)
+		if err != nil {
+			return err
+		}
 		sct := core.SignedCertificateTimestamp{
 			SCTVersion:        0,
-			LogID:             log.Key,
+			LogID:             logID,
 			Timestamp:         0,
 			Extensions:        []byte{},
 			Signature:         []byte{0},
 			CertificateSerial: "00",
 		}
-		err := p.sa.AddSCTReceipt(ctx, sct)
+		err = p.sa.AddSCTReceipt(ctx, sct)
 		if err != nil {
 			return err
 		}
@@ -64,20 +81,35 @@ func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 }
 
 func (p *mockPub) SubmitToSingleCT(_ context.Context, _, logPublicKey string, _ []byte) error {
+	logID, err := logPublicKeyToID(logPublicKey)
+	if err != nil {
+		return err
+	}
 	// Add an SCT for the provided log ID
 	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
-		LogID:             logPublicKey,
+		LogID:             logID,
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
 		CertificateSerial: "00",
 	}
-	err := p.sa.AddSCTReceipt(ctx, sct)
+	err = p.sa.AddSCTReceipt(ctx, sct)
 	return err
 }
 
 var log = blog.UseMock()
+
+const (
+	// Each log's test PK is the base64 of "test pk 1" .. "test pk 2"
+	testLogAPK = "dGVzdCBwayAx"
+	testLogBPK = "dGVzdCBwayAy"
+	testLogCPK = "dGVzdCBwayAz"
+	// Each log's ID is the base64 of the SHA256 sum of the PK above
+	testLogAID = "27sby+EK3U1YKhUUGi9vBfFskgHvKpRMJ7PtNJzGUF8="
+	testLogBID = "EpN+1e1h2jWN6W4IRG4KwjwiY9QIWaep5Qf3s8NLRmc="
+	testLogCID = "OOn8yL8QPsMuqENGprtlkOYkJqwhhcAifEHUPevmnCc="
+)
 
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
@@ -95,15 +127,15 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 	logs := []cmd.LogDescription{
 		cmd.LogDescription{
 			URI: "test",
-			Key: "test",
+			Key: testLogAPK,
 		},
 		cmd.LogDescription{
 			URI: "test2",
-			Key: "test2",
+			Key: testLogBPK,
 		},
 		cmd.LogDescription{
 			URI: "test3",
-			Key: "test3",
+			Key: testLogCPK,
 		},
 	}
 
@@ -315,16 +347,16 @@ func TestMissingReceiptsTick(t *testing.T) {
 	logIDs, err := updater.getSubmittedReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get submitted receipts for serial 00")
 	test.AssertEquals(t, len(logIDs), 3)
-	test.AssertEquals(t, logIDs[0], "test")
-	test.AssertEquals(t, logIDs[1], "test2")
-	test.AssertEquals(t, logIDs[2], "test3")
+	test.AssertEquals(t, logIDs[0], testLogAID)
+	test.AssertEquals(t, logIDs[1], testLogBID)
+	test.AssertEquals(t, logIDs[2], testLogCID)
 
 	// make sure we don't spin forever after reducing the
 	// number of logs we submit to
 	updater.logs = []cmd.LogDescription{
 		cmd.LogDescription{
 			URI: "test",
-			Key: "test",
+			Key: testLogAPK,
 		},
 	}
 	err = updater.missingReceiptsTick(ctx, 10)
@@ -361,7 +393,7 @@ func TestMissingOnlyReceiptsTick(t *testing.T) {
 	// Add an SCT for one of the three logs (test2)
 	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
-		LogID:             "test2",
+		LogID:             testLogBID,
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
@@ -373,8 +405,8 @@ func TestMissingOnlyReceiptsTick(t *testing.T) {
 	// We expect that there are only going to be TWO calls to SubmitSingleCT, one
 	// for each of the missing logs. We do NOT expect a call for "test2" since we
 	// already added a SCT for that log!
-	mockPub.EXPECT().SubmitToSingleCT(ctx, "test", "test", parsedCert.Raw)
-	mockPub.EXPECT().SubmitToSingleCT(ctx, "test3", "test3", parsedCert.Raw)
+	mockPub.EXPECT().SubmitToSingleCT(ctx, "test", testLogAPK, parsedCert.Raw)
+	mockPub.EXPECT().SubmitToSingleCT(ctx, "test3", testLogCPK, parsedCert.Raw)
 
 	// Run the missing receipts tick, with the correct EXPECT's there should be no errors
 	err = updater.missingReceiptsTick(ctx, 5)
@@ -552,7 +584,7 @@ func TestGetSubmittedReceipts(t *testing.T) {
 	// Add one SCT
 	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
-		LogID:             "test",
+		LogID:             testLogAID,
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
@@ -565,12 +597,12 @@ func TestGetSubmittedReceipts(t *testing.T) {
 	receipts, err = updater.getSubmittedReceipts("00")
 	test.AssertNotError(t, err, "getSubmittedReceipts('00') failed")
 	test.AssertEquals(t, len(receipts), 1)
-	test.AssertEquals(t, receipts[0], "test")
+	test.AssertEquals(t, receipts[0], testLogAID)
 
 	// Add another SCT
 	sct = core.SignedCertificateTimestamp{
 		SCTVersion:        0,
-		LogID:             "test2",
+		LogID:             testLogBID,
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
@@ -584,8 +616,8 @@ func TestGetSubmittedReceipts(t *testing.T) {
 	receipts, err = updater.getSubmittedReceipts("00")
 	test.AssertNotError(t, err, "getSubmittedReceipts('00') failed")
 	test.AssertEquals(t, len(receipts), 2)
-	test.AssertEquals(t, receipts[0], "test")
-	test.AssertEquals(t, receipts[1], "test2")
+	test.AssertEquals(t, receipts[0], testLogAID)
+	test.AssertEquals(t, receipts[1], testLogBID)
 }
 
 func TestMissingLogs(t *testing.T) {
@@ -596,14 +628,14 @@ func TestMissingLogs(t *testing.T) {
 	oneLog := []cmd.LogDescription{
 		cmd.LogDescription{
 			URI: "test",
-			Key: "test",
+			Key: testLogAPK,
 		},
 	}
 	twoLogs := []cmd.LogDescription{
 		oneLog[0],
 		cmd.LogDescription{
 			URI: "test2",
-			Key: "test2",
+			Key: testLogBPK,
 		},
 	}
 
@@ -615,13 +647,13 @@ func TestMissingLogs(t *testing.T) {
 		// With `nil` logs, no log IDs are ever missing
 		{
 			Logs:                nil,
-			GivenIDs:            []string{"test", "test2"},
+			GivenIDs:            []string{testLogAID, testLogBID},
 			ExpectedMissingLogs: []cmd.LogDescription{},
 		},
 		// No configured logs, no log IDs are ever missing
 		{
 			Logs:                noLogs,
-			GivenIDs:            []string{"test", "test2"},
+			GivenIDs:            []string{testLogAID, testLogBID},
 			ExpectedMissingLogs: []cmd.LogDescription{},
 		},
 		// One configured log, given no log IDs, one is missing
@@ -639,13 +671,13 @@ func TestMissingLogs(t *testing.T) {
 		// One configured log, given that log ID, none are missing
 		{
 			Logs:                oneLog,
-			GivenIDs:            []string{"test"},
+			GivenIDs:            []string{testLogAID},
 			ExpectedMissingLogs: []cmd.LogDescription{},
 		},
 		// Two configured logs, given one log ID, one is missing
 		{
 			Logs:                twoLogs,
-			GivenIDs:            []string{"test"},
+			GivenIDs:            []string{testLogAID},
 			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[1]},
 		},
 		// Two configured logs, given no log IDs, two are missing
@@ -657,7 +689,7 @@ func TestMissingLogs(t *testing.T) {
 		// Two configured logs, given two matching log IDs, none are missing
 		{
 			Logs:                twoLogs,
-			GivenIDs:            []string{"test", "test2"},
+			GivenIDs:            []string{testLogAID, testLogBID},
 			ExpectedMissingLogs: []cmd.LogDescription{},
 		},
 		// Two configured logs, given unknown log, two are missing
@@ -669,14 +701,15 @@ func TestMissingLogs(t *testing.T) {
 		// Two configured logs, given one unknown log, one known, one is missing
 		{
 			Logs:                twoLogs,
-			GivenIDs:            []string{"wha?", "test2"},
+			GivenIDs:            []string{"wha?", testLogBID},
 			ExpectedMissingLogs: []cmd.LogDescription{twoLogs[0]},
 		},
 	}
 
 	for _, tc := range testCases {
 		updater.logs = tc.Logs
-		missingLogs := updater.missingLogs(tc.GivenIDs)
+		missingLogs, err := updater.missingLogs(tc.GivenIDs)
+		test.AssertNotError(t, err, "updater.missingLogs() errored")
 		test.AssertEquals(t, len(missingLogs), len(tc.ExpectedMissingLogs))
 		for i, expectedLog := range tc.ExpectedMissingLogs {
 			test.AssertEquals(t, missingLogs[i].URI, expectedLog.URI)

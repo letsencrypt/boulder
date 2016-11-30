@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -480,7 +481,8 @@ func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error
 		&logIDs,
 		`SELECT logID
 		FROM sctReceipts
-		WHERE certificateSerial = :serial`,
+		WHERE certificateSerial = :serial
+		ORDER BY timestamp DESC`,
 		map[string]interface{}{"serial": serial},
 	)
 	return logIDs, err
@@ -490,7 +492,7 @@ func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error
 // a certificate and returns a list of the configured logs that are not
 // present. This is the set of logs we need to resubmit this certificate to in
 // order to obtain a full compliment of SCTs
-func (updater *OCSPUpdater) missingLogs(logIDs []string) []cmd.LogDescription {
+func (updater *OCSPUpdater) missingLogs(logIDs []string) ([]cmd.LogDescription, error) {
 	var missingLogs []cmd.LogDescription
 
 	presentMap := make(map[string]bool)
@@ -499,12 +501,20 @@ func (updater *OCSPUpdater) missingLogs(logIDs []string) []cmd.LogDescription {
 	}
 
 	for _, logDesc := range updater.logs {
-		if _, present := presentMap[logDesc.Key]; !present {
+		logPK, err := base64.StdEncoding.DecodeString(logDesc.Key)
+		if err != nil {
+			return []cmd.LogDescription{}, err
+		}
+
+		logPKHash := sha256.Sum256(logPK)
+		logID := base64.StdEncoding.EncodeToString(logPKHash[:])
+
+		if _, present := presentMap[logID]; !present {
 			missingLogs = append(missingLogs, logDesc)
 		}
 	}
 
-	return missingLogs
+	return missingLogs, nil
 }
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
@@ -514,7 +524,6 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 	since := now.Add(-updater.oldestIssuedSCT)
 	serials, err := updater.getSerialsIssuedSince(since, batchSize)
 	if err != nil {
-		updater.log.AuditErr(fmt.Sprintf("Failed to get certificate serials: %s", err))
 		return err
 	}
 
@@ -529,7 +538,17 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 
 		// Next, check if any of the configured CT logs are missing from the list of
 		// logs that have given SCTs for this serial
-		missingLogs := updater.missingLogs(logIDs)
+		missingLogs, err := updater.missingLogs(logIDs)
+		if err != nil {
+			updater.log.AuditErr(fmt.Sprintf(
+				"Failed to compute missingLogs(): %s", err))
+			// We `return err` here rather than `continue` because an error from
+			// `missingLogs` indicates that one of the configured logs has an invalid
+			// public key and this won't resolve itself on subsequent iterations of
+			// this loop
+			return err
+		}
+
 		if len(missingLogs) == 0 {
 			// If all of the logs have provided a SCT we're done for this serial
 			continue
@@ -548,13 +567,11 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		// purpose
 		if features.Enabled(features.ResubmitMissingSCTsOnly) {
 			for _, log := range missingLogs {
-				updater.log.AuditErr(fmt.Sprintf("calling SubmitToSingleCT(%#v) for %#v\n\n", log.URI, serial))
 				_ = updater.pubc.SubmitToSingleCT(ctx, log.URI, log.Key, cert.DER)
 			}
 		} else {
 			// Otherwise, use the classic behaviour and submit the certificate to
 			// every log to get SCTS using the pre-existing `SubmitToCT` endpoint
-			updater.log.AuditErr(fmt.Sprintf("calling SubmitToCT() for %#v\n\n", serial))
 			_ = updater.pubc.SubmitToCT(ctx, cert.DER)
 		}
 	}
