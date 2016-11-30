@@ -34,6 +34,7 @@ func TestAcmeIdentifier(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
+	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, ai, out)
 }
 
@@ -58,6 +59,7 @@ func TestJsonWebKey(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
+	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, jwk, out)
 }
 
@@ -79,6 +81,7 @@ func TestAcmeStatus(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
+	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, as, out)
 }
 
@@ -100,6 +103,7 @@ func TestOCSPStatus(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
+	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, os, out)
 }
 
@@ -119,5 +123,6 @@ func TestStringSlice(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
+	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, au, out)
 }
