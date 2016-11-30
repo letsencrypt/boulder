@@ -19,7 +19,7 @@ import (
 
 func TestServerTransportCredentials(t *testing.T) {
 	acceptedSANs := map[string]struct{}{
-		"boulder-client": struct{}{},
+		"boulder-client": {},
 	}
 	goodCert, err := core.LoadCert("../../test/grpc-creds/boulder-client/cert.pem")
 	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/boulder-client/cert.pem') failed")
@@ -62,7 +62,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	// that has a leaf certificate containing an IP address SAN present in the
 	// accepted list.
 	acceptedIPSans := map[string]struct{}{
-		"127.0.0.1": struct{}{},
+		"127.0.0.1": {},
 	}
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedIPSans}
 	err = bcreds.validateClient(rightState)
