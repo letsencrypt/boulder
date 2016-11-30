@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,26 @@ const (
 
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
+
+// For defense-in-depth in addition to using the PA & its hostnamePolicy to
+// check domain names we also perform a check against the regex's from the
+// forbiddenDomains array
+var forbiddenDomainPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^\s*$`),
+	regexp.MustCompile(`\.mil$`),
+	regexp.MustCompile(`\.local$`),
+	regexp.MustCompile(`^localhost$`),
+	regexp.MustCompile(`\.localhost$`),
+}
+
+func isForbiddenDomain(name string) (bool, string) {
+	for _, r := range forbiddenDomainPatterns {
+		if matches := r.FindAllStringSubmatch(name, -1); len(matches) > 0 {
+			return true, r.String()
+		}
+	}
+	return false, ""
+}
 
 var batchSize = 1000
 
@@ -214,6 +235,16 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 			if err = c.pa.WillingToIssue(id); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			} else {
+				// For defense-in-depth, even if the PA was willing to issue for a name
+				// we double check it against a list of forbidden domains. This way even
+				// if the hostnamePolicyFile malfunctions we will flag the forbidden
+				// domain matches
+				if forbidden, pattern := isForbiddenDomain(name); forbidden {
+					problems = append(problems, fmt.Sprintf(
+						"Policy Authority was willing to issue but domain '%s' matches "+
+							"forbiddenDomains entry %q", name, pattern))
+				}
 			}
 		}
 		// Check the cert has the correct key usage extensions
