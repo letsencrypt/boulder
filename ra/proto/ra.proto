@@ -6,55 +6,29 @@ option go_package = "proto";
 import "core/proto/core.proto";
 
 service RegistrationAuthority {
-        rpc NewRegistration(Registration) returns (Registration) {}
-        rpc NewAuthorization(NewAuthorizationRequest) returns (Authorization) {}
-        rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
-        rpc UpdateRegistration(UpdateRegistrationRequest) returns (Registration) {}
-        rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (Authorization) {}
+        rpc NewRegistration(core.Registration) returns (core.Registration) {}
+        rpc NewAuthorization(NewAuthorizationRequest) returns (core.Authorization) {}
+        rpc NewCertificate(core.CertificateRequest) returns (core.Certificate) {}
+        rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
+        rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (core.Authorization) {}
         rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
-        rpc DeactivateRegistration(Registration) returns (core.Empty) {}
-        rpc DeactivateAuthorization(Authorization) returns (core.Empty) {}
+        rpc DeactivateRegistration(core.Registration) returns (core.Empty) {}
+        rpc DeactivateAuthorization(core.Authorization) returns (core.Empty) {}
         rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (core.Empty) {}
 }
 
-message Registration {
-        optional int64 id = 1;
-        optional bytes key = 2;
-        repeated string contact = 3;
-        optional bool contactsPresent = 4;
-        optional string agreement = 5;
-        optional bytes initialIP = 6;
-        optional int64 createdAt = 7; // Unix timestamp (nanoseconds)
-        optional string status = 8;
-}
-
-message Authorization {
-        optional string id = 1;
-        optional string identifier = 2;
-        optional int64 registrationID = 3;
-        optional string status = 4;
-        optional int64 expires = 5; // Unix timestamp (nanoseconds)
-        repeated core.Challenge challenges = 6;
-        optional bytes combinations = 7;
-}
-
 message NewAuthorizationRequest {
-        optional Authorization authz = 1;
-        optional int64 regID = 2;
-}
-
-message NewCertificateRequest {
-        optional bytes csr = 1;
+        optional core.Authorization authz = 1;
         optional int64 regID = 2;
 }
 
 message UpdateRegistrationRequest {
-        optional Registration base = 1;
-        optional Registration update = 2;
+        optional core.Registration base = 1;
+        optional core.Registration update = 2;
 }
 
 message UpdateAuthorizationRequest {
-        optional Authorization authz = 1;
+        optional core.Authorization authz = 1;
         optional int64 challengeIndex = 2;
         optional core.Challenge response = 3;
 }

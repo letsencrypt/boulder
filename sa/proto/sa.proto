@@ -3,6 +3,8 @@ syntax = "proto2";
 package sa;
 option go_package = "proto";
 
+import "core/proto/core.proto";
+
 service SA {
         // Getters
         rpc GetRegistration(RegistrationID) returns (core.Registration) {}
@@ -11,8 +13,8 @@ service SA {
         rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
         rpc GetCertificate(Serial) returns (core.Certificate) {}
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
-        rpc CountCertificatesRange(CountCertificatesRangeRequest) returns (Count) {}
-        rpc CountCertificatesByNames(Range) returns (CountByNames) {}
+        rpc CountCertificatesRange(Range) returns (Count) {}
+        rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
         rpc GetSCTReceipt(GetSCTReceiptRequest) returns (SignedCertificateTimestamp) {}
@@ -48,6 +50,27 @@ message GetValidAuthorizationsRequest {
         optional int64 registrationID = 1;
         repeated string domains = 2;
         optional int64 now = 3; // Unix timestamp (nanoseconds)
+}
+
+message ValidAuthorizations {
+        message MapElement {
+                optional string domain = 1;
+                optional core.Authorization authz = 2;
+        }
+        repeated MapElement valid = 1;
+}
+
+message CertificateStatus {
+        optional string serial = 1;
+        optional bool subscriberApproved = 2;
+        optional int64 status = 3;
+        optional int64 ocspLastUpdated = 4;
+        optional int64 revokedDate = 5;
+        optional int64 revokedReason = 6;
+        optional int64 lastExpirationNagSent = 7;
+        optional bytes ocspResponse = 8;
+        optional int64 notAfter = 9;
+        optional bool isExpired = 10;
 }
 
 message Serial {
@@ -110,7 +133,7 @@ message AddCertificateResponse {
 
 message SignedCertificateTimestamp {
         optional int64 id = 1;
-        optional uint8 sctVersion = 2;
+        optional int64 sctVersion = 2;
         optional string logID = 3;
         optional int64 timestamp = 4;
         optional bytes extensions = 5;
