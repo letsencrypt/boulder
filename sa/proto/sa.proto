@@ -5,7 +5,7 @@ option go_package = "proto";
 
 import "core/proto/core.proto";
 
-service SA {
+service StorageAuthority {
         // Getters
         rpc GetRegistration(RegistrationID) returns (core.Registration) {}
         rpc GetRegistrationByKey(JsonWebKey) returns (core.Registration) {}
@@ -39,7 +39,7 @@ message RegistrationID {
 }
 
 message JsonWebKey {
-        optional string jwk = 1; 
+        optional bytes jwk = 1; 
 }
 
 message AuthorizationID {

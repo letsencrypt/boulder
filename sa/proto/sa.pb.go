@@ -72,8 +72,8 @@ func (m *RegistrationID) GetId() int64 {
 }
 
 type JsonWebKey struct {
-	Jwk              *string `protobuf:"bytes,1,opt,name=jwk" json:"jwk,omitempty"`
-	XXX_unrecognized []byte  `json:"-"`
+	Jwk              []byte `protobuf:"bytes,1,opt,name=jwk" json:"jwk,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *JsonWebKey) Reset()                    { *m = JsonWebKey{} }
@@ -81,11 +81,11 @@ func (m *JsonWebKey) String() string            { return proto1.CompactTextStrin
 func (*JsonWebKey) ProtoMessage()               {}
 func (*JsonWebKey) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
 
-func (m *JsonWebKey) GetJwk() string {
-	if m != nil && m.Jwk != nil {
-		return *m.Jwk
+func (m *JsonWebKey) GetJwk() []byte {
+	if m != nil {
+		return m.Jwk
 	}
-	return ""
+	return nil
 }
 
 type AuthorizationID struct {
@@ -139,7 +139,8 @@ func (m *GetValidAuthorizationsRequest) GetNow() int64 {
 }
 
 type ValidAuthorizations struct {
-	XXX_unrecognized []byte `json:"-"`
+	Valid            []*ValidAuthorizations_MapElement `protobuf:"bytes,1,rep,name=valid" json:"valid,omitempty"`
+	XXX_unrecognized []byte                            `json:"-"`
 }
 
 func (m *ValidAuthorizations) Reset()                    { *m = ValidAuthorizations{} }
@@ -147,14 +148,128 @@ func (m *ValidAuthorizations) String() string            { return proto1.Compact
 func (*ValidAuthorizations) ProtoMessage()               {}
 func (*ValidAuthorizations) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
 
+func (m *ValidAuthorizations) GetValid() []*ValidAuthorizations_MapElement {
+	if m != nil {
+		return m.Valid
+	}
+	return nil
+}
+
+type ValidAuthorizations_MapElement struct {
+	Domain           *string             `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
+	Authz            *core.Authorization `protobuf:"bytes,2,opt,name=authz" json:"authz,omitempty"`
+	XXX_unrecognized []byte              `json:"-"`
+}
+
+func (m *ValidAuthorizations_MapElement) Reset()         { *m = ValidAuthorizations_MapElement{} }
+func (m *ValidAuthorizations_MapElement) String() string { return proto1.CompactTextString(m) }
+func (*ValidAuthorizations_MapElement) ProtoMessage()    {}
+func (*ValidAuthorizations_MapElement) Descriptor() ([]byte, []int) {
+	return fileDescriptor0, []int{4, 0}
+}
+
+func (m *ValidAuthorizations_MapElement) GetDomain() string {
+	if m != nil && m.Domain != nil {
+		return *m.Domain
+	}
+	return ""
+}
+
+func (m *ValidAuthorizations_MapElement) GetAuthz() *core.Authorization {
+	if m != nil {
+		return m.Authz
+	}
+	return nil
+}
+
 type CertificateStatus struct {
-	XXX_unrecognized []byte `json:"-"`
+	Serial                *string `protobuf:"bytes,1,opt,name=serial" json:"serial,omitempty"`
+	SubscriberApproved    *bool   `protobuf:"varint,2,opt,name=subscriberApproved" json:"subscriberApproved,omitempty"`
+	Status                *int64  `protobuf:"varint,3,opt,name=status" json:"status,omitempty"`
+	OcspLastUpdated       *int64  `protobuf:"varint,4,opt,name=ocspLastUpdated" json:"ocspLastUpdated,omitempty"`
+	RevokedDate           *int64  `protobuf:"varint,5,opt,name=revokedDate" json:"revokedDate,omitempty"`
+	RevokedReason         *int64  `protobuf:"varint,6,opt,name=revokedReason" json:"revokedReason,omitempty"`
+	LastExpirationNagSent *int64  `protobuf:"varint,7,opt,name=lastExpirationNagSent" json:"lastExpirationNagSent,omitempty"`
+	OcspResponse          []byte  `protobuf:"bytes,8,opt,name=ocspResponse" json:"ocspResponse,omitempty"`
+	NotAfter              *int64  `protobuf:"varint,9,opt,name=notAfter" json:"notAfter,omitempty"`
+	IsExpired             *bool   `protobuf:"varint,10,opt,name=isExpired" json:"isExpired,omitempty"`
+	XXX_unrecognized      []byte  `json:"-"`
 }
 
 func (m *CertificateStatus) Reset()                    { *m = CertificateStatus{} }
 func (m *CertificateStatus) String() string            { return proto1.CompactTextString(m) }
 func (*CertificateStatus) ProtoMessage()               {}
 func (*CertificateStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
+
+func (m *CertificateStatus) GetSerial() string {
+	if m != nil && m.Serial != nil {
+		return *m.Serial
+	}
+	return ""
+}
+
+func (m *CertificateStatus) GetSubscriberApproved() bool {
+	if m != nil && m.SubscriberApproved != nil {
+		return *m.SubscriberApproved
+	}
+	return false
+}
+
+func (m *CertificateStatus) GetStatus() int64 {
+	if m != nil && m.Status != nil {
+		return *m.Status
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetOcspLastUpdated() int64 {
+	if m != nil && m.OcspLastUpdated != nil {
+		return *m.OcspLastUpdated
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetRevokedDate() int64 {
+	if m != nil && m.RevokedDate != nil {
+		return *m.RevokedDate
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetRevokedReason() int64 {
+	if m != nil && m.RevokedReason != nil {
+		return *m.RevokedReason
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetLastExpirationNagSent() int64 {
+	if m != nil && m.LastExpirationNagSent != nil {
+		return *m.LastExpirationNagSent
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetOcspResponse() []byte {
+	if m != nil {
+		return m.OcspResponse
+	}
+	return nil
+}
+
+func (m *CertificateStatus) GetNotAfter() int64 {
+	if m != nil && m.NotAfter != nil {
+		return *m.NotAfter
+	}
+	return 0
+}
+
+func (m *CertificateStatus) GetIsExpired() bool {
+	if m != nil && m.IsExpired != nil {
+		return *m.IsExpired
+	}
+	return false
+}
 
 type Serial struct {
 	Serial           *string `protobuf:"bytes,1,opt,name=serial" json:"serial,omitempty"`
@@ -550,6 +665,7 @@ func init() {
 	proto1.RegisterType((*AuthorizationID)(nil), "sa.AuthorizationID")
 	proto1.RegisterType((*GetValidAuthorizationsRequest)(nil), "sa.GetValidAuthorizationsRequest")
 	proto1.RegisterType((*ValidAuthorizations)(nil), "sa.ValidAuthorizations")
+	proto1.RegisterType((*ValidAuthorizations_MapElement)(nil), "sa.ValidAuthorizations.MapElement")
 	proto1.RegisterType((*CertificateStatus)(nil), "sa.CertificateStatus")
 	proto1.RegisterType((*Serial)(nil), "sa.Serial")
 	proto1.RegisterType((*Range)(nil), "sa.Range")
@@ -577,9 +693,9 @@ var _ grpc.ClientConn
 // is compatible with the grpc package it is being compiled against.
 const _ = grpc.SupportPackageIsVersion3
 
-// Client API for SA service
+// Client API for StorageAuthority service
 
-type SAClient interface {
+type StorageAuthorityClient interface {
 	// Getters
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JsonWebKey, opts ...grpc.CallOption) (*core.Registration, error)
@@ -608,233 +724,233 @@ type SAClient interface {
 	DeactivateAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Empty, error)
 }
 
-type sAClient struct {
+type storageAuthorityClient struct {
 	cc *grpc.ClientConn
 }
 
-func NewSAClient(cc *grpc.ClientConn) SAClient {
-	return &sAClient{cc}
+func NewStorageAuthorityClient(cc *grpc.ClientConn) StorageAuthorityClient {
+	return &storageAuthorityClient{cc}
 }
 
-func (c *sAClient) GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Registration, error) {
+func (c *storageAuthorityClient) GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Registration, error) {
 	out := new(core.Registration)
-	err := grpc.Invoke(ctx, "/sa.SA/GetRegistration", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetRegistration", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetRegistrationByKey(ctx context.Context, in *JsonWebKey, opts ...grpc.CallOption) (*core.Registration, error) {
+func (c *storageAuthorityClient) GetRegistrationByKey(ctx context.Context, in *JsonWebKey, opts ...grpc.CallOption) (*core.Registration, error) {
 	out := new(core.Registration)
-	err := grpc.Invoke(ctx, "/sa.SA/GetRegistrationByKey", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetRegistrationByKey", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Authorization, error) {
+func (c *storageAuthorityClient) GetAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Authorization, error) {
 	out := new(core.Authorization)
-	err := grpc.Invoke(ctx, "/sa.SA/GetAuthorization", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetAuthorization", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetValidAuthorizations(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*ValidAuthorizations, error) {
+func (c *storageAuthorityClient) GetValidAuthorizations(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*ValidAuthorizations, error) {
 	out := new(ValidAuthorizations)
-	err := grpc.Invoke(ctx, "/sa.SA/GetValidAuthorizations", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetValidAuthorizations", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*core.Certificate, error) {
+func (c *storageAuthorityClient) GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*core.Certificate, error) {
 	out := new(core.Certificate)
-	err := grpc.Invoke(ctx, "/sa.SA/GetCertificate", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetCertificate", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*CertificateStatus, error) {
+func (c *storageAuthorityClient) GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*CertificateStatus, error) {
 	out := new(CertificateStatus)
-	err := grpc.Invoke(ctx, "/sa.SA/GetCertificateStatus", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetCertificateStatus", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) CountCertificatesRange(ctx context.Context, in *Range, opts ...grpc.CallOption) (*Count, error) {
+func (c *storageAuthorityClient) CountCertificatesRange(ctx context.Context, in *Range, opts ...grpc.CallOption) (*Count, error) {
 	out := new(Count)
-	err := grpc.Invoke(ctx, "/sa.SA/CountCertificatesRange", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/CountCertificatesRange", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) CountCertificatesByNames(ctx context.Context, in *CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*CountByNames, error) {
+func (c *storageAuthorityClient) CountCertificatesByNames(ctx context.Context, in *CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*CountByNames, error) {
 	out := new(CountByNames)
-	err := grpc.Invoke(ctx, "/sa.SA/CountCertificatesByNames", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/CountCertificatesByNames", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
+func (c *storageAuthorityClient) CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
 	out := new(Count)
-	err := grpc.Invoke(ctx, "/sa.SA/CountRegistrationsByIP", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/CountRegistrationsByIP", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) CountPendingAuthorizations(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error) {
+func (c *storageAuthorityClient) CountPendingAuthorizations(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error) {
 	out := new(Count)
-	err := grpc.Invoke(ctx, "/sa.SA/CountPendingAuthorizations", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/CountPendingAuthorizations", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) GetSCTReceipt(ctx context.Context, in *GetSCTReceiptRequest, opts ...grpc.CallOption) (*SignedCertificateTimestamp, error) {
+func (c *storageAuthorityClient) GetSCTReceipt(ctx context.Context, in *GetSCTReceiptRequest, opts ...grpc.CallOption) (*SignedCertificateTimestamp, error) {
 	out := new(SignedCertificateTimestamp)
-	err := grpc.Invoke(ctx, "/sa.SA/GetSCTReceipt", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetSCTReceipt", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error) {
+func (c *storageAuthorityClient) CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error) {
 	out := new(Count)
-	err := grpc.Invoke(ctx, "/sa.SA/CountFQDNSets", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/CountFQDNSets", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
+func (c *storageAuthorityClient) FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
-	err := grpc.Invoke(ctx, "/sa.SA/FQDNSetExists", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/FQDNSetExists", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) NewRegistration(ctx context.Context, in *core.Registration, opts ...grpc.CallOption) (*core.Registration, error) {
+func (c *storageAuthorityClient) NewRegistration(ctx context.Context, in *core.Registration, opts ...grpc.CallOption) (*core.Registration, error) {
 	out := new(core.Registration)
-	err := grpc.Invoke(ctx, "/sa.SA/NewRegistration", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/NewRegistration", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) UpdateRegistration(ctx context.Context, in *core.Registration, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) UpdateRegistration(ctx context.Context, in *core.Registration, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/UpdateRegistration", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/UpdateRegistration", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) NewPendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Authorization, error) {
+func (c *storageAuthorityClient) NewPendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Authorization, error) {
 	out := new(core.Authorization)
-	err := grpc.Invoke(ctx, "/sa.SA/NewPendingAuthorization", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/NewPendingAuthorization", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) UpdatePendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) UpdatePendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/UpdatePendingAuthorization", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/UpdatePendingAuthorization", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) FinalizeAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) FinalizeAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/FinalizeAuthorization", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/FinalizeAuthorization", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) MarkCertificateRevoked(ctx context.Context, in *MarkCertificateRevokedRequest, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) MarkCertificateRevoked(ctx context.Context, in *MarkCertificateRevokedRequest, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/MarkCertificateRevoked", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/MarkCertificateRevoked", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) AddCertificate(ctx context.Context, in *core.CertificateRequest, opts ...grpc.CallOption) (*AddCertificateResponse, error) {
+func (c *storageAuthorityClient) AddCertificate(ctx context.Context, in *core.CertificateRequest, opts ...grpc.CallOption) (*AddCertificateResponse, error) {
 	out := new(AddCertificateResponse)
-	err := grpc.Invoke(ctx, "/sa.SA/AddCertificate", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/AddCertificate", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) AddSCTReceipt(ctx context.Context, in *SignedCertificateTimestamp, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) AddSCTReceipt(ctx context.Context, in *SignedCertificateTimestamp, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/AddSCTReceipt", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/AddSCTReceipt", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) RevokeAuthorizationsByDomain(ctx context.Context, in *RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsByDomainResponse, error) {
+func (c *storageAuthorityClient) RevokeAuthorizationsByDomain(ctx context.Context, in *RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsByDomainResponse, error) {
 	out := new(RevokeAuthorizationsByDomainResponse)
-	err := grpc.Invoke(ctx, "/sa.SA/RevokeAuthorizationsByDomain", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/RevokeAuthorizationsByDomain", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/DeactivateRegistration", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/DeactivateRegistration", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *sAClient) DeactivateAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Empty, error) {
+func (c *storageAuthorityClient) DeactivateAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Empty, error) {
 	out := new(core.Empty)
-	err := grpc.Invoke(ctx, "/sa.SA/DeactivateAuthorization", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "/sa.StorageAuthority/DeactivateAuthorization", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// Server API for SA service
+// Server API for StorageAuthority service
 
-type SAServer interface {
+type StorageAuthorityServer interface {
 	// Getters
 	GetRegistration(context.Context, *RegistrationID) (*core.Registration, error)
 	GetRegistrationByKey(context.Context, *JsonWebKey) (*core.Registration, error)
@@ -863,541 +979,541 @@ type SAServer interface {
 	DeactivateAuthorization(context.Context, *AuthorizationID) (*core.Empty, error)
 }
 
-func RegisterSAServer(s *grpc.Server, srv SAServer) {
-	s.RegisterService(&_SA_serviceDesc, srv)
+func RegisterStorageAuthorityServer(s *grpc.Server, srv StorageAuthorityServer) {
+	s.RegisterService(&_StorageAuthority_serviceDesc, srv)
 }
 
-func _SA_GetRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetRegistration(ctx, in)
+		return srv.(StorageAuthorityServer).GetRegistration(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetRegistration",
+		FullMethod: "/sa.StorageAuthority/GetRegistration",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetRegistration(ctx, req.(*RegistrationID))
+		return srv.(StorageAuthorityServer).GetRegistration(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetRegistrationByKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetRegistrationByKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JsonWebKey)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetRegistrationByKey(ctx, in)
+		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetRegistrationByKey",
+		FullMethod: "/sa.StorageAuthority/GetRegistrationByKey",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetRegistrationByKey(ctx, req.(*JsonWebKey))
+		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, req.(*JsonWebKey))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthorizationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetAuthorization(ctx, in)
+		return srv.(StorageAuthorityServer).GetAuthorization(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetAuthorization",
+		FullMethod: "/sa.StorageAuthority/GetAuthorization",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetAuthorization(ctx, req.(*AuthorizationID))
+		return srv.(StorageAuthorityServer).GetAuthorization(ctx, req.(*AuthorizationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetValidAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetValidAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetValidAuthorizationsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetValidAuthorizations(ctx, in)
+		return srv.(StorageAuthorityServer).GetValidAuthorizations(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetValidAuthorizations",
+		FullMethod: "/sa.StorageAuthority/GetValidAuthorizations",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetValidAuthorizations(ctx, req.(*GetValidAuthorizationsRequest))
+		return srv.(StorageAuthorityServer).GetValidAuthorizations(ctx, req.(*GetValidAuthorizationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetCertificate(ctx, in)
+		return srv.(StorageAuthorityServer).GetCertificate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetCertificate",
+		FullMethod: "/sa.StorageAuthority/GetCertificate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetCertificate(ctx, req.(*Serial))
+		return srv.(StorageAuthorityServer).GetCertificate(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetCertificateStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetCertificateStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetCertificateStatus(ctx, in)
+		return srv.(StorageAuthorityServer).GetCertificateStatus(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetCertificateStatus",
+		FullMethod: "/sa.StorageAuthority/GetCertificateStatus",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetCertificateStatus(ctx, req.(*Serial))
+		return srv.(StorageAuthorityServer).GetCertificateStatus(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_CountCertificatesRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_CountCertificatesRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Range)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).CountCertificatesRange(ctx, in)
+		return srv.(StorageAuthorityServer).CountCertificatesRange(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/CountCertificatesRange",
+		FullMethod: "/sa.StorageAuthority/CountCertificatesRange",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).CountCertificatesRange(ctx, req.(*Range))
+		return srv.(StorageAuthorityServer).CountCertificatesRange(ctx, req.(*Range))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_CountCertificatesByNames_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_CountCertificatesByNames_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CountCertificatesByNamesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).CountCertificatesByNames(ctx, in)
+		return srv.(StorageAuthorityServer).CountCertificatesByNames(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/CountCertificatesByNames",
+		FullMethod: "/sa.StorageAuthority/CountCertificatesByNames",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).CountCertificatesByNames(ctx, req.(*CountCertificatesByNamesRequest))
+		return srv.(StorageAuthorityServer).CountCertificatesByNames(ctx, req.(*CountCertificatesByNamesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_CountRegistrationsByIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_CountRegistrationsByIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CountRegistrationsByIPRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).CountRegistrationsByIP(ctx, in)
+		return srv.(StorageAuthorityServer).CountRegistrationsByIP(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/CountRegistrationsByIP",
+		FullMethod: "/sa.StorageAuthority/CountRegistrationsByIP",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).CountRegistrationsByIP(ctx, req.(*CountRegistrationsByIPRequest))
+		return srv.(StorageAuthorityServer).CountRegistrationsByIP(ctx, req.(*CountRegistrationsByIPRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_CountPendingAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_CountPendingAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).CountPendingAuthorizations(ctx, in)
+		return srv.(StorageAuthorityServer).CountPendingAuthorizations(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/CountPendingAuthorizations",
+		FullMethod: "/sa.StorageAuthority/CountPendingAuthorizations",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).CountPendingAuthorizations(ctx, req.(*RegistrationID))
+		return srv.(StorageAuthorityServer).CountPendingAuthorizations(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_GetSCTReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetSCTReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSCTReceiptRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).GetSCTReceipt(ctx, in)
+		return srv.(StorageAuthorityServer).GetSCTReceipt(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/GetSCTReceipt",
+		FullMethod: "/sa.StorageAuthority/GetSCTReceipt",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).GetSCTReceipt(ctx, req.(*GetSCTReceiptRequest))
+		return srv.(StorageAuthorityServer).GetSCTReceipt(ctx, req.(*GetSCTReceiptRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_CountFQDNSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_CountFQDNSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CountFQDNSetsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).CountFQDNSets(ctx, in)
+		return srv.(StorageAuthorityServer).CountFQDNSets(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/CountFQDNSets",
+		FullMethod: "/sa.StorageAuthority/CountFQDNSets",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).CountFQDNSets(ctx, req.(*CountFQDNSetsRequest))
+		return srv.(StorageAuthorityServer).CountFQDNSets(ctx, req.(*CountFQDNSetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_FQDNSetExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_FQDNSetExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FQDNSetExistsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).FQDNSetExists(ctx, in)
+		return srv.(StorageAuthorityServer).FQDNSetExists(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/FQDNSetExists",
+		FullMethod: "/sa.StorageAuthority/FQDNSetExists",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
+		return srv.(StorageAuthorityServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_NewRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_NewRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.Registration)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).NewRegistration(ctx, in)
+		return srv.(StorageAuthorityServer).NewRegistration(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/NewRegistration",
+		FullMethod: "/sa.StorageAuthority/NewRegistration",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).NewRegistration(ctx, req.(*core.Registration))
+		return srv.(StorageAuthorityServer).NewRegistration(ctx, req.(*core.Registration))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_UpdateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_UpdateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.Registration)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).UpdateRegistration(ctx, in)
+		return srv.(StorageAuthorityServer).UpdateRegistration(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/UpdateRegistration",
+		FullMethod: "/sa.StorageAuthority/UpdateRegistration",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).UpdateRegistration(ctx, req.(*core.Registration))
+		return srv.(StorageAuthorityServer).UpdateRegistration(ctx, req.(*core.Registration))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_NewPendingAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_NewPendingAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.Authorization)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).NewPendingAuthorization(ctx, in)
+		return srv.(StorageAuthorityServer).NewPendingAuthorization(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/NewPendingAuthorization",
+		FullMethod: "/sa.StorageAuthority/NewPendingAuthorization",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).NewPendingAuthorization(ctx, req.(*core.Authorization))
+		return srv.(StorageAuthorityServer).NewPendingAuthorization(ctx, req.(*core.Authorization))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_UpdatePendingAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_UpdatePendingAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.Authorization)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).UpdatePendingAuthorization(ctx, in)
+		return srv.(StorageAuthorityServer).UpdatePendingAuthorization(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/UpdatePendingAuthorization",
+		FullMethod: "/sa.StorageAuthority/UpdatePendingAuthorization",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).UpdatePendingAuthorization(ctx, req.(*core.Authorization))
+		return srv.(StorageAuthorityServer).UpdatePendingAuthorization(ctx, req.(*core.Authorization))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_FinalizeAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_FinalizeAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.Authorization)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).FinalizeAuthorization(ctx, in)
+		return srv.(StorageAuthorityServer).FinalizeAuthorization(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/FinalizeAuthorization",
+		FullMethod: "/sa.StorageAuthority/FinalizeAuthorization",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).FinalizeAuthorization(ctx, req.(*core.Authorization))
+		return srv.(StorageAuthorityServer).FinalizeAuthorization(ctx, req.(*core.Authorization))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_MarkCertificateRevoked_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_MarkCertificateRevoked_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MarkCertificateRevokedRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).MarkCertificateRevoked(ctx, in)
+		return srv.(StorageAuthorityServer).MarkCertificateRevoked(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/MarkCertificateRevoked",
+		FullMethod: "/sa.StorageAuthority/MarkCertificateRevoked",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).MarkCertificateRevoked(ctx, req.(*MarkCertificateRevokedRequest))
+		return srv.(StorageAuthorityServer).MarkCertificateRevoked(ctx, req.(*MarkCertificateRevokedRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_AddCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_AddCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(core.CertificateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).AddCertificate(ctx, in)
+		return srv.(StorageAuthorityServer).AddCertificate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/AddCertificate",
+		FullMethod: "/sa.StorageAuthority/AddCertificate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).AddCertificate(ctx, req.(*core.CertificateRequest))
+		return srv.(StorageAuthorityServer).AddCertificate(ctx, req.(*core.CertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_AddSCTReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_AddSCTReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SignedCertificateTimestamp)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).AddSCTReceipt(ctx, in)
+		return srv.(StorageAuthorityServer).AddSCTReceipt(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/AddSCTReceipt",
+		FullMethod: "/sa.StorageAuthority/AddSCTReceipt",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).AddSCTReceipt(ctx, req.(*SignedCertificateTimestamp))
+		return srv.(StorageAuthorityServer).AddSCTReceipt(ctx, req.(*SignedCertificateTimestamp))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_RevokeAuthorizationsByDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_RevokeAuthorizationsByDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RevokeAuthorizationsByDomainRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).RevokeAuthorizationsByDomain(ctx, in)
+		return srv.(StorageAuthorityServer).RevokeAuthorizationsByDomain(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/RevokeAuthorizationsByDomain",
+		FullMethod: "/sa.StorageAuthority/RevokeAuthorizationsByDomain",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).RevokeAuthorizationsByDomain(ctx, req.(*RevokeAuthorizationsByDomainRequest))
+		return srv.(StorageAuthorityServer).RevokeAuthorizationsByDomain(ctx, req.(*RevokeAuthorizationsByDomainRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_DeactivateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_DeactivateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).DeactivateRegistration(ctx, in)
+		return srv.(StorageAuthorityServer).DeactivateRegistration(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/DeactivateRegistration",
+		FullMethod: "/sa.StorageAuthority/DeactivateRegistration",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).DeactivateRegistration(ctx, req.(*RegistrationID))
+		return srv.(StorageAuthorityServer).DeactivateRegistration(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SA_DeactivateAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_DeactivateAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthorizationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SAServer).DeactivateAuthorization(ctx, in)
+		return srv.(StorageAuthorityServer).DeactivateAuthorization(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.SA/DeactivateAuthorization",
+		FullMethod: "/sa.StorageAuthority/DeactivateAuthorization",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SAServer).DeactivateAuthorization(ctx, req.(*AuthorizationID))
+		return srv.(StorageAuthorityServer).DeactivateAuthorization(ctx, req.(*AuthorizationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-var _SA_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "sa.SA",
-	HandlerType: (*SAServer)(nil),
+var _StorageAuthority_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "sa.StorageAuthority",
+	HandlerType: (*StorageAuthorityServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GetRegistration",
-			Handler:    _SA_GetRegistration_Handler,
+			Handler:    _StorageAuthority_GetRegistration_Handler,
 		},
 		{
 			MethodName: "GetRegistrationByKey",
-			Handler:    _SA_GetRegistrationByKey_Handler,
+			Handler:    _StorageAuthority_GetRegistrationByKey_Handler,
 		},
 		{
 			MethodName: "GetAuthorization",
-			Handler:    _SA_GetAuthorization_Handler,
+			Handler:    _StorageAuthority_GetAuthorization_Handler,
 		},
 		{
 			MethodName: "GetValidAuthorizations",
-			Handler:    _SA_GetValidAuthorizations_Handler,
+			Handler:    _StorageAuthority_GetValidAuthorizations_Handler,
 		},
 		{
 			MethodName: "GetCertificate",
-			Handler:    _SA_GetCertificate_Handler,
+			Handler:    _StorageAuthority_GetCertificate_Handler,
 		},
 		{
 			MethodName: "GetCertificateStatus",
-			Handler:    _SA_GetCertificateStatus_Handler,
+			Handler:    _StorageAuthority_GetCertificateStatus_Handler,
 		},
 		{
 			MethodName: "CountCertificatesRange",
-			Handler:    _SA_CountCertificatesRange_Handler,
+			Handler:    _StorageAuthority_CountCertificatesRange_Handler,
 		},
 		{
 			MethodName: "CountCertificatesByNames",
-			Handler:    _SA_CountCertificatesByNames_Handler,
+			Handler:    _StorageAuthority_CountCertificatesByNames_Handler,
 		},
 		{
 			MethodName: "CountRegistrationsByIP",
-			Handler:    _SA_CountRegistrationsByIP_Handler,
+			Handler:    _StorageAuthority_CountRegistrationsByIP_Handler,
 		},
 		{
 			MethodName: "CountPendingAuthorizations",
-			Handler:    _SA_CountPendingAuthorizations_Handler,
+			Handler:    _StorageAuthority_CountPendingAuthorizations_Handler,
 		},
 		{
 			MethodName: "GetSCTReceipt",
-			Handler:    _SA_GetSCTReceipt_Handler,
+			Handler:    _StorageAuthority_GetSCTReceipt_Handler,
 		},
 		{
 			MethodName: "CountFQDNSets",
-			Handler:    _SA_CountFQDNSets_Handler,
+			Handler:    _StorageAuthority_CountFQDNSets_Handler,
 		},
 		{
 			MethodName: "FQDNSetExists",
-			Handler:    _SA_FQDNSetExists_Handler,
+			Handler:    _StorageAuthority_FQDNSetExists_Handler,
 		},
 		{
 			MethodName: "NewRegistration",
-			Handler:    _SA_NewRegistration_Handler,
+			Handler:    _StorageAuthority_NewRegistration_Handler,
 		},
 		{
 			MethodName: "UpdateRegistration",
-			Handler:    _SA_UpdateRegistration_Handler,
+			Handler:    _StorageAuthority_UpdateRegistration_Handler,
 		},
 		{
 			MethodName: "NewPendingAuthorization",
-			Handler:    _SA_NewPendingAuthorization_Handler,
+			Handler:    _StorageAuthority_NewPendingAuthorization_Handler,
 		},
 		{
 			MethodName: "UpdatePendingAuthorization",
-			Handler:    _SA_UpdatePendingAuthorization_Handler,
+			Handler:    _StorageAuthority_UpdatePendingAuthorization_Handler,
 		},
 		{
 			MethodName: "FinalizeAuthorization",
-			Handler:    _SA_FinalizeAuthorization_Handler,
+			Handler:    _StorageAuthority_FinalizeAuthorization_Handler,
 		},
 		{
 			MethodName: "MarkCertificateRevoked",
-			Handler:    _SA_MarkCertificateRevoked_Handler,
+			Handler:    _StorageAuthority_MarkCertificateRevoked_Handler,
 		},
 		{
 			MethodName: "AddCertificate",
-			Handler:    _SA_AddCertificate_Handler,
+			Handler:    _StorageAuthority_AddCertificate_Handler,
 		},
 		{
 			MethodName: "AddSCTReceipt",
-			Handler:    _SA_AddSCTReceipt_Handler,
+			Handler:    _StorageAuthority_AddSCTReceipt_Handler,
 		},
 		{
 			MethodName: "RevokeAuthorizationsByDomain",
-			Handler:    _SA_RevokeAuthorizationsByDomain_Handler,
+			Handler:    _StorageAuthority_RevokeAuthorizationsByDomain_Handler,
 		},
 		{
 			MethodName: "DeactivateRegistration",
-			Handler:    _SA_DeactivateRegistration_Handler,
+			Handler:    _StorageAuthority_DeactivateRegistration_Handler,
 		},
 		{
 			MethodName: "DeactivateAuthorization",
-			Handler:    _SA_DeactivateAuthorization_Handler,
+			Handler:    _StorageAuthority_DeactivateAuthorization_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1407,68 +1523,78 @@ var _SA_serviceDesc = grpc.ServiceDesc{
 func init() { proto1.RegisterFile("sa/proto/sa.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 995 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x56, 0xdd, 0x72, 0x1a, 0x37,
-	0x14, 0xe6, 0xc7, 0xd8, 0xe1, 0x18, 0xb0, 0x91, 0x6d, 0xbc, 0xd9, 0xc6, 0xad, 0xab, 0x74, 0x26,
-	0xe4, 0x86, 0x34, 0x9e, 0x49, 0x7d, 0xe1, 0xba, 0x53, 0x63, 0x08, 0xb1, 0x33, 0xf1, 0xa4, 0x90,
-	0xb8, 0x33, 0xbd, 0x53, 0xd9, 0x13, 0xaa, 0x1a, 0x76, 0xe9, 0x4a, 0x84, 0x90, 0xa7, 0xe9, 0x63,
-	0xf5, 0x71, 0x3a, 0x92, 0x16, 0xd8, 0x3f, 0x70, 0x72, 0x27, 0xb4, 0xe7, 0x3b, 0xe7, 0x3b, 0x7f,
-	0x9f, 0x80, 0xaa, 0x60, 0xcf, 0xc6, 0xbe, 0x27, 0xbd, 0x67, 0x82, 0x35, 0xf4, 0x81, 0xe4, 0x04,
-	0xb3, 0x0f, 0xfa, 0x9e, 0x8f, 0xc1, 0x07, 0x75, 0x34, 0x9f, 0xe8, 0x23, 0xa8, 0x74, 0x71, 0xc0,
-	0x85, 0xf4, 0x99, 0xe4, 0x9e, 0x7b, 0xd5, 0x22, 0x00, 0x39, 0xee, 0x58, 0xd9, 0xe3, 0x6c, 0x3d,
-	0x4f, 0x1f, 0x02, 0x5c, 0x0b, 0xcf, 0xfd, 0x1d, 0xff, 0x7c, 0x8d, 0x33, 0xb2, 0x0d, 0xf9, 0xbf,
-	0xa7, 0x77, 0xfa, 0x53, 0x91, 0x1e, 0xc1, 0xce, 0xc5, 0x44, 0xfe, 0xe5, 0xf9, 0xfc, 0x73, 0x12,
-	0x59, 0xa4, 0xef, 0xe1, 0xa8, 0x83, 0xf2, 0x96, 0x0d, 0xb9, 0x13, 0x31, 0x13, 0x5d, 0xfc, 0x67,
-	0x82, 0x42, 0x92, 0x1a, 0x54, 0xfc, 0x48, 0x60, 0x13, 0x92, 0xec, 0xc0, 0x96, 0xe3, 0x8d, 0x18,
-	0x77, 0x85, 0x95, 0x3b, 0xce, 0xd7, 0x8b, 0x2a, 0xaa, 0xeb, 0x4d, 0xad, 0xbc, 0x26, 0x74, 0x00,
-	0x7b, 0x29, 0x3e, 0xe9, 0x1e, 0x54, 0x2f, 0xd1, 0x97, 0xfc, 0x03, 0xef, 0x33, 0x89, 0x3d, 0xc9,
-	0xe4, 0x44, 0x50, 0x0b, 0x36, 0x7b, 0xe8, 0x73, 0x36, 0x24, 0x15, 0xd8, 0x14, 0xfa, 0x14, 0x90,
-	0x7b, 0x0a, 0x85, 0x2e, 0x73, 0x07, 0x48, 0x76, 0xe1, 0x01, 0x32, 0x7f, 0xc8, 0x51, 0xc8, 0x20,
-	0x7c, 0x05, 0x36, 0x87, 0x4c, 0xaa, 0xdf, 0x39, 0x1d, 0xb0, 0x06, 0x85, 0x4b, 0x6f, 0xe2, 0x4a,
-	0x52, 0x86, 0x42, 0x5f, 0x1d, 0x82, 0xca, 0x5c, 0xc3, 0x77, 0xfa, 0x3e, 0x14, 0x56, 0x34, 0x67,
-	0x37, 0x6c, 0x84, 0x8b, 0x0c, 0x2d, 0x28, 0xf8, 0x2a, 0x8a, 0x46, 0x6c, 0x9f, 0x14, 0x1b, 0x82,
-	0x35, 0x4c, 0xd8, 0x32, 0x14, 0x5c, 0x65, 0x69, 0x32, 0xa4, 0x43, 0x28, 0x69, 0x5f, 0x01, 0x9e,
-	0x3c, 0x87, 0x52, 0x3f, 0xf4, 0xdb, 0xca, 0x1e, 0xe7, 0xeb, 0xdb, 0x27, 0xdf, 0x28, 0x7c, 0xd8,
-	0xae, 0xf1, 0x86, 0x8d, 0xdb, 0x43, 0x1c, 0xa1, 0x2b, 0xed, 0xa7, 0x00, 0xcb, 0x5f, 0xa4, 0x04,
-	0x1b, 0xca, 0xbf, 0xc9, 0x76, 0xc9, 0xdc, 0x64, 0xd4, 0x86, 0x23, 0xed, 0x25, 0xdc, 0x76, 0xd1,
-	0x9c, 0x5d, 0xbd, 0x9d, 0xf3, 0x56, 0x6d, 0x1c, 0x07, 0xd8, 0x45, 0x0e, 0xb9, 0x58, 0x0e, 0xf4,
-	0x05, 0xec, 0x77, 0x50, 0xf6, 0x2e, 0xdf, 0x75, 0xb1, 0x8f, 0x7c, 0x2c, 0xe7, 0xe8, 0x58, 0xad,
-	0x55, 0xf4, 0xa1, 0x37, 0xb8, 0x6a, 0x69, 0x0f, 0x45, 0x7a, 0x0a, 0xfb, 0x3a, 0xfa, 0xcb, 0xdf,
-	0x5a, 0x37, 0x3d, 0x94, 0x22, 0x04, 0x9b, 0x72, 0xd7, 0xf1, 0xa6, 0x2b, 0xc6, 0x80, 0x3e, 0x81,
-	0xfd, 0x00, 0xd3, 0xfe, 0xc4, 0xc5, 0x12, 0x18, 0x32, 0xcc, 0x6a, 0x43, 0x0b, 0x36, 0x8d, 0x85,
-	0xf2, 0x89, 0xfa, 0xa4, 0x7d, 0x3e, 0xa0, 0xe7, 0x70, 0xf4, 0x86, 0xf9, 0x77, 0xa1, 0x96, 0x75,
-	0xf1, 0xa3, 0x77, 0x87, 0xce, 0x2a, 0xee, 0x25, 0xd8, 0xe8, 0x7b, 0x0e, 0x06, 0x85, 0xab, 0x43,
-	0xed, 0xc2, 0x71, 0x22, 0x68, 0x31, 0xf6, 0x5c, 0x81, 0x0a, 0xe7, 0xf0, 0xc1, 0x7c, 0x88, 0x8a,
-	0xf4, 0xdf, 0x2c, 0xd8, 0x3d, 0x3e, 0x70, 0x31, 0x6c, 0xfd, 0x8e, 0x8f, 0x50, 0x48, 0x36, 0x1a,
-	0x87, 0x37, 0x8c, 0x10, 0x00, 0xd1, 0x97, 0xb7, 0xe8, 0x0b, 0xee, 0xb9, 0x26, 0xd0, 0xb2, 0x64,
-	0x79, 0xcd, 0xa2, 0x0a, 0x45, 0x39, 0xc7, 0x5a, 0x1b, 0x73, 0x14, 0x7e, 0x92, 0xe8, 0x2a, 0x90,
-	0xb0, 0x0a, 0xc7, 0xd9, 0x7a, 0x49, 0x99, 0x09, 0x3e, 0x70, 0x99, 0x9c, 0xf8, 0x68, 0x6d, 0xea,
-	0xab, 0x87, 0x50, 0xed, 0x87, 0xd6, 0xc2, 0xa4, 0xb6, 0xa5, 0x29, 0xbe, 0x80, 0xc7, 0x26, 0xf9,
-	0xe8, 0x26, 0x35, 0x67, 0x2d, 0x5d, 0xcc, 0x50, 0x45, 0x4c, 0x75, 0x83, 0xcc, 0xae, 0xe1, 0x87,
-	0xf5, 0xb0, 0xa0, 0x22, 0x55, 0x28, 0x7e, 0xe0, 0x2e, 0x1b, 0xf2, 0xcf, 0xe8, 0x2c, 0x3b, 0x3a,
-	0x46, 0xd7, 0xe1, 0xee, 0xc0, 0xa4, 0x79, 0xf2, 0x5f, 0x09, 0x72, 0xbd, 0x0b, 0x72, 0x06, 0x3b,
-	0x1d, 0x8c, 0x4c, 0x23, 0x21, 0x7a, 0xcc, 0x22, 0xea, 0x60, 0x93, 0x86, 0x56, 0xad, 0xf0, 0x2d,
-	0xcd, 0x90, 0x9f, 0xf5, 0x14, 0x86, 0x2f, 0x9b, 0x33, 0x25, 0x55, 0x15, 0xe5, 0x61, 0x29, 0x5d,
-	0x2b, 0xd0, 0xbf, 0xc0, 0x6e, 0x07, 0x65, 0x24, 0x15, 0xb2, 0xa7, 0x90, 0x31, 0x65, 0xb3, 0xf7,
-	0x0c, 0x3c, 0x72, 0x4d, 0x33, 0xe4, 0x16, 0x6a, 0xe9, 0x22, 0x47, 0xbe, 0x57, 0x5e, 0xd6, 0x0a,
-	0xa0, 0x7d, 0xa8, 0x4c, 0xd2, 0xc4, 0x2c, 0x43, 0x9e, 0x43, 0xa5, 0x83, 0x61, 0x69, 0x21, 0xa0,
-	0x8c, 0x4d, 0x03, 0xed, 0xaa, 0x21, 0x13, 0xfa, 0x4c, 0x33, 0xe4, 0x4c, 0x17, 0x22, 0x21, 0x82,
-	0x11, 0xe0, 0x81, 0x56, 0x90, 0x84, 0x4e, 0x66, 0xc8, 0x8f, 0x50, 0x4b, 0x88, 0x99, 0x51, 0xaa,
-	0xe5, 0xc2, 0xdb, 0xc5, 0x85, 0xfe, 0xd0, 0x0c, 0xe9, 0x81, 0xb5, 0x4a, 0xfe, 0xc8, 0xe3, 0x85,
-	0xe1, 0x6a, 0x71, 0xb4, 0x77, 0xe3, 0x6a, 0x46, 0x33, 0xe4, 0x55, 0x40, 0x23, 0xa1, 0x4c, 0xa6,
-	0x9c, 0x6b, 0x55, 0x2b, 0x4a, 0xef, 0x1c, 0x6c, 0x7d, 0x7c, 0x6b, 0x06, 0x2e, 0xd6, 0x9c, 0xb4,
-	0xf1, 0x8a, 0xc0, 0x5f, 0x43, 0x39, 0xa2, 0x6d, 0xc4, 0x0a, 0xda, 0x99, 0x90, 0x3b, 0xfb, 0x5b,
-	0x5d, 0xdf, 0x95, 0xbb, 0x4e, 0x33, 0xe4, 0x27, 0x28, 0x47, 0x14, 0xcf, 0x38, 0x4b, 0x13, 0xc1,
-	0x28, 0x89, 0x53, 0x28, 0x47, 0x04, 0xcf, 0xe0, 0xd2, 0x34, 0xd0, 0xd6, 0x4d, 0x36, 0x57, 0x7a,
-	0x14, 0x76, 0x6e, 0x70, 0x1a, 0x5b, 0xa8, 0xc4, 0xf8, 0xaf, 0x58, 0x89, 0x53, 0x20, 0xef, 0xc7,
-	0x8e, 0x16, 0xb7, 0x7b, 0xf0, 0xdb, 0xe6, 0xae, 0x3d, 0x1a, 0xcb, 0x19, 0xcd, 0x90, 0x36, 0x1c,
-	0xde, 0xe0, 0x34, 0xad, 0xe0, 0x24, 0x6d, 0x7b, 0x56, 0xad, 0xd4, 0xaf, 0x60, 0x9b, 0xf8, 0x5f,
-	0xee, 0x29, 0x46, 0xe4, 0x0c, 0x0e, 0x5e, 0x06, 0xd2, 0xf3, 0xf5, 0xe0, 0x6b, 0xa8, 0xa5, 0x3f,
-	0x11, 0x66, 0x04, 0xd7, 0x3e, 0x1f, 0x71, 0x5f, 0xaf, 0xa0, 0x12, 0x7d, 0x2f, 0x88, 0x95, 0xd8,
-	0xdc, 0x39, 0xd4, 0xd6, 0xaa, 0x93, 0xfa, 0xba, 0x68, 0x9d, 0x2a, 0x5f, 0x38, 0x4e, 0x68, 0x1e,
-	0xef, 0x99, 0xba, 0x38, 0x13, 0x01, 0x8f, 0xd6, 0xa9, 0x36, 0x79, 0x62, 0x16, 0xe2, 0xde, 0xe7,
-	0xc0, 0xae, 0xdf, 0x6f, 0xb8, 0x20, 0x7d, 0x06, 0xb5, 0x16, 0xb2, 0xbe, 0xe4, 0x1f, 0x93, 0xd3,
-	0x94, 0xdc, 0xbf, 0x18, 0xe3, 0x73, 0x38, 0x5c, 0x82, 0xbf, 0x40, 0xa0, 0xa3, 0xf0, 0xe6, 0xd6,
-	0x1f, 0x05, 0xfd, 0xf7, 0xf6, 0xff, 0x00, 0x00, 0x00, 0xff, 0xff, 0x23, 0xeb, 0xde, 0x19, 0x0d,
-	0x0b, 0x00, 0x00,
+	// 1155 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x57, 0xdf, 0x52, 0xdb, 0xc6,
+	0x17, 0x8e, 0xed, 0x18, 0xf0, 0xc1, 0x36, 0xb0, 0x80, 0x51, 0xf4, 0x0b, 0xbf, 0xa6, 0x4a, 0x67,
+	0x42, 0x6e, 0x48, 0xc3, 0x4c, 0xca, 0x05, 0xa5, 0x13, 0xfe, 0x38, 0x4d, 0x48, 0xc3, 0xa4, 0x76,
+	0x42, 0x67, 0x7a, 0x27, 0xa4, 0xc5, 0xdd, 0x62, 0x24, 0x55, 0xbb, 0xfc, 0x31, 0x8f, 0xd0, 0xa7,
+	0xe8, 0xd3, 0xf5, 0xb2, 0xcf, 0xd0, 0xb3, 0x67, 0x65, 0x5b, 0x92, 0x65, 0x48, 0xef, 0xe4, 0xdd,
+	0xf3, 0x7d, 0x7b, 0xf6, 0x9c, 0xef, 0x7c, 0x3b, 0x86, 0x25, 0xe9, 0xbe, 0x88, 0xe2, 0x50, 0x85,
+	0x2f, 0xa4, 0xbb, 0x49, 0x1f, 0xac, 0x2c, 0x5d, 0x7b, 0xd5, 0x0b, 0x63, 0x9e, 0x6c, 0xe8, 0x4f,
+	0xb3, 0xe5, 0x3c, 0x86, 0x66, 0x87, 0xf7, 0x84, 0x54, 0xb1, 0xab, 0x44, 0x18, 0xbc, 0x3b, 0x64,
+	0x00, 0x65, 0xe1, 0x5b, 0xa5, 0x27, 0xa5, 0x8d, 0x8a, 0xf3, 0x08, 0xe0, 0x48, 0x86, 0xc1, 0x2f,
+	0xfc, 0xf4, 0x3d, 0x1f, 0xb0, 0x79, 0xa8, 0xfc, 0x7e, 0x7d, 0x4e, 0x5b, 0x75, 0x67, 0x1d, 0x16,
+	0xf6, 0x2e, 0xd5, 0x6f, 0x61, 0x2c, 0x6e, 0x27, 0x91, 0x35, 0xe7, 0x33, 0xac, 0xff, 0xc8, 0xd5,
+	0x89, 0xdb, 0x17, 0x7e, 0x26, 0x4c, 0x76, 0xf8, 0x1f, 0x97, 0x5c, 0x2a, 0xd6, 0x82, 0x66, 0x9c,
+	0x39, 0xd8, 0x1c, 0xc9, 0x16, 0x60, 0xd6, 0x0f, 0x2f, 0x5c, 0x11, 0x48, 0xab, 0xfc, 0xa4, 0xb2,
+	0x51, 0xd3, 0xa7, 0x06, 0xe1, 0xb5, 0x55, 0xa1, 0x84, 0xfe, 0x2c, 0xc1, 0x72, 0x01, 0x29, 0x7b,
+	0x09, 0xd5, 0x2b, 0xbd, 0x8c, 0x24, 0x95, 0x8d, 0xf9, 0x2d, 0x67, 0x13, 0xef, 0x5e, 0x10, 0xb7,
+	0xf9, 0xc1, 0x8d, 0xda, 0x7d, 0x7e, 0xc1, 0x03, 0x65, 0xbf, 0x06, 0x18, 0xff, 0x62, 0x4d, 0x98,
+	0x31, 0xc7, 0x9a, 0xfc, 0x99, 0x03, 0x55, 0x17, 0xa1, 0xb7, 0x98, 0x44, 0x09, 0x09, 0x97, 0x37,
+	0xa9, 0x66, 0x19, 0x36, 0xe7, 0x9f, 0x12, 0x2c, 0x1d, 0xf0, 0x58, 0x89, 0x33, 0xe1, 0xb9, 0x8a,
+	0x77, 0x95, 0xab, 0x2e, 0xa5, 0x66, 0x92, 0x3c, 0x16, 0x6e, 0x3f, 0x61, 0xb2, 0x81, 0xc9, 0xcb,
+	0x53, 0xe9, 0xc5, 0xe2, 0x94, 0xc7, 0x7b, 0x11, 0x96, 0xfd, 0x8a, 0xfb, 0x44, 0x3b, 0x47, 0xb1,
+	0x84, 0x32, 0xd7, 0x63, 0x6b, 0xb0, 0x10, 0x7a, 0x32, 0xfa, 0xc9, 0x95, 0xea, 0x73, 0xe4, 0x23,
+	0xa7, 0x6f, 0x3d, 0xa4, 0x8d, 0x65, 0x98, 0x8f, 0xf9, 0x55, 0x78, 0xce, 0xfd, 0x43, 0x5c, 0xb5,
+	0xaa, 0xb4, 0xb8, 0x0a, 0x8d, 0x64, 0xb1, 0xc3, 0x5d, 0x6c, 0x93, 0x35, 0x43, 0xcb, 0xeb, 0xb0,
+	0xda, 0x47, 0x82, 0xf6, 0x4d, 0x24, 0x4c, 0x6d, 0x8f, 0xdd, 0x5e, 0x17, 0xef, 0x68, 0xcd, 0xd2,
+	0xf6, 0x0a, 0xd4, 0xf5, 0x19, 0x1d, 0x2e, 0x23, 0xac, 0x08, 0xb7, 0xe6, 0x74, 0x3b, 0xd9, 0x22,
+	0xcc, 0x05, 0xa1, 0xda, 0x3b, 0x53, 0x3c, 0xb6, 0x6a, 0x14, 0xb7, 0x04, 0x35, 0x21, 0x89, 0x04,
+	0xb3, 0x00, 0x9d, 0xae, 0x63, 0xc1, 0x4c, 0x97, 0xae, 0x96, 0xbf, 0xa4, 0xf3, 0x1c, 0xaa, 0x1d,
+	0x37, 0xe8, 0x71, 0xcd, 0xc3, 0xdd, 0xb8, 0x2f, 0xb0, 0xc5, 0x49, 0x43, 0x31, 0xb4, 0x8f, 0x39,
+	0xe3, 0xef, 0x32, 0xb5, 0xb0, 0x05, 0xd5, 0x83, 0xf0, 0x12, 0x4b, 0xde, 0x80, 0xaa, 0xa7, 0x3f,
+	0x12, 0xad, 0x1d, 0xc1, 0x57, 0xb4, 0x9e, 0xaa, 0xa8, 0xdc, 0x1f, 0x1c, 0xbb, 0x17, 0x7c, 0xa4,
+	0x19, 0x0b, 0xaa, 0xb1, 0x3e, 0x85, 0x10, 0xf3, 0x5b, 0x35, 0xdd, 0x65, 0x73, 0x2c, 0x72, 0x05,
+	0x3a, 0xd2, 0x68, 0xc6, 0xe9, 0x43, 0x9d, 0xb8, 0x12, 0x3c, 0xca, 0xa3, 0xee, 0xa5, 0x7e, 0x27,
+	0x2a, 0xf9, 0x9f, 0xc6, 0xa7, 0xe3, 0xd2, 0xf2, 0x78, 0x9e, 0x91, 0x47, 0x1d, 0x1e, 0x6a, 0xfe,
+	0xa4, 0xa5, 0xa3, 0xcc, 0xcd, 0x8d, 0xda, 0xb0, 0x4e, 0x2c, 0xe9, 0x41, 0xc2, 0xd4, 0xdf, 0x7d,
+	0x1c, 0xe6, 0xad, 0x07, 0x23, 0x4a, 0xb0, 0xa3, 0x3b, 0x94, 0x73, 0x77, 0x70, 0x5e, 0xc1, 0x0a,
+	0x8e, 0x4c, 0xf7, 0xe0, 0x53, 0x87, 0x7b, 0x5c, 0x44, 0x6a, 0x88, 0xce, 0x0b, 0x0a, 0x4f, 0xef,
+	0x87, 0x3d, 0x1c, 0x98, 0x32, 0x95, 0x7e, 0x1b, 0x56, 0xe8, 0xf4, 0x37, 0x3f, 0x1f, 0x1e, 0x77,
+	0xb9, 0x92, 0x29, 0xd8, 0xb5, 0x08, 0x7c, 0x1c, 0x9d, 0xe2, 0xc1, 0x72, 0x9e, 0xc1, 0x4a, 0x82,
+	0x69, 0xdf, 0x60, 0xde, 0x23, 0x60, 0x2a, 0xb0, 0x44, 0x81, 0xd8, 0x76, 0x13, 0xa1, 0x39, 0x39,
+	0x7d, 0x11, 0xe7, 0x9c, 0xb3, 0x0b, 0xeb, 0x1f, 0xdc, 0xf8, 0x3c, 0xd5, 0xb2, 0xce, 0x50, 0x90,
+	0xc5, 0xb9, 0x63, 0x1d, 0xbd, 0xd0, 0xe7, 0x49, 0xe1, 0x36, 0xa0, 0xb5, 0xe7, 0xfb, 0x19, 0xb4,
+	0x11, 0x25, 0x8d, 0xa3, 0xe8, 0x0d, 0x45, 0x54, 0x73, 0xfe, 0x2a, 0x81, 0xdd, 0x15, 0xbd, 0x80,
+	0xa7, 0xa3, 0x3f, 0x09, 0xec, 0x99, 0x72, 0x2f, 0xa2, 0xb4, 0x67, 0x31, 0xfc, 0x21, 0x3d, 0x75,
+	0xc2, 0x63, 0x89, 0x6d, 0x30, 0x07, 0x8d, 0x4b, 0x56, 0xa1, 0x2c, 0x50, 0xda, 0x6a, 0x88, 0x4d,
+	0x06, 0x0c, 0x51, 0xfc, 0x46, 0xf1, 0x40, 0x83, 0x24, 0xcd, 0x57, 0x5d, 0x87, 0x49, 0x3c, 0x13,
+	0xe7, 0x33, 0xe6, 0x34, 0x5b, 0x75, 0xf6, 0x08, 0x96, 0xbc, 0xd4, 0xc4, 0x9b, 0xab, 0xcd, 0x52,
+	0x8a, 0xaf, 0xe0, 0xa9, 0xb9, 0x7c, 0xd6, 0x72, 0xf6, 0x07, 0x87, 0x54, 0xcc, 0x54, 0x45, 0xd2,
+	0x46, 0x83, 0xb2, 0xff, 0xe6, 0x6e, 0x58, 0x52, 0x11, 0x4c, 0xe6, 0x4c, 0x04, 0x68, 0x69, 0xb7,
+	0xdc, 0x1f, 0x77, 0x34, 0xe2, 0x81, 0x2f, 0x82, 0x9e, 0xb9, 0xe6, 0xd6, 0xdf, 0x75, 0x58, 0xec,
+	0xaa, 0x30, 0x76, 0x7b, 0x43, 0x36, 0x35, 0x60, 0x3b, 0xb0, 0x80, 0xb2, 0x4a, 0x6b, 0x93, 0x31,
+	0x12, 0x5d, 0xc6, 0x7d, 0x6d, 0x66, 0x1c, 0x2e, 0xbd, 0xea, 0x3c, 0x60, 0xdf, 0x93, 0x26, 0xd3,
+	0x8b, 0xfb, 0x03, 0xfd, 0x14, 0x34, 0x35, 0xc3, 0xf8, 0x69, 0x98, 0x82, 0xfe, 0x01, 0x16, 0x11,
+	0x9d, 0xb9, 0x18, 0x5b, 0xd6, 0xc8, 0xdc, 0xcb, 0x61, 0x17, 0xda, 0xeb, 0x03, 0x76, 0x02, 0xad,
+	0xe2, 0x47, 0x84, 0x7d, 0xad, 0x59, 0xee, 0x7c, 0x60, 0xec, 0xb5, 0x29, 0x6f, 0x00, 0xf2, 0xbe,
+	0x84, 0x26, 0x62, 0x53, 0x4a, 0x62, 0xa0, 0x83, 0x4d, 0x3b, 0xed, 0x25, 0x93, 0x4c, 0x6a, 0x1b,
+	0x21, 0x3b, 0x54, 0x88, 0x49, 0xb7, 0x4f, 0x03, 0x57, 0xc9, 0x4f, 0xf2, 0x21, 0x08, 0xfe, 0x16,
+	0x5a, 0x13, 0xd6, 0x66, 0x7c, 0x6b, 0x3c, 0xfe, 0x76, 0x6d, 0xe4, 0x46, 0x88, 0xe8, 0x82, 0x35,
+	0xcd, 0x0c, 0xd9, 0xd3, 0x51, 0xe0, 0x74, 0xab, 0xb4, 0x17, 0xf3, 0xde, 0x86, 0xa4, 0x6f, 0x93,
+	0x34, 0x26, 0x7c, 0xca, 0x94, 0xf3, 0x4e, 0x0f, 0xcb, 0xa6, 0xb7, 0x0b, 0x36, 0x7d, 0x7e, 0x34,
+	0xf2, 0xcb, 0x35, 0xa7, 0x48, 0x5e, 0x19, 0xf8, 0x7b, 0x68, 0x64, 0x9c, 0x8e, 0x59, 0x49, 0x3b,
+	0x27, 0xcc, 0xcf, 0xfe, 0x3f, 0xd5, 0x77, 0xea, 0xe4, 0x23, 0xd9, 0x77, 0xd0, 0xc8, 0xf8, 0x9f,
+	0x21, 0x2b, 0xb2, 0xc4, 0x6c, 0x12, 0xdb, 0xd0, 0xc8, 0xd8, 0x9f, 0xc1, 0x15, 0x39, 0xa2, 0x4d,
+	0x4d, 0x36, 0x4b, 0x24, 0x85, 0x85, 0x63, 0x7e, 0x9d, 0x1b, 0xa8, 0x09, 0xf9, 0x4f, 0x19, 0x89,
+	0x6d, 0x60, 0xe6, 0x65, 0xbf, 0x17, 0x3f, 0x6f, 0xd6, 0xda, 0x17, 0x91, 0x1a, 0x20, 0xb0, 0x0d,
+	0x6b, 0x78, 0x6a, 0x51, 0xc1, 0x59, 0xd1, 0xf4, 0x4c, 0x1b, 0xa9, 0xd7, 0x60, 0x9b, 0xf3, 0xbf,
+	0x9c, 0x29, 0x97, 0xc8, 0x0e, 0xac, 0xbe, 0x49, 0x8c, 0xe8, 0xbf, 0x83, 0x8f, 0xa0, 0x55, 0xfc,
+	0x60, 0x18, 0x09, 0xde, 0xf9, 0x98, 0xe4, 0xb9, 0xde, 0x42, 0x33, 0xfb, 0x7a, 0x60, 0x07, 0xf3,
+	0x93, 0x3b, 0x84, 0xda, 0xe4, 0x3a, 0x85, 0x6f, 0x0d, 0xf9, 0x54, 0x03, 0xf7, 0x52, 0x7a, 0xbc,
+	0x47, 0x75, 0xf9, 0x4c, 0x24, 0x3c, 0xbe, 0xcb, 0xc3, 0xd9, 0x33, 0x33, 0x10, 0xf7, 0x3e, 0x0e,
+	0xf6, 0xc6, 0xfd, 0x81, 0xa3, 0xa4, 0x77, 0xa0, 0x75, 0xc8, 0x5d, 0x4f, 0x89, 0xab, 0x49, 0x35,
+	0x4d, 0xce, 0x5f, 0x2e, 0xe3, 0x5d, 0x58, 0x1b, 0x83, 0xbf, 0xc0, 0xa0, 0xb3, 0xf0, 0xfd, 0xd9,
+	0x5f, 0xab, 0xf4, 0xf7, 0xe1, 0xdf, 0x00, 0x00, 0x00, 0xff, 0xff, 0x91, 0xfa, 0x9c, 0x55, 0x6d,
+	0x0c, 0x00, 0x00,
 }

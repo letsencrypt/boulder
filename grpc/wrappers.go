@@ -9,10 +9,12 @@ package grpc
 import (
 	"crypto/x509"
 	"errors"
+	"net"
 	"time"
 
 	"golang.org/x/net/context"
 	ggrpc "google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v1"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -22,6 +24,7 @@ import (
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -29,8 +32,10 @@ type ValidationAuthorityGRPCServer struct {
 	impl core.ValidationAuthority
 }
 
-var errIncompleteRequest = errors.New("Incomplete gRPC request message")
-var errIncompleteResponse = errors.New("Incomplete gRPC response message")
+var (
+	errIncompleteRequest  = errors.New("Incomplete gRPC request message")
+	errIncompleteResponse = errors.New("Incomplete gRPC response message")
+)
 
 func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationResult, error) {
 	domain, challenge, authz, err := performValidationReqToArgs(in)
@@ -280,12 +285,12 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
 	defer cancel()
 
-	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
+	response, err := rac.inner.NewCertificate(localCtx, &corepb.CertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
 		return core.Certificate{}, unwrapError(err)
 	}
 
-	if response == nil || response.RegistrationID == nil || response.Serial == nil || response.Digest == nil || response.Der == nil || response.Issued == nil || response.Expires == nil {
+	if response == nil || !certificateValid(response) {
 		return core.Certificate{}, errIncompleteResponse
 	}
 
@@ -432,7 +437,7 @@ func NewRegistrationAuthorityServer(inner core.RegistrationAuthority) *Registrat
 	return &RegistrationAuthorityServerWrapper{inner}
 }
 
-func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *rapb.Registration) (*rapb.Registration, error) {
+func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
 	}
@@ -447,7 +452,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 	return registrationToPB(newReg)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*rapb.Authorization, error) {
+func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
 	if request == nil || !authorizationValid(request.Authz) || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
@@ -462,7 +467,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 	return authzToPB(newAuthz)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *corepb.CertificateRequest) (*corepb.Certificate, error) {
 	if request == nil || request.Csr == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
@@ -486,7 +491,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 	}, nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*rapb.Registration, error) {
+func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request.Base) || !registrationValid(request.Update) {
 		return nil, errIncompleteRequest
 	}
@@ -505,7 +510,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 	return registrationToPB(newReg)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.Context, request *rapb.UpdateAuthorizationRequest) (*rapb.Authorization, error) {
+func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.Context, request *rapb.UpdateAuthorizationRequest) (*corepb.Authorization, error) {
 	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil || request.Response == nil {
 		return nil, errIncompleteRequest
 	}
@@ -539,7 +544,7 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 	return &corepb.Empty{}, nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *rapb.Registration) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
 	}
@@ -554,7 +559,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 	return &corepb.Empty{}, nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *rapb.Authorization) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {
 	if request == nil || !authorizationValid(request) {
 		return nil, errIncompleteRequest
 	}
@@ -582,4 +587,494 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 		return nil, wrapError(err)
 	}
 	return &corepb.Empty{}, nil
+}
+
+// StorageAuthorityClientWrapper is the gRPC version of a core.StorageAuthority client
+type StorageAuthorityClientWrapper struct {
+	inner   sapb.StorageAuthorityClient
+	timeout time.Duration
+}
+
+func NewStorageAuthorityClient(inner sapb.StorageAuthorityClient, timeout time.Duration) *StorageAuthorityClientWrapper {
+	return &StorageAuthorityClientWrapper{inner, timeout}
+}
+
+func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, regID int64) (core.Registration, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.GetRegistration(localCtx, &sapb.RegistrationID{Id: &regID})
+	if err != nil {
+		return core.Registration{}, unwrapError(err)
+	}
+
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
+	return pbToRegistration(response)
+}
+
+func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	keyBytes, err := key.MarshalJSON()
+	if err != nil {
+		return core.Registration{}, err
+	}
+
+	response, err := sac.inner.GetRegistrationByKey(localCtx, &sapb.JsonWebKey{Jwk: keyBytes})
+	if err != nil {
+		return core.Registration{}, unwrapError(err)
+	}
+
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
+	return pbToRegistration(response)
+}
+
+func (sac StorageAuthorityClientWrapper) GetAuthorization(ctx context.Context, authID string) (core.Authorization, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.GetAuthorization(localCtx, &sapb.AuthorizationID{Id: &authID})
+	if err != nil {
+		return core.Authorization{}, unwrapError(err)
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
+	return pbToAuthz(response)
+}
+
+func (sac StorageAuthorityClientWrapper) GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*core.Authorization, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	nowUnix := now.UnixNano()
+
+	response, err := sac.inner.GetValidAuthorizations(localCtx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: &regID,
+		Domains:        domains,
+		Now:            &nowUnix,
+	})
+	if err != nil {
+		return nil, unwrapError(err)
+	}
+
+	if response == nil {
+		return nil, errIncompleteResponse
+	}
+
+	auths := make(map[string]*core.Authorization, len(response.Valid))
+	for _, element := range response.Valid {
+		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
+			return nil, errIncompleteResponse
+		}
+		authz, err := pbToAuthz(element.Authz)
+		if err != nil {
+			return nil, err
+		}
+		auths[*element.Domain] = &authz
+	}
+	return auths, nil
+}
+
+func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.GetCertificate(localCtx, &sapb.Serial{Serial: &serial})
+	if err != nil {
+		return core.Certificate{}, unwrapError(err)
+	}
+
+	if response == nil || !certificateValid(response) {
+		return core.Certificate{}, errIncompleteResponse
+	}
+
+	return core.Certificate{
+		RegistrationID: *response.RegistrationID,
+		Serial:         *response.Serial,
+		Digest:         *response.Digest,
+		DER:            response.Der,
+		Issued:         time.Unix(0, *response.Issued),
+		Expires:        time.Unix(0, *response.Expires),
+	}, nil
+}
+
+func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.GetCertificateStatus(localCtx, &sapb.Serial{Serial: &serial})
+	if err != nil {
+		return core.CertificateStatus{}, unwrapError(err)
+	}
+
+	if response == nil || response.Serial == nil || response.SubscriberApproved == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+		return core.CertificateStatus{}, errIncompleteResponse
+	}
+
+	return core.CertificateStatus{
+		Serial:                *response.Serial,
+		SubscriberApproved:    *response.SubscriberApproved,
+		OCSPLastUpdated:       time.Unix(0, *response.OcspLastUpdated),
+		RevokedDate:           time.Unix(0, *response.RevokedDate),
+		RevokedReason:         revocation.Reason(*response.RevokedReason),
+		LastExpirationNagSent: time.Unix(0, *response.LastExpirationNagSent),
+		OCSPResponse:          response.OcspResponse,
+		NotAfter:              time.Unix(0, *response.NotAfter),
+		IsExpired:             *response.IsExpired,
+	}, nil
+}
+
+func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountCertificatesRange(localCtx, &sapb.Range{
+		Earliest: &earliestNano,
+		Latest:   &latestNano,
+	})
+	if err != nil {
+		return 0, unwrapError(err)
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return *response.Count, nil
+}
+
+func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountCertificatesByNames(localCtx, &sapb.CountCertificatesByNamesRequest{
+		Names: domains,
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+	})
+	if err != nil {
+		return nil, unwrapError(err)
+	}
+
+	if response == nil || response.CountByNames == nil {
+		return nil, errIncompleteResponse
+	}
+
+	names := make(map[string]int, len(response.CountByNames))
+	for _, element := range response.CountByNames {
+		if element == nil || element.Name == nil || element.Count == nil {
+			return nil, errIncompleteResponse
+		}
+		names[*element.Name] = int(*element.Count)
+	}
+
+	return names, nil
+}
+
+func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+	ipStr := ip.String()
+
+	response, err := sac.inner.CountRegistrationsByIP(localCtx, &sapb.CountRegistrationsByIPRequest{
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+		Ip: &ipStr,
+	})
+	if err != nil {
+		return 0, unwrapError(err)
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
+func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.Context, regID int64) (int, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.CountPendingAuthorizations(localCtx, &sapb.RegistrationID{Id: &regID})
+	if err != nil {
+		return 0, unwrapError(err)
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
+func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.GetSCTReceipt(localCtx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
+	if err != nil {
+		return core.SignedCertificateTimestamp{}, unwrapError(err)
+	}
+
+	if response == nil || !sctValid(response) {
+		return core.SignedCertificateTimestamp{}, errIncompleteResponse
+	}
+
+	return pbToSCT(response)
+}
+
+func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	windowNanos := window.Nanoseconds()
+
+	response, err := sac.inner.CountFQDNSets(localCtx, &sapb.CountFQDNSetsRequest{
+		Window:  &windowNanos,
+		Domains: domains,
+	})
+	if err != nil {
+		return 0, unwrapError(err)
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return *response.Count, nil
+}
+
+func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.FQDNSetExists(localCtx, &sapb.FQDNSetExistsRequest{Domains: domains})
+	if err != nil {
+		return false, unwrapError(err)
+	}
+
+	if response == nil || response.Exists == nil {
+		return false, errIncompleteResponse
+	}
+
+	return *response.Exists, nil
+}
+
+func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	regPB, err := registrationToPB(reg)
+	if err != nil {
+		return core.Registration{}, err
+	}
+
+	response, err := sac.inner.NewRegistration(localCtx, regPB)
+	if err != nil {
+		return core.Registration{}, unwrapError(err)
+	}
+
+	if response == nil || !registrationValid(response) {
+		return core.Registration{}, errIncompleteResponse
+	}
+
+	return pbToRegistration(response)
+}
+
+func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	regPB, err := registrationToPB(reg)
+	if err != nil {
+		return err
+	}
+
+	_, err = sac.inner.UpdateRegistration(localCtx, regPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	authPB, err := authzToPB(authz)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+
+	response, err := sac.inner.NewPendingAuthorization(localCtx, authPB)
+	if err != nil {
+		return core.Authorization{}, unwrapError(err)
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
+	return pbToAuthz(response)
+}
+
+func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	authPB, err := authzToPB(authz)
+	if err != nil {
+		return err
+	}
+
+	_, err = sac.inner.UpdatePendingAuthorization(localCtx, authPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	authPB, err := authzToPB(authz)
+	if err != nil {
+		return err
+	}
+
+	_, err = sac.inner.FinalizeAuthorization(localCtx, authPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	reason := int64(reasonCode)
+
+	_, err := sac.inner.MarkCertificateRevoked(localCtx, &sapb.MarkCertificateRevokedRequest{
+		Serial: &serial,
+		Code:   &reason,
+	})
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64) (string, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.AddCertificate(localCtx, &corepb.CertificateRequest{
+		Csr:   der,
+		RegID: &regID,
+	})
+	if err != nil {
+		return "", unwrapError(err)
+	}
+
+	if response == nil || response.Digest == nil {
+		return "", errIncompleteResponse
+	}
+
+	return *response.Digest, nil
+}
+
+func (sac StorageAuthorityClientWrapper) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	sctPB, err := sctToPB(sct)
+	if err != nil {
+		return err
+	}
+
+	_, err = sac.inner.AddSCTReceipt(localCtx, sctPB)
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain core.AcmeIdentifier) (int64, int64, error) {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	response, err := sac.inner.RevokeAuthorizationsByDomain(localCtx, &sapb.RevokeAuthorizationsByDomainRequest{Domain: &domain.Value})
+	if err != nil {
+		return 0, 0, unwrapError(err)
+	}
+
+	if response == nil || response.Finalized == nil || response.Pending == nil {
+		return 0, 0, errIncompleteResponse
+	}
+
+	return *response.Finalized, *response.Pending, nil
+}
+
+func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, id int64) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	_, err := sac.inner.DeactivateRegistration(localCtx, &sapb.RegistrationID{Id: &id})
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, id string) error {
+	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
+	defer cancel()
+
+	_, err := sac.inner.DeactivateAuthorization(localCtx, &sapb.AuthorizationID{Id: &id})
+	if err != nil {
+		return unwrapError(err)
+	}
+
+	return nil
+}
+
+// StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
+type StorageAuthorityServerWrapper struct {
+	inner core.StorageAuthority
+}
+
+func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
+	return &StorageAuthorityServerWrapper{inner}
 }
