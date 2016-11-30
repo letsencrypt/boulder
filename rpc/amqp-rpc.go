@@ -437,7 +437,7 @@ func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 				rpc.mu.RUnlock()
 				rpc.log.Info(" [!] Got channel close, but no signal to shut down. Continuing.")
 			}
-		case _ = <-rpc.connection.closeChannel():
+		case <-rpc.connection.closeChannel():
 			rpc.log.Info(fmt.Sprintf(" [!] Server channel closed: %s", rpc.serverQueue))
 			rpc.connection.reconnect(c, rpc.log)
 		}
