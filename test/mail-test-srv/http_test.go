@@ -23,7 +23,7 @@ func reqAndRecorder(t testing.TB, method, relativeUrl string, body io.Reader) (*
 func TestHTTPClear(t *testing.T) {
 	srv := mailSrv{}
 	w, r := reqAndRecorder(t, "POST", "/clear", nil)
-	srv.allReceivedMail = []rcvdMail{rcvdMail{}}
+	srv.allReceivedMail = []rcvdMail{{}}
 	srv.httpClear(w, r)
 	if w.Code != 200 {
 		t.Errorf("expected 200, got %d", w.Code)
@@ -33,7 +33,7 @@ func TestHTTPClear(t *testing.T) {
 	}
 
 	w, r = reqAndRecorder(t, "GET", "/clear", nil)
-	srv.allReceivedMail = []rcvdMail{rcvdMail{}}
+	srv.allReceivedMail = []rcvdMail{{}}
 	srv.httpClear(w, r)
 	if w.Code != 405 {
 		t.Errorf("expected 405, got %d", w.Code)
@@ -46,11 +46,11 @@ func TestHTTPClear(t *testing.T) {
 func TestHTTPCount(t *testing.T) {
 	srv := mailSrv{}
 	srv.allReceivedMail = []rcvdMail{
-		rcvdMail{From: "a", To: "b"},
-		rcvdMail{From: "a", To: "b"},
-		rcvdMail{From: "a", To: "c"},
-		rcvdMail{From: "c", To: "a"},
-		rcvdMail{From: "c", To: "b"},
+		{From: "a", To: "b"},
+		{From: "a", To: "b"},
+		{From: "a", To: "c"},
+		{From: "c", To: "a"},
+		{From: "c", To: "b"},
 	}
 
 	tests := []struct {

@@ -304,27 +304,27 @@ type mockEmailResolver struct{}
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "db" is just a list in memory
 	db := []contactJSON{
-		contactJSON{
+		{
 			ID:      1,
 			Contact: []byte(`["mailto:example@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      2,
 			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      3,
 			Contact: []byte(`["mailto:test-test-test@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      4,
 			Contact: []byte(`["mailto:example-example-example@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      5,
 			Contact: []byte(`["mailto:youve.got.mail@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      6,
 			Contact: []byte(`["mailto:mail@example.com"]`),
 		},
@@ -367,18 +367,18 @@ func TestResolveEmails(t *testing.T) {
 	// more test cases here you must also add the corresponding DB result in the
 	// mock.
 	regs := []regID{
-		regID{
+		{
 			ID: 1,
 		},
-		regID{
+		{
 			ID: 2,
 		},
-		regID{
+		{
 			ID: 3,
 		},
 		// This registration ID deliberately doesn't exist in the mock data to make
 		// sure this case is handled gracefully
-		regID{
+		{
 			ID: 999,
 		},
 	}
