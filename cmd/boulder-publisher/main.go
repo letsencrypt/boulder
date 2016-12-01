@@ -86,12 +86,12 @@ func main() {
 	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
-		cmd.FailOnError(err, "Failed to setup gRPC server")
+		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)
 		go func() {
 			err = s.Serve(l)
-			cmd.FailOnError(err, "gRPC service failed")
+			cmd.FailOnError(err, "Publisher gRPC service failed")
 		}()
 		grpcSrv = s
 	}
