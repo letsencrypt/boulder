@@ -590,7 +590,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	amqpConf := c.AMQP
 
 	var cac core.CertificateAuthority
-	if c.SAService != nil {
+	if c.CAService != nil {
 		conn, err := bgrpc.ClientSetup(c.CAService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn), c.CAService.Timeout.Duration)

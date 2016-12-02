@@ -160,14 +160,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Contex
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	return core.Certificate{
-		RegistrationID: *res.RegistrationID,
-		Serial:         *res.Serial,
-		Digest:         *res.Digest,
-		DER:            res.Der,
-		Issued:         time.Unix(0, *res.Issued),
-		Expires:        time.Unix(0, *res.Expires),
-	}, nil
+	return pbToCert(res), nil
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
@@ -287,14 +280,7 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 		return core.Certificate{}, errIncompleteResponse
 	}
 
-	return core.Certificate{
-		RegistrationID: *response.RegistrationID,
-		Serial:         *response.Serial,
-		Digest:         *response.Digest,
-		DER:            response.Der,
-		Issued:         time.Unix(0, *response.Issued),
-		Expires:        time.Unix(0, *response.Expires),
-	}, nil
+	return pbToCert(response), nil
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
@@ -682,14 +668,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 		return core.Certificate{}, errIncompleteResponse
 	}
 
-	return core.Certificate{
-		RegistrationID: *response.RegistrationID,
-		Serial:         *response.Serial,
-		Digest:         *response.Digest,
-		DER:            response.Der,
-		Issued:         time.Unix(0, *response.Issued),
-		Expires:        time.Unix(0, *response.Expires),
-	}, nil
+	return pbToCert(response), nil
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {

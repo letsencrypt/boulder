@@ -62,8 +62,6 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	sa.SetSQLDebug(dbMap, logger)
-
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)

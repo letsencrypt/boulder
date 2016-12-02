@@ -7,7 +7,6 @@ package grpc
 
 import (
 	"encoding/json"
-	// "fmt"
 	"net"
 	"time"
 
@@ -413,5 +412,16 @@ func certToPB(cert core.Certificate) *corepb.Certificate {
 		Der:            cert.DER,
 		Issued:         &issued,
 		Expires:        &expires,
+	}
+}
+
+func pbToCert(pb *corepb.Certificate) core.Certificate {
+	return core.Certificate{
+		RegistrationID: *pb.RegistrationID,
+		Serial:         *pb.Serial,
+		Digest:         *pb.Digest,
+		DER:            pb.Der,
+		Issued:         time.Unix(0, *pb.Issued),
+		Expires:        time.Unix(0, *pb.Expires),
 	}
 }
