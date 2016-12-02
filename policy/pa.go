@@ -140,6 +140,7 @@ var (
 	errTooFewLabels        = probs.Malformed("DNS name does not have enough labels")
 	errLabelTooShort       = probs.Malformed("DNS label is too short")
 	errLabelTooLong        = probs.Malformed("DNS label is too long")
+	errLabelEndsInDot      = probs.Malformed("DNS label ends in a period")
 	errIDNNotSupported     = probs.UnsupportedIdentifier("Internationalized domain names (starting with xn--) not yet supported")
 	errMalformedIDN        = probs.Malformed("DNS label contains malformed punycode")
 )
@@ -186,6 +187,10 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	if ip := net.ParseIP(domain); ip != nil {
 		return errIPAddress
+	}
+
+	if strings.HasSuffix(domain, ".") {
+		return errLabelEndsInDot
 	}
 
 	labels := strings.Split(domain, ".")
