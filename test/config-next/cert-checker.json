@@ -4,7 +4,8 @@
     "maxDBConns": 10,
     "features": {
       "IDNASupport": true
-    }
+    },
+    "hostnamePolicyFile": "test/hostname-policy.json"
   },
 
   "pa": {
