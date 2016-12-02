@@ -87,6 +87,7 @@ func NewValidationAuthorityImpl(
 type verificationRequestEvent struct {
 	ID                string                  `json:",omitempty"`
 	Requester         int64                   `json:",omitempty"`
+	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
 	RequestTime       time.Time               `json:",omitempty"`
@@ -529,6 +530,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
+		Hostname:    authz.Identifier.Value,
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
