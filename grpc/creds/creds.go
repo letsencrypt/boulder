@@ -141,7 +141,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	 * once we have deployed & updated all gRPC configurations to have an accepted
 	 * SAN list configured
 	 */
-	if tc.acceptedSANs == nil {
+	if len(tc.acceptedSANs) == 0 {
 		return nil
 	}
 

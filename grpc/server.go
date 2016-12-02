@@ -46,12 +46,9 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 		ClientCAs:    clientCAs,
 	}
 
-	var acceptedSANs map[string]struct{}
-	if len(c.ClientNames) > 0 {
-		acceptedSANs = make(map[string]struct{})
-		for _, name := range c.ClientNames {
-			acceptedSANs[name] = struct{}{}
-		}
+	acceptedSANs := make(map[string]struct{})
+	for _, name := range c.ClientNames {
+		acceptedSANs[name] = struct{}{}
 	}
 
 	creds, err := bcreds.NewServerCredentials(servTLSConfig, acceptedSANs)
