@@ -276,3 +276,37 @@ func TestAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "pbToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 }
+
+func TestSCT(t *testing.T) {
+	sct := core.SignedCertificateTimestamp{
+		ID:                10,
+		SCTVersion:        1,
+		LogID:             "logid",
+		Timestamp:         100,
+		Extensions:        []byte{255},
+		Signature:         []byte{1},
+		CertificateSerial: "serial",
+	}
+
+	sctPB := sctToPB(sct)
+	outSCT := pbToSCT(sctPB)
+
+	test.AssertDeepEquals(t, sct, outSCT)
+}
+
+func TestCert(t *testing.T) {
+	now := time.Now()
+	cert := core.Certificate{
+		RegistrationID: 1,
+		Serial:         "serial",
+		Digest:         "digest",
+		DER:            []byte{255},
+		Issued:         now,
+		Expires:        now.Add(time.Hour),
+	}
+
+	certPB := certToPB(cert)
+	outCert := pbToCert(certPB)
+
+	test.AssertDeepEquals(t, cert, outCert)
+}

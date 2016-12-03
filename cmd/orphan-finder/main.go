@@ -16,9 +16,11 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 var usageString = `
@@ -35,9 +37,10 @@ command descriptions:
 `
 
 type config struct {
-	AMQP   cmd.AMQPConfig
-	Statsd cmd.StatsdConfig
-	Syslog cmd.SyslogConfig
+	AMQP      cmd.AMQPConfig
+	Statsd    cmd.StatsdConfig
+	SAService *cmd.GRPCClientConfig
+	Syslog    cmd.SyslogConfig
 }
 
 type certificateStorage interface {
@@ -110,7 +113,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (metrics.Scope, blog.Logger, *rpc.StorageAuthorityClient) {
+func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -118,9 +121,17 @@ func setup(configFile string) (metrics.Scope, blog.Logger, *rpc.StorageAuthority
 	cmd.FailOnError(err, "Failed to parse config file")
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
-	sa, err := rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
-	cmd.FailOnError(err, "Failed to create SA client")
-	return scope, logger, sa
+
+	var sac core.StorageAuthority
+	if conf.SAService != nil {
+		conn, err := bgrpc.ClientSetup(conf.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), conf.SAService.Timeout.Duration)
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
+	return scope, logger, sac
 }
 
 func main() {

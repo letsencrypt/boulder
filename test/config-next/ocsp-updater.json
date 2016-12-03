@@ -22,17 +22,19 @@
       "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "10s"
     },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
-      }
+    "saService": {
+      "serverAddresses": ["boulder:9095"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "caService": {
+      "serverAddresses": ["boulder:9093"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
     }
   },
 
