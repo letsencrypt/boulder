@@ -78,7 +78,7 @@ func main() {
 	if c.Publisher.SAService != nil {
 		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), c.Publisher.SAService.Timeout.Duration)
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
 		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create SA client")

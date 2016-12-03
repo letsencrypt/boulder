@@ -593,7 +593,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	if c.CAService != nil {
 		conn, err := bgrpc.ClientSetup(c.CAService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn), c.CAService.Timeout.Duration)
+		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn))
 	} else {
 		var err error
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
@@ -602,13 +602,13 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 
 	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
 	var sac core.StorageAuthority
 	if c.SAService != nil {
 		conn, err := bgrpc.ClientSetup(c.SAService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), c.SAService.Timeout.Duration)
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
 		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")

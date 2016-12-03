@@ -3,6 +3,7 @@ package grpc
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/metrics"
 
@@ -47,18 +48,28 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 }
 
 type clientInterceptor struct {
-	stats metrics.Scope
-	clk   clock.Clock
+	stats   metrics.Scope
+	clk     clock.Clock
+	timeout time.Duration
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
 // is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
-func (ci *clientInterceptor) intercept(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (ci *clientInterceptor) intercept(
+	ctx context.Context,
+	method string,
+	req,
+	reply interface{},
+	cc *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption) error {
+	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
+	defer cancel()
 	s := ci.clk.Now()
 	methodScope := ci.stats.NewScope(cleanMethod(method, false))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	err := invoker(ctx, method, req, reply, cc, opts...)
+	err := invoker(localCtx, method, req, reply, cc, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
