@@ -758,14 +758,13 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Cont
 
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
-	ipStr := ip.String()
 
 	response, err := sac.inner.CountRegistrationsByIP(localCtx, &sapb.CountRegistrationsByIPRequest{
 		Range: &sapb.Range{
 			Earliest: &earliestNano,
 			Latest:   &latestNano,
 		},
-		Ip: &ipStr,
+		Ip: ip,
 	})
 	if err != nil {
 		return 0, unwrapError(err)
@@ -1185,7 +1184,7 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Cont
 		return nil, errIncompleteRequest
 	}
 
-	count, err := sas.inner.CountRegistrationsByIP(ctx, net.ParseIP(*request.Ip), time.Unix(0, *request.Range.Earliest), time.Unix(0, *request.Range.Latest))
+	count, err := sas.inner.CountRegistrationsByIP(ctx, net.IP(request.Ip), time.Unix(0, *request.Range.Earliest), time.Unix(0, *request.Range.Latest))
 	if err != nil {
 		return nil, wrapError(err)
 	}

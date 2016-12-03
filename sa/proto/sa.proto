@@ -100,7 +100,7 @@ message CountByNames {
 }
 
 message CountRegistrationsByIPRequest {
-        optional string ip = 1;
+        optional bytes ip = 1;
         optional Range range = 2;
 }
 
