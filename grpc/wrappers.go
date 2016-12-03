@@ -271,7 +271,7 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
 	defer cancel()
 
-	response, err := rac.inner.NewCertificate(localCtx, &corepb.CertificateRequest{Csr: csr.Bytes, RegID: &regID})
+	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
 		return core.Certificate{}, unwrapError(err)
 	}
@@ -446,7 +446,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 	return authzToPB(newAuthz)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *corepb.CertificateRequest) (*corepb.Certificate, error) {
+func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
 	if request == nil || request.Csr == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
@@ -964,7 +964,7 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der
 	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
 	defer cancel()
 
-	response, err := sac.inner.AddCertificate(localCtx, &corepb.CertificateRequest{
+	response, err := sac.inner.AddCertificate(localCtx, &sapb.AddCertificateRequest{
 		Csr:   der,
 		RegID: &regID,
 	})
@@ -1356,7 +1356,7 @@ func (sas StorageAuthorityServerWrapper) MarkCertificateRevoked(ctx context.Cont
 	return &corepb.Empty{}, nil
 }
 
-func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *corepb.CertificateRequest) (*sapb.AddCertificateResponse, error) {
+func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
 	if request == nil || request.Csr == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}

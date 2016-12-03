@@ -17,7 +17,7 @@
       "serverIssuerPath": "test/grpc-creds/minica.pem",
       "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
       "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
-      "timeout": "90s"
+      "timeout": "15s"
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

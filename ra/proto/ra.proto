@@ -8,7 +8,7 @@ import "core/proto/core.proto";
 service RegistrationAuthority {
         rpc NewRegistration(core.Registration) returns (core.Registration) {}
         rpc NewAuthorization(NewAuthorizationRequest) returns (core.Authorization) {}
-        rpc NewCertificate(core.CertificateRequest) returns (core.Certificate) {}
+        rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
         rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
         rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (core.Authorization) {}
         rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
@@ -19,6 +19,11 @@ service RegistrationAuthority {
 
 message NewAuthorizationRequest {
         optional core.Authorization authz = 1;
+        optional int64 regID = 2;
+}
+
+message NewCertificateRequest {
+        optional bytes csr = 1;
         optional int64 regID = 2;
 }
 

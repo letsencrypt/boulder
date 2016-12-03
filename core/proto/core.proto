@@ -60,9 +60,4 @@ message Authorization {
         optional bytes combinations = 7;
 }
 
-message CertificateRequest {
-        optional bytes csr = 1;
-        optional int64 regID = 2;
-}
-
 message Empty {}
