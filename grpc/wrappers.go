@@ -965,7 +965,7 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der
 	defer cancel()
 
 	response, err := sac.inner.AddCertificate(localCtx, &sapb.AddCertificateRequest{
-		Csr:   der,
+		Der:   der,
 		RegID: &regID,
 	})
 	if err != nil {
@@ -1357,11 +1357,11 @@ func (sas StorageAuthorityServerWrapper) MarkCertificateRevoked(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if request == nil || request.Csr == nil || request.RegID == nil {
+	if request == nil || request.Der == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
 
-	digest, err := sas.inner.AddCertificate(ctx, request.Csr, *request.RegID)
+	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID)
 	if err != nil {
 		return nil, wrapError(err)
 	}

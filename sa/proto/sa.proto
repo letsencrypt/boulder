@@ -128,7 +128,7 @@ message MarkCertificateRevokedRequest {
 }
 
 message AddCertificateRequest {
-        optional bytes csr = 1;
+        optional bytes der = 1;
         optional int64 regID = 2;
 }
 
