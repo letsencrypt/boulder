@@ -58,6 +58,8 @@ func (ci *clientInterceptor) intercept(ctx context.Context, method string, req, 
 	methodScope := ci.stats.NewScope(cleanMethod(method, false))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
+	// disable fast failure if underlying connection does not exist yet or has failed and is being recreated
+	opts = append(opts, grpc.FailFast(false))
 	err := invoker(ctx, method, req, reply, cc, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
