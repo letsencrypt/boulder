@@ -64,7 +64,7 @@ func TestClientInterceptor(t *testing.T) {
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
 	stats := metrics.NewStatsdScope(statter, "fake", "gRPCClient")
-	ci := clientInterceptor{stats, fc}
+	ci := clientInterceptor{stats, fc, time.Second}
 
 	statter.EXPECT().Inc("fake.gRPCClient.service_test.Calls", int64(1), float32(1.0)).Return(nil)
 	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_test.InProgress", int64(1), float32(1.0)).Return(nil)

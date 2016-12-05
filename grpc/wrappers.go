@@ -102,20 +102,17 @@ func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *
 // PublisherClientWrapper is a wrapper needed to satisfy the interfaces
 // in core/interfaces.go
 type PublisherClientWrapper struct {
-	inner   pubPB.PublisherClient
-	timeout time.Duration
+	inner pubPB.PublisherClient
 }
 
 // NewPublisherClientWrapper returns an initialized PublisherClientWrapper
-func NewPublisherClientWrapper(inner pubPB.PublisherClient, timeout time.Duration) *PublisherClientWrapper {
-	return &PublisherClientWrapper{inner, timeout}
+func NewPublisherClientWrapper(inner pubPB.PublisherClient) *PublisherClientWrapper {
+	return &PublisherClientWrapper{inner}
 }
 
 // SubmitToCT makes a call to the gRPC version of the publisher
 func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) error {
-	localCtx, cancel := context.WithTimeout(ctx, pc.timeout)
-	defer cancel()
-	_, err := pc.inner.SubmitToCT(localCtx, &pubPB.Request{Der: der})
+	_, err := pc.inner.SubmitToCT(ctx, &pubPB.Request{Der: der})
 	return err
 }
 
@@ -141,18 +138,15 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubP
 
 // CertificateAuthorityClientWrapper is the gRPC version of a core.CertificateAuthority client
 type CertificateAuthorityClientWrapper struct {
-	inner   caPB.CertificateAuthorityClient
-	timeout time.Duration
+	inner caPB.CertificateAuthorityClient
 }
 
-func NewCertificateAuthorityClient(inner caPB.CertificateAuthorityClient, timeout time.Duration) *CertificateAuthorityClientWrapper {
-	return &CertificateAuthorityClientWrapper{inner, timeout}
+func NewCertificateAuthorityClient(inner caPB.CertificateAuthorityClient) *CertificateAuthorityClientWrapper {
+	return &CertificateAuthorityClientWrapper{inner}
 }
 
 func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
-	localCtx, cancel := context.WithTimeout(ctx, cac.timeout)
-	defer cancel()
-	res, err := cac.inner.IssueCertificate(localCtx, &caPB.IssueCertificateRequest{
+	res, err := cac.inner.IssueCertificate(ctx, &caPB.IssueCertificateRequest{
 		Csr:            csr.Raw,
 		RegistrationID: &regID,
 	})
@@ -163,11 +157,9 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Contex
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
-	localCtx, cancel := context.WithTimeout(ctx, cac.timeout)
-	defer cancel()
 	reason := int32(ocspReq.Reason)
 	revokedAt := ocspReq.RevokedAt.UnixNano()
-	res, err := cac.inner.GenerateOCSP(localCtx, &caPB.GenerateOCSPRequest{
+	res, err := cac.inner.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   ocspReq.CertDER,
 		Status:    &ocspReq.Status,
 		Reason:    &reason,
@@ -215,24 +207,20 @@ func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, 
 
 // RegistrationAuthorityClientWrapper is the gRPC version of a core.RegistrationAuthority client
 type RegistrationAuthorityClientWrapper struct {
-	inner   rapb.RegistrationAuthorityClient
-	timeout time.Duration
+	inner rapb.RegistrationAuthorityClient
 }
 
-func NewRegistrationAuthorityClient(inner rapb.RegistrationAuthorityClient, timeout time.Duration) *RegistrationAuthorityClientWrapper {
-	return &RegistrationAuthorityClientWrapper{inner, timeout}
+func NewRegistrationAuthorityClient(inner rapb.RegistrationAuthorityClient) *RegistrationAuthorityClientWrapper {
+	return &RegistrationAuthorityClientWrapper{inner}
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	req, err := registrationToPB(reg)
 	if err != nil {
 		return core.Registration{}, err
 	}
 
-	response, err := rac.inner.NewRegistration(localCtx, req)
+	response, err := rac.inner.NewRegistration(ctx, req)
 	if err != nil {
 		return core.Registration{}, unwrapError(err)
 	}
@@ -246,15 +234,12 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	req, err := authzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
 	}
 
-	response, err := rac.inner.NewAuthorization(localCtx, &rapb.NewAuthorizationRequest{Authz: req, RegID: &regID})
+	response, err := rac.inner.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{Authz: req, RegID: &regID})
 	if err != nil {
 		return core.Authorization{}, unwrapError(err)
 	}
@@ -267,10 +252,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64) (core.Certificate, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
-	response, err := rac.inner.NewCertificate(localCtx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
+	response, err := rac.inner.NewCertificate(ctx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: &regID})
 	if err != nil {
 		return core.Certificate{}, unwrapError(err)
 	}
@@ -283,9 +265,6 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	basePB, err := registrationToPB(base)
 	if err != nil {
 		return core.Registration{}, err
@@ -295,7 +274,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 		return core.Registration{}, err
 	}
 
-	response, err := rac.inner.UpdateRegistration(localCtx, &rapb.UpdateRegistrationRequest{Base: basePB, Update: updatePB})
+	response, err := rac.inner.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePB, Update: updatePB})
 	if err != nil {
 		return core.Registration{}, unwrapError(err)
 	}
@@ -308,9 +287,6 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Context, authz core.Authorization, challengeIndex int, chall core.Challenge) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	authzPB, err := authzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
@@ -322,7 +298,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 
 	ind := int64(challengeIndex)
 
-	response, err := rac.inner.UpdateAuthorization(localCtx, &rapb.UpdateAuthorizationRequest{
+	response, err := rac.inner.UpdateAuthorization(ctx, &rapb.UpdateAuthorizationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: &ind,
 		Response:       challPB,
@@ -339,11 +315,8 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 }
 
 func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	reason := int64(code)
-	_, err := rac.inner.RevokeCertificateWithReg(localCtx, &rapb.RevokeCertificateWithRegRequest{
+	_, err := rac.inner.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  &reason,
 		RegID: &regID,
@@ -356,15 +329,12 @@ func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx conte
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	regPB, err := registrationToPB(reg)
 	if err != nil {
 		return err
 	}
 
-	_, err = rac.inner.DeactivateRegistration(localCtx, regPB)
+	_, err = rac.inner.DeactivateRegistration(ctx, regPB)
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -373,15 +343,12 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	authzPB, err := authzToPB(auth)
 	if err != nil {
 		return err
 	}
 
-	_, err = rac.inner.DeactivateAuthorization(localCtx, authzPB)
+	_, err = rac.inner.DeactivateAuthorization(ctx, authzPB)
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -390,11 +357,8 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error {
-	localCtx, cancel := context.WithTimeout(ctx, rac.timeout)
-	defer cancel()
-
 	reason := int64(code)
-	_, err := rac.inner.AdministrativelyRevokeCertificate(localCtx, &rapb.AdministrativelyRevokeCertificateRequest{
+	_, err := rac.inner.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
 		Code:      &reason,
 		AdminName: &adminName,
@@ -560,19 +524,15 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 
 // StorageAuthorityClientWrapper is the gRPC version of a core.StorageAuthority client
 type StorageAuthorityClientWrapper struct {
-	inner   sapb.StorageAuthorityClient
-	timeout time.Duration
+	inner sapb.StorageAuthorityClient
 }
 
-func NewStorageAuthorityClient(inner sapb.StorageAuthorityClient, timeout time.Duration) *StorageAuthorityClientWrapper {
-	return &StorageAuthorityClientWrapper{inner, timeout}
+func NewStorageAuthorityClient(inner sapb.StorageAuthorityClient) *StorageAuthorityClientWrapper {
+	return &StorageAuthorityClientWrapper{inner}
 }
 
 func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, regID int64) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.GetRegistration(localCtx, &sapb.RegistrationID{Id: &regID})
+	response, err := sac.inner.GetRegistration(ctx, &sapb.RegistrationID{Id: &regID})
 	if err != nil {
 		return core.Registration{}, unwrapError(err)
 	}
@@ -585,15 +545,12 @@ func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, re
 }
 
 func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	keyBytes, err := key.MarshalJSON()
 	if err != nil {
 		return core.Registration{}, err
 	}
 
-	response, err := sac.inner.GetRegistrationByKey(localCtx, &sapb.JsonWebKey{Jwk: keyBytes})
+	response, err := sac.inner.GetRegistrationByKey(ctx, &sapb.JsonWebKey{Jwk: keyBytes})
 	if err != nil {
 		return core.Registration{}, unwrapError(err)
 	}
@@ -606,10 +563,7 @@ func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Contex
 }
 
 func (sac StorageAuthorityClientWrapper) GetAuthorization(ctx context.Context, authID string) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.GetAuthorization(localCtx, &sapb.AuthorizationID{Id: &authID})
+	response, err := sac.inner.GetAuthorization(ctx, &sapb.AuthorizationID{Id: &authID})
 	if err != nil {
 		return core.Authorization{}, unwrapError(err)
 	}
@@ -622,12 +576,9 @@ func (sac StorageAuthorityClientWrapper) GetAuthorization(ctx context.Context, a
 }
 
 func (sac StorageAuthorityClientWrapper) GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	nowUnix := now.UnixNano()
 
-	response, err := sac.inner.GetValidAuthorizations(localCtx, &sapb.GetValidAuthorizationsRequest{
+	response, err := sac.inner.GetValidAuthorizations(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: &regID,
 		Domains:        domains,
 		Now:            &nowUnix,
@@ -655,10 +606,7 @@ func (sac StorageAuthorityClientWrapper) GetValidAuthorizations(ctx context.Cont
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.GetCertificate(localCtx, &sapb.Serial{Serial: &serial})
+	response, err := sac.inner.GetCertificate(ctx, &sapb.Serial{Serial: &serial})
 	if err != nil {
 		return core.Certificate{}, unwrapError(err)
 	}
@@ -671,10 +619,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.GetCertificateStatus(localCtx, &sapb.Serial{Serial: &serial})
+	response, err := sac.inner.GetCertificateStatus(ctx, &sapb.Serial{Serial: &serial})
 	if err != nil {
 		return core.CertificateStatus{}, unwrapError(err)
 	}
@@ -698,13 +643,10 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 }
 
 func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
 
-	response, err := sac.inner.CountCertificatesRange(localCtx, &sapb.Range{
+	response, err := sac.inner.CountCertificatesRange(ctx, &sapb.Range{
 		Earliest: &earliestNano,
 		Latest:   &latestNano,
 	})
@@ -720,13 +662,10 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Cont
 }
 
 func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
 
-	response, err := sac.inner.CountCertificatesByNames(localCtx, &sapb.CountCertificatesByNamesRequest{
+	response, err := sac.inner.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
 		Names: domains,
 		Range: &sapb.Range{
 			Earliest: &earliestNano,
@@ -753,13 +692,10 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Co
 }
 
 func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
 
-	response, err := sac.inner.CountRegistrationsByIP(localCtx, &sapb.CountRegistrationsByIPRequest{
+	response, err := sac.inner.CountRegistrationsByIP(ctx, &sapb.CountRegistrationsByIPRequest{
 		Range: &sapb.Range{
 			Earliest: &earliestNano,
 			Latest:   &latestNano,
@@ -778,10 +714,7 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Cont
 }
 
 func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.Context, regID int64) (int, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.CountPendingAuthorizations(localCtx, &sapb.RegistrationID{Id: &regID})
+	response, err := sac.inner.CountPendingAuthorizations(ctx, &sapb.RegistrationID{Id: &regID})
 	if err != nil {
 		return 0, unwrapError(err)
 	}
@@ -794,10 +727,7 @@ func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.
 }
 
 func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.GetSCTReceipt(localCtx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
+	response, err := sac.inner.GetSCTReceipt(ctx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
 	if err != nil {
 		return core.SignedCertificateTimestamp{}, unwrapError(err)
 	}
@@ -810,12 +740,9 @@ func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, seri
 }
 
 func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	windowNanos := window.Nanoseconds()
 
-	response, err := sac.inner.CountFQDNSets(localCtx, &sapb.CountFQDNSetsRequest{
+	response, err := sac.inner.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
 		Window:  &windowNanos,
 		Domains: domains,
 	})
@@ -831,10 +758,7 @@ func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, wind
 }
 
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.FQDNSetExists(localCtx, &sapb.FQDNSetExistsRequest{Domains: domains})
+	response, err := sac.inner.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: domains})
 	if err != nil {
 		return false, unwrapError(err)
 	}
@@ -847,15 +771,12 @@ func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, doma
 }
 
 func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	regPB, err := registrationToPB(reg)
 	if err != nil {
 		return core.Registration{}, err
 	}
 
-	response, err := sac.inner.NewRegistration(localCtx, regPB)
+	response, err := sac.inner.NewRegistration(ctx, regPB)
 	if err != nil {
 		return core.Registration{}, unwrapError(err)
 	}
@@ -868,15 +789,12 @@ func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, re
 }
 
 func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	regPB, err := registrationToPB(reg)
 	if err != nil {
 		return err
 	}
 
-	_, err = sac.inner.UpdateRegistration(localCtx, regPB)
+	_, err = sac.inner.UpdateRegistration(ctx, regPB)
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -885,15 +803,12 @@ func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context,
 }
 
 func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	authPB, err := authzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
 	}
 
-	response, err := sac.inner.NewPendingAuthorization(localCtx, authPB)
+	response, err := sac.inner.NewPendingAuthorization(ctx, authPB)
 	if err != nil {
 		return core.Authorization{}, unwrapError(err)
 	}
@@ -906,15 +821,12 @@ func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Con
 }
 
 func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	authPB, err := authzToPB(authz)
 	if err != nil {
 		return err
 	}
 
-	_, err = sac.inner.UpdatePendingAuthorization(localCtx, authPB)
+	_, err = sac.inner.UpdatePendingAuthorization(ctx, authPB)
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -923,15 +835,12 @@ func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.
 }
 
 func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	authPB, err := authzToPB(authz)
 	if err != nil {
 		return err
 	}
 
-	_, err = sac.inner.FinalizeAuthorization(localCtx, authPB)
+	_, err = sac.inner.FinalizeAuthorization(ctx, authPB)
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -940,12 +849,9 @@ func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Conte
 }
 
 func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
 	reason := int64(reasonCode)
 
-	_, err := sac.inner.MarkCertificateRevoked(localCtx, &sapb.MarkCertificateRevokedRequest{
+	_, err := sac.inner.MarkCertificateRevoked(ctx, &sapb.MarkCertificateRevokedRequest{
 		Serial: &serial,
 		Code:   &reason,
 	})
@@ -957,10 +863,7 @@ func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Cont
 }
 
 func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64) (string, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.AddCertificate(localCtx, &sapb.AddCertificateRequest{
+	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:   der,
 		RegID: &regID,
 	})
@@ -976,10 +879,7 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der
 }
 
 func (sac StorageAuthorityClientWrapper) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	_, err := sac.inner.AddSCTReceipt(localCtx, sctToPB(sct))
+	_, err := sac.inner.AddSCTReceipt(ctx, sctToPB(sct))
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -988,10 +888,7 @@ func (sac StorageAuthorityClientWrapper) AddSCTReceipt(ctx context.Context, sct 
 }
 
 func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain core.AcmeIdentifier) (int64, int64, error) {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	response, err := sac.inner.RevokeAuthorizationsByDomain(localCtx, &sapb.RevokeAuthorizationsByDomainRequest{Domain: &domain.Value})
+	response, err := sac.inner.RevokeAuthorizationsByDomain(ctx, &sapb.RevokeAuthorizationsByDomainRequest{Domain: &domain.Value})
 	if err != nil {
 		return 0, 0, unwrapError(err)
 	}
@@ -1004,10 +901,7 @@ func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx contex
 }
 
 func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, id int64) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	_, err := sac.inner.DeactivateRegistration(localCtx, &sapb.RegistrationID{Id: &id})
+	_, err := sac.inner.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: &id})
 	if err != nil {
 		return unwrapError(err)
 	}
@@ -1016,10 +910,7 @@ func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Cont
 }
 
 func (sac StorageAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, id string) error {
-	localCtx, cancel := context.WithTimeout(ctx, sac.timeout)
-	defer cancel()
-
-	_, err := sac.inner.DeactivateAuthorization(localCtx, &sapb.AuthorizationID{Id: &id})
+	_, err := sac.inner.DeactivateAuthorization(ctx, &sapb.AuthorizationID{Id: &id})
 	if err != nil {
 		return unwrapError(err)
 	}

@@ -126,7 +126,7 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 	if conf.SAService != nil {
 		conn, err := bgrpc.ClientSetup(conf.SAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), conf.SAService.Timeout.Duration)
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
 		sac, err = rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
 		cmd.FailOnError(err, "Failed to create SA client")

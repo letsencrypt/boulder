@@ -69,7 +69,7 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 	if c.WFE.RAService != nil {
 		conn, err := bgrpc.ClientSetup(c.WFE.RAService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn), c.WFE.RAService.Timeout.Duration)
+		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
 	} else {
 		var err error
 		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -80,7 +80,7 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 	if c.WFE.SAService != nil {
 		conn, err := bgrpc.ClientSetup(c.WFE.SAService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), c.WFE.SAService.Timeout.Duration)
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
 		var err error
 		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)

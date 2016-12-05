@@ -136,7 +136,7 @@ func main() {
 	if c.RA.CAService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.CAService, scope)
 		cmd.FailOnError(err, "Unable to create CA client")
-		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn), c.RA.CAService.Timeout.Duration)
+		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn))
 	} else {
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create CA client")
@@ -146,14 +146,14 @@ func main() {
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.RA.PublisherService.Timeout.Duration)
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 	}
 
 	var sac core.StorageAuthority
 	if c.RA.SAService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.SAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn), c.RA.SAService.Timeout.Duration)
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
 		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create SA client")
