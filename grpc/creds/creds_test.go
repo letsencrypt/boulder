@@ -31,9 +31,16 @@ func TestServerTransportCredentials(t *testing.T) {
 	_, err = NewServerCredentials(nil, acceptedSANs)
 	test.AssertEquals(t, err, NilServerConfigErr)
 
-	// A creds with a nil acceptedSANs list should consider any peer valid
-	bcreds := &serverTransportCredentials{servTLSConfig, nil}
+	// A creds with a empty acceptedSANs list should consider any peer valid
+	wrappedCreds, err := NewServerCredentials(servTLSConfig, nil)
+	test.AssertNotError(t, err, "NewServerCredentials failed with nil acceptedSANs")
+	bcreds := wrappedCreds.(*serverTransportCredentials)
 	emptyState := tls.ConnectionState{}
+	err = bcreds.validateClient(emptyState)
+	test.AssertNotError(t, err, "validateClient() errored for emptyState")
+	wrappedCreds, err = NewServerCredentials(servTLSConfig, map[string]struct{}{})
+	test.AssertNotError(t, err, "NewServerCredentials failed with empty acceptedSANs")
+	bcreds = wrappedCreds.(*serverTransportCredentials)
 	err = bcreds.validateClient(emptyState)
 	test.AssertNotError(t, err, "validateClient() errored for emptyState")
 
