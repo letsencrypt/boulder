@@ -35,6 +35,9 @@
       "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
       "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "15s"
+    },
+    "features": {
+      "ResubmitMissingSCTsOnly": true
     }
   },
 
