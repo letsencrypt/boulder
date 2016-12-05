@@ -66,7 +66,6 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
-	MethodSubmitToSingleCT                  = "SubmitToSingleCT"                  // Pub
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
@@ -671,24 +670,12 @@ func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err erro
 	return
 }
 
-// SubmitToSingleCT sends a request to submit a certificate to one CT log
-// specified by URL and public key
+// The only consumer of the publisher service's `SubmitToSingleCT` func is the
+// `ocsp-updater`. Since it will *only* use gRPC to communicate with the
+// Publisher we *do not* implement `SubmitToSingleCT` for AQMP. This method is
+// here only to satisfy the publisher interface
 func (pub PublisherClient) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) (err error) {
-	var ctReq struct {
-		LogURL       string
-		LogPublicKey string
-		Der          []byte
-	}
-
-	ctReq.LogURL = logURL
-	ctReq.LogPublicKey = logPublicKey
-	ctReq.Der = der
-	data, err := json.Marshal(ctReq)
-	if err != nil {
-		return
-	}
-	_, err = pub.rpc.DispatchSync(MethodSubmitToSingleCT, data)
-	return
+	return fmt.Errorf("SubmitToSingleCT is not implemented for AQMP publisher client")
 }
 
 // NewCertificateAuthorityServer constructs an RPC server
