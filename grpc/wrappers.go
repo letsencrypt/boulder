@@ -120,15 +120,13 @@ func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) er
 // SubmitToSingleCT makes a call to the gRPC version of the publisher to send
 // the provided certificate to the log specified by log URI and public key
 func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	localCtx, cancel := context.WithTimeout(ctx, pc.timeout)
-	defer cancel()
 	_, err := pc.inner.SubmitToSingleCT(
-		localCtx,
+		ctx,
 		&pubPB.Request{
 			LogURL:       &logURL,
 			LogPublicKey: &logPublicKey,
 			Der:          der})
-	return err
+	return unwrapError(err)
 }
 
 // PublisherServerWrapper is a wrapper required to bridge the differences between the
@@ -155,7 +153,8 @@ func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request
 	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
 		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
 	}
-	return &pubPB.Empty{}, pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der)
+	err := wrapError(pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der))
+	return &pubPB.Empty{}, err
 }
 
 // CertificateAuthorityClientWrapper is the gRPC version of a core.CertificateAuthority client
