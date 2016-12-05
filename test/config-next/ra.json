@@ -3,8 +3,8 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
-    "dnsTries": 2,
-    "debugAddr": "localhost:8002",
+    "dnsTries": 3,
+    "debugAddr": "8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
@@ -79,7 +79,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "5s",
+    "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
 }

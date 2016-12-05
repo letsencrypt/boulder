@@ -12,7 +12,7 @@
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
-    "debugAddr": "localhost:8000",
+    "debugAddr": ":8000",
     "raService": {
       "serverAddresses": ["boulder:9094"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
