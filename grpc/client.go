@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
@@ -38,6 +39,9 @@ func ClientSetup(c *cmd.GRPCClientConfig, stats metrics.Scope) (*grpc.ClientConn
 	if err != nil {
 		return nil, err
 	}
+
+	grpc_prometheus.EnableHandlingTimeHistogram()
+
 	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default(), c.Timeout.Duration}
 	creds := bcreds.NewClientCredentials(rootCAs, []tls.Certificate{clientCert})
 	return grpc.Dial(
