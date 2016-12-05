@@ -3,7 +3,7 @@
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
-    "debugAddr": "localhost:8001",
+    "debugAddr": ":8001",
     "saService": {
       "serverAddresses": ["boulder:9095"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",

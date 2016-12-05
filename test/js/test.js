@@ -379,7 +379,7 @@ function validateHttp01(challenge) {
     state.httpServer.listen(80)
   }
 
-  cli.spinner("Validating domain");
+  console.log("Validating domain");
   post(state.responseURL, {
     resource: "challenge",
     keyAuthorization: keyAuthorization,
@@ -404,7 +404,7 @@ function ensureValidation(err, resp, body) {
       request.get(state.authorizationURL, {}, ensureValidation);
     }, state.retryDelay);
   } else if (authz.status == "valid") {
-    cli.spinner("Validating domain ... done", true);
+    console.log("Validating domain ... done");
     console.log();
     state.validatedDomains.push(state.domain);
     state.validAuthorizationURLs.push(state.authorizationURL);
@@ -428,7 +428,7 @@ function ensureValidation(err, resp, body) {
 }
 
 function getCertificate() {
-  cli.spinner("Requesting certificate");
+  console.log("Requesting certificate");
   var csr = cryptoUtil.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     resource: "new-cert",
@@ -447,7 +447,7 @@ function downloadCertificate(err, resp, body) {
     process.exit(1);
   }
 
-  cli.spinner("Requesting certificate ... done", true);
+  console.log("Requesting certificate ... done");
   console.log();
 
   state.certificate = body;

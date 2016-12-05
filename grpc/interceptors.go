@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/jmhodges/clock"
@@ -38,7 +39,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	resp, err := handler(ctx, req)
+	resp, err := grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
 	methodScope.TimingDuration("Latency", si.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
@@ -69,7 +70,7 @@ func (ci *clientInterceptor) intercept(
 	methodScope := ci.stats.NewScope(cleanMethod(method, false))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	err := invoker(localCtx, method, req, reply, cc, opts...)
+	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {

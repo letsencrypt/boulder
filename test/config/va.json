@@ -2,7 +2,7 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": "localhost:8004",
+    "debugAddr": ":8004",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
@@ -15,11 +15,7 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "VA.server",
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      }
+      "serviceQueue": "VA.server"
     }
   },
 
@@ -34,7 +30,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
+    "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
 }

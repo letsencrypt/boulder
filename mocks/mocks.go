@@ -374,6 +374,11 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 	return nil
 }
 
+// SubmitToSingleCT is a mock
+func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
+	return nil
+}
+
 // Statter is a stat counter that is a no-op except for locally handling Inc
 // calls (which are most of what we use).
 type Statter struct {
