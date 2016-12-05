@@ -158,6 +158,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		"",
 		blog.NewMock(),
 	)
+	test.AssertNotError(t, err, "Failed to create newUpdater")
 
 	return updater, sa, dbMap, fc, cleanUp
 }

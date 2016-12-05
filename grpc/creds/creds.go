@@ -11,6 +11,24 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+var (
+	ClientHandshakeNopErr = errors.New(
+		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
+			"serverTransportCredentials")
+	ServerHandshakeNopErr = errors.New(
+		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
+			"clientTransportCredentials")
+	OverrideServerNameNopErr = errors.New(
+		"boulder/grpc/creds: OverrideServerName() is not implemented")
+	NilServerConfigErr = errors.New(
+		"boulder/grpc/creds: `serverConfig` must not be nil")
+	EmptyPeerCertsErr = errors.New(
+		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
+	SANNotAcceptedErr = errors.New(
+		"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
+			"any entries on accepted SAN list.")
+)
+
 // clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
 type clientTransportCredentials struct {
@@ -55,22 +73,6 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	}
 }
 
-var (
-	ClientHandshakeNopErr = errors.New(
-		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
-			"serverTransportCredentials")
-	ServerHandshakeNopErr = errors.New(
-		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
-			"clientTransportCredentials")
-	NilServerConfigErr = errors.New(
-		"boulder/grpc/creds: `serverConfig` must not be nil")
-	EmptyPeerCertsErr = errors.New(
-		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
-	SANNotAcceptedErr = errors.New(
-		"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
-			"any entries on accepted SAN list.")
-)
-
 // ServerHandshake is not implemented for a `clientTransportCredentials`, use
 // a `serverTransportCredentials` if you require `ServerHandshake`.
 func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
@@ -93,6 +95,16 @@ func (tc *clientTransportCredentials) GetRequestMetadata(ctx context.Context, ur
 // RequireTransportSecurity always returns true because TLS is transport security
 func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
 	return true
+}
+
+// Clone returns a copy of the clientTransportCredentials
+func (tc *clientTransportCredentials) Clone() credentials.TransportCredentials {
+	return NewClientCredentials(tc.roots, tc.clients)
+}
+
+// OverrideServerName is not implemented and here only to satisfy the interface
+func (tc *clientTransportCredentials) OverrideServerName(serverNameOverride string) error {
+	return OverrideServerNameNopErr
 }
 
 // serverTransportCredentials is a grpc/credentials.TransportCredentials which supports
@@ -129,7 +141,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	 * once we have deployed & updated all gRPC configurations to have an accepted
 	 * SAN list configured
 	 */
-	if tc.acceptedSANs == nil {
+	if len(tc.acceptedSANs) == 0 {
 		return nil
 	}
 
@@ -213,4 +225,15 @@ func (tc *serverTransportCredentials) GetRequestMetadata(ctx context.Context, ur
 // RequireTransportSecurity always returns true because TLS is transport security
 func (tc *serverTransportCredentials) RequireTransportSecurity() bool {
 	return true
+}
+
+// Clone returns a copy of the serverTransportCredentials
+func (tc *serverTransportCredentials) Clone() credentials.TransportCredentials {
+	clone, _ := NewServerCredentials(tc.serverConfig, tc.acceptedSANs)
+	return clone
+}
+
+// OverrideServerName is not implemented and here only to satisfy the interface
+func (tc *serverTransportCredentials) OverrideServerName(serverNameOverride string) error {
+	return OverrideServerNameNopErr
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "Publisher"
@@ -23,6 +24,7 @@ type config struct {
 		cmd.ServiceConfig
 		SubmissionTimeout              cmd.ConfigDuration
 		MaxConcurrentRPCServerRequests int64
+		SAService                      *cmd.GRPCClientConfig
 	}
 
 	Statsd cmd.StatsdConfig
@@ -72,8 +74,15 @@ func main() {
 	}
 
 	amqpConf := c.Publisher.AMQP
-	sa, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Unable to create SA client")
+	var sac core.StorageAuthority
+	if c.Publisher.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
 
 	pubi := publisher.New(
 		bundle,
@@ -81,17 +90,17 @@ func main() {
 		c.Publisher.SubmissionTimeout.Duration,
 		logger,
 		scope,
-		sa)
+		sac)
 
 	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
-		cmd.FailOnError(err, "Failed to setup gRPC server")
+		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)
 		go func() {
 			err = s.Serve(l)
-			cmd.FailOnError(err, "gRPC service failed")
+			cmd.FailOnError(err, "Publisher gRPC service failed")
 		}()
 		grpcSrv = s
 	}

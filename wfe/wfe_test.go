@@ -839,8 +839,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
-	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
-	wfe.CheckMalformedCSR = true
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
@@ -988,6 +986,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
@@ -1158,6 +1157,7 @@ func TestNewRegistration(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1880,6 +1880,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	// requests that do call sendError() also should have the requester header
 	signer.SetNonceSource(wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")

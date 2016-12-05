@@ -83,7 +83,7 @@ func Enabled(n FeatureFlag) bool {
 	defer fMu.RUnlock()
 	v, present := features[n]
 	if !present {
-		panic(fmt.Sprintf("feature '%s' doesn't exist", n))
+		panic(fmt.Sprintf("feature '%s' doesn't exist", n.String()))
 	}
 	return v
 }
