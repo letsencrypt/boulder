@@ -4,7 +4,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
-    "debugAddr": "8002",
+    "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
