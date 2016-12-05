@@ -57,6 +57,7 @@ func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 	return p.sa.AddSCTReceipt(ctx, sct)
 }
 
+//var log = blog.Get()
 var log = blog.UseMock()
 
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
@@ -65,7 +66,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 	sa.SetSQLDebug(dbMap, log)
 
 	fc := clock.NewFake()
-	fc.Add(1 * time.Hour)
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	test.AssertNotError(t, err, "Failed to create SA")
@@ -133,26 +134,25 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+	status1, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't get status for test-cert.pem")
 	parsedCert, err = core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
+	status2, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't get status for test-cert-b.pem")
 
-	earliest := fc.Now().Add(-time.Hour)
-	certs, err := updater.findStaleOCSPResponses(earliest, 10)
-	test.AssertNotError(t, err, "Couldn't find stale responses")
-	test.AssertEquals(t, len(certs), 2)
-
-	err = updater.generateOCSPResponses(ctx, certs)
+	err = updater.generateOCSPResponses(ctx, []core.CertificateStatus{status1, status2})
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 
-	certs, err = updater.findStaleOCSPResponses(earliest, 10)
+	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(certs), 0)
 }
 
 func TestFindStaleOCSPResponses(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
+	updater, sa, db, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -160,6 +160,12 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+	_, err = db.Exec(`UPDATE certificateStatus
+		SET ocspLastUpdated = ?
+		WHERE serial = ?`,
+		fc.Now().Add(-10*time.Hour),
+		core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to update status")
 
 	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)

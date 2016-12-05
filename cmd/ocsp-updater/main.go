@@ -206,6 +206,16 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
+	// The SELECT statement below relies on an index on
+	// certificateStatus.ocspLastUpdated in order to run efficiently. We only need
+	// to consider unexpired certificates, but the certificateStatus table doesn't
+	// include that field (it would duplicate that same field on the certificates
+	// table). For efficiency we want to use this index to select a relatively
+	// small set of rows before joining with the certificates table, so we provide
+	// a lower bound on the earliest certificate we will consider, thus ignoring
+	// the large number of expired certificates, for which we don't need to update
+	// OCSP.
+	tooStale := oldestLastUpdatedTime.Add(-14 * 24 * time.Hour)
 	var statuses []core.CertificateStatus
 	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
 	// the query below can be rewritten to use `AND NOT cs.isExpired`.
@@ -218,12 +228,13 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated < :lastUpdate
+			 WHERE :tooStale < cs.ocspLastUpdated AND cs.ocspLastUpdated < :lastUpdate
 			 AND cert.expires > now()
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
+			"tooStale":   tooStale,
 			"limit":      batchSize,
 		},
 	)
