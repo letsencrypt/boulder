@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "CA"
@@ -169,8 +170,14 @@ func main() {
 	cai.PA = pa
 
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Failed to create SA client")
+	if c.CA.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CA.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
 
 	if amqpConf.Publisher != nil {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)

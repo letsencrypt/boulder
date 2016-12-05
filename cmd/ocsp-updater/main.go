@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/akamai"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -25,6 +26,7 @@ import (
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 /*
@@ -586,14 +588,32 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create CA client")
+
+	var cac core.CertificateAuthority
+	if c.CAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn))
+	} else {
+		var err error
+		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create CA client")
+	}
 
 	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create SA client")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+	var sac core.StorageAuthority
+	if c.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.SAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
+
 	return cac, pubc, sac
 }
 

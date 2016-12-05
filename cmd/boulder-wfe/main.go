@@ -10,11 +10,15 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe"
 )
 
@@ -38,9 +42,11 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		CheckMalformedCSR      bool
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
+
+		RAService *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig
 
 		Features map[string]bool
 	}
@@ -57,13 +63,29 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
 	amqpConf := c.WFE.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create RA client")
+	var rac core.RegistrationAuthority
+	if c.WFE.RAService != nil {
+		conn, err := bgrpc.ClientSetup(c.WFE.RAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
+	} else {
+		var err error
+		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create RA AMQP client")
+	}
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create SA client")
+	var sac core.StorageAuthority
+	if c.WFE.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.WFE.SAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		var err error
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
 
 	return rac, sac
 }
@@ -102,7 +124,6 @@ func main() {
 	}
 
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.CheckMalformedCSR = c.WFE.CheckMalformedCSR
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 
@@ -118,8 +139,7 @@ func main() {
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
-	h, err := wfe.Handler()
-	cmd.FailOnError(err, "Problem setting up HTTP handlers")
+	h := wfe.Handler()
 
 	httpMonitor := metrics.NewHTTPMonitor(scope, h)
 

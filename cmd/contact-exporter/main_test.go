@@ -83,13 +83,13 @@ func TestFindContacts(t *testing.T) {
 
 func exampleContacts() []contact {
 	return []contact{
-		contact{
+		{
 			ID: 1,
 		},
-		contact{
+		{
 			ID: 2,
 		},
-		contact{
+		{
 			ID: 3,
 		},
 	}

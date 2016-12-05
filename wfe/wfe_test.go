@@ -611,8 +611,7 @@ func TestDirectory(t *testing.T) {
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
 
@@ -646,8 +645,7 @@ func TestRelativeDirectory(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 
 	dirTests := []struct {
 		host        string
@@ -692,8 +690,7 @@ func TestRelativeDirectory(t *testing.T) {
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 	mockLog := wfe.log.(*blog.Mock)
 
 	// The mock CA we use always returns the same test certificate, with a Not
@@ -842,8 +839,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
-	// CSR generated using pre-1.0.1 OpenSSL with malformed version integer
-	wfe.CheckMalformedCSR = true
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
@@ -991,6 +986,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
@@ -1004,8 +1000,6 @@ func TestNewECDSARegistration(t *testing.T) {
 // a populated reg object will be returned.
 func TestEmptyRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	responseWriter := httptest.NewRecorder()
 
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
@@ -1045,9 +1039,7 @@ func TestEmptyRegistration(t *testing.T) {
 
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-
+	mux := wfe.Handler()
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	rsaKey, ok := key.(*rsa.PrivateKey)
@@ -1165,6 +1157,7 @@ func TestNewRegistration(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1417,8 +1410,7 @@ func TestRevokeCertificateWithAuthz(t *testing.T) {
 
 func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
 
@@ -1487,7 +1479,7 @@ func TestAuthorization(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
@@ -1524,8 +1516,7 @@ func TestRegistration(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
 
 	// Test invalid method
@@ -1658,8 +1649,7 @@ func TestIssuer(t *testing.T) {
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 
 	wfe.CertCacheDuration = time.Second * 10
 	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
@@ -1819,7 +1809,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
-	mux, _ := wfe.Handler()
+	mux := wfe.Handler()
 	s := httptest.NewServer(mux)
 	// TODO(#1989): Close s
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
@@ -1855,8 +1845,7 @@ func TestVerifyPOSTInvalidJWK(t *testing.T) {
 
 func TestHeaderBoulderRequestId(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
 
 	mux.ServeHTTP(responseWriter, &http.Request{
@@ -1870,8 +1859,7 @@ func TestHeaderBoulderRequestId(t *testing.T) {
 
 func TestHeaderBoulderRequester(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
 
 	// create a signed request
@@ -1892,6 +1880,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	// requests that do call sendError() also should have the requester header
 	signer.SetNonceSource(wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
 	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")

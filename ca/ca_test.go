@@ -391,7 +391,7 @@ func TestOCSP(t *testing.T) {
 	test.AssertEquals(t, parsed.SerialNumber.Cmp(parsedCert.SerialNumber), 0)
 
 	// Test that signatures are checked.
-	ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	_, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
 		CertDER: append(cert.DER, byte(0)),
 		Status:  string(core.OCSPStatusGood),
 	})

@@ -1345,7 +1345,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	err = ra.DeactivateAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not get deactivated authorization wtih ID "+authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
 	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
 }
 

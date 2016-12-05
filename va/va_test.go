@@ -897,12 +897,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
-	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")

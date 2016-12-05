@@ -1,4 +1,4 @@
-package prefixed_db
+package prefixdb
 
 import (
 	"database/sql"
