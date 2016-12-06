@@ -32,6 +32,18 @@ func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) er
 	return err
 }
 
+// SubmitToSingleCT makes a call to the gRPC version of the publisher to send
+// the provided certificate to the log specified by log URI and public key
+func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
+	_, err := pc.inner.SubmitToSingleCT(
+		ctx,
+		&pubPB.Request{
+			LogURL:       &logURL,
+			LogPublicKey: &logPublicKey,
+			Der:          der})
+	return unwrapError(err)
+}
+
 // PublisherServerWrapper is a wrapper required to bridge the differences between the
 // gRPC and previous AMQP interfaces
 type PublisherServerWrapper struct {
@@ -50,4 +62,12 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubP
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
 	}
 	return &pubPB.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
+}
+
+func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
+	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
+		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
+	}
+	err := wrapError(pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der))
+	return &pubPB.Empty{}, err
 }
