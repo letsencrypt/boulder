@@ -23,12 +23,14 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -358,6 +360,34 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64) error {
+	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
+	saGRPC, ok := ra.SA.(bgrpc.StorageAuthorityClientWrapper)
+	if limit.Enabled() && ok {
+		count, err := saGRPC.CountInvalidAuthorizations(ctx, &sapb.CountInvalidAuthorizationsRequest{
+			RegistrationID: &regID,
+			Range: &sapb.Range{
+				Earliest: time.Now(), // XXX replace with window logic
+				Latest:   time.Now(), // XXX replace with window logic
+			},
+		})
+		if err != nil {
+			return err
+		}
+		if count == nil {
+			return fmt.Errorf("nil count")
+		}
+		// Most rate limits have a key for overrides, but there is no meaningful key
+		// here.
+		noKey := ""
+		if *count.Count >= limit.GetThreshold(noKey, regID) {
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
+			return core.RateLimitedError("Too many invalid authorizations recently.")
+		}
+	}
+	return nil
+}
+
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
@@ -370,6 +400,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if err = ra.checkPendingAuthorizationLimit(ctx, regID); err != nil {
+		return authz, err
+	}
+
+	if err = ra.checkInvalidAuthorizationLimit(ctx, regID); err != nil {
 		return authz, err
 	}
 

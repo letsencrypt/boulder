@@ -17,6 +17,9 @@ service StorageAuthority {
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
+        // Return a count of authorizations with status "invalid" that belong to
+        // a given registration ID and expire in the given time range.
+        rpc CountInvalidAuthorizations(CountInvalidAuthorizationsRequest) returns (Count) {}
         rpc GetSCTReceipt(GetSCTReceiptRequest) returns (SignedCertificateTimestamp) {}
         rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
         rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
@@ -101,6 +104,12 @@ message CountByNames {
 
 message CountRegistrationsByIPRequest {
         optional bytes ip = 1;
+        optional Range range = 2;
+}
+
+message CountInvalidAuthorizationsRequest {
+        optional int64 registrationID = 1;
+        // Count authorizations that expire in this range.
         optional Range range = 2;
 }
 
