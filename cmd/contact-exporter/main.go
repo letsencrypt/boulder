@@ -62,10 +62,10 @@ func writeContacts(contactsList []contact, outfile string) error {
 
 	if outfile != "" {
 		return ioutil.WriteFile(outfile, data, 0644)
-	} else {
-		fmt.Printf("%s", data)
-		return nil
 	}
+
+	fmt.Printf("%s", data)
+	return nil
 }
 
 const usageIntro = `

@@ -3,7 +3,9 @@ package grpc
 import (
 	"errors"
 	"strings"
+	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/jmhodges/clock"
@@ -37,7 +39,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	resp, err := handler(ctx, req)
+	resp, err := grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
 	methodScope.TimingDuration("Latency", si.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
@@ -47,20 +49,30 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 }
 
 type clientInterceptor struct {
-	stats metrics.Scope
-	clk   clock.Clock
+	stats   metrics.Scope
+	clk     clock.Clock
+	timeout time.Duration
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
 // is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
-func (ci *clientInterceptor) intercept(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (ci *clientInterceptor) intercept(
+	ctx context.Context,
+	method string,
+	req,
+	reply interface{},
+	cc *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption) error {
+	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
+	defer cancel()
 	s := ci.clk.Now()
 	methodScope := ci.stats.NewScope(cleanMethod(method, false))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
 	// disable fast failure if underlying connection does not exist yet or has failed and is being recreated
 	opts = append(opts, grpc.FailFast(false))
-	err := invoker(ctx, method, req, reply, cc, opts...)
+	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {

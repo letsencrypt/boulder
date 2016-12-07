@@ -3,7 +3,16 @@
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8003",
+    "debugAddr": ":8003",
+    "grpc": {
+      "address": "boulder:9095",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

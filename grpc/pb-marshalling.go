@@ -16,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
-	rapb "github.com/letsencrypt/boulder/ra/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -238,7 +238,7 @@ func argsToPerformValidationRequest(domain string, challenge core.Challenge, aut
 
 }
 
-func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
+func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
 	if err != nil {
 		return nil, err
@@ -250,14 +250,14 @@ func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
 	createdAt := reg.CreatedAt.UnixNano()
 	status := string(reg.Status)
 	var contacts []string
-	// Since the default value of rapb.Registration.Contact is a slice
+	// Since the default value of corepb.Registration.Contact is a slice
 	// we need a indicator as to if the value is actually important on
 	// the other side (pb -> reg).
 	contactsPresent := reg.Contact != nil
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	return &rapb.Registration{
+	return &corepb.Registration{
 		Id:              &reg.ID,
 		Key:             keyBytes,
 		Contact:         contacts,
@@ -269,7 +269,7 @@ func registrationToPB(reg core.Registration) (*rapb.Registration, error) {
 	}, nil
 }
 
-func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
+func pbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 	var key jose.JsonWebKey
 	err := key.UnmarshalJSON(pb.Key)
 	if err != nil {
@@ -305,7 +305,7 @@ func pbToRegistration(pb *rapb.Registration) (core.Registration, error) {
 	}, nil
 }
 
-func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
+func authzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	challs := make([]*corepb.Challenge, len(authz.Challenges))
 	for i, c := range authz.Challenges {
 		pbChall, err := challengeToPB(c)
@@ -323,7 +323,7 @@ func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
 	if authz.Expires != nil {
 		expires = authz.Expires.UnixNano()
 	}
-	return &rapb.Authorization{
+	return &corepb.Authorization{
 		Id:             &authz.ID,
 		Identifier:     &authz.Identifier.Value,
 		RegistrationID: &authz.RegistrationID,
@@ -334,7 +334,7 @@ func authzToPB(authz core.Authorization) (*rapb.Authorization, error) {
 	}, nil
 }
 
-func pbToAuthz(pb *rapb.Authorization) (core.Authorization, error) {
+func pbToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
 		chall, err := pbToChallenge(c)
@@ -360,10 +360,68 @@ func pbToAuthz(pb *rapb.Authorization) (core.Authorization, error) {
 	}, nil
 }
 
-func registrationValid(reg *rapb.Registration) bool {
+func registrationValid(reg *corepb.Registration) bool {
 	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
 }
 
-func authorizationValid(authz *rapb.Authorization) bool {
+func authorizationValid(authz *corepb.Authorization) bool {
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
+}
+
+func certificateValid(cert *corepb.Certificate) bool {
+	return !(cert.RegistrationID == nil || cert.Serial == nil || cert.Digest == nil || cert.Der == nil || cert.Issued == nil || cert.Expires == nil)
+}
+
+func sctToPB(sct core.SignedCertificateTimestamp) *sapb.SignedCertificateTimestamp {
+	id := int64(sct.ID)
+	version := int64(sct.SCTVersion)
+	timestamp := int64(sct.Timestamp)
+	return &sapb.SignedCertificateTimestamp{
+		Id:                &id,
+		SctVersion:        &version,
+		LogID:             &sct.LogID,
+		Timestamp:         &timestamp,
+		Extensions:        sct.Extensions,
+		Signature:         sct.Signature,
+		CertificateSerial: &sct.CertificateSerial,
+	}
+}
+
+func pbToSCT(pb *sapb.SignedCertificateTimestamp) core.SignedCertificateTimestamp {
+	return core.SignedCertificateTimestamp{
+		ID:                int(*pb.Id),
+		SCTVersion:        uint8(*pb.SctVersion),
+		LogID:             *pb.LogID,
+		Timestamp:         uint64(*pb.Timestamp),
+		Extensions:        pb.Extensions,
+		Signature:         pb.Signature,
+		CertificateSerial: *pb.CertificateSerial,
+	}
+}
+
+func sctValid(sct *sapb.SignedCertificateTimestamp) bool {
+	return !(sct.Id == nil || sct.SctVersion == nil || sct.LogID == nil || sct.Timestamp == nil || sct.Signature == nil || sct.CertificateSerial == nil)
+}
+
+func certToPB(cert core.Certificate) *corepb.Certificate {
+	issued, expires := cert.Issued.UnixNano(), cert.Expires.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: &cert.RegistrationID,
+		Serial:         &cert.Serial,
+		Digest:         &cert.Digest,
+		Der:            cert.DER,
+		Issued:         &issued,
+		Expires:        &expires,
+	}
+}
+
+func pbToCert(pb *corepb.Certificate) core.Certificate {
+	return core.Certificate{
+		RegistrationID: *pb.RegistrationID,
+		Serial:         *pb.Serial,
+		Digest:         *pb.Digest,
+		DER:            pb.Der,
+		Issued:         time.Unix(0, *pb.Issued),
+		Expires:        time.Unix(0, *pb.Expires),
+	}
 }

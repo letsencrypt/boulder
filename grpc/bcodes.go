@@ -1,6 +1,8 @@
 package grpc
 
 import (
+	"errors"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -21,6 +23,11 @@ const (
 	BadNonceError
 	NoSuchRegistrationError
 	InternalServerError
+)
+
+var (
+	errIncompleteRequest  = errors.New("Incomplete gRPC request message")
+	errIncompleteResponse = errors.New("Incomplete gRPC response message")
 )
 
 func errorToCode(err error) codes.Code {

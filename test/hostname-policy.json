@@ -1,4 +1,8 @@
 {
+  "ExactBlacklist": [
+    "highrisk.le-test.hoffman-andrews.com",
+    "exactblacklist.letsencrypt.org"
+  ],
   "Blacklist": [
     "in-addr.arpa",
     "example",

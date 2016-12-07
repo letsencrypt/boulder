@@ -84,7 +84,7 @@ func TestKeyDigest(t *testing.T) {
 	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest bare key")
 
 	// Test with unknown key type
-	digest, err = KeyDigest(struct{}{})
+	_, err = KeyDigest(struct{}{})
 	test.Assert(t, err != nil, "Should have rejected unknown key type")
 }
 

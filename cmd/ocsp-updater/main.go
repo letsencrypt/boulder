@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/akamai"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -25,6 +27,7 @@ import (
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 /*
@@ -54,8 +57,8 @@ type OCSPUpdater struct {
 	ocspMinTimeToExpiry time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
-	// Number of CT logs we expect to have receipts from
-	numLogs int
+	// Logs we expect to have SCT receipts for. Missing logs will be resubmitted to.
+	logs []*ctLog
 
 	loops []*looper
 
@@ -73,7 +76,7 @@ func newUpdater(
 	pub core.Publisher,
 	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
-	numLogs int,
+	logConfigs []cmd.LogDescription,
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
@@ -88,6 +91,15 @@ func newUpdater(
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
+	logs := make([]*ctLog, len(logConfigs))
+	for i, logConfig := range logConfigs {
+		l, err := newLog(logConfig)
+		if err != nil {
+			return nil, err
+		}
+		logs[i] = l
+	}
+
 	updater := OCSPUpdater{
 		stats:               stats,
 		clk:                 clk,
@@ -96,7 +108,7 @@ func newUpdater(
 		log:                 log,
 		sac:                 sac,
 		pubc:                pub,
-		numLogs:             numLogs,
+		logs:                logs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
 		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
 	}
@@ -472,14 +484,39 @@ func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int
 	return allSerials, nil
 }
 
-func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
-	var count int
-	err := updater.dbMap.SelectOne(
-		&count,
-		"SELECT COUNT(id) FROM sctReceipts WHERE certificateSerial = :serial",
+// getSubmittedReceipts returns the IDs of the CT logs that have returned a SCT
+// receipt for the given certificate serial
+func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error) {
+	var logIDs []string
+	_, err := updater.dbMap.Select(
+		&logIDs,
+		`SELECT logID
+		FROM sctReceipts
+		WHERE certificateSerial = :serial`,
 		map[string]interface{}{"serial": serial},
 	)
-	return count, err
+	return logIDs, err
+}
+
+// missingLogIDs examines a list of log IDs that have given a SCT receipt for
+// a certificate and returns a list of the configured logs that are not
+// present. This is the set of logs we need to resubmit this certificate to in
+// order to obtain a full compliment of SCTs
+func (updater *OCSPUpdater) missingLogs(logIDs []string) []*ctLog {
+	var missingLogs []*ctLog
+
+	presentMap := make(map[string]bool)
+	for _, logID := range logIDs {
+		presentMap[logID] = true
+	}
+
+	for _, l := range updater.logs {
+		if _, present := presentMap[l.logID]; !present {
+			missingLogs = append(missingLogs, l)
+		}
+	}
+
+	return missingLogs
 }
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
@@ -494,20 +531,42 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 	}
 
 	for _, serial := range serials {
-		count, err := updater.getNumberOfReceipts(serial)
+		// First find the logIDs that have provided a SCT for the serial
+		logIDs, err := updater.getSubmittedReceipts(serial)
 		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to get number of SCT receipts for certificate: %s", err))
+			updater.log.AuditErr(fmt.Sprintf(
+				"Failed to get CT log IDs of SCT receipts for certificate: %s", err))
 			continue
 		}
-		if count >= updater.numLogs {
+
+		// Next, check if any of the configured CT logs are missing from the list of
+		// logs that have given SCTs for this serial
+		missingLogs := updater.missingLogs(logIDs)
+		if len(missingLogs) == 0 {
+			// If all of the logs have provided a SCT we're done for this serial
 			continue
 		}
+
+		// Otherwise, we need to get the certificate from the SA & submit it to each
+		// of the missing logs to obtain SCTs.
 		cert, err := updater.sac.GetCertificate(ctx, serial)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to get certificate: %s", err))
 			continue
 		}
-		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
+
+		// If the feature flag is enabled, only send the certificate to the missing
+		// logs using the `SubmitToSingleCT` endpoint that was added for this
+		// purpose
+		if features.Enabled(features.ResubmitMissingSCTsOnly) {
+			for _, log := range missingLogs {
+				_ = updater.pubc.SubmitToSingleCT(ctx, log.uri, log.key, cert.DER)
+			}
+		} else {
+			// Otherwise, use the classic behaviour and submit the certificate to
+			// every log to get SCTS using the pre-existing `SubmitToCT` endpoint
+			_ = updater.pubc.SubmitToCT(ctx, cert.DER)
+		}
 	}
 	return nil
 }
@@ -563,6 +622,25 @@ func (l *looper) loop() error {
 	}
 }
 
+// a ctLog contains the pre-processed logID and URI for a CT log. The ocsp-updater
+// creates these out of cmd.LogDescription's from its config
+type ctLog struct {
+	logID string
+	key   string
+	uri   string
+}
+
+func newLog(logConfig cmd.LogDescription) (*ctLog, error) {
+	logPK, err := base64.StdEncoding.DecodeString(logConfig.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	logPKHash := sha256.Sum256(logPK)
+	logID := base64.StdEncoding.EncodeToString(logPKHash[:])
+	return &ctLog{logID: logID, key: logConfig.Key, uri: logConfig.URI}, nil
+}
+
 const clientName = "OCSP"
 
 type config struct {
@@ -586,14 +664,32 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
-	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create CA client")
+
+	var cac core.CertificateAuthority
+	if c.CAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn))
+	} else {
+		var err error
+		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create CA client")
+	}
 
 	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create SA client")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+	var sac core.StorageAuthority
+	if c.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.SAService, stats)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
+
 	return cac, pubc, sac
 }
 
@@ -634,7 +730,7 @@ func main() {
 		sac,
 		// Necessary evil for now
 		conf,
-		len(c.Common.CT.Logs),
+		c.Common.CT.Logs,
 		c.Common.IssuerCert,
 		auditlogger,
 	)

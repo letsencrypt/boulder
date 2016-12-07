@@ -19,7 +19,7 @@ import (
 
 func TestServerTransportCredentials(t *testing.T) {
 	acceptedSANs := map[string]struct{}{
-		"boulder-client": struct{}{},
+		"boulder-client": {},
 	}
 	goodCert, err := core.LoadCert("../../test/grpc-creds/boulder-client/cert.pem")
 	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/boulder-client/cert.pem') failed")
@@ -31,9 +31,16 @@ func TestServerTransportCredentials(t *testing.T) {
 	_, err = NewServerCredentials(nil, acceptedSANs)
 	test.AssertEquals(t, err, NilServerConfigErr)
 
-	// A creds with a nil acceptedSANs list should consider any peer valid
-	bcreds := &serverTransportCredentials{servTLSConfig, nil}
+	// A creds with a empty acceptedSANs list should consider any peer valid
+	wrappedCreds, err := NewServerCredentials(servTLSConfig, nil)
+	test.AssertNotError(t, err, "NewServerCredentials failed with nil acceptedSANs")
+	bcreds := wrappedCreds.(*serverTransportCredentials)
 	emptyState := tls.ConnectionState{}
+	err = bcreds.validateClient(emptyState)
+	test.AssertNotError(t, err, "validateClient() errored for emptyState")
+	wrappedCreds, err = NewServerCredentials(servTLSConfig, map[string]struct{}{})
+	test.AssertNotError(t, err, "NewServerCredentials failed with empty acceptedSANs")
+	bcreds = wrappedCreds.(*serverTransportCredentials)
 	err = bcreds.validateClient(emptyState)
 	test.AssertNotError(t, err, "validateClient() errored for emptyState")
 
@@ -62,7 +69,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	// that has a leaf certificate containing an IP address SAN present in the
 	// accepted list.
 	acceptedIPSans := map[string]struct{}{
-		"127.0.0.1": struct{}{},
+		"127.0.0.1": {},
 	}
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedIPSans}
 	err = bcreds.validateClient(rightState)

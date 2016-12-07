@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "AdminRevoker"
@@ -52,6 +53,7 @@ type config struct {
 		AMQP *cmd.AMQPConfig
 
 		RAService *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig
 	}
 
 	Statsd cmd.StatsdConfig
@@ -59,7 +61,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, metrics.Scope) {
+func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority, metrics.Scope) {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
@@ -68,7 +70,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	if c.Revoker.RAService != nil {
 		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn), c.Revoker.RAService.Timeout.Duration)
+		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
 	} else {
 		var err error
 		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
@@ -81,10 +83,17 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	cmd.FailOnError(err, "Couldn't setup database connection")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Failed to create SA client")
+	var sac core.StorageAuthority
+	if c.Revoker.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
 
-	return rac, logger, dbMap, *sac, scope
+	return rac, logger, dbMap, sac, scope
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx *gorp.Transaction) (err error) {
