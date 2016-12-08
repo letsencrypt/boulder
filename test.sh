@@ -60,7 +60,6 @@ function run_and_expect_silence() {
 
   # Fail if result_file is nonempty.
   if [ -s ${result_file} ]; then
-    echo "[!] FAILURE: $@"
     FAILURE=1
   fi
   rm ${result_file}
