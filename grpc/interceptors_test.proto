@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+option go_package = "grpc";
+
+service InterceptorTest {
+  // Sleep for the given amount of time, and return the amount of time slept.
+  rpc Chill(Time) returns (Time) {}
+}
+
+message Time {
+  optional int64 time = 1; // In nanoseconds
+}
