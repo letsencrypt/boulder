@@ -110,7 +110,10 @@ func (log grpcLogger) Println(args ...interface{}) {
 
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
-// Also sets the constructed AuditLogger as the default logger.
+// Also sets the constructed AuditLogger as the default logger, and configures
+// the cfssl, mysql, and grpc packages to use our logger.
+// This must be called before any gRPC code is called, because gRPC's SetLogger
+// doesn't use any locking.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
