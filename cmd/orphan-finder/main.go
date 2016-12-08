@@ -77,12 +77,12 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	}
 	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.AuditErr(fmt.Sprintf("Didn't match regex for b64der: %s", line))
+		logger.AuditErr(fmt.Sprintf("Didn't match regex for cert: %s", line))
 		return true, false
 	}
 	der, err := hex.DecodeString(derStr[1])
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Couldn't decode b64: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Couldn't decode hex: %s, [%s]", err, line))
 		return true, false
 	}
 	err = checkDER(sa, der)
