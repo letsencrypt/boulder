@@ -1,8 +1,8 @@
 syntax = "proto2";
 
-option go_package = "grpc";
+option go_package = "test_proto";
 
-service InterceptorTest {
+service Chiller {
   // Sleep for the given amount of time, and return the amount of time slept.
   rpc Chill(Time) returns (Time) {}
 }

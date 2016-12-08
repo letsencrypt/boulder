@@ -4,9 +4,6 @@ package grpc
 
 import (
 	"errors"
-	"log"
-	"net"
-	"strconv"
 	"testing"
 	"time"
 
@@ -15,6 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -91,56 +89,38 @@ func TestClientInterceptor(t *testing.T) {
 type testServer struct{}
 
 // Chill implements InterceptorTest.Chill
-func (s *testServer) Chill(ctx context.Context, in *Time) (*Time, error) {
+func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
 	start := time.Now()
 	time.Sleep(time.Duration(*in.Time) * time.Nanosecond)
 	spent := int64(time.Since(start) / time.Nanosecond)
-	return &Time{Time: &spent}, nil
+	return &test_proto.Time{Time: &spent}, nil
 }
 
-func TestInterceptors(t *testing.T) {
-	// Set up a connection to a nonexistent server.
-	ci := &clientInterceptor{metrics.NewNoopScope(), clock.Default(), 1100 * time.Millisecond}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
+// TestFailFastFalse sends a gRPC request to a backend that is
+// unavailable, and ensures that the request doesn't error out until the
+// timeout is reached, i.e. that FailFast is set to false.
+// https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
+func TestFailFastFalse(t *testing.T) {
+	ci := &clientInterceptor{metrics.NewNoopScope(), clock.Default(), 100 * time.Millisecond}
+	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
-	c := NewInterceptorTestClient(conn)
+	c := test_proto.NewChillerClient(conn)
 
-	/*
-		lis, err := net.Listen("tcp", ":0")
-		if err != nil {
-			log.Fatalf("failed to listen: %v", err)
-		}
-		port := lis.Addr().(*net.TCPAddr).Port
-
-		si := &serverInterceptor{metrics.NewNoopScope(), clock.Default()}
-		s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
-		RegisterInterceptorTestServer(s, &testServer{})
-		go func() {
-			start := time.Now()
-			if err := s.Serve(lis); err != nil &&
-				!strings.HasSuffix(err.Error(), "use of closed network connection") {
-				t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
-			}
-		}()
-
-	*/
 	start := time.Now()
 	var second int64 = time.Second.Nanoseconds()
-	_, err = c.Chill(context.Background(), &Time{Time: &second})
+	_, err = c.Chill(context.Background(), &test_proto.Time{Time: &second})
 	if err == nil {
-		t.Fatal("Successful Chill when we expected failure.")
+		t.Errorf("Successful Chill when we expected failure.")
 	}
-	if time.Since(start) < 100*time.Millisecond {
-		t.Fatal("Chill failed fast, when FailFast should be disabled.")
+	if time.Since(start) < 90*time.Millisecond {
+		t.Errorf("Chill failed fast, when FailFast should be disabled.")
 	}
-
-	//s.GracefulStop()
+	_ = conn.Close()
 }
 
 func TestCleanMethod(t *testing.T) {
