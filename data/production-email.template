@@ -17,7 +17,8 @@ this certificate with a newer one that covers more or fewer names than
 the list above, you may be able to ignore this message.
 
 If you want to stop receiving all email from this address, click
-|UNSUB:https://mandrillapp.com/unsub|
+|UNSUB:https://mandrillapp.com/unsub| (Warning: this is a one-click action
+that cannot be undone)
 
 Regards,
 The Let's Encrypt Team
