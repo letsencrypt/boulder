@@ -49,7 +49,7 @@ type certificateStorage interface {
 }
 
 var (
-	derOrphan        = regexp.MustCompile(`cert=\[([a-zA-Z0-9+/=]+)\]`)
+	derOrphan        = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
 	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
