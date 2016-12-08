@@ -428,6 +428,13 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		return nil, bdns.ProblemDetailsFromDNSError(err)
 	}
 
+	// If there weren't any TXT records return a distinct error message to allow
+	// troubleshooters to differentiate between no TXT records and
+	// invalid/incorrect TXT records.
+	if len(txts) == 0 {
+		return nil, probs.Unauthorized("No TXT records found for DNS challenge")
+	}
+
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
