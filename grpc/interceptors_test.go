@@ -1,7 +1,5 @@
 package grpc
 
-//go:generate sh -c "cd .. && protoc --go_out=plugins=grpc,Mcore/proto/core.proto=github.com/letsencrypt/boulder/grpc:. grpc/interceptors_test.proto"
-
 import (
 	"errors"
 	"testing"
