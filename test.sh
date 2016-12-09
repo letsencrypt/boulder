@@ -232,6 +232,7 @@ fi
 # always needs to run after `godep restore`.
 if [[ "$RUN" =~ "generate" ]] ; then
   start_context "generate"
+  go version
   protoc --version
   echo protoc-gen-go: $(cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go/ && git rev-parse HEAD)
   # Additionally, we need to run go install before go generate because the stringer command
