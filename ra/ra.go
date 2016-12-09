@@ -360,30 +360,40 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	saGRPC, ok := ra.SA.(bgrpc.StorageAuthorityClientWrapper)
-	if limit.Enabled() && ok {
-		count, err := saGRPC.CountInvalidAuthorizations(ctx, &sapb.CountInvalidAuthorizationsRequest{
-			RegistrationID: &regID,
-			Range: &sapb.Range{
-				Earliest: time.Now(), // XXX replace with window logic
-				Latest:   time.Now(), // XXX replace with window logic
-			},
-		})
-		if err != nil {
-			return err
-		}
-		if count == nil {
-			return fmt.Errorf("nil count")
-		}
-		// Most rate limits have a key for overrides, but there is no meaningful key
-		// here.
-		noKey := ""
-		if *count.Count >= limit.GetThreshold(noKey, regID) {
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
-			return core.RateLimitedError("Too many invalid authorizations recently.")
-		}
+	// To implement this limit, we need to use an RPC that is defined only in
+	// gRPC, not in AMQP-RPC. So we check the underlying type of our SA client. If
+	// it corresponds to the gRPC client, we know we can use the gRPC-only method.
+	// Otherwise, we don't bother checking this limit.
+	saGRPC, usingGRPC := ra.SA.(bgrpc.StorageAuthorityClientWrapper)
+	if !limit.Enabled() || !usingGRPC {
+		return nil
+	}
+	latest := ra.clk.Now().Add(ra.authorizationLifetime)
+	earliest := latest.Add(-limit.Window.Duration)
+	latestNanos := latest.UnixNano()
+	earliestNanos := earliest.UnixNano()
+	count, err := saGRPC.CountInvalidAuthorizations(ctx, &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &regID,
+		Hostname:       &hostname,
+		Range: &sapb.Range{
+			Earliest: &earliestNanos,
+			Latest:   &latestNanos,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if count == nil {
+		return fmt.Errorf("nil count")
+	}
+	// Most rate limits have a key for overrides, but there is no meaningful key
+	// here.
+	noKey := ""
+	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
+		return core.RateLimitedError("Too many invalid authorizations recently.")
 	}
 	return nil
 }
@@ -403,7 +413,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return authz, err
 	}
 
-	if err = ra.checkInvalidAuthorizationLimit(ctx, regID); err != nil {
+	if err = ra.checkInvalidAuthorizationLimit(ctx, regID, identifier.Value); err != nil {
 		return authz, err
 	}
 

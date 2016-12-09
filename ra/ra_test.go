@@ -160,6 +160,7 @@ type dummyRateLimitConfig struct {
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
+	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 }
 
@@ -177,6 +178,10 @@ func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
 
 func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
 	return r.PendingAuthorizationsPerAccountPolicy
+}
+
+func (r *dummyRateLimitConfig) InvalidAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
+	return r.InvalidAuthorizationsPerAccountPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {

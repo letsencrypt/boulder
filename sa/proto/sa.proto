@@ -109,8 +109,9 @@ message CountRegistrationsByIPRequest {
 
 message CountInvalidAuthorizationsRequest {
         optional int64 registrationID = 1;
+        optional string hostname = 2;
         // Count authorizations that expire in this range.
-        optional Range range = 2;
+        optional Range range = 3;
 }
 
 message GetSCTReceiptRequest {

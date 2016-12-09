@@ -912,17 +912,23 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	ctx context.Context,
 	req *sapb.CountInvalidAuthorizationsRequest,
 ) (count *sapb.Count, err error) {
+	identifier := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: *req.Hostname,
+	}
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT COUNT(1) FROM authz
 		WHERE registrationID = :regID AND
+		identifier = :identifier AND
 		expires > :earliest AND
 		expires <= :latest AND
 		status = :invalid`,
 		map[string]interface{}{
-			"regID":    req.RegistrationID,
-			"earliest": req.Range.Earliest,
-			"latest":   req.Range.Latest,
-			"invalid":  string(core.StatusInvalid),
+			"regID":      req.RegistrationID,
+			"identifier": identifier,
+			"earliest":   req.Range.Earliest,
+			"latest":     req.Range.Latest,
+			"invalid":    string(core.StatusInvalid),
 		})
 	return
 }
