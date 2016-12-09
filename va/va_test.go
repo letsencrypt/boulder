@@ -23,8 +23,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -850,7 +850,6 @@ func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 		&cmd.PortConfig{},
 		nil,
 		nil,
-		nil,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
@@ -873,7 +872,6 @@ func TestCheckCAAFallback(t *testing.T) {
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
-		nil,
 		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
@@ -899,12 +897,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
-	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")

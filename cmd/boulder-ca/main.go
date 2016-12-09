@@ -12,6 +12,7 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/ca"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -22,8 +23,8 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "CA"
@@ -169,18 +170,21 @@ func main() {
 	cai.PA = pa
 
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Failed to create SA client")
-
-	if c.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.PublisherService, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+	if c.CA.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CA.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
+		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
+
+	if amqpConf.Publisher != nil {
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
+	var grpcSrv *grpc.Server
 	if c.CA.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
@@ -190,10 +194,19 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		cas.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
 

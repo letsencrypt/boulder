@@ -10,11 +10,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -406,8 +404,6 @@ func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 	rpc.connected = true
 	rpc.mu.Unlock()
 
-	go rpc.catchSignals()
-
 	for {
 		select {
 		case msg, ok := <-rpc.connection.messages():
@@ -441,29 +437,11 @@ func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 				rpc.mu.RUnlock()
 				rpc.log.Info(" [!] Got channel close, but no signal to shut down. Continuing.")
 			}
-		case err = <-rpc.connection.closeChannel():
+		case <-rpc.connection.closeChannel():
 			rpc.log.Info(fmt.Sprintf(" [!] Server channel closed: %s", rpc.serverQueue))
 			rpc.connection.reconnect(c, rpc.log)
 		}
 	}
-}
-
-var signalToName = map[os.Signal]string{
-	syscall.SIGTERM: "SIGTERM",
-	syscall.SIGINT:  "SIGINT",
-	syscall.SIGHUP:  "SIGHUP",
-}
-
-func (rpc *AmqpRPCServer) catchSignals() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM)
-	signal.Notify(sigChan, syscall.SIGINT)
-	signal.Notify(sigChan, syscall.SIGHUP)
-
-	sig := <-sigChan
-	rpc.log.Info(fmt.Sprintf(" [!] Caught %s", signalToName[sig]))
-	rpc.Stop()
-	signal.Stop(sigChan)
 }
 
 // Stop gracefully stops the AmqpRPCServer, after calling AmqpRPCServer.Start will

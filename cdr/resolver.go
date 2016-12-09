@@ -145,7 +145,7 @@ func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, url string, ic 
 		if respObj.Comment != "" {
 			return nil, fmt.Errorf("Query failed with %s: %s", dns.RcodeToString[respObj.Status], respObj.Comment)
 		}
-		return nil, fmt.Errorf("Query failed wtih %s", dns.RcodeToString[respObj.Status])
+		return nil, fmt.Errorf("Query failed with %s", dns.RcodeToString[respObj.Status])
 	}
 
 	return parseAnswer(respObj.Answer)

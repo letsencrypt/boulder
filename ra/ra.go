@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -44,10 +43,12 @@ var issuanceExpvar = expvar.NewInt("lastIssuance")
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA          core.CertificateAuthority
-	VA          core.ValidationAuthority
-	SA          core.StorageAuthority
-	PA          core.PolicyAuthority
+	CA        core.CertificateAuthority
+	VA        core.ValidationAuthority
+	SA        core.StorageAuthority
+	PA        core.PolicyAuthority
+	publisher core.Publisher
+
 	stats       metrics.Scope
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
@@ -84,6 +85,7 @@ func NewRegistrationAuthorityImpl(
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	pubc core.Publisher,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
@@ -102,6 +104,7 @@ func NewRegistrationAuthorityImpl(
 		pendAuthByRegIDStats:         stats.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          stats.NewScope("RA", "RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RA", "RateLimit", "TotalCertificates"),
+		publisher:                    pubc,
 	}
 	return ra
 }
@@ -640,6 +643,14 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
+	if ra.publisher != nil {
+		go func() {
+			// Since we don't want this method to be canceled if the parent context
+			// expires, pass a background context to it and run it in a goroutine.
+			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
+		}()
+	}
+
 	err = ra.MatchesCSR(cert, csr)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -855,8 +866,6 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	return true
 }
 
-var emptyKey jose.JsonWebKey
-
 // MergeUpdate copies a subset of information from the input Registration
 // into the Registration r. It returns true if an update was performed and the base object
 // was changed, and false if no change was made.
@@ -880,9 +889,12 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		changed = true
 	}
 
-	if features.Enabled(features.AllowKeyRollover) && input.Key != emptyKey && input.Key != r.Key {
-		r.Key = input.Key
-		changed = true
+	if features.Enabled(features.AllowKeyRollover) && input.Key != nil {
+		sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
+		if !sameKey {
+			r.Key = input.Key
+			changed = true
+		}
 	}
 
 	return changed
@@ -930,7 +942,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Recompute the key authorization field provided by the client and
 	// check it against the value provided
-	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(&reg.Key)
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		err = core.InternalServerError("Could not compute expected key authorization value")
 		return
@@ -951,9 +963,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
-		// This can pretty much only happen when the client corrupts the Challenge
-		// data.
-		err = core.MalformedRequestError("Challenge data was corrupted")
+		ra.log.Warning(fmt.Sprintf(
+			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
+		err = core.InternalServerError("Could not update pending authorization")
 		return
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)

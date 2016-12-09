@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
@@ -24,7 +25,7 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 )
 
 // Package Variables Variables
@@ -208,6 +209,23 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 		return false
 	}
 	return digestJ == digestK
+}
+
+// PublicKeysEqual determines whether two public keys have the same marshalled
+// bytes as one another
+func PublicKeysEqual(a, b interface{}) (bool, error) {
+	if a == nil || b == nil {
+		return false, errors.New("One or more nil arguments to PublicKeysEqual")
+	}
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false, err
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Compare(aBytes, bBytes) == 0, nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String

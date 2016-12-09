@@ -60,12 +60,16 @@ func TestWillingToIssue(t *testing.T) {
 		{`zombo*com`, errInvalidDNSCharacter},
 		{`*.com`, errInvalidDNSCharacter},
 		{`*.zombo.com`, errInvalidDNSCharacter},
-		{`.`, errLabelTooShort},
-		{`..`, errLabelTooShort},
-		{`a..`, errLabelTooShort},
 		{`..a`, errLabelTooShort},
-		{`.a.`, errLabelTooShort},
-		{`.....`, errLabelTooShort},
+		{`a..a`, errLabelTooShort},
+		{`.a..a`, errLabelTooShort},
+		{`..foo.com`, errLabelTooShort},
+		{`.`, errNameEndsInDot},
+		{`..`, errNameEndsInDot},
+		{`a..`, errNameEndsInDot},
+		{`.....`, errNameEndsInDot},
+		{`.a.`, errNameEndsInDot},
+		{`www.zombo.com.`, errNameEndsInDot},
 		{`www.zombo_com.com`, errInvalidDNSCharacter},
 		{`\uFEFF`, errInvalidDNSCharacter}, // Byte order mark
 		{`\uFEFFwww.zombo.com`, errInvalidDNSCharacter},
@@ -164,6 +168,9 @@ func TestWillingToIssue(t *testing.T) {
 	// Valid encoding
 	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
+	// IDN TLD
+	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
+	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test domains that are equal to public suffixes

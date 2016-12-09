@@ -46,9 +46,9 @@ def start(race_detection):
     global processes
     forward()
     progs = [
+        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
         'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
-        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
         'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
         'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
@@ -56,8 +56,7 @@ def start(race_detection):
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv --closeFirst 5',
-        'caa-checker --config cmd/caa-checker/test-config.yml'
+        'mail-test-srv --closeFirst 5'
     ]
     if not install(race_detection):
         return False

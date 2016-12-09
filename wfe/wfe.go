@@ -11,14 +11,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -85,8 +86,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	// Feature gates
-	CheckMalformedCSR      bool
 	AcceptRevocationReason bool
 	AllowAuthzDeactivation bool
 }
@@ -153,6 +152,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 				logEvent.ResponseNonce = nonce
 			} else {
 				logEvent.AddError("unable to make nonce: %s", err)
+			}
+
+			logEvent.Endpoint = pattern
+			if request.URL != nil {
+				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
 			}
 
 			switch request.Method {
@@ -269,7 +273,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
+func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
@@ -294,7 +298,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(wfe.Index),
 	})
-	return m, nil
+	return m
 }
 
 // Method implementations
@@ -456,7 +460,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	var key *jose.JsonWebKey
-	reg, err = wfe.SA.GetRegistrationByKey(ctx, *submittedKey)
+	reg, err = wfe.SA.GetRegistrationByKey(ctx, submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
@@ -481,7 +485,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		return nil, nil, reg, core.ProblemDetailsForError(err, "")
 	} else {
 		// If the lookup was successful, use that key.
-		key = &reg.Key
+		key = reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
 	}
@@ -592,7 +596,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, *key); err == nil {
+	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
 		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
@@ -610,7 +614,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
-	init.Key = *key
+	init.Key = key
 	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
 	if init.InitialIP == nil {
 		host, _, err := net.SplitHostPort(request.RemoteAddr)
@@ -702,9 +706,25 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
+	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+	if err != nil {
+		return false, err
+	}
+	if len(names) != len(authz) {
+		return false, nil
+	}
+	missingNames := false
+	for _, name := range names {
+		if _, present := authz[name]; !present {
+			missingNames = true
+		}
+	}
+	return !missingNames, nil
+}
+
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
@@ -766,13 +786,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 		return
 	}
 
-	// TODO: Implement method of revocation by authorizations on account.
-	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
-		registration.ID == cert.RegistrationID) {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."),
-			nil)
-		return
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.ID == cert.RegistrationID) {
+		valid, err := wfe.regHoldsAuthorizations(ctx, registration.ID, parsedCertificate.DNSNames)
+		if err != nil {
+			logEvent.AddError("regHoldsAuthorizations failed: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve authorizations for names in certificate"), err)
+			return
+		}
+		if !valid {
+			wfe.sendError(response, logEvent,
+				probs.Unauthorized("Revocation request must be signed by private key of cert to be revoked, by the "+
+					"account key of the account that issued it, or by the account key of an account that holds valid "+
+					"authorizations for all names in the certificate."),
+				nil)
+			return
+		}
 	}
 
 	reason := revocation.Reason(0)
@@ -842,15 +870,13 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
 		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
-		if wfe.CheckMalformedCSR {
-			wfe.sendError(
-				response,
-				logEvent,
-				probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
-				nil,
-			)
-			return
-		}
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
+			nil,
+		)
+		return
 	}
 
 	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
@@ -1399,18 +1425,6 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
-func publicKeysEqual(a, b interface{}) (bool, error) {
-	aBytes, err := x509.MarshalPKIXPublicKey(a)
-	if err != nil {
-		return false, err
-	}
-	bBytes, err := x509.MarshalPKIXPublicKey(b)
-	if err != nil {
-		return false, err
-	}
-	return bytes.Compare(aBytes, bBytes) == 0, nil
-}
-
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceKeyChange)
@@ -1450,7 +1464,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 
-	keysEqual, err := publicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
+	keysEqual, err := core.PublicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
 	if err != nil {
 		logEvent.AddError("unable to marshal new key: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
@@ -1463,7 +1477,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 
 	// Update registration key
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: *newKey})
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)

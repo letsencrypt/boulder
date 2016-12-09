@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.7",
-	"GodepVersion": "v74",
+	"GodepVersion": "v75",
 	"Packages": [
 		"./..."
 	],
@@ -12,8 +12,8 @@
 		},
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
-			"Comment": "v2.0.0-21-gea76b31",
-			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
+			"Comment": "v2.0.2",
+			"Rev": "26a31053503dcd96f51363a90eb03e0b32406e26"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
@@ -99,8 +99,8 @@
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-171-g267b128",
-			"Rev": "267b128680c46286b9ca13475c3cca5de8f79bd7"
+			"Comment": "v1.2-213-g665b834",
+			"Rev": "665b83488b90b902ce0a305ef6652e599771cdf9"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
@@ -132,7 +132,7 @@
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
-			"Comment": "v1.0-4-g880ee4c",
+			"Comment": "v1.1",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
 		},
 		{
@@ -142,7 +142,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
-			"Rev": "bda7cf218ae2225f745ead23f9b65901dfebbf45"
+			"Comment": "v1.0.0",
+			"Rev": "c47dab18ddd8c4d4267661870d3ba331cddc57c9"
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
@@ -163,13 +164,13 @@
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_golang/prometheus",
-			"Comment": "0.7.0-129-g3fb8ace",
-			"Rev": "3fb8ace93bc4ccddea55af62320c2fd109252880"
+			"Comment": "v0.8.0",
+			"Rev": "c5b7fccd204277076155f10851dad72b76a49317"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_golang/prometheus/promhttp",
-			"Comment": "0.7.0-129-g3fb8ace",
-			"Rev": "3fb8ace93bc4ccddea55af62320c2fd109252880"
+			"Comment": "v0.8.0",
+			"Rev": "c5b7fccd204277076155f10851dad72b76a49317"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_model/go",
@@ -193,24 +194,13 @@
 			"Rev": "abf152e5f3e97f2fafac028d2cc06c1feb87ffa5"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
-			"ImportPath": "github.com/square/go-jose/cipher",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
-			"ImportPath": "github.com/square/go-jose/json",
-			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
-		},
-		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Rev": "3316aa3feceb68fa73009112eddd387500cd40c0"
+			"Comment": "v0.3.0",
+			"Rev": "49fe4b0e8276b314e6703300ac26940d9c090a06"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
@@ -258,53 +248,68 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/codes",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/credentials",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/grpclog",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/internal",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/metadata",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/naming",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/peer",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/transport",
-			"Comment": "v1.0.1-GA-39-g52f6504",
-			"Rev": "52f6504dc290bd928a8139ba94e3ab32ed9a6273"
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",
 			"Comment": "v1.7.1",
 			"Rev": "c87af80f3cc5036b55b83d77171e156791085e2e"
+		},
+		{
+			"ImportPath": "gopkg.in/square/go-jose.v1",
+			"Comment": "v1.1.0",
+			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
+		},
+		{
+			"ImportPath": "gopkg.in/square/go-jose.v1/cipher",
+			"Comment": "v1.1.0",
+			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
+		},
+		{
+			"ImportPath": "gopkg.in/square/go-jose.v1/json",
+			"Comment": "v1.1.0",
+			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",

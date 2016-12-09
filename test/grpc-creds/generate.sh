@@ -2,23 +2,14 @@
 set -e
 set -o xtrace
 
-validity="3650"
-size="2048"
-key_path="key.pem"
-ca_path="ca.pem"
-duocsr_path="duo.csr"
-server_path="server.pem"
-client_path="client.pem"
+# Check that `minica` is installed
+command -v minica >/dev/null 2>&1 || {
+  echo >&2 "No 'minica' command available.";
+  echo >&2 "Check your GOPATH and run: 'go get github.com/jsha/minica'.";
+  exit 1;
+}
 
-# generate key
-openssl genrsa -out $key_path $size
-# generate ca
-openssl req -x509 -new -nodes -key $key_path -sha256 -days $validity -subj "/O=boulder/CN=grpc-test-ca" -out $ca_path
-# generate csr for server + client (TODO(#1719): generate individual certs for each service name)
-openssl req -new -key $key_path -out $duocsr_path -subj "/O=boulder/CN=boulder"
-# generate server cert
-openssl x509 -req -in $duocsr_path -CA $ca_path -CAkey $key_path -CAcreateserial -days $validity -sha256 -out $server_path
-# generate client cert
-openssl x509 -req -in $duocsr_path -CA $ca_path -CAkey $key_path -CAcreateserial -days $validity -sha256 -out $client_path
-
-rm $duocsr_path
+# Make a server certificate (a CA will be created to issue it)
+minica -domains boulder-server,boulder -ip-addresses 127.0.0.1
+# Make a client certificate (reuses the CA created for the server)
+minica -domains boulder-client,boulder -ip-addresses 127.0.0.1

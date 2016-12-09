@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
 	gorp "gopkg.in/gorp.v1"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -132,10 +132,13 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (core.Registration, error) {
 	const query = "WHERE jwk_sha256 = ?"
 	var model interface{}
 	var err error
+	if key == nil {
+		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
+	}
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
 		return core.Registration{}, err
@@ -359,6 +362,14 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	return ret, nil
 }
 
+func reverseName(domain string) string {
+	labels := strings.Split(domain, ".")
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+	}
+	return strings.Join(labels, ".")
+}
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
@@ -379,7 +390,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 		 AND notBefore > :earliest AND notBefore <= :latest
 		 LIMIT :limit;`,
 		map[string]interface{}{
-			"reversedDomain": core.ReverseName(domain),
+			"reversedDomain": reverseName(domain),
 			"earliest":       earliest,
 			"latest":         latest,
 			"limit":          max + 1,
@@ -650,7 +661,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
-	return output, nil
+	return output, err
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
@@ -777,7 +788,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
-// a string, or an error if any occured.
+// a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (string, error) {
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
@@ -882,11 +893,13 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, star
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
-		 WHERE registrationID = :regID AND
-				expires > :now`,
+		WHERE registrationID = :regID AND
+		expires > :now AND
+		status = :pending`,
 		map[string]interface{}{
-			"regID": regID,
-			"now":   ssa.clk.Now(),
+			"regID":   regID,
+			"now":     ssa.clk.Now(),
+			"pending": string(core.StatusPending),
 		})
 	return
 }
@@ -945,7 +958,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
-			core.ReverseName(name),
+			reverseName(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore)
 		qmarks = append(qmarks, "(?, ?, ?)")
