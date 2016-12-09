@@ -19,6 +19,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+const clientName = "ExpiredAuthzPurger"
+
 type eapConfig struct {
 	ExpiredAuthzPurger struct {
 		cmd.DBConfig
@@ -113,7 +115,7 @@ func main() {
 	// Set up logging
 	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
 	scope := metrics.NewStatsdScope(stats, "AuthzPurger")
-	auditlogger.Info(cmd.Version())
+	auditlogger.Info(cmd.VersionString(clientName))
 
 	defer auditlogger.AuditPanic()
 

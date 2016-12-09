@@ -30,6 +30,15 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+var (
+	invalidPubKey       = errors.New("invalid public key in CSR")
+	unsupportedSigAlg   = errors.New("signature algorithm not supported")
+	invalidSig          = errors.New("invalid signature on CSR")
+	invalidEmailPresent = errors.New("CSR contains one or more email address fields")
+	invalidIPPresent    = errors.New("CSR contains one or more IP address fields")
+	invalidNoDNS        = errors.New("at least one DNS name is required")
+)
+
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
 // the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
 // will hoist a DNS name into the CN if it is empty.
@@ -37,7 +46,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	normalizeCSR(csr, forceCNFromSAN)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
-		return errors.New("invalid public key in CSR")
+		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(key); err != nil {
 		return fmt.Errorf("invalid public key in CSR: %s", err)
@@ -45,13 +54,19 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
 		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
 		// does not
-		return errors.New("signature algorithm not supported")
+		return unsupportedSigAlg
 	}
 	if err := csr.CheckSignature(); err != nil {
-		return errors.New("invalid signature on CSR")
+		return invalidSig
+	}
+	if len(csr.EmailAddresses) > 0 {
+		return invalidEmailPresent
+	}
+	if len(csr.IPAddresses) > 0 {
+		return invalidIPPresent
 	}
 	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
-		return errors.New("at least one DNS name is required")
+		return invalidNoDNS
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
@@ -65,7 +80,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 			Type:  core.IdentifierDNS,
 			Value: name,
 		}); err != nil {
-			badNames = append(badNames, name)
+			badNames = append(badNames, fmt.Sprintf("%q", name))
 		}
 	}
 	if len(badNames) > 0 {

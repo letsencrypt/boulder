@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -71,6 +71,8 @@ const (
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
 	MethodDeactivateAuthorizationSA         = "DeactivateAuthorizationSA"         // SA
 	MethodDeactivateAuthorization           = "DeactivateAuthorization"           // RA
+	MethodDeactivateRegistrationSA          = "DeactivateRegistrationSA"          // SA
+	MethodDeactivateRegistration            = "DeactivateRegistration"            // RA
 )
 
 // Request structs
@@ -149,6 +151,10 @@ type performValidationRequest struct {
 	Authz core.Authorization
 }
 
+type deactivateRegistrationRequest struct {
+	ID int64
+}
+
 type performValidationResponse struct {
 	Records []core.ValidationRecord
 	Problem *probs.ProblemDetails
@@ -214,7 +220,7 @@ func improperMessage(method string, err error, obj interface{}) {
 }
 func errorCondition(method string, err error, obj interface{}) {
 	log := blog.Get()
-	log.AuditErr(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Sprintf("RPC internal error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
@@ -367,10 +373,17 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority,
 			return
 		}
 		err = impl.DeactivateAuthorization(ctx, authz)
+		return
+	})
+
+	rpc.Handle(MethodDeactivateRegistration, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var reg core.Registration
+		err = json.Unmarshal(req, &reg)
 		if err != nil {
-			errorCondition(MethodDeactivateAuthorization, err, req)
+			errorCondition(MethodDeactivateRegistration, err, req)
 			return
 		}
+		err = impl.DeactivateRegistration(ctx, reg)
 		return
 	})
 
@@ -525,6 +538,16 @@ func (rac RegistrationAuthorityClient) DeactivateAuthorization(ctx context.Conte
 	return err
 }
 
+// DeactivateRegistration deactivates a currently valid registration
+func (rac RegistrationAuthorityClient) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
+	data, err := json.Marshal(reg)
+	if err != nil {
+		return err
+	}
+	_, err = rac.rpc.DispatchSync(MethodDeactivateRegistration, data)
+	return err
+}
+
 // NewValidationAuthorityServer constructs an RPC server
 //
 // ValidationAuthorityClient / Server
@@ -645,6 +668,14 @@ func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats metri
 func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err error) {
 	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
 	return
+}
+
+// The only consumer of the publisher service's `SubmitToSingleCT` func is the
+// `ocsp-updater`. Since it will *only* use gRPC to communicate with the
+// Publisher we *do not* implement `SubmitToSingleCT` for AQMP. This method is
+// here only to satisfy the publisher interface
+func (pub PublisherClient) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) (err error) {
+	return fmt.Errorf("SubmitToSingleCT is not implemented for AQMP publisher client")
 }
 
 // NewCertificateAuthorityServer constructs an RPC server
@@ -783,7 +814,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodGetRegistrationByKey, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var jwk jose.JsonWebKey
+		var jwk *jose.JsonWebKey
 		if err = json.Unmarshal(req, &jwk); err != nil {
 			improperMessage(MethodGetRegistrationByKey, err, req)
 			return
@@ -1069,7 +1100,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 		count, err := impl.CountFQDNSets(ctx, r.Window, r.Names)
 		if err != nil {
-			errorCondition(MethodCountFQDNSets, err, req)
 			return
 		}
 
@@ -1091,7 +1121,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 		exists, err := impl.FQDNSetExists(ctx, r.Names)
 		if err != nil {
-			errorCondition(MethodFQDNSetExists, err, req)
 			return
 		}
 		response, err = json.Marshal(fqdnSetExistsResponse{exists})
@@ -1105,10 +1134,16 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 
 	rpc.Handle(MethodDeactivateAuthorizationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
 		err = impl.DeactivateAuthorization(ctx, string(req))
+		return
+	})
+
+	rpc.Handle(MethodDeactivateRegistrationSA, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var drReq deactivateRegistrationRequest
+		err = json.Unmarshal(req, &drReq)
 		if err != nil {
-			errorCondition(MethodDeactivateAuthorizationSA, err, req)
 			return
 		}
+		err = impl.DeactivateRegistration(ctx, drReq.ID)
 		return
 	})
 
@@ -1146,7 +1181,7 @@ func (cac StorageAuthorityClient) GetRegistration(ctx context.Context, id int64)
 }
 
 // GetRegistrationByKey sends a request to get a registration by JWK
-func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (reg core.Registration, err error) {
+func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (reg core.Registration, err error) {
 	jsonKey, err := key.MarshalJSON()
 	if err != nil {
 		return
@@ -1481,5 +1516,15 @@ func (cac StorageAuthorityClient) FQDNSetExists(ctx context.Context, names []str
 // DeactivateAuthorization deactivates a currently valid or pending authorization
 func (cac StorageAuthorityClient) DeactivateAuthorization(ctx context.Context, id string) error {
 	_, err := cac.rpc.DispatchSync(MethodDeactivateAuthorizationSA, []byte(id))
+	return err
+}
+
+// DeactivateRegistration deactivates a currently valid registration
+func (cac StorageAuthorityClient) DeactivateRegistration(ctx context.Context, id int64) error {
+	data, err := json.Marshal(deactivateRegistrationRequest{id})
+	if err != nil {
+		return err
+	}
+	_, err = cac.rpc.DispatchSync(MethodDeactivateRegistrationSA, data)
 	return err
 }

@@ -493,6 +493,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
+		// Note: This log line is parsed by cmd/orphan-finder. If you make any
+		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(
 			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
 			serialHex,
@@ -504,11 +506,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	// Submit the certificate to any configured CT logs
-	go func() {
-		// since we don't want this method to be canceled if the parent context
-		// expires pass a background context to it
-		_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
-	}()
+	if ca.Publisher != nil {
+		go func() {
+			// since we don't want this method to be canceled if the parent context
+			// expires pass a background context to it
+			_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
+		}()
+	}
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

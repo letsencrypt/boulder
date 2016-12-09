@@ -48,7 +48,6 @@ def start(race_detection):
     progs = [
         'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
         'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
-        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
         'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
         'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
@@ -57,7 +56,7 @@ def start(race_detection):
         'ct-test-srv',
         'dns-test-srv',
         'mail-test-srv --closeFirst 5',
-        'caa-checker --config cmd/caa-checker/test-config.yml'
+        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json")
     ]
     if not install(race_detection):
         return False

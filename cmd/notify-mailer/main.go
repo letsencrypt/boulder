@@ -99,6 +99,14 @@ func (m *mailer) run() error {
 		return err
 	}
 
+	err = m.mailer.Connect()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
@@ -345,13 +353,6 @@ func main() {
 			*reconnBase,
 			*reconnMax)
 	}
-	err = mailClient.Connect()
-	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",
-		cfg.NotifyMailer.Server, cfg.NotifyMailer.Port))
-	defer func() {
-		err = mailClient.Close()
-		cmd.FailOnError(err, "Closing mail client")
-	}()
 
 	m := mailer{
 		clk:           cmd.Clock(),

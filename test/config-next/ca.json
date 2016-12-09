@@ -3,19 +3,31 @@
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
-    "debugAddr": "localhost:8001",
+    "debugAddr": ":8001",
+    "saService": {
+      "serverAddresses": ["boulder:9095"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
     "grpc": {
       "address": "boulder:9093",
-      "clientIssuerPath": "test/grpc-creds/ca.pem",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem"
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca2.pem"
+      "CertFile": "test/test-ca2.pem",
+      "NumSessions": 10
     }, {
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca.pem"
+      "CertFile": "test/test-ca.pem",
+      "NumSessions": 10
     }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
@@ -111,21 +123,13 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
-    "publisherService": {
-      "serverAddresses": ["boulder:9091"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
-      "timeout": "10s"
-    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "CA.server",
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
+      "serviceQueue": "CA.server"
+    },
+    "features": {
+        "IDNASupport": true
     }
   },
 

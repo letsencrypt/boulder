@@ -23,7 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 var (
@@ -83,13 +83,13 @@ func TestFindContacts(t *testing.T) {
 
 func exampleContacts() []contact {
 	return []contact{
-		contact{
+		{
 			ID: 1,
 		},
-		contact{
+		{
 			ID: 2,
 		},
-		contact{
+		{
 			ID: 3,
 		},
 	}
@@ -170,7 +170,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	regB = core.Registration{
@@ -178,7 +178,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyB,
+		Key:       &keyB,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	regC = core.Registration{
@@ -186,7 +186,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			emailC,
 		},
-		Key:       keyC,
+		Key:       &keyC,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 	// Reg D has a `tel:` contact ACME URL
@@ -195,7 +195,7 @@ func (c testCtx) addRegistrations(t *testing.T) {
 		Contact: &[]string{
 			tel,
 		},
-		Key:       keyD,
+		Key:       &keyD,
 		InitialIP: net.ParseIP("127.0.0.1"),
 	}
 

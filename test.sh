@@ -60,7 +60,6 @@ function run_and_expect_silence() {
 
   # Fail if result_file is nonempty.
   if [ -s ${result_file} ]; then
-    echo "[!] FAILURE: $@"
     FAILURE=1
   fi
   rm ${result_file}
@@ -182,7 +181,10 @@ if [[ "$RUN" =~ "integration" ]] ; then
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    run git clone --depth=1 https://www.github.com/certbot/certbot.git $CERTBOT_PATH || exit 1
+    # Note: We check out the tag for the release that matches the
+    # Debian-packaged Certbot version in the current letsencrypt/boulder-tools
+    # Docker image.
+    run git clone -b v0.8.1 --depth=1 https://www.github.com/certbot/certbot.git $CERTBOT_PATH || exit 1
   fi
 
   if ! type certbot >/dev/null 2>/dev/null; then
@@ -240,6 +242,12 @@ if [[ "$RUN" =~ "generate" ]] ; then
   go install ./probs
   go install google.golang.org/grpc/codes
   run_and_expect_silence go generate ${TESTPATHS}
+  # Because the `mock` package we use to generate mocks does not properly
+  # support vendored dependencies[0] we are forced to sed out any references to
+  # the vendor directory that sneak into generated resources.
+  # [0] - https://github.com/golang/mock/issues/30
+  goSrcFiles=$(find . -name "*.go" -not -path "./vendor/*" -print)
+  run_and_expect_silence sed -i 's/github.com\/letsencrypt\/boulder\/vendor\///g' ${goSrcFiles}
   run_and_expect_silence git diff --exit-code $(ls | grep -v Godeps)
   end_context #"generate"
 fi

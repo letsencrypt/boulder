@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 // challenges.go

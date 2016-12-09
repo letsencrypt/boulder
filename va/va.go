@@ -25,12 +25,9 @@ import (
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const (
@@ -56,7 +53,6 @@ type ValidationAuthorityImpl struct {
 	userAgent    string
 	stats        metrics.Scope
 	clk          clock.Clock
-	caaClient    caaPB.CAACheckerClient
 	caaDR        *cdr.CAADistributedResolver
 }
 
@@ -64,7 +60,6 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
 	sbc SafeBrowsing,
-	caaClient caaPB.CAACheckerClient,
 	cdrClient *cdr.CAADistributedResolver,
 	resolver bdns.DNSResolver,
 	userAgent string,
@@ -84,7 +79,6 @@ func NewValidationAuthorityImpl(
 		userAgent:    userAgent,
 		stats:        stats,
 		clk:          clk,
-		caaClient:    caaClient,
 		caaDR:        cdrClient,
 	}
 }
@@ -93,6 +87,7 @@ func NewValidationAuthorityImpl(
 type verificationRequestEvent struct {
 	ID                string                  `json:",omitempty"`
 	Requester         int64                   `json:",omitempty"`
+	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
 	RequestTime       time.Time               `json:",omitempty"`
@@ -433,6 +428,13 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		return nil, bdns.ProblemDetailsFromDNSError(err)
 	}
 
+	// If there weren't any TXT records return a distinct error message to allow
+	// troubleshooters to differentiate between no TXT records and
+	// invalid/incorrect TXT records.
+	if len(txts) == 0 {
+		return nil, probs.Unauthorized("No TXT records found for DNS challenge")
+	}
+
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
@@ -447,12 +449,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 }
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	var prob *probs.ProblemDetails
-	if va.caaClient != nil {
-		prob = va.checkCAAService(ctx, identifier)
-	} else {
-		prob = va.checkCAAInternal(ctx, identifier)
-	}
+	prob := va.checkCAAInternal(ctx, identifier)
 	if va.caaDR != nil && prob != nil && prob.Type == probs.ConnectionProblem {
 		return va.checkGPDNS(ctx, identifier)
 	}
@@ -471,31 +468,6 @@ func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident c
 		valid,
 	))
 	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
-	}
-	return nil
-}
-
-func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.issuerDomain})
-	if err != nil {
-		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
-		return bgrpc.ErrorToProb(err)
-	}
-	if r.Present == nil || r.Valid == nil {
-		va.log.AuditErr("gRPC: communication failure: response is missing fields")
-		return &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Internal communication failure",
-		}
-	}
-	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-		ident.Value,
-		*r.Present,
-		*r.Valid,
-	))
-	if !*r.Valid {
 		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
 	}
 	return nil
@@ -565,6 +537,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
+		Hostname:    authz.Identifier.Value,
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
@@ -599,9 +572,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		// interface value. See, e.g.
 		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
 		return records, nil
-	} else {
-		return records, prob
 	}
+
+	return records, prob
 }
 
 // CAASet consists of filtered CAA records

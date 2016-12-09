@@ -29,12 +29,17 @@ import (
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
+	"syscall"
 	"time"
+
+	"google.golang.org/grpc/grpclog"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -48,15 +53,10 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(Version())
+			fmt.Println(VersionString(os.Args[0]))
 			os.Exit(0)
 		}
 	}
-}
-
-// Version returns a string representing the version of boulder running.
-func Version() string {
-	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
@@ -82,9 +82,38 @@ func (cl cfsslLogger) Emerg(msg string) {
 	cl.AuditErr(msg)
 }
 
+type grpcLogger struct {
+	blog.Logger
+}
+
+func (log grpcLogger) Fatal(args ...interface{}) {
+	log.Print(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalln(args ...interface{}) {
+	log.Println(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Print(args ...interface{}) {
+	log.AuditErr(fmt.Sprint(args...))
+}
+func (log grpcLogger) Printf(format string, args ...interface{}) {
+	log.AuditErr(fmt.Sprintf(format, args...))
+}
+func (log grpcLogger) Println(args ...interface{}) {
+	log.AuditErr(fmt.Sprintln(args...))
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
-// Also sets the constructed AuditLogger as the default logger.
+// Also sets the constructed AuditLogger as the default logger, and configures
+// the cfssl, mysql, and grpc packages to use our logger.
+// This must be called before any gRPC code is called, because gRPC's SetLogger
+// doesn't use any locking.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
@@ -106,6 +135,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
+	grpclog.SetLogger(grpcLogger{logger})
 
 	return stats, logger
 }
@@ -202,6 +232,7 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
+	http.Handle("/metrics", promhttp.Handler())
 	err = http.Serve(ln, nil)
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
@@ -222,4 +253,29 @@ func ReadConfigFile(filename string, out interface{}) error {
 // VersionString produces a friendly Application version string.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
+// method before exiting
+func CatchSignals(logger blog.Logger, callback func()) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+
+	if callback != nil {
+		callback()
+	}
+
+	logger.Info("Exiting")
+	os.Exit(0)
 }

@@ -23,8 +23,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -209,8 +209,15 @@ func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
+	// NOTE: We do not attempt to shut down the server. The problem is that the
+	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
+	// than that. So if we try to call hs.Close() at the end of the test, we'll be
+	// closing the test server while a request is still pending. Unfortunately,
+	// there appears to be an issue in httptest that trips Go's race detector when
+	// that happens, failing the test. So instead, we live with leaving the server
+	// around till the process exits.
+	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 
 	goodPort, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
@@ -519,11 +526,12 @@ func TestValidateHTTP(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -660,6 +668,18 @@ func TestPerformValidationInvalid(t *testing.T) {
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
+}
+
+func TestDNSValidationEmpty(t *testing.T) {
+	va, stats, _ := setup()
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"empty-txts.com",
+		chalDNS,
+		core.Authorization{})
+	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
@@ -820,11 +840,12 @@ func TestLimitedReader(t *testing.T) {
 
 	ident.Value = "localhost"
 	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 
@@ -839,7 +860,6 @@ func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
-		nil,
 		nil,
 		nil,
 		&bdns.MockDNSResolver{},
@@ -865,7 +885,6 @@ func TestCheckCAAFallback(t *testing.T) {
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
-		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
@@ -890,12 +909,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
-	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")

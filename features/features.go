@@ -12,11 +12,21 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
+	IDNASupport
+	AllowAccountDeactivation
+	CertStatusOptimizationsMigrated
+	AllowKeyRollover
+	ResubmitMissingSCTsOnly
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused: false,
+	unused:                          false,
+	IDNASupport:                     false,
+	AllowAccountDeactivation:        false,
+	CertStatusOptimizationsMigrated: false,
+	AllowKeyRollover:                false,
+	ResubmitMissingSCTsOnly:         false,
 }
 
 var fMu = new(sync.RWMutex)
@@ -73,7 +83,7 @@ func Enabled(n FeatureFlag) bool {
 	defer fMu.RUnlock()
 	v, present := features[n]
 	if !present {
-		panic(fmt.Sprintf("feature '%s' doesn't exist", n))
+		panic(fmt.Sprintf("feature '%s' doesn't exist", n.String()))
 	}
 	return v
 }

@@ -102,7 +102,7 @@ func TestCheckCert(t *testing.T) {
 		},
 		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
-		DNSNames:              []string{"example-a.com"},
+		DNSNames:              []string{"example-a.com", "foodnotbombs.mil"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
 	}
@@ -131,6 +131,8 @@ func TestCheckCert(t *testing.T) {
 		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
 		"Certificate has incorrect key usage extensions":                            1,
 		"Certificate has common name >64 characters long (65)":                      1,
+		"Policy Authority was willing to issue but domain 'foodnotbombs.mil' " +
+			"matches forbiddenDomains entry \"\\\\.mil$\"": 1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]
@@ -142,7 +144,7 @@ func TestCheckCert(t *testing.T) {
 	for k := range problemsMap {
 		t.Errorf("Expected problem but didn't find it: '%s'.", k)
 	}
-	test.AssertEquals(t, len(problems), 8)
+	test.AssertEquals(t, len(problems), 9)
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
@@ -157,6 +159,7 @@ func TestCheckCert(t *testing.T) {
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"
+	rawCert.DNSNames = []string{"example-a.com"}
 	rawCert.NotAfter = goodExpiry
 	rawCert.BasicConstraintsValid = true
 	rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
@@ -293,4 +296,48 @@ func TestSaveReport(t *testing.T) {
 
 	err := r.dump()
 	test.AssertNotError(t, err, "Failed to dump results")
+}
+
+func TestIsForbiddenDomain(t *testing.T) {
+	// Note: These testcases are not an exhaustive representation of domains
+	// Boulder won't issue for, but are instead testing the defense-in-depth
+	// `isForbiddenDomain` function called *after* the PA has vetted the name
+	// against the complex hostname policy file.
+	testcases := []struct {
+		Name     string
+		Expected bool
+	}{
+		/* Expected to be forbidden test cases */
+		// Whitespace only
+		{Name: "", Expected: true},
+		{Name: "   ", Expected: true},
+		// Anything .mil
+		{Name: "foodnotbombs.mil", Expected: true},
+		{Name: "www.foodnotbombs.mil", Expected: true},
+		{Name: ".mil", Expected: true},
+		// Anything .local
+		{Name: "yokel.local", Expected: true},
+		{Name: "off.on.remote.local", Expected: true},
+		{Name: ".local", Expected: true},
+		// Localhost is verboten
+		{Name: "localhost", Expected: true},
+		// Anything .localhost
+		{Name: ".localhost", Expected: true},
+		{Name: "local.localhost", Expected: true},
+		{Name: "extremely.local.localhost", Expected: true},
+
+		/* Expected to be allowed test cases */
+		{Name: "ok.computer.com", Expected: false},
+		{Name: "ok.millionaires", Expected: false},
+		{Name: "ok.milly", Expected: false},
+		{Name: "ok", Expected: false},
+		{Name: "nearby.locals", Expected: false},
+		{Name: "yocalhost", Expected: false},
+		{Name: "jokes.yocalhost", Expected: false},
+	}
+
+	for _, tc := range testcases {
+		result, _ := isForbiddenDomain(tc.Name)
+		test.AssertEquals(t, result, tc.Expected)
+	}
 }

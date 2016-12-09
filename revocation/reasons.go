@@ -38,9 +38,9 @@ var ReasonToString = map[Reason]string{
 // UserAllowedReasons contains the subset of Reasons which users are
 // allowed to use
 var UserAllowedReasons = map[Reason]struct{}{
-	Unspecified:          struct{}{}, // unspecified
-	KeyCompromise:        struct{}{}, // keyCompromise
-	AffiliationChanged:   struct{}{}, // affiliationChanged
-	Superseded:           struct{}{}, // superseded
-	CessationOfOperation: struct{}{}, // cessationOfOperation
+	Unspecified:          {}, // unspecified
+	KeyCompromise:        {}, // keyCompromise
+	AffiliationChanged:   {}, // affiliationChanged
+	Superseded:           {}, // superseded
+	CessationOfOperation: {}, // cessationOfOperation
 }

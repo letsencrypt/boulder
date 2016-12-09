@@ -5,6 +5,7 @@ import (
 	"os"
 
 	ct "github.com/google/certificate-transparency/go"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -13,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "Publisher"
@@ -22,6 +24,7 @@ type config struct {
 		cmd.ServiceConfig
 		SubmissionTimeout              cmd.ConfigDuration
 		MaxConcurrentRPCServerRequests int64
+		SAService                      *cmd.GRPCClientConfig
 	}
 
 	Statsd cmd.StatsdConfig
@@ -48,8 +51,6 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.Publisher.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Publisher")
 	defer logger.AuditPanic()
@@ -73,8 +74,15 @@ func main() {
 	}
 
 	amqpConf := c.Publisher.AMQP
-	sa, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-	cmd.FailOnError(err, "Unable to create SA client")
+	var sac core.StorageAuthority
+	if c.Publisher.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Unable to create SA client")
+	}
 
 	pubi := publisher.New(
 		bundle,
@@ -82,25 +90,36 @@ func main() {
 		c.Publisher.SubmissionTimeout.Duration,
 		logger,
 		scope,
-		sa)
+		sac)
 
-	go cmd.ProfileCmd(scope)
-
+	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
 		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
-		cmd.FailOnError(err, "Failed to setup gRPC server")
+		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)
 		go func() {
 			err = s.Serve(l)
-			cmd.FailOnError(err, "gRPC service failed")
+			cmd.FailOnError(err, "Publisher gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
 	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create Publisher RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		pubs.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewPublisherServer(pubs, pubi)
 	cmd.FailOnError(err, "Unable to setup Publisher RPC server")
+
+	go cmd.DebugServer(c.Publisher.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = pubs.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run Publisher RPC server")

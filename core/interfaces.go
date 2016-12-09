@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -70,6 +70,9 @@ type RegistrationAuthority interface {
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
 
 	// [WebFrontEnd]
+	DeactivateRegistration(ctx context.Context, reg Registration) error
+
+	// [WebFrontEnd]
 	DeactivateAuthorization(ctx context.Context, auth Authorization) error
 
 	// [AdminRevoker]
@@ -92,7 +95,7 @@ type PolicyAuthority interface {
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, regID int64) (Registration, error)
-	GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (Registration, error)
+	GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (Registration, error)
 	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
@@ -117,6 +120,7 @@ type StorageAdder interface {
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
+	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 }
 
@@ -131,4 +135,5 @@ type StorageAuthority interface {
 // Publisher defines the public interface for the Boulder Publisher
 type Publisher interface {
 	SubmitToCT(ctx context.Context, der []byte) error
+	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
 }
