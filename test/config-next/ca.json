@@ -46,7 +46,7 @@
               "client auth"
             ],
             "backdate": "1h",
-            "is_ca": false,
+            "ca_constraint": { "is_ca": false },
             "issuer_urls": [
               "http://127.0.0.1:4000/acme/issuer-cert"
             ],
