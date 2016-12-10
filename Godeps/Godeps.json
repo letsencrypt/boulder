@@ -349,56 +349,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/golang.org/x/crypto/pkcs12",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/golang.org/x/crypto/pkcs12/internal/rc2",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/jmhodges/clock",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/golang.org/x/crypto/ocsp",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/go",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/go/client",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/go/x509",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/golang.org/x/net/context",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/go/asn1",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/go/x509/pkix",
-			"Comment": "1.2.0-90-g437c621",
-			"Rev": "437c6213e569dde639fd116272c27557fd38eaf9"
 		}
 	]
 }
