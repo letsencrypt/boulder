@@ -237,8 +237,8 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated < :lastUpdate
-			 AND cs.ocspLastUpdated > :maxAge
+			 WHERE cs.ocspLastUpdated > :maxAge
+			 AND cs.ocspLastUpdated < :lastUpdate
 			 AND cert.expires > now()
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
