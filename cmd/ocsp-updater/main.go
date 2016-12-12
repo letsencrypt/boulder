@@ -52,8 +52,10 @@ type OCSPUpdater struct {
 	pubc core.Publisher
 	sac  core.StorageAuthority
 
-	// Used  to calculate how far back stale OCSP responses should be looked for
+	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
+	// Used to caculate how far back in time the findStaleOCSPResponse will look
+	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
 	// Number of CT logs we expect to have receipts from
@@ -89,6 +91,10 @@ func newUpdater(
 		config.MissingSCTWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
+	if config.OCSPStaleMaxAge.Duration == 0 {
+		// Default to 30 days
+		config.OCSPStaleMaxAge = cmd.ConfigDuration{Duration: time.Hour * 24 * 30}
+	}
 
 	updater := OCSPUpdater{
 		stats:               stats,
@@ -100,6 +106,7 @@ func newUpdater(
 		pubc:                pub,
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
+		ocspStaleMaxAge:     config.OCSPStaleMaxAge.Duration,
 		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
 	}
 
@@ -209,6 +216,8 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	var statuses []core.CertificateStatus
 	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
 	// the query below can be rewritten to use `AND NOT cs.isExpired`.
+	now := updater.clk.Now()
+	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 	_, err := updater.dbMap.Select(
 		&statuses,
 		`SELECT
@@ -218,12 +227,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated < :lastUpdate
+			 WHERE cs.ocspLastUpdated > :maxAge
+			 AND cs.ocspLastUpdated < :lastUpdate
 			 AND cert.expires > now()
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
+			"maxAge":     maxAgeCutoff,
 			"limit":      batchSize,
 		},
 	)
