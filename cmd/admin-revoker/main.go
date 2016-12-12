@@ -232,8 +232,8 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
 		logger.Info(fmt.Sprintf(
 			"Revoked %d pending authorizations and %d final authorizations\n",
-			authsRevoked,
 			pendingAuthsRevoked,
+			authsRevoked,
 		))
 		stats.Inc("RevokedAuthorizations", authsRevoked)
 		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
