@@ -225,6 +225,7 @@ type OCSPUpdaterConfig struct {
 	RevokedCertificateBatchSize int
 
 	OCSPMinTimeToExpiry ConfigDuration
+	OCSPStaleMaxAge     ConfigDuration
 	OldestIssuedSCT     ConfigDuration
 
 	AkamaiBaseURL           string
