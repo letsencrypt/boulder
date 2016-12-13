@@ -536,31 +536,6 @@ func NewAmqpRPCClient(
 		return nil, err
 	}
 
-	// Ensure that the queue we want to write to exists on the AMQP server. This
-	// avoids some test flakiness depending on the start order of the Boulder
-	// components (https://github.com/letsencrypt/boulder/issues/2294)
-	_, err = rpc.connection.channel.QueueDeclare(
-		rpcConf.Server,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpExclusive,
-		AmqpNoWait,
-		nil)
-	if err != nil {
-		return nil, fmt.Errorf("declaring queue %s: %s", rpcConf.Server, err)
-	}
-	// Make sure that messages with the appropriate routing key get routed to the
-	// server's queue.
-	err = rpc.connection.channel.QueueBind(
-		rpcConf.Server,
-		rpcConf.Server,
-		AmqpExchange,
-		false,
-		nil)
-	if err != nil {
-		return nil, fmt.Errorf("binding routing key %s", err)
-	}
-
 	go func() {
 		for {
 			select {
