@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/x509"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -49,7 +49,7 @@ type certificateStorage interface {
 }
 
 var (
-	b64derOrphan     = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/=]+)\]`)
+	derOrphan        = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
 	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
@@ -72,17 +72,17 @@ func checkDER(sai certificateStorage, der []byte) error {
 
 func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
 	ctx := context.Background()
-	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
+	if !strings.Contains(line, "cert=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
-	derStr := b64derOrphan.FindStringSubmatch(line)
+	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.AuditErr(fmt.Sprintf("Didn't match regex for b64der: %s", line))
+		logger.AuditErr(fmt.Sprintf("Didn't match regex for cert: %s", line))
 		return true, false
 	}
-	der, err := base64.StdEncoding.DecodeString(derStr[1])
+	der, err := hex.DecodeString(derStr[1])
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Couldn't decode b64: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Couldn't decode hex: %s, [%s]", err, line))
 		return true, false
 	}
 	err = checkDER(sa, der)

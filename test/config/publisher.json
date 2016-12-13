@@ -2,7 +2,7 @@
   "publisher": {
     "maxConcurrentRPCServerRequests": 16,
     "submissionTimeout": "5s",
-    "debugAddr": "localhost:8009",
+    "debugAddr": ":8009",
     "grpc": {
       "address": "boulder:9091",
       "clientIssuerPath": "test/grpc-creds/minica.pem",

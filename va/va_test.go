@@ -671,6 +671,18 @@ func TestPerformValidationInvalid(t *testing.T) {
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
+func TestDNSValidationEmpty(t *testing.T) {
+	va, stats, _ := setup()
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"empty-txts.com",
+		chalDNS,
+		core.Authorization{})
+	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
+}
+
 func TestPerformValidationValid(t *testing.T) {
 	va, stats, _ := setup()
 	// create a challenge with well known token

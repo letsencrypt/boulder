@@ -670,6 +670,14 @@ func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err erro
 	return
 }
 
+// The only consumer of the publisher service's `SubmitToSingleCT` func is the
+// `ocsp-updater`. Since it will *only* use gRPC to communicate with the
+// Publisher we *do not* implement `SubmitToSingleCT` for AQMP. This method is
+// here only to satisfy the publisher interface
+func (pub PublisherClient) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) (err error) {
+	return fmt.Errorf("SubmitToSingleCT is not implemented for AQMP publisher client")
+}
+
 // NewCertificateAuthorityServer constructs an RPC server
 //
 // CertificateAuthorityClient / Server

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/jmhodges/clock"
@@ -12,6 +13,8 @@ import (
 	"google.golang.org/grpc"
 )
 
+// serverInterceptor is a gRPC interceptor that adds statsd and Prometheus
+// metrics to requests handled by a gRPC server.
 type serverInterceptor struct {
 	stats metrics.Scope
 	clk   clock.Clock
@@ -38,7 +41,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	resp, err := handler(ctx, req)
+	resp, err := grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
 	methodScope.TimingDuration("Latency", si.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
@@ -47,6 +50,13 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	return resp, err
 }
 
+// clientInterceptor is a gRPC interceptor that adds statsd and Prometheus
+// metrics to sent requests, and disables FailFast. We disable FailFast because
+// non-FailFast mode is most similar to the old AMQP RPC layer: If a client
+// makes a request while all backends are briefly down (e.g. for a restart), the
+// request doesn't necessarily fail. A backend can service the request if it
+// comes back up within the timeout. Under gRPC the same effect is achieved by
+// retries up to the Context deadline.
 type clientInterceptor struct {
 	stats   metrics.Scope
 	clk     clock.Clock
@@ -69,7 +79,10 @@ func (ci *clientInterceptor) intercept(
 	methodScope := ci.stats.NewScope(cleanMethod(method, false))
 	methodScope.Inc("Calls", 1)
 	methodScope.GaugeDelta("InProgress", 1)
-	err := invoker(localCtx, method, req, reply, cc, opts...)
+	// Disable fail-fast so RPCs will retry until deadline, even if all backends
+	// are down.
+	opts = append(opts, grpc.FailFast(false))
+	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {

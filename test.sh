@@ -60,7 +60,6 @@ function run_and_expect_silence() {
 
   # Fail if result_file is nonempty.
   if [ -s ${result_file} ]; then
-    echo "[!] FAILURE: $@"
     FAILURE=1
   fi
   rm ${result_file}
@@ -243,6 +242,12 @@ if [[ "$RUN" =~ "generate" ]] ; then
   go install ./probs
   go install google.golang.org/grpc/codes
   run_and_expect_silence go generate ${TESTPATHS}
+  # Because the `mock` package we use to generate mocks does not properly
+  # support vendored dependencies[0] we are forced to sed out any references to
+  # the vendor directory that sneak into generated resources.
+  # [0] - https://github.com/golang/mock/issues/30
+  goSrcFiles=$(find . -name "*.go" -not -path "./vendor/*" -print)
+  run_and_expect_silence sed -i 's/github.com\/letsencrypt\/boulder\/vendor\///g' ${goSrcFiles}
   run_and_expect_silence git diff --exit-code $(ls | grep -v Godeps)
   end_context #"generate"
 fi

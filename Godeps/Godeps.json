@@ -86,6 +86,11 @@
 			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
 		},
 		{
+			"ImportPath": "github.com/davecgh/go-spew/spew",
+			"Comment": "v1.1.0",
+			"Rev": "346938d642f2ec3594ed81d874461961cd0faa76"
+		},
+		{
 			"ImportPath": "github.com/facebookgo/clock",
 			"Rev": "600d898af40aa09a7a93ecb9265d87b0504b6f03"
 		},
@@ -131,6 +136,16 @@
 			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
+			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",
+			"Comment": "v1.1",
+			"Rev": "6b7015e65d366bf3f19b2b2a000a831940f0f7e0"
+		},
+		{
+			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus/examples/testproto",
+			"Comment": "v1.1",
+			"Rev": "6b7015e65d366bf3f19b2b2a000a831940f0f7e0"
+		},
+		{
 			"ImportPath": "github.com/jmhodges/clock",
 			"Comment": "v1.1",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
@@ -161,6 +176,11 @@
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",
 			"Rev": "63fe23f7434723dc904c901043af07931f293c47"
+		},
+		{
+			"ImportPath": "github.com/pmezard/go-difflib/difflib",
+			"Comment": "v1.0.0",
+			"Rev": "792786c7400a136282c1664665ae0a8db921c6c2"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_golang/prometheus",
@@ -196,6 +216,21 @@
 		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
+		},
+		{
+			"ImportPath": "github.com/stretchr/testify/assert",
+			"Comment": "v1.1.3-8-g0744955",
+			"Rev": "0744955171b0b6e1871ff9d7366abc2b7a7fcec0"
+		},
+		{
+			"ImportPath": "github.com/stretchr/testify/require",
+			"Comment": "v1.1.3-8-g0744955",
+			"Rev": "0744955171b0b6e1871ff9d7366abc2b7a7fcec0"
+		},
+		{
+			"ImportPath": "github.com/stretchr/testify/suite",
+			"Comment": "v1.1.3-8-g0744955",
+			"Rev": "0744955171b0b6e1871ff9d7366abc2b7a7fcec0"
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
