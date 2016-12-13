@@ -760,7 +760,6 @@ func main() {
 	dbURL, err := conf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
-	sa.SetSQLDebug(dbMap, auditlogger)
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
