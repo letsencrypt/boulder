@@ -388,7 +388,7 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 		return err
 	}
 
-	return updater.generateOCSPResponses(ctx, statuses)
+	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("newCertificateTick"))
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
@@ -438,7 +438,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	return nil
 }
 
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus) error {
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus, stats metrics.Scope) error {
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
@@ -456,17 +456,17 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 			meta, err := updater.generateResponse(ctx, status)
 			if err != nil {
 				updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
-				updater.stats.Inc("Errors.ResponseGeneration", 1)
+				stats.Inc("Errors.ResponseGeneration", 1)
 				return
 			}
 			updater.stats.Inc("GeneratedResponses", 1)
 			err = updater.storeResponse(meta)
 			if err != nil {
 				updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
-				updater.stats.Inc("Errors.StoreResponse", 1)
+				stats.Inc("Errors.StoreResponse", 1)
 				return
 			}
-			updater.stats.Inc("StoredResponses", 1)
+			stats.Inc("StoredResponses", 1)
 		}()
 	}
 	return nil
@@ -484,7 +484,7 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	}
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
 
-	return updater.generateOCSPResponses(ctx, statuses)
+	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
