@@ -442,17 +442,20 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
-	// outstanding requests.
-	var sem = make(chan int, updater.parallelGenerateOCSPRequests)
-
-	for len(statuses) > 0 {
+	// outstanding requests. The number of outstanding requests equals the
+	// capacity of the channel.
+	sem := make(chan int, updater.parallelGenerateOCSPRequests)
+	wait := func() {
 		sem <- 1 // Block until there's capacity.
-		status := statuses[0]
-		statuses = statuses[1:]
+	}
+	done := func() {
+		<-sem // Indicate there's more capacity.
+	}
+
+	for _, status := range statuses {
+		wait()
 		go func() {
-			defer func() {
-				<-sem // Indicate there's more capacity.
-			}()
+			defer done()
 			meta, err := updater.generateResponse(ctx, status)
 			if err != nil {
 				updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
