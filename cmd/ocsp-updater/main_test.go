@@ -30,7 +30,9 @@ import (
 
 var ctx = context.Background()
 
-type mockCA struct{}
+type mockCA struct {
+	sleepTime time.Duration
+}
 
 func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
@@ -38,6 +40,7 @@ func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateReques
 
 func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	ocsp = []byte{1, 2, 3}
+	time.Sleep(ca.sleepTime)
 	return
 }
 
@@ -220,8 +223,20 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 2)
 
-	err = updater.generateOCSPResponses(ctx, certs)
+	// Hacky test of parallelism: Make each request to the CA take 1 second, and
+	// produce 2 requests to the CA. If the pair of requests complete in about a
+	// second, they were made in parallel.
+	// Note that this test also tests the basic functionality of
+	// generateOCSPResponses.
+	start := time.Now()
+	updater.cac = &mockCA{time.Second}
+	updater.parallelGenerateOCSPRequests = 10
+	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
+	elapsed := time.Since(start)
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("generateOCSPResponses took too long, expected it to make calls in parallel.")
+	}
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
