@@ -452,30 +452,32 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		<-sem // Indicate there's more capacity.
 	}
 
+	work := func(status core.CertificateStatus) {
+		defer done()
+		meta, err := updater.generateResponse(ctx, status)
+		if err != nil {
+			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
+			stats.Inc("Errors.ResponseGeneration", 1)
+			return
+		}
+		updater.stats.Inc("GeneratedResponses", 1)
+		err = updater.storeResponse(meta)
+		if err != nil {
+			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
+			stats.Inc("Errors.StoreResponse", 1)
+			return
+		}
+		stats.Inc("StoredResponses", 1)
+	}
+
 	for _, status := range statuses {
 		wait()
-		go func() {
-			defer done()
-			meta, err := updater.generateResponse(ctx, status)
-			if err != nil {
-				updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
-				stats.Inc("Errors.ResponseGeneration", 1)
-				return
-			}
-			updater.stats.Inc("GeneratedResponses", 1)
-			err = updater.storeResponse(meta)
-			if err != nil {
-				updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
-				stats.Inc("Errors.StoreResponse", 1)
-				return
-			}
-			stats.Inc("StoredResponses", 1)
-		}()
+		go work(status)
 	}
 	// Block until the channel reaches its full capacity again, indicating each
 	// goroutine has completed.
 	for i := 0; i < updater.parallelGenerateOCSPRequests; i++ {
-		sem <- 1
+		wait()
 	}
 	return nil
 }
