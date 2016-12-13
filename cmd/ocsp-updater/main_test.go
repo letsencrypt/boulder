@@ -220,7 +220,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 2)
 
-	err = updater.generateOCSPResponses(ctx, certs)
+	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)

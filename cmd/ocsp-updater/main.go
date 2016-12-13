@@ -446,12 +446,12 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	var sem = make(chan int, updater.parallelGenerateOCSPRequests)
 
 	for len(statuses) > 0 {
-		sem <- 1 // block until there's capacity
+		sem <- 1 // Block until there's capacity.
 		status := statuses[0]
 		statuses = statuses[1:]
 		go func() {
 			defer func() {
-				<-sem // put a capacity token back on the channel
+				<-sem // Indicate there's more capacity.
 			}()
 			meta, err := updater.generateResponse(ctx, status)
 			if err != nil {
@@ -468,6 +468,11 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 			}
 			stats.Inc("StoredResponses", 1)
 		}()
+	}
+	// Block until the channel reaches its full capacity again, indicating each
+	// goroutine has completed.
+	for i := 0; i < updater.parallelGenerateOCSPRequests; i++ {
+		sem <- 1
 	}
 	return nil
 }
