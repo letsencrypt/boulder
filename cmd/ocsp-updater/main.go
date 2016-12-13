@@ -59,6 +59,9 @@ type OCSPUpdater struct {
 	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
+	// Maximum number of individual OCSP updates to attempt in parallel. Making
+	// these requests in parallel allows us to get higher total throughput.
+	parallelGenerateOCSPRequests int
 	// Logs we expect to have SCT receipts for. Missing logs will be resubmitted to.
 	logs []*ctLog
 
@@ -96,6 +99,10 @@ func newUpdater(
 		// Default to 30 days
 		config.OCSPStaleMaxAge = cmd.ConfigDuration{Duration: time.Hour * 24 * 30}
 	}
+	if config.ParallelGenerateOCSPRequests == 0 {
+		// Default to 1
+		config.ParallelGenerateOCSPRequests = 1
+	}
 
 	logs := make([]*ctLog, len(logConfigs))
 	for i, logConfig := range logConfigs {
@@ -107,17 +114,18 @@ func newUpdater(
 	}
 
 	updater := OCSPUpdater{
-		stats:               stats,
-		clk:                 clk,
-		dbMap:               dbMap,
-		cac:                 ca,
-		log:                 log,
-		sac:                 sac,
-		pubc:                pub,
-		logs:                logs,
-		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
-		ocspStaleMaxAge:     config.OCSPStaleMaxAge.Duration,
-		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
+		stats:                        stats,
+		clk:                          clk,
+		dbMap:                        dbMap,
+		cac:                          ca,
+		log:                          log,
+		sac:                          sac,
+		pubc:                         pub,
+		logs:                         logs,
+		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
+		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
+		oldestIssuedSCT:              config.OldestIssuedSCT.Duration,
+		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 	}
 
 	// Setup loops
@@ -431,21 +439,35 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 }
 
 func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus) error {
-	for _, status := range statuses {
-		meta, err := updater.generateResponse(ctx, status)
-		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
-			updater.stats.Inc("Errors.ResponseGeneration", 1)
-			return err
-		}
-		updater.stats.Inc("GeneratedResponses", 1)
-		err = updater.storeResponse(meta)
-		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
-			updater.stats.Inc("Errors.StoreResponse", 1)
-			continue
-		}
-		updater.stats.Inc("StoredResponses", 1)
+	// Use the semaphore pattern from
+	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
+	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
+	// outstanding requests.
+	var sem = make(chan int, updater.parallelGenerateOCSPRequests)
+
+	for len(statuses) > 0 {
+		sem <- 1 // block until there's capacity
+		status := statuses[0]
+		statuses = statuses[1:]
+		go func() {
+			defer func() {
+				<-sem // put a capacity token back on the channel
+			}()
+			meta, err := updater.generateResponse(ctx, status)
+			if err != nil {
+				updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
+				updater.stats.Inc("Errors.ResponseGeneration", 1)
+				return
+			}
+			updater.stats.Inc("GeneratedResponses", 1)
+			err = updater.storeResponse(meta)
+			if err != nil {
+				updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
+				updater.stats.Inc("Errors.StoreResponse", 1)
+				return
+			}
+			updater.stats.Inc("StoredResponses", 1)
+		}()
 	}
 	return nil
 }
@@ -453,13 +475,14 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 // oldOCSPResponsesTick looks for certificates with stale OCSP responses and
 // generates/stores new ones
 func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
-	now := time.Now()
-	statuses, err := updater.findStaleOCSPResponses(now.Add(-updater.ocspMinTimeToExpiry), batchSize)
+	tickStart := time.Now()
+	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
+	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
 
 	return updater.generateOCSPResponses(ctx, statuses)
 }
@@ -727,6 +750,7 @@ func main() {
 	dbURL, err := conf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
+	sa.SetSQLDebug(dbMap, auditlogger)
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
