@@ -236,26 +236,56 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT
-			 cs.serial,
-			 cs.status,
-			 cs.revokedDate
-			 FROM certificateStatus AS cs
-			 JOIN certificates AS cert
-			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated > :maxAge
-			 AND cs.ocspLastUpdated < :lastUpdate
-			 AND cert.expires > now()
-			 ORDER BY cs.ocspLastUpdated ASC
-			 LIMIT :limit`,
-		map[string]interface{}{
-			"lastUpdate": oldestLastUpdatedTime,
-			"maxAge":     maxAgeCutoff,
-			"limit":      batchSize,
-		},
-	)
+
+	// If CertStatusOptimizationsMigrated is enabled then we can do this query
+	// using only the `certificateStatus` table, saving an expensive JOIN and
+	// improving performance substantially
+	var err error
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		_, err = updater.dbMap.Select(
+			&statuses,
+			`SELECT
+				cs.serial,
+				cs.status,
+				cs.revokedDate,
+				cs.notAfter
+				FROM certificateStatus AS cs
+				WHERE cs.ocspLastUpdated > :maxAge
+				AND cs.ocspLastUpdated < :lastUpdate
+				AND NOT cs.isExpired
+				ORDER BY cs.ocspLastUpdated ASC
+				LIMIT :limit`,
+			map[string]interface{}{
+				"lastUpdate": oldestLastUpdatedTime,
+				"maxAge":     maxAgeCutoff,
+				"limit":      batchSize,
+			},
+		)
+		// If the migration hasn't been applied we don't have the `isExpired` or
+		// `notAfter` fields on the certificate status table to use and must do the
+		// expensive JOIN on `certificates`
+	} else {
+		_, err = updater.dbMap.Select(
+			&statuses,
+			`SELECT
+				 cs.serial,
+				 cs.status,
+				 cs.revokedDate
+				 FROM certificateStatus AS cs
+				 JOIN certificates AS cert
+				 ON cs.serial = cert.serial
+				 WHERE cs.ocspLastUpdated > :maxAge
+				 AND cs.ocspLastUpdated < :lastUpdate
+				 AND cert.expires > now()
+				 ORDER BY cs.ocspLastUpdated ASC
+				 LIMIT :limit`,
+			map[string]interface{}{
+				"lastUpdate": oldestLastUpdatedTime,
+				"maxAge":     maxAgeCutoff,
+				"limit":      batchSize,
+			},
+		)
+	}
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -372,6 +402,17 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 		status.OCSPLastUpdated,
 		status.Serial,
 		string(status.Status),
+	)
+	return err
+}
+
+// markExpired updates a given CertificateStatus to have `isExpired` set.
+func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+ 		SET isExpired = TRUE
+ 		WHERE serial = ?`,
+		status.Serial,
 	)
 	return err
 }
@@ -493,6 +534,20 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 		return err
 	}
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
+
+	// If the CertStatusOptimizationsMigrated flag is set then we need to
+	// opportunistically update the certificateStatus `isExpired` column for expired
+	// certificates we come across
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		for _, s := range statuses {
+			if !s.IsExpired && s.NotAfter.Before(tickStart) {
+				err := updater.markExpired(s)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 
 	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
 }
