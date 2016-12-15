@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -244,8 +245,9 @@ func (m *mailer) findExpiringCertificates() error {
 		// in a slightly more efficient way by looking at `cs.NotAfter` instead of
 		// `cert.expires` in the WHERE clause.
 		var certs []core.Certificate
+		var err error
 		if features.Enabled(features.CertStatusOptimizationsMigrated) {
-			_, err := m.dbMap.Select(
+			_, err = m.dbMap.Select(
 				&certs,
 				`SELECT cert.* FROM certificates AS cert
 				 JOIN certificateStatus AS cs
@@ -264,7 +266,7 @@ func (m *mailer) findExpiringCertificates() error {
 				},
 			)
 		} else {
-			_, err := m.dbMap.Select(
+			_, err = m.dbMap.Select(
 				&certs,
 				`SELECT cert.* FROM certificates AS cert
 						 JOIN certificateStatus AS cs
