@@ -224,8 +224,10 @@ type OCSPUpdaterConfig struct {
 	MissingSCTBatchSize         int
 	RevokedCertificateBatchSize int
 
-	OCSPMinTimeToExpiry ConfigDuration
-	OldestIssuedSCT     ConfigDuration
+	OCSPMinTimeToExpiry          ConfigDuration
+	OCSPStaleMaxAge              ConfigDuration
+	OldestIssuedSCT              ConfigDuration
+	ParallelGenerateOCSPRequests int
 
 	AkamaiBaseURL           string
 	AkamaiClientToken       string

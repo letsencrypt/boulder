@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
@@ -60,6 +61,8 @@ func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.
 	if err != nil {
 		return nil, nil, err
 	}
+
+	grpc_prometheus.EnableHandlingTimeHistogram()
 
 	si := &serverInterceptor{stats.NewScope("gRPCServer"), clock.Default()}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil

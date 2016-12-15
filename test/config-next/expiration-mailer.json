@@ -11,7 +11,7 @@
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
-    "debugAddr": "localhost:8008",
+    "debugAddr": ":8008",
     "saService": {
       "serverAddresses": ["boulder:9095"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",

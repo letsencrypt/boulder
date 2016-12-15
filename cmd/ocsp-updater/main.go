@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -52,12 +53,17 @@ type OCSPUpdater struct {
 	pubc core.Publisher
 	sac  core.StorageAuthority
 
-	// Used  to calculate how far back stale OCSP responses should be looked for
+	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
+	// Used to caculate how far back in time the findStaleOCSPResponse will look
+	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
-	// Number of CT logs we expect to have receipts from
-	numLogs int
+	// Maximum number of individual OCSP updates to attempt in parallel. Making
+	// these requests in parallel allows us to get higher total throughput.
+	parallelGenerateOCSPRequests int
+	// Logs we expect to have SCT receipts for. Missing logs will be resubmitted to.
+	logs []*ctLog
 
 	loops []*looper
 
@@ -75,7 +81,7 @@ func newUpdater(
 	pub core.Publisher,
 	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
-	numLogs int,
+	logConfigs []cmd.LogDescription,
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
@@ -89,18 +95,37 @@ func newUpdater(
 		config.MissingSCTWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
+	if config.OCSPStaleMaxAge.Duration == 0 {
+		// Default to 30 days
+		config.OCSPStaleMaxAge = cmd.ConfigDuration{Duration: time.Hour * 24 * 30}
+	}
+	if config.ParallelGenerateOCSPRequests == 0 {
+		// Default to 1
+		config.ParallelGenerateOCSPRequests = 1
+	}
+
+	logs := make([]*ctLog, len(logConfigs))
+	for i, logConfig := range logConfigs {
+		l, err := newLog(logConfig)
+		if err != nil {
+			return nil, err
+		}
+		logs[i] = l
+	}
 
 	updater := OCSPUpdater{
-		stats:               stats,
-		clk:                 clk,
-		dbMap:               dbMap,
-		cac:                 ca,
-		log:                 log,
-		sac:                 sac,
-		pubc:                pub,
-		numLogs:             numLogs,
-		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
-		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
+		stats:                        stats,
+		clk:                          clk,
+		dbMap:                        dbMap,
+		cac:                          ca,
+		log:                          log,
+		sac:                          sac,
+		pubc:                         pub,
+		logs:                         logs,
+		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
+		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
+		oldestIssuedSCT:              config.OldestIssuedSCT.Duration,
+		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 	}
 
 	// Setup loops
@@ -209,6 +234,8 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	var statuses []core.CertificateStatus
 	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
 	// the query below can be rewritten to use `AND NOT cs.isExpired`.
+	now := updater.clk.Now()
+	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 	_, err := updater.dbMap.Select(
 		&statuses,
 		`SELECT
@@ -218,12 +245,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated < :lastUpdate
+			 WHERE cs.ocspLastUpdated > :maxAge
+			 AND cs.ocspLastUpdated < :lastUpdate
 			 AND cert.expires > now()
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
+			"maxAge":     maxAgeCutoff,
 			"limit":      batchSize,
 		},
 	)
@@ -359,7 +388,7 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 		return err
 	}
 
-	return updater.generateOCSPResponses(ctx, statuses)
+	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("newCertificateTick"))
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
@@ -409,22 +438,46 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	return nil
 }
 
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus) error {
-	for _, status := range statuses {
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus, stats metrics.Scope) error {
+	// Use the semaphore pattern from
+	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
+	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
+	// outstanding requests. The number of outstanding requests equals the
+	// capacity of the channel.
+	sem := make(chan int, updater.parallelGenerateOCSPRequests)
+	wait := func() {
+		sem <- 1 // Block until there's capacity.
+	}
+	done := func() {
+		<-sem // Indicate there's more capacity.
+	}
+
+	work := func(status core.CertificateStatus) {
+		defer done()
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
-			updater.stats.Inc("Errors.ResponseGeneration", 1)
-			return err
+			stats.Inc("Errors.ResponseGeneration", 1)
+			return
 		}
 		updater.stats.Inc("GeneratedResponses", 1)
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
-			updater.stats.Inc("Errors.StoreResponse", 1)
-			continue
+			stats.Inc("Errors.StoreResponse", 1)
+			return
 		}
-		updater.stats.Inc("StoredResponses", 1)
+		stats.Inc("StoredResponses", 1)
+	}
+
+	for _, status := range statuses {
+		wait()
+		go work(status)
+	}
+	// Block until the channel reaches its full capacity again, indicating each
+	// goroutine has completed.
+	for i := 0; i < updater.parallelGenerateOCSPRequests; i++ {
+		wait()
 	}
 	return nil
 }
@@ -432,15 +485,16 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 // oldOCSPResponsesTick looks for certificates with stale OCSP responses and
 // generates/stores new ones
 func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
-	now := time.Now()
-	statuses, err := updater.findStaleOCSPResponses(now.Add(-updater.ocspMinTimeToExpiry), batchSize)
+	tickStart := time.Now()
+	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
+	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
 
-	return updater.generateOCSPResponses(ctx, statuses)
+	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
@@ -474,14 +528,39 @@ func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int
 	return allSerials, nil
 }
 
-func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
-	var count int
-	err := updater.dbMap.SelectOne(
-		&count,
-		"SELECT COUNT(id) FROM sctReceipts WHERE certificateSerial = :serial",
+// getSubmittedReceipts returns the IDs of the CT logs that have returned a SCT
+// receipt for the given certificate serial
+func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error) {
+	var logIDs []string
+	_, err := updater.dbMap.Select(
+		&logIDs,
+		`SELECT logID
+		FROM sctReceipts
+		WHERE certificateSerial = :serial`,
 		map[string]interface{}{"serial": serial},
 	)
-	return count, err
+	return logIDs, err
+}
+
+// missingLogIDs examines a list of log IDs that have given a SCT receipt for
+// a certificate and returns a list of the configured logs that are not
+// present. This is the set of logs we need to resubmit this certificate to in
+// order to obtain a full compliment of SCTs
+func (updater *OCSPUpdater) missingLogs(logIDs []string) []*ctLog {
+	var missingLogs []*ctLog
+
+	presentMap := make(map[string]bool)
+	for _, logID := range logIDs {
+		presentMap[logID] = true
+	}
+
+	for _, l := range updater.logs {
+		if _, present := presentMap[l.logID]; !present {
+			missingLogs = append(missingLogs, l)
+		}
+	}
+
+	return missingLogs
 }
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
@@ -496,20 +575,42 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 	}
 
 	for _, serial := range serials {
-		count, err := updater.getNumberOfReceipts(serial)
+		// First find the logIDs that have provided a SCT for the serial
+		logIDs, err := updater.getSubmittedReceipts(serial)
 		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to get number of SCT receipts for certificate: %s", err))
+			updater.log.AuditErr(fmt.Sprintf(
+				"Failed to get CT log IDs of SCT receipts for certificate: %s", err))
 			continue
 		}
-		if count >= updater.numLogs {
+
+		// Next, check if any of the configured CT logs are missing from the list of
+		// logs that have given SCTs for this serial
+		missingLogs := updater.missingLogs(logIDs)
+		if len(missingLogs) == 0 {
+			// If all of the logs have provided a SCT we're done for this serial
 			continue
 		}
+
+		// Otherwise, we need to get the certificate from the SA & submit it to each
+		// of the missing logs to obtain SCTs.
 		cert, err := updater.sac.GetCertificate(ctx, serial)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to get certificate: %s", err))
 			continue
 		}
-		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
+
+		// If the feature flag is enabled, only send the certificate to the missing
+		// logs using the `SubmitToSingleCT` endpoint that was added for this
+		// purpose
+		if features.Enabled(features.ResubmitMissingSCTsOnly) {
+			for _, log := range missingLogs {
+				_ = updater.pubc.SubmitToSingleCT(ctx, log.uri, log.key, cert.DER)
+			}
+		} else {
+			// Otherwise, use the classic behaviour and submit the certificate to
+			// every log to get SCTS using the pre-existing `SubmitToCT` endpoint
+			_ = updater.pubc.SubmitToCT(ctx, cert.DER)
+		}
 	}
 	return nil
 }
@@ -563,6 +664,25 @@ func (l *looper) loop() error {
 	for {
 		l.tick()
 	}
+}
+
+// a ctLog contains the pre-processed logID and URI for a CT log. The ocsp-updater
+// creates these out of cmd.LogDescription's from its config
+type ctLog struct {
+	logID string
+	key   string
+	uri   string
+}
+
+func newLog(logConfig cmd.LogDescription) (*ctLog, error) {
+	logPK, err := base64.StdEncoding.DecodeString(logConfig.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	logPKHash := sha256.Sum256(logPK)
+	logID := base64.StdEncoding.EncodeToString(logPKHash[:])
+	return &ctLog{logID: logID, key: logConfig.Key, uri: logConfig.URI}, nil
 }
 
 const clientName = "OCSP"
@@ -654,7 +774,7 @@ func main() {
 		sac,
 		// Necessary evil for now
 		conf,
-		len(c.Common.CT.Logs),
+		c.Common.CT.Logs,
 		c.Common.IssuerCert,
 		auditlogger,
 	)

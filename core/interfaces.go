@@ -135,4 +135,5 @@ type StorageAuthority interface {
 // Publisher defines the public interface for the Boulder Publisher
 type Publisher interface {
 	SubmitToCT(ctx context.Context, der []byte) error
+	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
 }

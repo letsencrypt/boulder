@@ -35,6 +35,8 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc/grpclog"
+
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -80,9 +82,38 @@ func (cl cfsslLogger) Emerg(msg string) {
 	cl.AuditErr(msg)
 }
 
+type grpcLogger struct {
+	blog.Logger
+}
+
+func (log grpcLogger) Fatal(args ...interface{}) {
+	log.Print(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalln(args ...interface{}) {
+	log.Println(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Print(args ...interface{}) {
+	log.AuditErr(fmt.Sprint(args...))
+}
+func (log grpcLogger) Printf(format string, args ...interface{}) {
+	log.AuditErr(fmt.Sprintf(format, args...))
+}
+func (log grpcLogger) Println(args ...interface{}) {
+	log.AuditErr(fmt.Sprintln(args...))
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
-// Also sets the constructed AuditLogger as the default logger.
+// Also sets the constructed AuditLogger as the default logger, and configures
+// the cfssl, mysql, and grpc packages to use our logger.
+// This must be called before any gRPC code is called, because gRPC's SetLogger
+// doesn't use any locking.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
@@ -104,6 +135,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
+	grpclog.SetLogger(grpcLogger{logger})
 
 	return stats, logger
 }
