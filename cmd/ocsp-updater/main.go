@@ -526,14 +526,15 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 // oldOCSPResponsesTick looks for certificates with stale OCSP responses and
 // generates/stores new ones
 func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
-	tickStart := time.Now()
+	tickStart := updater.clk.Now()
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
-	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
+	tickEnd := updater.clk.Now()
+	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
 
 	// If the CertStatusOptimizationsMigrated flag is set then we need to
 	// opportunistically update the certificateStatus `isExpired` column for expired

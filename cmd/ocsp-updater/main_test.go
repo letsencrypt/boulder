@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -393,6 +394,61 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(certs), 0)
+}
+
+// TestOldOCSPResponesTickIsExpired checks that the old OCSP responses tick
+// updates the `IsExpired` field opportunistically as it encounters certificates
+// that are expired but whose certificate status rows do not have `IsExpired`
+// set.
+func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
+	// Explicitly enable the CertStatusOptimizationsMigrated feature so the OCSP
+	// updater can use the `IsExpired` field. This must be done before `setup()`
+	// so the correct dbMap associations are used
+	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
+	defer features.Reset()
+
+	updater, sa, dbMap, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	serial := core.SerialToString(parsedCert.SerialNumber)
+
+	// Add a new test certificate
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	// We need to set a fake "ocspLastUpdated" value for the cert we created
+	// in order to satisfy the "ocspStaleMaxAge" constraint. It needs to fall
+	// within the range of the updater.ocspMinTimeToExpiry we set later.
+	fakeLastUpdate := parsedCert.NotAfter.Add(-time.Hour)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		fakeLastUpdate,
+		serial)
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+
+	// The certificate isn't expired, so the certificate status should have
+	// a false `IsExpired`
+	cs, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	test.AssertEquals(t, cs.IsExpired, false)
+
+	// Advance the clock to the point that the certificate we added is now expired
+	fc.Set(parsedCert.NotAfter.Add(time.Hour))
+
+	// Run the oldOCSPResponsesTick so that it can have a chance to find expired
+	// certificates
+	updater.ocspMinTimeToExpiry = 1 * time.Hour
+	err = updater.oldOCSPResponsesTick(ctx, 10)
+	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
+
+	// Since we advanced the fakeclock beyond our test certificate's NotAfter we
+	// expect the certificate status has been updated to have a true `IsExpired`
+	cs, err = sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	test.AssertEquals(t, cs.IsExpired, true)
 }
 
 func TestMissingReceiptsTick(t *testing.T) {
