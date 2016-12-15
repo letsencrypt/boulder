@@ -356,7 +356,7 @@ def run_admin_revoker_test():
     if not lines[-1].startswith(prefix):
         print("Failed to extract authorization URL")
         die(ExitStatus.NodeFailure)
-    url = lines[-1][len(prefix)]
+    url = lines[-1][len(prefix):]
     # Revoke authorization by domain
     try:
         output = subprocess.check_output("./bin/admin-revoker auth-revoke --config %s ar-auth-test.com" % (config),
