@@ -540,7 +540,7 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	// certificates we come across
 	if features.Enabled(features.CertStatusOptimizationsMigrated) {
 		for _, s := range statuses {
-			if !s.IsExpired && s.NotAfter.Before(tickStart) {
+			if !s.IsExpired && tickStart.After(s.NotAfter) {
 				err := updater.markExpired(s)
 				if err != nil {
 					return err
