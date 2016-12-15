@@ -319,8 +319,7 @@ def run_admin_revoker_test():
     cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
     # Issue certificate for serial-revoke test
     if subprocess.Popen('''
-        node test.--domains ar-test.com \
-          --cert %s && \
+        node test.js --domains ar-test.com --cert %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (cert_file, cert_file, cert_file_pem),
         shell=True, cwd=JS_DIR).wait() != 0:
@@ -346,17 +345,17 @@ def run_admin_revoker_test():
 
     # Issue certificate for auth-revoke test
     try:
-        output = subprocess.check_output("node test.js --email ar@test.com --domains ar-auth-test.com --abort-step startChallenge",
+        output = subprocess.check_output("node test.js --domains ar-auth-test.com --abort-step startChallenge",
                             shell=True, cwd=JS_DIR)
     except subprocess.CalledProcessError as e:
         print "Failed to create authorization: %s" % (e.output)
         die(ExitStatus.NodeFailure)
     # Get authorization URL from last line of output
     lines = output.rstrip().split("\n")
-    if not lines[-1].startswith("authorization-url="):
+    prefix = "authorization-url="
+    if not lines[-1].startswith(prefix):
         print("Failed to extract authorization URL")
         die(ExitStatus.NodeFailure)
-    prefix = "authorization-url="
     url = lines[-1][len(prefix)]
     # Revoke authorization by domain
     try:
