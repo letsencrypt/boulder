@@ -315,16 +315,14 @@ if default_config_dir == '':
     default_config_dir = 'test/config'
 
 def run_admin_revoker_test():
-    email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "ar-cert.der")
     cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
-    key_file = os.path.join(tempdir, "key.pem")
     # Issue certificate for serial-revoke test
     if subprocess.Popen('''
-        node test.js --email %s --domains ar-test.com \
-          --certKey %s --cert %s --challType http-01 && \
+        node test.--domains ar-test.com \
+          --cert %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (email_addr, key_file, cert_file, cert_file, cert_file_pem),
+        ''' % (cert_file, cert_file, cert_file_pem),
         shell=True, cwd=JS_DIR).wait() != 0:
         print("\nIssuing failed")
         die(ExitStatus.NodeFailure)
@@ -338,7 +336,6 @@ def run_admin_revoker_test():
     serial = serial.rstrip()
     # Revoke certificate by serial
     config = default_config_dir + "/admin-revoker.json"
-    print("./bin/admin-revoker serial-revoke --config %s %s %d" % (config, serial, 1))
     if subprocess.Popen("./bin/admin-revoker serial-revoke --config %s %s %d" % (config, serial, 1),
                         shell=True).wait() != 0:
         print("Failed to revoke certificate")
@@ -356,10 +353,11 @@ def run_admin_revoker_test():
         die(ExitStatus.NodeFailure)
     # Get authorization URL from last line of output
     lines = output.rstrip().split("\n")
-    if not lines[len(lines)-1].startswith("authorization-url="):
+    if not lines[-1].startswith("authorization-url="):
         print("Failed to extract authorization URL")
         die(ExitStatus.NodeFailure)
-    url = lines[len(lines)-1][18:]
+    prefix = "authorization-url="
+    url = lines[-1][len(prefix)]
     # Revoke authorization by domain
     try:
         output = subprocess.check_output("./bin/admin-revoker auth-revoke --config %s ar-auth-test.com" % (config),
