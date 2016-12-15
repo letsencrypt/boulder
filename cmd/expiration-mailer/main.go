@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -239,25 +240,51 @@ func (m *mailer) findExpiringCertificates() error {
 
 		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn))
+
+		// If CertStatusOptimizationsMigrated is enabled then we can do this query
+		// in a slightly more efficient way by looking at `cs.NotAfter` instead of
+		// `cert.expires` in the WHERE clause.
 		var certs []core.Certificate
-		_, err := m.dbMap.Select(
-			&certs,
-			`SELECT cert.* FROM certificates AS cert
-			 JOIN certificateStatus AS cs
-			 ON cs.serial = cert.serial
-			 AND cert.expires > :cutoffA
-			 AND cert.expires <= :cutoffB
-			 AND cs.status != "revoked"
-			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-			 ORDER BY cert.expires ASC
-			 LIMIT :limit`,
-			map[string]interface{}{
-				"cutoffA":   left,
-				"cutoffB":   right,
-				"nagCutoff": expiresIn.Seconds(),
-				"limit":     m.limit,
-			},
-		)
+		var err error
+		if features.Enabled(features.CertStatusOptimizationsMigrated) {
+			_, err = m.dbMap.Select(
+				&certs,
+				`SELECT cert.* FROM certificates AS cert
+				 JOIN certificateStatus AS cs
+				 ON cs.serial = cert.serial
+				 AND cs.notAfter > :cutoffA
+				 AND cs.notAfter <= :cutoffB
+				 AND cs.status != "revoked"
+				 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+				 ORDER BY cert.expires ASC
+				 LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
+		} else {
+			_, err = m.dbMap.Select(
+				&certs,
+				`SELECT cert.* FROM certificates AS cert
+						 JOIN certificateStatus AS cs
+						 ON cs.serial = cert.serial
+						 AND cert.expires > :cutoffA
+						 AND cert.expires <= :cutoffB
+						 AND cs.status != "revoked"
+						 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+						 ORDER BY cert.expires ASC
+						 LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
+		}
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			return err // fatal
