@@ -98,8 +98,23 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
-
 	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
+
+	var subject string
+	if m.subject != "" {
+		// If there is a subject from the configuration file, we should use it as-is
+		// to preserve the "classic" behaviour before we added a domain name.
+		subject = m.subject
+	} else {
+		// Otherwise, when no subject is configured we should make one using the
+		// domain names in the expiring certificate
+		subject = fmt.Sprintf("Certificate expiration notice for domain %q", domains[0])
+		if len(domains) > 1 {
+			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
+		}
+	}
+	fmt.Printf("Subject: %s\n", subject)
+	m.log.Debug(fmt.Sprintf("Message subject %q", subject))
 
 	email := emailContent{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
@@ -113,7 +128,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		return err
 	}
 	startSending := m.clk.Now()
-	err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
+	err = m.mailer.SendMail(emails, subject, msgBuf.String())
 	if err != nil {
 		return err
 	}
@@ -455,13 +470,9 @@ func main() {
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
 
-	subject := "Certificate expiration notice"
-	if c.Mailer.Subject != "" {
-		subject = c.Mailer.Subject
-	}
 	m := mailer{
 		stats:         scope,
-		subject:       subject,
+		subject:       c.Mailer.Subject,
 		log:           logger,
 		dbMap:         dbMap,
 		rs:            sac,
