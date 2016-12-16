@@ -1,13 +1,13 @@
 {
   "ocspResponder": {
-    "source": "mysql+tcp://ocsp_resp@boulder-mysql:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
+    "dbConnectFile": "test/secrets/ocsp_responder_dburl",
     "maxDBConns": 10,
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "maxAge": "10s",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "debugAddr": "localhost:8005"
+    "debugAddr": ":8005"
   },
 
   "statsd": {
@@ -16,10 +16,8 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
-  },
+ },
 
   "common": {
     "issuerCert": "test/test-ca.pem"

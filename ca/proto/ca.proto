@@ -1,0 +1,27 @@
+syntax = "proto2";
+
+package ca;
+option go_package = "proto";
+
+import "core/proto/core.proto";
+
+service CertificateAuthority {
+  rpc IssueCertificate(IssueCertificateRequest) returns (core.Certificate) {}
+  rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
+}
+
+message IssueCertificateRequest {
+  optional bytes csr = 1;
+  optional int64 registrationID = 2;
+}
+
+message GenerateOCSPRequest {
+  optional bytes certDER = 1;
+  optional string status = 2;
+  optional int32 reason = 3;
+  optional int64 revokedAt = 4;
+}
+
+message OCSPResponse {
+  optional bytes response = 1;
+}

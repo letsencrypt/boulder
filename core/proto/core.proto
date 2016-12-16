@@ -1,7 +1,6 @@
 syntax = "proto2";
 
 package core;
-
 option go_package = "proto";
 
 message Challenge {
@@ -30,3 +29,35 @@ message ProblemDetails {
 	optional string detail = 2;
 	optional int32 httpStatus = 3;
 }
+
+message Certificate {
+  optional int64 registrationID = 1;
+  optional string serial = 2;
+  optional string digest = 3;
+  optional bytes der = 4;
+  optional int64 issued = 5;  // Unix timestamp (nanoseconds)
+  optional int64 expires = 6; // Unix timestamp (nanoseconds)
+}
+
+message Registration {
+        optional int64 id = 1;
+        optional bytes key = 2;
+        repeated string contact = 3;
+        optional bool contactsPresent = 4;
+        optional string agreement = 5;
+        optional bytes initialIP = 6;
+        optional int64 createdAt = 7; // Unix timestamp (nanoseconds)
+        optional string status = 8;
+}
+
+message Authorization {
+        optional string id = 1;
+        optional string identifier = 2;
+        optional int64 registrationID = 3;
+        optional string status = 4;
+        optional int64 expires = 5; // Unix timestamp (nanoseconds)
+        repeated core.Challenge challenges = 6;
+        optional bytes combinations = 7;
+}
+
+message Empty {}

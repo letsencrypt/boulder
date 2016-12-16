@@ -1,7 +1,8 @@
 {
   "certChecker": {
     "dbConnectFile": "test/secrets/cert_checker_dburl",
-    "maxDBConns": 10
+    "maxDBConns": 10,
+    "hostnamePolicyFile": "test/hostname-policy.json"
   },
 
   "pa": {
@@ -18,8 +19,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   }
 }

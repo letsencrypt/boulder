@@ -22,8 +22,9 @@ REVOCATION_FAILED = 2
 MAILER_FAILED = 3
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure = range(8)
 
+JS_DIR = 'test/js'
 
 class ProcInfo:
     """
@@ -124,7 +125,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     with open(ocsp_resp_file, "w") as f:
         f.write(ocsp_response)
     ocsp_verify_cmd = """openssl ocsp -no_nonce -issuer %s -cert %s \
-      -verify_other %s -CAfile ../test-root.pem \
+      -verify_other %s -CAfile test/test-root.pem \
       -respin %s""" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
     print ocsp_verify_cmd
     try:
@@ -179,20 +180,15 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
           --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
-        shell=True).wait() != 0:
+        shell=True, cwd=JS_DIR).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
 
     ee_ocsp_url = "http://localhost:4002"
-    issuer_ocsp_url = "http://localhost:4003"
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    wait_for_ocsp_good(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
-
-    # Verify that the static OCSP responder, which answers with a
-    # pre-signed, long-lived response for the CA cert, works.
-    wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
+    wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
 
     verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
@@ -206,7 +202,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
         if subprocess.Popen(
                 (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/config/expiration-mailer.json && ' * 3) + 'true') %
                 (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
-                cwd='../..', shell=True).wait() != 0:
+                shell=True).wait() != 0:
             print("\nExpiry mailer failed")
             return MAILER_FAILED
         resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
@@ -221,11 +217,11 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
-        ''' % (cert_file, key_file), shell=True).wait() != 0:
+        ''' % (cert_file, key_file), shell=True, cwd=JS_DIR).wait() != 0:
         print("\nRevoking failed")
         return REVOCATION_FAILED
 
-    wait_for_ocsp_revoked(cert_file_pem, "../test-ca2.pem", ee_ocsp_url)
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     return 0
 
 def run_custom(cmd, cwd=None):
@@ -240,18 +236,44 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+# Run the single-ocsp command, which is used to generate OCSP responses for
+# intermediate certificates on a manual basis.
+def single_ocsp_sign():
+    try:
+        subprocess.check_output("""./bin/single-ocsp -issuer test/test-root.pem \
+                    -responder test/test-root.pem \
+                    -target test/test-ca2.pem \
+                    -pkcs11 test/test-root.key-pkcs11.json \
+                    -thisUpdate 2016-09-02T00:00:00Z \
+                    -nextUpdate 2020-09-02T00:00:00Z \
+                    -status 0 \
+                    -out /tmp/issuer-ocsp-responses.txt""", shell=True)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run single-ocsp: %s" % e)
+        die(ExitStatus.PythonFailure)
+
+    p = subprocess.Popen(
+        './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
+
+    global ocsp_proc
+    ocsp_proc = p
+
+    # Verify that the static OCSP responder, which answers with a
+    # pre-signed, long-lived response for the CA cert, works.
+    wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
 
 def get_future_output(cmd, date, cwd=None):
     return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
 
 def run_expired_authz_purger_test():
     subprocess.check_output('''node test.js --email %s --domains %s --abort-step %s''' %
-                            ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
+                            ("purger@test.com", "eap-test.com", "startChallenge"),
+                            shell=True, cwd=JS_DIR)
 
     def expect(target_time, num):
         expected_output = 'Deleted a total of %d expired pending authorizations' % num
         try:
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
             if expected_output not in out:
                 print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
                     % (expected_output, out))
@@ -271,7 +293,7 @@ def run_certificates_per_name_test():
         # to avoid a CalledProcessException we use Popen.
         handle = subprocess.Popen(
             '''node test.js --email %s --domains %s''' % ('test@lim.it', 'lim.it'),
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            shell=True, cwd=JS_DIR, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         handle.wait()
         out, err = handle.communicate()
     except subprocess.CalledProcessError as e:
@@ -288,15 +310,69 @@ def run_certificates_per_name_test():
             print("\nCertificates per name test: expected %s not present in output" % s)
             die(ExitStatus.Error)
 
-@atexit.register
-def cleanup():
-    import shutil
-    shutil.rmtree(tempdir)
-    if exit_status == ExitStatus.OK:
-        print("\n\nSUCCESS")
-    else:
-        if exit_status:
-            print("\n\nFAILURE %d" % exit_status)
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
+def run_admin_revoker_test():
+    cert_file = os.path.join(tempdir, "ar-cert.der")
+    cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
+    # Issue certificate for serial-revoke test
+    if subprocess.Popen('''
+        node test.js --domains ar-test.com --cert %s && \
+        openssl x509 -in %s -out %s -inform der -outform pem
+        ''' % (cert_file, cert_file, cert_file_pem),
+        shell=True, cwd=JS_DIR).wait() != 0:
+        print("\nIssuing failed")
+        die(ExitStatus.NodeFailure)
+    # Extract serial from certificate
+    try:
+        serial = subprocess.check_output("openssl x509 -in %s -noout -serial | cut -c 8-" % (cert_file_pem),
+                                         shell=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print "Failed to extract serial: %s" % (e.output)
+        die(ExitStatus.PythonFailure)
+    serial = serial.rstrip()
+    # Revoke certificate by serial
+    config = default_config_dir + "/admin-revoker.json"
+    if subprocess.Popen("./bin/admin-revoker serial-revoke --config %s %s %d" % (config, serial, 1),
+                        shell=True).wait() != 0:
+        print("Failed to revoke certificate")
+        die(ExitStatus.RevokerFailure)
+    # Wait for OCSP response to indicate revocation took place
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+
+    # Issue certificate for auth-revoke test
+    try:
+        output = subprocess.check_output("node test.js --domains ar-auth-test.com --abort-step startChallenge",
+                            shell=True, cwd=JS_DIR)
+    except subprocess.CalledProcessError as e:
+        print "Failed to create authorization: %s" % (e.output)
+        die(ExitStatus.NodeFailure)
+    # Get authorization URL from last line of output
+    lines = output.rstrip().split("\n")
+    prefix = "authorization-url="
+    if not lines[-1].startswith(prefix):
+        print("Failed to extract authorization URL")
+        die(ExitStatus.NodeFailure)
+    url = lines[-1][len(prefix):]
+    # Revoke authorization by domain
+    try:
+        output = subprocess.check_output("./bin/admin-revoker auth-revoke --config %s ar-auth-test.com" % (config),
+                                         shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to revoke authorization: %s", e)
+        die(ExitStatus.RevokerFailure)
+    if not output.rstrip().endswith("Revoked 1 pending authorizations and 0 final authorizations"):
+        print("admin-revoker didn't revoke the expected number of pending and finalized authorizations")
+        die(ExitStatus.RevokerFailure)
+    # Check authorization has actually been revoked
+    response = urllib.urlopen(url)
+    data = json.loads(response.read())
+    if data['status'] != "revoked":
+        print("Authorization wasn't revoked")
+        die(ExitStatus.RevokerFailure)
 
 exit_status = None
 tempdir = tempfile.mkdtemp()
@@ -322,9 +398,10 @@ def main():
     if not startservers.start(race_detection=True):
         die(ExitStatus.Error)
 
+    single_ocsp_sign()
+
     if args.run_all or args.run_node:
-        os.chdir('test/js')
-        if subprocess.Popen('npm install', shell=True).wait() != 0:
+        if subprocess.Popen('npm install', shell=True, cwd=JS_DIR).wait() != 0:
             print("\n Installing NPM modules failed")
             die(ExitStatus.Error)
         # Pick a random hostname so we don't run into certificate rate limiting.
@@ -353,6 +430,8 @@ def main():
 
         run_certificates_per_name_test()
 
+        run_admin_revoker_test()
+
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
 
@@ -372,3 +451,15 @@ if __name__ == "__main__":
     except Exception:
         exit_status = ExitStatus.Error
         raise
+
+@atexit.register
+def stop():
+    import shutil
+    shutil.rmtree(tempdir)
+    if exit_status == ExitStatus.OK:
+        print("\n\nSUCCESS")
+    else:
+        if exit_status:
+            print("\n\nFAILURE %d" % exit_status)
+    if ocsp_proc.poll() is None:
+        ocsp_proc.kill()

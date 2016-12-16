@@ -3,7 +3,7 @@
     "serialPrefix": 255,
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
-    "debugAddr": "localhost:8001",
+    "debugAddr": ":8001",
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca2.pem"
@@ -141,8 +141,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 

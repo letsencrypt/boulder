@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -26,7 +26,7 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
 	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
@@ -52,7 +52,7 @@ func TestGenerateMessage(t *testing.T) {
 
 func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
 	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
@@ -121,10 +121,11 @@ func normalHandler(connID int, t *testing.T, conn net.Conn) {
 // The disconnectHandler authenticates the client like the normalHandler but
 // additionally processes an email flow (e.g. MAIL, RCPT and DATA commands).
 // When the `connID` is <= `closeFirst` the connection is closed immediately
-// after the MAIL command is received and prior to issuing a 250 response. In
-// this way the first `closeFirst` connections will not complete normally and
-// can be tested for reconnection logic.
-func disconnectHandler(closeFirst int) connHandler {
+// after the MAIL command is received and prior to issuing a 250 response. If
+// a `goodbyeMsg` is provided, it is written to the client immediately before
+// closing. In this way the first `closeFirst` connections will not complete
+// normally and can be tested for reconnection logic.
+func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 	return func(connID int, t *testing.T, conn net.Conn) {
 		defer func() {
 			err := conn.Close()
@@ -140,6 +141,13 @@ func disconnectHandler(closeFirst int) connHandler {
 		}
 
 		if connID <= closeFirst {
+			// If there was a `goodbyeMsg` specified, write it to the client before
+			// closing the connection. This is a good way to deliver a SMTP error
+			// before closing
+			if goodbyeMsg != "" {
+				_, _ = conn.Write([]byte(fmt.Sprintf("%s\r\n", goodbyeMsg)))
+				fmt.Printf("Wrote goodbye msg: %s\n", goodbyeMsg)
+			}
 			fmt.Printf("Cutting off client early\n")
 			return
 		}
@@ -159,22 +167,12 @@ func disconnectHandler(closeFirst int) connHandler {
 }
 
 func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
-	const port = "16632"
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
-	m := New(
-		"localhost",
-		port,
-		"user@example.com",
-		"paswd",
-		*fromAddress,
-		log,
-		stats,
-		time.Second*2, time.Second*10)
-
-	l, err := net.Listen("tcp", ":"+port)
+	// Listen on port 0 to get any free available port
+	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -184,6 +182,21 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 			t.Errorf("listen.Close: %s", err)
 		}
 	}
+
+	// We can look at the listener Addr() to figure out which free port was
+	// assigned by the operating system
+	addr := l.Addr().(*net.TCPAddr)
+	port := addr.Port
+
+	m := New(
+		"localhost",
+		fmt.Sprintf("%d", port),
+		"user@example.com",
+		"paswd",
+		*fromAddress,
+		log,
+		stats,
+		time.Second*2, time.Second*10)
 
 	return m, l, cleanUp
 }
@@ -210,7 +223,33 @@ func TestReconnectSuccess(t *testing.T) {
 
 	// Configure a test server that will disconnect the first `closedConns`
 	// connections after the MAIL cmd
-	go listenForever(l, t, disconnectHandler(closedConns))
+	go listenForever(l, t, disconnectHandler(closedConns, ""))
+
+	// With a mailer client that has a max attempt > `closedConns` we expect no
+	// error. The message should be delivered after `closedConns` reconnect
+	// attempts.
+	err := m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
+	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	if err != nil {
+		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
+	}
+}
+
+func TestReconnectSMTP421(t *testing.T) {
+	m, l, cleanUp := setup(t)
+	defer cleanUp()
+	const closedConns = 5
+
+	// A SMTP 421 can be generated when the server times out an idle connection.
+	// For more information see https://github.com/letsencrypt/boulder/issues/2249
+	smtp421 := "421 1.2.3 green.eggs.and.spam Error: timeout exceeded"
+
+	// Configure a test server that will disconnect the first `closedConns`
+	// connections after the MAIL cmd with a SMTP 421 error
+	go listenForever(l, t, disconnectHandler(closedConns, smtp421))
 
 	// With a mailer client that has a max attempt > `closedConns` we expect no
 	// error. The message should be delivered after `closedConns` reconnect

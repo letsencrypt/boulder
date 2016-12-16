@@ -9,10 +9,7 @@ if [[ $MYSQL_CONTAINER ]]; then
 	dbconn="-u root -h boulder-mysql --port 3306"
 fi
 
-if mysql $dbconn -e 'show databases;' | grep boulder_sa_integration > /dev/null; then
-  echo "Databases already created."
-#  exit 0
-fi
+APPLY_NEXT_MIGRATIONS=${APPLY_NEXT_MIGRATIONS:-true}
 
 # MariaDB sets the default binlog_format to STATEMENT,
 # which causes warnings that fail tests. Instead set it
@@ -22,14 +19,35 @@ mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 for dbenv in $DBENVS; do
   (
   db="boulder_sa_${dbenv}"
-  create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
 
-  mysql $dbconn -e "$create_script" || die "unable to create ${db}"
+  if mysql $dbconn -e 'show databases;' | grep $db > /dev/null; then
+    echo "Database $db already exists - skipping create"
+  else
+    create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
 
-  echo "created empty ${db} database"
+    mysql $dbconn -e "$create_script" || die "unable to create ${db}"
 
-  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db}"
-  echo "migrated ${db} database"
+    echo "created empty ${db} database"
+  fi
+
+  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db/"
+  echo "migrated ${db} database with ./sa/_db/"
+
+  if [[ "$APPLY_NEXT_MIGRATIONS" = true ]]; then
+    nextDir="./sa/_db-next/"
+
+    # Goose exits non-zero if there are no migrations to apply with the error
+    # message:
+    #   "2016/09/26 15:43:38 no valid version found"
+    # so we only want to run goose with the nextDir if there is a migrations
+    # directory present with at least one migration
+    if [ $(find "$nextDir/migrations" -maxdepth 0 -type d -not -empty 2>/dev/null) ]; then
+      goose -path=${nextDir} -env=$dbenv up || die "unable to migrate ${db} with ${nextDir}"
+      echo "migrated ${db} database with ${nextDir}"
+    else
+      echo "no ${nextDir} migrations to apply"
+    fi
+  fi
 
   # With MYSQL_CONTAINER, patch the GRANT statements to
   # use 127.0.0.1, not localhost, as MySQL may interpret

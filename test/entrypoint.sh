@@ -34,7 +34,13 @@ rabbitmq-setup -server amqp://boulder-rabbitmq
 # out the signing key doesn't require rebuilding the boulder-tools image. Only
 # convert key to DER once per container.
 wait_tcp_port boulder-hsm 5657
-PKCS11_PROXY_SOCKET="tcp://boulder-hsm:5657" pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so --write-object test/test-ca.key.der --type privkey --label key_label --pin 5678 --login --so-pin 1234
+
+addkey() {
+  pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so \
+    --type privkey --pin 5678 --login --so-pin 1234 "$@";
+}
+addkey --token-label intermediate --write-object test/test-ca.key.der --label intermediate_key
+addkey --token-label root --write-object test/test-root.key.der --label root_key
 
 if [[ $# -eq 0 ]]; then
     exec ./start.py

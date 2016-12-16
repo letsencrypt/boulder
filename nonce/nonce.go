@@ -8,6 +8,9 @@ import (
 	"errors"
 	"math/big"
 	"sync"
+	"time"
+
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // MaxUsed defines the maximum number of Nonces we're willing to hold in
@@ -25,10 +28,12 @@ type NonceService struct {
 	used     map[int64]bool
 	gcm      cipher.AEAD
 	maxUsed  int
+	stats    metrics.Scope
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService() (*NonceService, error) {
+func NewNonceService(scope metrics.Scope) (*NonceService, error) {
+	scope = scope.NewScope("NonceService")
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
@@ -49,6 +54,7 @@ func NewNonceService() (*NonceService, error) {
 		used:     make(map[int64]bool, MaxUsed),
 		gcm:      gcm,
 		maxUsed:  MaxUsed,
+		stats:    scope,
 	}, nil
 }
 
@@ -107,18 +113,21 @@ func (ns *NonceService) Nonce() (string, error) {
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
+	defer ns.stats.Inc("Generated", 1)
 	return ns.encrypt(latest)
 }
 
 // minUsed returns the lowest key in the used map. Requires that a lock be held
 // by caller.
 func (ns *NonceService) minUsed() int64 {
+	s := time.Now()
 	min := ns.latest
 	for t := range ns.used {
 		if t < min {
 			min = t
 		}
 	}
+	ns.stats.TimingDuration("LinearScan.Latency", time.Since(s))
 	return min
 }
 
@@ -127,28 +136,34 @@ func (ns *NonceService) minUsed() int64 {
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
+		ns.stats.Inc("Invalid.Decrypt", 1)
 		return false
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	if c > ns.latest {
+		ns.stats.Inc("Invalid.TooHigh", 1)
 		return false
 	}
 
 	if c <= ns.earliest {
+		ns.stats.Inc("Invalid.TooLow", 1)
 		return false
 	}
 
 	if ns.used[c] {
+		ns.stats.Inc("Invalid.AlreadyUsed", 1)
 		return false
 	}
 
 	ns.used[c] = true
 	if len(ns.used) > ns.maxUsed {
+		ns.stats.Inc("LinearScan.Full", 1)
 		ns.earliest = ns.minUsed()
 		delete(ns.used, ns.earliest)
 	}
 
+	ns.stats.Inc("Valid", 1)
 	return true
 }

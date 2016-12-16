@@ -23,8 +23,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -71,6 +71,7 @@ const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 const expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
 const path404 = "404"
+const path500 = "500"
 const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
 const pathMoved = "5J4FIMrWNfmvHZo-QpKZngmuhqZGwRm21-oEgUDstJM"
 const pathRedirectPort = "port-redirect"
@@ -78,6 +79,7 @@ const pathWait = "wait"
 const pathWaitLong = "wait-long"
 const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
 const pathReLookupInvalid = "re-lookup-invalid"
+const pathRedirectToFailingURL = "re-to-failing-url"
 const pathLooper = "looper"
 const pathValid = "valid"
 const rejectUserAgent = "rejectMe"
@@ -96,6 +98,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("HTTPSRV: Got a 404 req\n")
 			http.NotFound(w, r)
+		} else if strings.HasSuffix(r.URL.Path, path500) {
+			t.Logf("HTTPSRV: Got a 500 req\n")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
 			t.Logf("HTTPSRV: Got a 301 redirect req\n")
 			if currentToken == defaultToken {
@@ -125,6 +130,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
+			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid/%s", path500), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
@@ -201,8 +209,15 @@ func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
+	// NOTE: We do not attempt to shut down the server. The problem is that the
+	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
+	// than that. So if we try to call hs.Close() at the end of the test, we'll be
+	// closing the test server while a request is still pending. Unfortunately,
+	// there appears to be an issue in httptest that trips Go's race detector when
+	// that happens, failing the test. So instead, we live with leaving the server
+	// around till the process exits.
+	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 
 	goodPort, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
@@ -347,6 +362,15 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+
+	// This case will redirect from a valid host to a host that is throwing
+	// HTTP 500 errors. The test case is ensuring that the connection error
+	// is referencing the redirected to host, instead of the original host.
+	log.Clear()
+	setChallengeToken(&chall, pathRedirectToFailingURL)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
+	test.AssertNotNil(t, prob, "Problem Details should not be nil")
+	test.AssertEquals(t, prob.Detail, "Could not connect to other.valid")
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
@@ -502,11 +526,12 @@ func TestValidateHTTP(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -643,6 +668,18 @@ func TestPerformValidationInvalid(t *testing.T) {
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
+}
+
+func TestDNSValidationEmpty(t *testing.T) {
+	va, stats, _ := setup()
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"empty-txts.com",
+		chalDNS,
+		core.Authorization{})
+	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
@@ -803,11 +840,12 @@ func TestLimitedReader(t *testing.T) {
 
 	ident.Value = "localhost"
 	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 
@@ -818,16 +856,16 @@ func TestLimitedReader(t *testing.T) {
 
 func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
 		nil,
-		nil,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 	return va, stats, logger
@@ -838,6 +876,7 @@ func TestCheckCAAFallback(t *testing.T) {
 	defer testSrv.Close()
 
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
@@ -846,12 +885,11 @@ func TestCheckCAAFallback(t *testing.T) {
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
-		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"ca.com",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 
@@ -871,12 +909,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
-	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")

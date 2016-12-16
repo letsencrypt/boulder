@@ -10,20 +10,26 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "checkMalformedCSR": true,
     "acceptRevocationReason": true,
-    "debugAddr": "localhost:8000",
-    "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
-      "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
+    "allowAuthzDeactivation": true,
+    "debugAddr": ":8000",
+    "raService": {
+      "serverAddresses": ["boulder:9094"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "saService": {
+      "serverAddresses": ["boulder:9095"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "features": {
+      "AllowAccountDeactivation": true,
+      "AllowKeyRollover": true
     }
   },
 

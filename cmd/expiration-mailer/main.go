@@ -18,17 +18,19 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const defaultNagCheckInterval = 24 * time.Hour
@@ -44,11 +46,11 @@ type regStore interface {
 }
 
 type mailer struct {
-	stats         statsd.Statter
+	stats         metrics.Scope
 	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
-	mailer        mail.Mailer
+	mailer        bmail.Mailer
 	emailTemplate *template.Template
 	subject       string
 	nagTimes      []time.Duration
@@ -107,7 +109,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	msgBuf := new(bytes.Buffer)
 	err := m.emailTemplate.Execute(msgBuf, email)
 	if err != nil {
-		m.stats.Inc("Mailer.Expiration.Errors.SendingNag.TemplateFailure", 1, 1.0)
+		m.stats.Inc("Errors.SendingNag.TemplateFailure", 1)
 		return err
 	}
 	startSending := m.clk.Now()
@@ -117,7 +119,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)
-	m.stats.TimingDuration("Mailer.Expiration.SendLatency", elapsed, 1.0)
+	m.stats.TimingDuration("SendLatency", elapsed)
 	return nil
 }
 
@@ -156,11 +158,20 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		regIDToCerts[cert.RegistrationID] = cs
 	}
 
+	err := m.mailer.Connect()
+	if err != nil {
+		m.log.AuditErr(fmt.Sprintf("Error connecting to send nag emails: %s", err))
+		return
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
-			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
+			m.stats.Inc("Errors.GetRegistration", 1)
 			continue
 		}
 
@@ -170,7 +181,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			if err != nil {
 				// TODO(#1420): tell registration about this error
 				m.log.AuditErr(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
-				m.stats.Inc("Mailer.Expiration.Errors.ParseCertificate", 1, 1.0)
+				m.stats.Inc("Errors.ParseCertificate", 1)
 				continue
 			}
 
@@ -179,10 +190,10 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				m.log.AuditErr(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
 				// assume not renewed
 			} else if renewed {
-				m.stats.Inc("Mailer.Expiration.Renewed", 1, 1.0)
+				m.stats.Inc("Renewed", 1)
 				if err := m.updateCertStatus(cert.Serial); err != nil {
 					m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
-					m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
+					m.stats.Inc("Errors.UpdateCertificateStatus", 1)
 				}
 				continue
 			}
@@ -209,7 +220,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			err = m.updateCertStatus(serial)
 			if err != nil {
 				m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
-				m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
+				m.stats.Inc("Errors.UpdateCertificateStatus", 1)
 				continue
 			}
 		}
@@ -229,25 +240,51 @@ func (m *mailer) findExpiringCertificates() error {
 
 		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn))
+
+		// If CertStatusOptimizationsMigrated is enabled then we can do this query
+		// in a slightly more efficient way by looking at `cs.NotAfter` instead of
+		// `cert.expires` in the WHERE clause.
 		var certs []core.Certificate
-		_, err := m.dbMap.Select(
-			&certs,
-			`SELECT cert.* FROM certificates AS cert
-			 JOIN certificateStatus AS cs
-			 ON cs.serial = cert.serial
-			 AND cert.expires > :cutoffA
-			 AND cert.expires <= :cutoffB
-			 AND cs.status != "revoked"
-			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-			 ORDER BY cert.expires ASC
-			 LIMIT :limit`,
-			map[string]interface{}{
-				"cutoffA":   left,
-				"cutoffB":   right,
-				"nagCutoff": expiresIn.Seconds(),
-				"limit":     m.limit,
-			},
-		)
+		var err error
+		if features.Enabled(features.CertStatusOptimizationsMigrated) {
+			_, err = m.dbMap.Select(
+				&certs,
+				`SELECT cert.* FROM certificates AS cert
+				 JOIN certificateStatus AS cs
+				 ON cs.serial = cert.serial
+				 AND cs.notAfter > :cutoffA
+				 AND cs.notAfter <= :cutoffB
+				 AND cs.status != "revoked"
+				 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+				 ORDER BY cert.expires ASC
+				 LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
+		} else {
+			_, err = m.dbMap.Select(
+				&certs,
+				`SELECT cert.* FROM certificates AS cert
+						 JOIN certificateStatus AS cs
+						 ON cs.serial = cert.serial
+						 AND cert.expires > :cutoffA
+						 AND cert.expires <= :cutoffB
+						 AND cs.status != "revoked"
+						 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+						 ORDER BY cert.expires ASC
+						 LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
+		}
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			return err // fatal
@@ -271,15 +308,15 @@ func (m *mailer) findExpiringCertificates() error {
 				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
-			statName := fmt.Sprintf("Mailer.Expiration.Errors.Nag-%s.AtCapacity", expiresIn.String())
-			m.stats.Inc(statName, 1, 1.0)
+			statName := fmt.Sprintf("Errors.Nag-%s.AtCapacity", expiresIn.String())
+			m.stats.Inc(statName, 1)
 		}
 
 		processingStarted := m.clk.Now()
 		m.processCerts(certs)
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
-		m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", elapsed, 1.0)
+		m.stats.TimingDuration("ProcessingCertificatesLatency", elapsed)
 	}
 
 	return nil
@@ -318,6 +355,8 @@ type config struct {
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
+
+		SAService *cmd.GRPCClientConfig
 	}
 
 	Statsd cmd.StatsdConfig
@@ -339,14 +378,13 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.Mailer.DebugAddr)
-
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
-	logger.Info(clientName)
+	logger.Info(cmd.VersionString(clientName))
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
@@ -362,11 +400,17 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 	sa.SetSQLDebug(dbMap, logger)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	amqpConf := c.Mailer.AMQP
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Failed to create SA client")
+	var sac core.StorageAuthority
+	if c.Mailer.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, c.Mailer.AMQP, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
 
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
@@ -379,21 +423,16 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(
+	mailClient := bmail.New(
 		c.Mailer.Server,
 		c.Mailer.Port,
 		c.Mailer.Username,
 		smtpPassword,
 		*fromAddress,
 		logger,
-		stats,
+		scope,
 		*reconnBase,
 		*reconnMax)
-	err = mailClient.Connect()
-	cmd.FailOnError(err, "Couldn't connect to mail server.")
-	defer func() {
-		_ = mailClient.Close()
-	}()
 
 	nagCheckInterval := defaultNagCheckInterval
 	if s := c.Mailer.NagCheckInterval; s != "" {
@@ -421,7 +460,7 @@ func main() {
 		subject = c.Mailer.Subject
 	}
 	m := mailer{
-		stats:         stats,
+		stats:         scope,
 		subject:       subject,
 		log:           logger,
 		dbMap:         dbMap,
@@ -432,6 +471,8 @@ func main() {
 		limit:         c.Mailer.CertLimit,
 		clk:           cmd.Clock(),
 	}
+
+	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	err = m.findExpiringCertificates()
 	cmd.FailOnError(err, "expiration-mailer has failed")

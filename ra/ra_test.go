@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
@@ -15,16 +16,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
@@ -33,7 +35,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-	oldx509 "github.com/letsencrypt/go/src/crypto/x509"
 )
 
 type DummyValidationAuthority struct {
@@ -116,7 +117,7 @@ var (
 
 	ResponseIndex = 0
 
-	ExampleCSR = &oldx509.CertificateRequest{}
+	ExampleCSR = &x509.CertificateRequest{}
 
 	// These values are populated by the tests as we go
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
@@ -201,8 +202,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
 	fc := clock.NewFake()
-	// Advance past epoch
-	fc.Add(360 * 24 * time.Hour)
+	// Set to some non-zero time.
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
@@ -222,7 +223,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,
@@ -232,17 +233,18 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 
 	block, _ := pem.Decode(CSRPEM)
-	ExampleCSR, _ = oldx509.ParseCertificateRequest(block.Bytes)
+	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
 	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
-		Key:       AccountKeyA,
+		Key:       &AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
+		Status:    core.StatusValid,
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -320,12 +322,15 @@ func TestValidateEmail(t *testing.T) {
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@email.com, b@email.com", multipleAddressDetail},
-		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
+		// A timeout during email validation is treated as a success. We treat email
+		// validation during registration as a best-effort. See
+		// https://github.com/letsencrypt/boulder/issues/2260 for more
+		"a@always.timeout",
 	}
 
 	for _, tc := range testFailures {
@@ -353,7 +358,7 @@ func TestNewRegistration(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		Contact:   &[]string{mailto},
-		Key:       AccountKeyB,
+		Key:       &AccountKeyB,
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
@@ -378,7 +383,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		ID:        23,
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
@@ -394,7 +399,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	id := result.ID
 	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
 		ID:  33,
-		Key: ShortKey,
+		Key: &ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
 	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
@@ -407,7 +412,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	input := core.Registration{
 		Contact: &[]string{mailto},
-		Key:     ShortKey,
+		Key:     &ShortKey,
 	}
 
 	_, err := ra.NewRegistration(ctx, input)
@@ -429,7 +434,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 
 	// Make a new registration with AccountKeyC and a Contact
 	input := core.Registration{
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 		InitialIP: net.ParseIP("5.0.5.0"),
@@ -444,7 +449,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// Make an update to the registration with the same Contact & Agreement values.
 	updateSame := core.Registration{
 		ID:        id,
-		Key:       AccountKeyC,
+		Key:       &AccountKeyC,
 		Contact:   &[]string{mailto},
 		Agreement: "I agreed",
 	}
@@ -546,12 +551,38 @@ func TestReuseAuthorization(t *testing.T) {
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
 
+type mockSAWithBadGetValidAuthz struct {
+	mocks.StorageAuthority
+}
+
+func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string,
+	now time.Time) (map[string]*core.Authorization, error) {
+	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
+}
+
+func TestReuseAuthorizationFaultySA(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Use a mock SA that always fails `GetValidAuthorizations`
+	mockSA := &mockSAWithBadGetValidAuthz{}
+	ra.SA = mockSA
+
+	// We expect that calling NewAuthorization will fail gracefully with an error
+	// about the existing validations
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
+}
+
 func TestReuseAuthorizationDisabled(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	// Turn *off* AuthZ Reuse
-	ra.reuseValidAuthz = false
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
@@ -759,7 +790,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := oldx509.ParseCertificateRequest(csrBytes)
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
@@ -832,6 +863,10 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
@@ -873,6 +908,13 @@ func TestTotalCertRateLimit(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount not yet called")
+
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
+
 	// TODO(jsha): Since we're using a real SA rather than a mock, we call
 	// NewCertificate twice and insert the first result into the SA. Instead we
 	// should mock out the SA and have it return the cert count that we want.
@@ -882,9 +924,16 @@ func TestTotalCertRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
+	if err := ra.updateIssuedCount(); err != nil {
+		t.Fatal("Updating issuance count:", err)
+	}
 
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+
+	fc.Add(time.Hour)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount too long out of date")
 }
 
 func TestAuthzRateLimiting(t *testing.T) {
@@ -1167,6 +1216,38 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
 }
 
+func TestRegistrationKeyUpdate(t *testing.T) {
+	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
+
+	rA, rB := core.Registration{Key: &jose.JsonWebKey{Key: oldKey}}, core.Registration{}
+	changed := mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
+	}
+
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
+
+	changed = mergeUpdate(&rA, rB)
+	if changed {
+		t.Fatal("mergeUpdate changed the key with empty update")
+	}
+
+	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
+	rB.Key = &jose.JsonWebKey{Key: newKey.Public()}
+
+	changed = mergeUpdate(&rA, rB)
+	if !changed {
+		t.Fatal("mergeUpdate didn't change the key with non-empty update")
+	}
+	keysMatch, _ := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
+	if !keysMatch {
+		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
+	}
+}
+
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
 // CountCertificatesByName as well as FQDNSetExists. This allows testing
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.
@@ -1249,6 +1330,40 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	// comes into effect.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
 	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
+}
+
+func TestDeactivateAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = ra.DeactivateAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
+	test.AssertEquals(t, deact.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateRegistration(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	err := ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusDeactivated})
+	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
+	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusValid})
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
 }
 
 var CAkeyPEM = `

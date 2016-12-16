@@ -8,13 +8,21 @@
     "revokedCertificateWindow": "1s",
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
+    "parallelGenerateOCSPRequests": 10,
     "missingSCTBatchSize": 5000,
     "revokedCertificateBatchSize": 1000,
     "ocspMinTimeToExpiry": "72h",
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
-    "debugAddr": "localhost:8006",
+    "debugAddr": ":8006",
+    "publisher": {
+      "serverAddresses": ["boulder:9091"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -24,10 +32,6 @@
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -39,8 +43,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 

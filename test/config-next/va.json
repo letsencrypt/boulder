@@ -2,42 +2,28 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": "localhost:8004",
+    "debugAddr": ":8004",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
-    "caaService": {
-      "serverAddresses": ["boulder:9090"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem"
-    },
-    "caaPublicResolver": {
-        "timeout": "10s",
-        "keepalive": "30s",
-        "maxFailures": 1,
-        "proxies": []
-    },
     "grpc": {
       "address": "boulder:9092",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "VA.server",
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      }
+      "serviceQueue": "VA.server"
     }
   },
 
@@ -53,7 +39,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
+    "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
 }

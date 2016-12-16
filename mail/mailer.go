@@ -13,11 +13,11 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
@@ -57,7 +57,7 @@ type MailerImpl struct {
 	client        smtpClient
 	clk           clock.Clock
 	csprgSource   idGenerator
-	stats         *metrics.StatsdScope
+	stats         metrics.Scope
 	reconnectBase time.Duration
 	reconnectMax  time.Duration
 }
@@ -113,7 +113,7 @@ func New(
 	password string,
 	from mail.Address,
 	logger blog.Logger,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	reconnectBase time.Duration,
 	reconnectMax time.Duration) *MailerImpl {
 	return &MailerImpl{
@@ -127,7 +127,7 @@ func New(
 		from:          from,
 		clk:           clock.Default(),
 		csprgSource:   realSource{},
-		stats:         metrics.NewStatsdScope(stats, "Mailer"),
+		stats:         stats.NewScope("Mailer"),
 		reconnectBase: reconnectBase,
 		reconnectMax:  reconnectMax,
 	}
@@ -136,8 +136,7 @@ func New(
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
-	statter, _ := statsd.NewNoopClient(nil)
-	stats := metrics.NewStatsdScope(statter)
+	stats := metrics.NewNoopScope()
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
@@ -294,10 +293,31 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
 		} else if err != nil {
-			// If it wasn't an EOF error it is unexpected and we return from
-			// SendMail() with an error
-			m.stats.Inc("SendMail.Errors", 1)
-			return err
+			/*
+			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
+			 *  and that error code is 421 then treat this as a reconnect-able event.
+			 *
+			 *  The SMTP RFC defines this error code as:
+			 *   421 <domain> Service not available, closing transmission channel
+			 *   (This may be a reply to any command if the service knows it
+			 *   must shut down)
+			 *
+			 * In practice we see this code being used by our production SMTP server
+			 * when the connection has gone idle for too long. For more information
+			 * see issue #2249[0].
+			 *
+			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
+			 */
+			if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
+				m.stats.Inc("SendMail.Errors.SMTP.421", 1)
+				m.reconnect()
+				m.stats.Inc("SendMail.Reconnects", 1)
+			} else {
+				// If it wasn't an EOF error or a SMTP 421 it is unexpected and we
+				// return from SendMail() with an error
+				m.stats.Inc("SendMail.Errors", 1)
+				return err
+			}
 		}
 	}
 

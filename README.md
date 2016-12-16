@@ -30,6 +30,12 @@ The configuration in docker-compose.yml mounts your
 `$GOPATH`. So you can edit code on your host and it will be immediately
 reflected inside Docker images run with docker-compose.
 
+If docker-compose fails with an error message like "Cannot start service
+boulder: oci runtime error: no such file or directory" or "Cannot create
+container for service boulder" you should double check that your `$GOPATH`
+exists and doesn't contain any characters other than letters, numbers, `-`
+and `_`.
+
 By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 127.0.0.1. This is suitable for running integration tests inside the Docker
 container. If you want Boulder to be able to communicate with a client running
@@ -118,6 +124,7 @@ Run tests:
     ./test.sh
 
 Working with a client:
+----------------------
 
 Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for certbot (`certbot_test`) that has all those flags:
 

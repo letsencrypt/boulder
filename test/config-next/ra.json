@@ -4,7 +4,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
-    "debugAddr": "localhost:8002",
+    "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
@@ -13,27 +13,49 @@
     "pendingAuthorizationLifetimeDays": 7,
     "vaService": {
       "serverAddresses": ["boulder:9092"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem",
-      "timeout": "90s"
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "caService": {
+      "serverAddresses": ["boulder:9093"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "publisherService": {
+      "serverAddresses": ["boulder:9091"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "saService": {
+      "serverAddresses": ["boulder:9095"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
+      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "timeout": "15s"
+    },
+    "grpc": {
+      "address": "boulder:9094",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "RA.server",
-      "VA": {
-        "server": "VA.server",
-        "rpcTimeout": "60s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
-      }
+      "serviceQueue": "RA.server"
+    },
+    "features": {
+      "IDNASupport": true,
+      "AllowKeyRollover": true
     }
   },
 
@@ -57,7 +79,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
+    "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
 }
