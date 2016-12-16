@@ -113,7 +113,6 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
 		}
 	}
-	fmt.Printf("Subject: %s\n", subject)
 	m.log.Debug(fmt.Sprintf("Message subject %q", subject))
 
 	email := emailContent{
