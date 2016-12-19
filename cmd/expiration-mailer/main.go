@@ -243,8 +243,7 @@ func (m *mailer) findExpiringCertificates() error {
 
 		// First we do a query on the certificateStatus table to find certificates
 		// nearing expiry meeting our criteria for email notification. We later
-		// sequentially fetch the certificate details. This avoids a JOIN on two
-		// large tables.
+		// sequentially fetch the certificate details. This avoids an expensive JOIN
 		var statuses []core.CertificateStatus
 		var err error
 		if features.Enabled(features.CertStatusOptimizationsMigrated) {
@@ -270,16 +269,16 @@ func (m *mailer) findExpiringCertificates() error {
 			_, err = m.dbMap.Select(
 				&statuses,
 				`SELECT
-				cert.serial
-				FROM certificates AS cert
-				JOIN certificateStatus AS cs
-				ON cs.serial = cert.serial
-				AND cert.expires > :cutoffA
-				AND cert.expires <= :cutoffB
-				AND cs.status != "revoked"
-				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-				ORDER BY cert.expires ASC
-				LIMIT :limit`,
+					cert.serial
+					FROM certificates AS cert
+					JOIN certificateStatus AS cs
+					ON cs.serial = cert.serial
+					AND cert.expires > :cutoffA
+					AND cert.expires <= :cutoffB
+					AND cs.status != "revoked"
+					AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+					ORDER BY cert.expires ASC
+					LIMIT :limit`,
 				map[string]interface{}{
 					"cutoffA":   left,
 					"cutoffB":   right,
@@ -289,9 +288,7 @@ func (m *mailer) findExpiringCertificates() error {
 			)
 		}
 		if err != nil {
-			m.log.AuditErr(
-				fmt.Sprintf(
-					"expiration-mailer: Error loading certificate statuses: %s", err))
+			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate statuses: %s", err))
 			return err
 		}
 
@@ -310,10 +307,8 @@ func (m *mailer) findExpiringCertificates() error {
 				},
 			)
 			if err != nil {
-				m.log.AuditErr(
-					fmt.Sprintf(
-						"expiration-mailer: Error loading cert %q : %s", cert.Serial, err))
-				return err // fatal
+				m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err))
+				return err
 			}
 			certs = append(certs, cert)
 		}
