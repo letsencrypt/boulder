@@ -205,7 +205,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if err != nil {
 		return err
 	}
-	if purgeInfo.HTTPStatus != 201 || resp.StatusCode != 201 {
+	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
 			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
 		}

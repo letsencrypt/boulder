@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -108,11 +109,13 @@ func TestPurge(t *testing.T) {
 	log := blog.NewMock()
 
 	as := akamaiServer{responseCode: http.StatusCreated}
-	http.HandleFunc("/", as.akamaiHandler)
-	go http.ListenAndServe(":9999", nil)
+	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
+	m.HandleFunc("/", as.akamaiHandler)
+	server.Start()
 
 	client, err := NewCachePurgeClient(
-		"http://localhost:9999",
+		server.URL,
 		"token",
 		"secret",
 		"accessToken",
