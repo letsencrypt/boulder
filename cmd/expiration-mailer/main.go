@@ -245,11 +245,11 @@ func (m *mailer) findExpiringCertificates() error {
 		// nearing expiry meeting our criteria for email notification. We later
 		// sequentially fetch the certificate details. This avoids an expensive
 		// JOIN.
-		var statuses []core.CertificateStatus
+		var serials []string
 		var err error
 		if features.Enabled(features.CertStatusOptimizationsMigrated) {
 			_, err = m.dbMap.Select(
-				&statuses,
+				&serials,
 				`SELECT
 				cs.serial
 				FROM certificateStatus AS cs
@@ -268,7 +268,7 @@ func (m *mailer) findExpiringCertificates() error {
 			)
 		} else {
 			_, err = m.dbMap.Select(
-				&statuses,
+				&serials,
 				`SELECT
 					cert.serial
 					FROM certificates AS cert
@@ -289,14 +289,14 @@ func (m *mailer) findExpiringCertificates() error {
 			)
 		}
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate statuses: %s", err))
+			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
 			return err
 		}
 
 		// Now we can sequentially retrieve the certificate details for each of the
 		// certificate status rows
 		var certs []core.Certificate
-		for _, cs := range statuses {
+		for _, serial := range serials {
 			var cert core.Certificate
 			err := m.dbMap.SelectOne(&cert,
 				`SELECT
@@ -304,7 +304,7 @@ func (m *mailer) findExpiringCertificates() error {
 				FROM certificates AS cert
 				WHERE serial = :serial`,
 				map[string]interface{}{
-					"serial": cs.Serial,
+					"serial": serial,
 				},
 			)
 			if err != nil {
