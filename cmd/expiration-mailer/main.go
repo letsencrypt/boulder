@@ -243,7 +243,8 @@ func (m *mailer) findExpiringCertificates() error {
 
 		// First we do a query on the certificateStatus table to find certificates
 		// nearing expiry meeting our criteria for email notification. We later
-		// sequentially fetch the certificate details. This avoids an expensive JOIN
+		// sequentially fetch the certificate details. This avoids an expensive
+		// JOIN.
 		var statuses []core.CertificateStatus
 		var err error
 		if features.Enabled(features.CertStatusOptimizationsMigrated) {
