@@ -206,7 +206,10 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		return err
 	}
 	if purgeInfo.HTTPStatus != 201 || resp.StatusCode != 201 {
-		return fmt.Errorf("Incorrect HTTP status code: %s", string(body))
+		if purgeInfo.HTTPStatus == http.StatusForbidden {
+			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
+		}
+		return fmt.Errorf("Unexpected HTTP status code: %s", string(body))
 	}
 
 	cpc.log.Info(fmt.Sprintf(
@@ -224,15 +227,15 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 func (cpc *CachePurgeClient) Purge(urls []string) error {
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
-		core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3)
+		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
 
 		err := cpc.purge(urls)
 		if err != nil {
 			if _, ok := err.(errFatal); ok {
-				cpc.log.AuditErr(err.Error())
 				cpc.stats.Inc("FatalFailures", 1)
 				return err
 			}
+			cpc.log.AuditErr(fmt.Sprintf("Akamai cache purge failed, retrying: %s", err.Error()))
 			cpc.stats.Inc("RetryableFailures", 1)
 			continue
 		}
