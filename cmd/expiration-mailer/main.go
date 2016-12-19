@@ -241,23 +241,24 @@ func (m *mailer) findExpiringCertificates() error {
 		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn))
 
-		// If CertStatusOptimizationsMigrated is enabled then we can do this query
-		// in a slightly more efficient way by looking at `cs.NotAfter` instead of
-		// `cert.expires` in the WHERE clause.
-		var certs []core.Certificate
+		// First we do a query on the certificateStatus table to find certificates
+		// nearing expiry meeting our criteria for email notification. We later
+		// sequentially fetch the certificate details. This avoids a JOIN on two
+		// large tables.
+		var statuses []core.CertificateStatus
 		var err error
 		if features.Enabled(features.CertStatusOptimizationsMigrated) {
 			_, err = m.dbMap.Select(
-				&certs,
-				`SELECT cert.* FROM certificates AS cert
-				 JOIN certificateStatus AS cs
-				 ON cs.serial = cert.serial
-				 AND cs.notAfter > :cutoffA
-				 AND cs.notAfter <= :cutoffB
-				 AND cs.status != "revoked"
-				 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-				 ORDER BY cert.expires ASC
-				 LIMIT :limit`,
+				&statuses,
+				`SELECT
+				cs.serial
+				FROM certificateStatus AS cs
+				WHERE cs.notAfter > :cutoffA
+				AND cs.notAfter <= :cutoffB
+				AND cs.status != "revoked"
+				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				ORDER BY cs.notAfter ASC
+				LIMIT :limit`,
 				map[string]interface{}{
 					"cutoffA":   left,
 					"cutoffB":   right,
@@ -267,16 +268,18 @@ func (m *mailer) findExpiringCertificates() error {
 			)
 		} else {
 			_, err = m.dbMap.Select(
-				&certs,
-				`SELECT cert.* FROM certificates AS cert
-						 JOIN certificateStatus AS cs
-						 ON cs.serial = cert.serial
-						 AND cert.expires > :cutoffA
-						 AND cert.expires <= :cutoffB
-						 AND cs.status != "revoked"
-						 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-						 ORDER BY cert.expires ASC
-						 LIMIT :limit`,
+				&statuses,
+				`SELECT
+				cert.serial
+				FROM certificates AS cert
+				JOIN certificateStatus AS cs
+				ON cs.serial = cert.serial
+				AND cert.expires > :cutoffA
+				AND cert.expires <= :cutoffB
+				AND cs.status != "revoked"
+				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+				ORDER BY cert.expires ASC
+				LIMIT :limit`,
 				map[string]interface{}{
 					"cutoffA":   left,
 					"cutoffB":   right,
@@ -286,9 +289,35 @@ func (m *mailer) findExpiringCertificates() error {
 			)
 		}
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
-			return err // fatal
+			m.log.AuditErr(
+				fmt.Sprintf(
+					"expiration-mailer: Error loading certificate statuses: %s", err))
+			return err
 		}
+
+		// Now we can sequentially retrieve the certificate details for each of the
+		// certificate status rows
+		var certs []core.Certificate
+		for _, cs := range statuses {
+			var cert core.Certificate
+			err := m.dbMap.SelectOne(&cert,
+				`SELECT
+				cert.*
+				FROM certificates AS cert
+				WHERE serial = :serial`,
+				map[string]interface{}{
+					"serial": cs.Serial,
+				},
+			)
+			if err != nil {
+				m.log.AuditErr(
+					fmt.Sprintf(
+						"expiration-mailer: Error loading cert %q : %s", cert.Serial, err))
+				return err // fatal
+			}
+			certs = append(certs, cert)
+		}
+
 		m.log.Info(fmt.Sprintf("Found %d certificates expiring between %s and %s", len(certs),
 			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04")))
 
