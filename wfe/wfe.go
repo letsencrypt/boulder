@@ -482,7 +482,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 
-		return nil, nil, reg, core.ProblemDetailsForError(err, "")
+		return nil, nil, reg, probs.ServerInternal("Failed to get registration by key")
 	} else {
 		// If the lookup was successful, use that key.
 		key = reg.Key
