@@ -209,7 +209,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
 			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
 		}
-		return fmt.Errorf("Unexpected HTTP status code: %s", string(body))
+		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
 	cpc.log.Info(fmt.Sprintf(

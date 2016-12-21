@@ -92,6 +92,7 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	for _, testURL := range req.Objects {
 		if !strings.HasPrefix(testURL, "http://") {
 			resp.HTTPStatus = http.StatusForbidden
+			break
 		}
 	}
 
