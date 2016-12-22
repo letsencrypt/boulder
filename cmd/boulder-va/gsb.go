@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	safebrowsingv4 "github.com/google/safebrowsing"
