@@ -69,6 +69,9 @@ func (sb gsbAdapter) IsListed(url string) (string, error) {
 		// but the va.SafeBrowser interface only returns 1 string that is compared
 		// against "" to make a "safe or not" decision. We do not need more
 		// granularity.
+		if len(threats[0]) == 0 {
+			return "error", fmt.Errorf("Empty URLThreat from LookupURLs[0]")
+		}
 		return threats[0][0].ThreatType.String(), nil
 	}
 	return "", nil
