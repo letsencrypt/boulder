@@ -3,12 +3,14 @@ package main
 import (
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/cmd/boulder-va/mock_gsb"
 	"github.com/letsencrypt/boulder/test"
 )
 
+// TestConfigCheck tests that configCheck() does what it says on the tin
 func TestConfigCheck(t *testing.T) {
-
 	testcases := []struct {
 		conf     *cmd.GoogleSafeBrowsingConfig
 		expected error
@@ -50,4 +52,18 @@ func TestConfigCheck(t *testing.T) {
 		result := configCheck(tc.conf)
 		test.AssertEquals(t, result, tc.expected)
 	}
+}
+
+// TestV4IsListed creates a va.SafeBrowsing instance backed by the google v4 API
+// client and tests the `IsListed` function
+func TestV4IsListed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockSB := mock_gsb.NewMockSafeBrowsing(ctrl)
+	gsb := gsbAdapter{mockSB}
+	url := "foobar.com"
+
+	// We EXPECT that calling `IsListed` on the gsbAdapter will result in a call to the SafeBrowser's `LookupURLs` function
+	mockSB.EXPECT().LookupURLs([]string{url})
+	result := gsb.IsListed(url)
 }

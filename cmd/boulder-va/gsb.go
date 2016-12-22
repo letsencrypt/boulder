@@ -1,3 +1,5 @@
+// go:generate mockgen -source ../../va/gsb.go -package mock_gsb -destination mock_gsb.go SafeBrowsingV4
+
 package main
 
 import (
@@ -53,7 +55,7 @@ func configCheck(gsb *cmd.GoogleSafeBrowsingConfig) error {
 // gsbAdapter adapts the Google safebrowsing's `SafeBrowser` type to the
 // `va.SafeBrowsing` interface Boulder uses.
 type gsbAdapter struct {
-	*safebrowsingv4.SafeBrowser
+	va.SafeBrowsingV4
 }
 
 // IsListed provides the va.SafeBrowsing interface by using the
@@ -95,7 +97,7 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig) va.SafeBrowsing 
 	if err != nil {
 		cmd.FailOnError(err, "unable to create new safe browsing v4 client")
 	}
-	return gsbAdapter{SafeBrowser: sb}
+	return gsbAdapter{sb}
 }
 
 // newGoogleSafeBrowsing constructs a va.SafeBrowsing instance using the legacy
