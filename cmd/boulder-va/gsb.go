@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	safebrowsingv4 "github.com/google/safebrowsing"
@@ -23,6 +22,7 @@ var (
 		"given but it does not exist")
 	BadDataDirErr = errors.New("a Google Safe Browsing data directory was " +
 		"given but it cannot be opened")
+	EmptyURLThreatErr = errors.New("Empty URLThreat from LookupURLs[0]")
 )
 
 // configCheck returns an error if:
@@ -40,14 +40,12 @@ func configCheck(gsb *cmd.GoogleSafeBrowsingConfig) error {
 	if gsb.DataDir == "" {
 		return EmptyDataDirErr
 	}
-	f, err := os.Open(gsb.DataDir)
-	// NOTE: Using `defer f.Close()` instead makes errcheck unhappy.
-	defer func() { _ = f.Close() }()
-	if err != nil {
+	if _, err := os.Stat(gsb.DataDir); err != nil {
 		if os.IsNotExist(err) {
 			return MissingDataDirErr
+		} else {
+			return BadDataDirErr
 		}
-		return BadDataDirErr
 	}
 	return nil
 }
@@ -73,7 +71,7 @@ func (sb gsbAdapter) IsListed(url string) (string, error) {
 		// against "" to make a "safe or not" decision. We do not need more
 		// granularity.
 		if len(threats[0]) == 0 {
-			return "error", fmt.Errorf("Empty URLThreat from LookupURLs[0]")
+			return "error", EmptyURLThreatErr
 		}
 		return threats[0][0].ThreatType.String(), nil
 	}

@@ -88,13 +88,14 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-
+	var sbc va.SafeBrowsing
 	// If the feature flag is set, use the Google safebrowsing library that
 	// implements the v4 api instead of the legacy letsencrypt fork of
 	// go-safebrowsing-api
 	if features.Enabled(features.GoogleSafeBrowsingV4) {
 		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing)
+	} else {
+		sbc = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 	}
 
 	var cdrClient *cdr.CAADistributedResolver

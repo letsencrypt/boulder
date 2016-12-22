@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -59,11 +60,13 @@ func TestConfigCheck(t *testing.T) {
 func TestV4IsListed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockSB := mock_gsb.NewMockSafeBrowsing(ctrl)
+	mockSB := mock_gsb.NewMockSafeBrowsingV4(ctrl)
 	gsb := gsbAdapter{mockSB}
 	url := "foobar.com"
 
 	// We EXPECT that calling `IsListed` on the gsbAdapter will result in a call to the SafeBrowser's `LookupURLs` function
 	mockSB.EXPECT().LookupURLs([]string{url})
-	result := gsb.IsListed(url)
+	result, err := gsb.IsListed(url)
+	test.AssertNotError(t, err, fmt.Sprintf("IsListed(%q) returned non-nil err", url))
+	test.AssertEquals(t, result, "")
 }
