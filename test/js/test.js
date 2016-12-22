@@ -297,6 +297,7 @@ function getReadyToValidate(err, resp, body) {
   var authz = JSON.parse(body);
 
   if (cliOptions.abortStep === "startChallenge") {
+    console.log("authorization-url=" + state.authorizationURL);
     process.exit(0);
   }
 
