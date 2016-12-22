@@ -51,27 +51,3 @@ func TestConfigCheck(t *testing.T) {
 		test.AssertEquals(t, result, tc.expected)
 	}
 }
-
-/*
-func configCheck(gsb *cmd.GoogleSafeBrowsingConfig) error {
-	if gsb == nil {
-		return NilConfigErr
-	}
-	if gsb.APIKey == "" {
-		return EmptyAPIKeyErr
-	}
-	if gsb.DataDir == "" {
-		return EmptyDataDirErr
-	}
-	f, err := os.Open(gsb.DataDir)
-	// NOTE: Using `defer f.Close()` instead makes errcheck unhappy.
-	defer func() { _ = f.Close() }()
-	if err != nil {
-		if os.IsNotExist(err) {
-			return MissingDataDirErr
-		}
-		return BadDataDirErr
-	}
-	return nil
-}
-*/
