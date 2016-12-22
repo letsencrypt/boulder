@@ -21,7 +21,6 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 
-	_ "github.com/google/safebrowsing/"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"

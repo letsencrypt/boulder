@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -88,6 +89,13 @@ func main() {
 	}
 
 	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+
+	// If the feature flag is set, use the Google safebrowsing library that
+	// implements the v4 api instead of the legacy letsencrypt fork of
+	// go-safebrowsing-api
+	if features.Enabled(features.GoogleSafeBrowsingV4) {
+		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing)
+	}
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {
