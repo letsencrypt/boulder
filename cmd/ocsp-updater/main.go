@@ -710,10 +710,13 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	amqpConf := c.AMQP
 
 	var cac core.CertificateAuthority
-	if c.CAService != nil {
-		conn, err := bgrpc.ClientSetup(c.CAService, stats)
+	if c.OCSPGeneratorService != nil {
+		conn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn))
+		// Make a CA client that is only capable of signing OCSP.
+		// TODO(jsha): Once we've fully moved to gRPC, replace this
+		// with a plain caPB.NewOCSPGeneratorClient.
+		cac = bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(conn))
 	} else {
 		var err error
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)

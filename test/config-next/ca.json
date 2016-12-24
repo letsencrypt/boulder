@@ -11,8 +11,17 @@
       "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
       "timeout": "15s"
     },
-    "grpc": {
+    "grpcCA": {
       "address": "boulder:9093",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
+      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "clientNames": [
+        "boulder-client"
+      ]
+    },
+    "grpcOCSPGenerator": {
+      "address": "boulder:9096",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
       "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
       "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",

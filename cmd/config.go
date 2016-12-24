@@ -116,6 +116,9 @@ type CAConfig struct {
 	DBConfig
 	HostnamePolicyConfig
 
+	GRPCCA            *GRPCServerConfig
+	GRPCOCSPGenerator *GRPCServerConfig
+
 	RSAProfile   string
 	ECDSAProfile string
 	TestMode     bool
@@ -239,9 +242,9 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
 
-	Publisher *GRPCClientConfig
-	SAService *GRPCClientConfig
-	CAService *GRPCClientConfig
+	Publisher            *GRPCClientConfig
+	SAService            *GRPCClientConfig
+	OCSPGeneratorService *GRPCClientConfig
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
