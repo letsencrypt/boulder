@@ -13,10 +13,10 @@
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
     "saService": {
-      "serverAddresses": ["boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "clientCertificatePath": "test/grpc-creds/sa.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/sa.boulder/key.pem",
       "timeout": "15s"
     }
   },

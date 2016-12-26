@@ -12,12 +12,12 @@
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "grpc": {
-      "address": "boulder:9092",
+      "address": ":9092",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "serverCertificatePath": "test/grpc-creds/va.boulder/cert.pem",
+      "serverKeyPath": "test/grpc-creds/va.boulder/key.pem",
       "clientNames": [
-        "boulder-client"
+        "ra.boulder"
       ]
     },
     "amqp": {
