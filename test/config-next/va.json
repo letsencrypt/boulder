@@ -24,6 +24,9 @@
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server"
+    },
+    "features": {
+      "GoogleSafeBrowsingV4": true
     }
   },
 
