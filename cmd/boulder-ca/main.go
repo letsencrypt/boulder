@@ -184,7 +184,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	var grpcSrv *grpc.Server
+	var caSrv *grpc.Server
 	if c.CA.GRPCCA != nil {
 		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
@@ -194,8 +194,9 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
-		grpcSrv = s
+		caSrv = s
 	}
+	var ocspSrv *grpc.Server
 	if c.CA.GRPCOCSPGenerator != nil {
 		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
@@ -205,7 +206,7 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
 		}()
-		grpcSrv = s
+		ocspSrv = s
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
@@ -213,8 +214,11 @@ func main() {
 
 	go cmd.CatchSignals(logger, func() {
 		cas.Stop()
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
+		if caSrv != nil {
+			caSrv.GracefulStop()
+		}
+		if ocspSrv != nil {
+			ocspSrv.GracefulStop()
 		}
 	})
 
