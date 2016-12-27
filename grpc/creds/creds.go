@@ -24,10 +24,16 @@ var (
 		"boulder/grpc/creds: `serverConfig` must not be nil")
 	EmptyPeerCertsErr = errors.New(
 		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
-	SANNotAcceptedErr = errors.New(
-		"boulder/grpc/creds: peer's client certificate SAN entries did not match " +
-			"any entries on accepted SAN list.")
 )
+
+type SANNotAcceptedErr struct {
+	got, expected []string
+}
+
+func (e SANNotAcceptedErr) Error() string {
+	return fmt.Sprintf("boulder/grpc/creds: client certificate SAN was invalid. "+
+		"Got %q, expected one of %q.", e.got, e.expected)
+}
 
 // clientTransportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
@@ -154,33 +160,34 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 
 	// Since we call `conn.Handshake()` before `validateClient` and ensure
 	// a non-error response we don't need to validate anything except the presence
-	// of an accepted SAN in the leaf entry of `PeerCertificates`. The tls
+	// of an acceptable SAN in the leaf entry of `PeerCertificates`. The tls
 	// package's `serverHandshake` and in particular, `processCertsFromClient`
 	// will address everything else as an error returned from `Handshake()`.
-	var valid bool
 	leaf := peerState.PeerCertificates[0]
 
-	// First check the DNS subject alternate names against the accepted list
+	// Combine both the DNS and IP address subjectAlternativeNames into a single
+	// list for checking.
+	var receivedSANs []string
 	for _, dnsName := range leaf.DNSNames {
-		if _, ok := tc.acceptedSANs[dnsName]; ok {
-			valid = true
-		}
+		receivedSANs = append(receivedSANs, dnsName)
 	}
-	// Next check the IP address subject alternate names against the accepted list
 	for _, ip := range leaf.IPAddresses {
-		if _, ok := tc.acceptedSANs[ip.String()]; ok {
-			valid = true
+		receivedSANs = append(receivedSANs, ip.String())
+	}
+
+	for _, name := range receivedSANs {
+		if _, ok := tc.acceptedSANs[name]; ok {
+			return nil
 		}
 	}
 
 	// If none of the DNS or IP SANs on the leaf certificate matched the
-	// accepted list, the client isn't valid and we error
-	if !valid {
-		return SANNotAcceptedErr
+	// acceptable list, the client isn't valid and we error
+	var acceptableSANs []string
+	for k, _ := range tc.acceptedSANs {
+		acceptableSANs = append(acceptableSANs, k)
 	}
-
-	// Otherwise, the peer is valid!
-	return nil
+	return SANNotAcceptedErr{receivedSANs, acceptableSANs}
 }
 
 // ServerHandshake does the authentication handshake for servers. It returns
