@@ -134,7 +134,7 @@ func NewServerCredentials(serverConfig *tls.Config, acceptedSANs map[string]stru
 // list it is rejected.
 //
 // Note 1: This function *only* verifies the SAN entries! Callers are expected to
-// have provided the `tls.ConnectionState` from returned from a validate (e.g.
+// have provided the `tls.ConnectionState` returned from a validate (e.g.
 // non-error producing) `conn.Handshake()`.
 //
 // Note 2: We do *not* consider the client certificate subject common name. The
