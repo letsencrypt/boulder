@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -97,8 +98,21 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
-
 	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
+
+	var subject string
+	if m.subject != "" {
+		// If there is a subject from the configuration file, we should use it as-is
+		// to preserve the "classic" behaviour before we added a domain name.
+		subject = m.subject
+	} else {
+		// Otherwise, when no subject is configured we should make one using the
+		// domain names in the expiring certificate
+		subject = fmt.Sprintf("Certificate expiration notice for domain %q", domains[0])
+		if len(domains) > 1 {
+			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
+		}
+	}
 
 	email := emailContent{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
@@ -112,7 +126,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		return err
 	}
 	startSending := m.clk.Now()
-	err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
+	err = m.mailer.SendMail(emails, subject, msgBuf.String())
 	if err != nil {
 		return err
 	}
@@ -239,29 +253,80 @@ func (m *mailer) findExpiringCertificates() error {
 
 		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn))
-		var certs []core.Certificate
-		_, err := m.dbMap.Select(
-			&certs,
-			`SELECT cert.* FROM certificates AS cert
-			 JOIN certificateStatus AS cs
-			 ON cs.serial = cert.serial
-			 AND cert.expires > :cutoffA
-			 AND cert.expires <= :cutoffB
-			 AND cs.status != "revoked"
-			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-			 ORDER BY cert.expires ASC
-			 LIMIT :limit`,
-			map[string]interface{}{
-				"cutoffA":   left,
-				"cutoffB":   right,
-				"nagCutoff": expiresIn.Seconds(),
-				"limit":     m.limit,
-			},
-		)
-		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
-			return err // fatal
+
+		// First we do a query on the certificateStatus table to find certificates
+		// nearing expiry meeting our criteria for email notification. We later
+		// sequentially fetch the certificate details. This avoids an expensive
+		// JOIN.
+		var serials []string
+		var err error
+		if features.Enabled(features.CertStatusOptimizationsMigrated) {
+			_, err = m.dbMap.Select(
+				&serials,
+				`SELECT
+				cs.serial
+				FROM certificateStatus AS cs
+				WHERE cs.notAfter > :cutoffA
+				AND cs.notAfter <= :cutoffB
+				AND cs.status != "revoked"
+				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				ORDER BY cs.notAfter ASC
+				LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
+		} else {
+			_, err = m.dbMap.Select(
+				&serials,
+				`SELECT
+					cert.serial
+					FROM certificates AS cert
+					JOIN certificateStatus AS cs
+					ON cs.serial = cert.serial
+					AND cert.expires > :cutoffA
+					AND cert.expires <= :cutoffB
+					AND cs.status != "revoked"
+					AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
+					ORDER BY cert.expires ASC
+					LIMIT :limit`,
+				map[string]interface{}{
+					"cutoffA":   left,
+					"cutoffB":   right,
+					"nagCutoff": expiresIn.Seconds(),
+					"limit":     m.limit,
+				},
+			)
 		}
+		if err != nil {
+			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
+			return err
+		}
+
+		// Now we can sequentially retrieve the certificate details for each of the
+		// certificate status rows
+		var certs []core.Certificate
+		for _, serial := range serials {
+			var cert core.Certificate
+			err := m.dbMap.SelectOne(&cert,
+				`SELECT
+				cert.*
+				FROM certificates AS cert
+				WHERE serial = :serial`,
+				map[string]interface{}{
+					"serial": serial,
+				},
+			)
+			if err != nil {
+				m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err))
+				return err
+			}
+			certs = append(certs, cert)
+		}
+
 		m.log.Info(fmt.Sprintf("Found %d certificates expiring between %s and %s", len(certs),
 			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04")))
 
@@ -428,13 +493,9 @@ func main() {
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
 
-	subject := "Certificate expiration notice"
-	if c.Mailer.Subject != "" {
-		subject = c.Mailer.Subject
-	}
 	m := mailer{
 		stats:         scope,
-		subject:       subject,
+		subject:       c.Mailer.Subject,
 		log:           logger,
 		dbMap:         dbMap,
 		rs:            sac,

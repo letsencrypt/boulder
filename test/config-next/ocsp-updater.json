@@ -18,28 +18,29 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
     "publisher": {
-      "serverAddresses": ["boulder:9091"],
+      "serverAddresses": ["publisher.boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "10s"
     },
     "saService": {
-      "serverAddresses": ["boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "15s"
     },
     "ocspGeneratorService": {
-      "serverAddresses": ["boulder:9096"],
+      "serverAddresses": ["ca.boulder:9096"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "15s"
     },
     "features": {
-      "ResubmitMissingSCTsOnly": true
+      "ResubmitMissingSCTsOnly": true,
+      "CertStatusOptimizationsMigrated": true
     }
   },
 

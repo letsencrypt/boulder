@@ -22,7 +22,7 @@ REVOCATION_FAILED = 2
 MAILER_FAILED = 3
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure = range(8)
 
 JS_DIR = 'test/js'
 
@@ -310,15 +310,69 @@ def run_certificates_per_name_test():
             print("\nCertificates per name test: expected %s not present in output" % s)
             die(ExitStatus.Error)
 
-@atexit.register
-def cleanup():
-    import shutil
-    shutil.rmtree(tempdir)
-    if exit_status == ExitStatus.OK:
-        print("\n\nSUCCESS")
-    else:
-        if exit_status:
-            print("\n\nFAILURE %d" % exit_status)
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
+def run_admin_revoker_test():
+    cert_file = os.path.join(tempdir, "ar-cert.der")
+    cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
+    # Issue certificate for serial-revoke test
+    if subprocess.Popen('''
+        node test.js --domains ar-test.com --cert %s && \
+        openssl x509 -in %s -out %s -inform der -outform pem
+        ''' % (cert_file, cert_file, cert_file_pem),
+        shell=True, cwd=JS_DIR).wait() != 0:
+        print("\nIssuing failed")
+        die(ExitStatus.NodeFailure)
+    # Extract serial from certificate
+    try:
+        serial = subprocess.check_output("openssl x509 -in %s -noout -serial | cut -c 8-" % (cert_file_pem),
+                                         shell=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print "Failed to extract serial: %s" % (e.output)
+        die(ExitStatus.PythonFailure)
+    serial = serial.rstrip()
+    # Revoke certificate by serial
+    config = default_config_dir + "/admin-revoker.json"
+    if subprocess.Popen("./bin/admin-revoker serial-revoke --config %s %s %d" % (config, serial, 1),
+                        shell=True).wait() != 0:
+        print("Failed to revoke certificate")
+        die(ExitStatus.RevokerFailure)
+    # Wait for OCSP response to indicate revocation took place
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+
+    # Issue certificate for auth-revoke test
+    try:
+        output = subprocess.check_output("node test.js --domains ar-auth-test.com --abort-step startChallenge",
+                            shell=True, cwd=JS_DIR)
+    except subprocess.CalledProcessError as e:
+        print "Failed to create authorization: %s" % (e.output)
+        die(ExitStatus.NodeFailure)
+    # Get authorization URL from last line of output
+    lines = output.rstrip().split("\n")
+    prefix = "authorization-url="
+    if not lines[-1].startswith(prefix):
+        print("Failed to extract authorization URL")
+        die(ExitStatus.NodeFailure)
+    url = lines[-1][len(prefix):]
+    # Revoke authorization by domain
+    try:
+        output = subprocess.check_output("./bin/admin-revoker auth-revoke --config %s ar-auth-test.com" % (config),
+                                         shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to revoke authorization: %s", e)
+        die(ExitStatus.RevokerFailure)
+    if not output.rstrip().endswith("Revoked 1 pending authorizations and 0 final authorizations"):
+        print("admin-revoker didn't revoke the expected number of pending and finalized authorizations")
+        die(ExitStatus.RevokerFailure)
+    # Check authorization has actually been revoked
+    response = urllib.urlopen(url)
+    data = json.loads(response.read())
+    if data['status'] != "revoked":
+        print("Authorization wasn't revoked")
+        die(ExitStatus.RevokerFailure)
 
 exit_status = None
 tempdir = tempfile.mkdtemp()
@@ -376,6 +430,8 @@ def main():
 
         run_certificates_per_name_test()
 
+        run_admin_revoker_test()
+
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
 
@@ -398,5 +454,12 @@ if __name__ == "__main__":
 
 @atexit.register
 def stop():
+    import shutil
+    shutil.rmtree(tempdir)
+    if exit_status == ExitStatus.OK:
+        print("\n\nSUCCESS")
+    else:
+        if exit_status:
+            print("\n\nFAILURE %d" % exit_status)
     if ocsp_proc.poll() is None:
         ocsp_proc.kill()

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -218,9 +218,12 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 	// do GET)
 	urls := []string{}
 	for _, ocspServer := range cert.OCSPServer {
+		if !strings.HasSuffix(ocspServer, "/") {
+			ocspServer += "/"
+		}
 		urls = append(
 			urls,
-			path.Join(ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
+			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
 		)
 	}
 
@@ -236,26 +239,56 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT
-			 cs.serial,
-			 cs.status,
-			 cs.revokedDate
-			 FROM certificateStatus AS cs
-			 JOIN certificates AS cert
-			 ON cs.serial = cert.serial
-			 WHERE cs.ocspLastUpdated > :maxAge
-			 AND cs.ocspLastUpdated < :lastUpdate
-			 AND cert.expires > now()
-			 ORDER BY cs.ocspLastUpdated ASC
-			 LIMIT :limit`,
-		map[string]interface{}{
-			"lastUpdate": oldestLastUpdatedTime,
-			"maxAge":     maxAgeCutoff,
-			"limit":      batchSize,
-		},
-	)
+
+	// If CertStatusOptimizationsMigrated is enabled then we can do this query
+	// using only the `certificateStatus` table, saving an expensive JOIN and
+	// improving performance substantially
+	var err error
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		_, err = updater.dbMap.Select(
+			&statuses,
+			`SELECT
+				cs.serial,
+				cs.status,
+				cs.revokedDate,
+				cs.notAfter
+				FROM certificateStatus AS cs
+				WHERE cs.ocspLastUpdated > :maxAge
+				AND cs.ocspLastUpdated < :lastUpdate
+				AND NOT cs.isExpired
+				ORDER BY cs.ocspLastUpdated ASC
+				LIMIT :limit`,
+			map[string]interface{}{
+				"lastUpdate": oldestLastUpdatedTime,
+				"maxAge":     maxAgeCutoff,
+				"limit":      batchSize,
+			},
+		)
+		// If the migration hasn't been applied we don't have the `isExpired` or
+		// `notAfter` fields on the certificate status table to use and must do the
+		// expensive JOIN on `certificates`
+	} else {
+		_, err = updater.dbMap.Select(
+			&statuses,
+			`SELECT
+				 cs.serial,
+				 cs.status,
+				 cs.revokedDate
+				 FROM certificateStatus AS cs
+				 JOIN certificates AS cert
+				 ON cs.serial = cert.serial
+				 WHERE cs.ocspLastUpdated > :maxAge
+				 AND cs.ocspLastUpdated < :lastUpdate
+				 AND cert.expires > now()
+				 ORDER BY cs.ocspLastUpdated ASC
+				 LIMIT :limit`,
+			map[string]interface{}{
+				"lastUpdate": oldestLastUpdatedTime,
+				"maxAge":     maxAgeCutoff,
+				"limit":      batchSize,
+			},
+		)
+	}
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -376,6 +409,17 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 	return err
 }
 
+// markExpired updates a given CertificateStatus to have `isExpired` set.
+func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+ 		SET isExpired = TRUE
+ 		WHERE serial = ?`,
+		status.Serial,
+	)
+	return err
+}
+
 // newCertificateTick checks for certificates issued since the last tick and
 // generates and stores OCSP responses for these certs
 func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize int) error {
@@ -485,14 +529,29 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 // oldOCSPResponsesTick looks for certificates with stale OCSP responses and
 // generates/stores new ones
 func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
-	tickStart := time.Now()
+	tickStart := updater.clk.Now()
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
 		return err
 	}
-	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", time.Since(tickStart))
+	tickEnd := updater.clk.Now()
+	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
+
+	// If the CertStatusOptimizationsMigrated flag is set then we need to
+	// opportunistically update the certificateStatus `isExpired` column for expired
+	// certificates we come across
+	if features.Enabled(features.CertStatusOptimizationsMigrated) {
+		for _, s := range statuses {
+			if !s.IsExpired && tickStart.After(s.NotAfter) {
+				err := updater.markExpired(s)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 
 	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
 }
