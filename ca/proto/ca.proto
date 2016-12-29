@@ -10,7 +10,7 @@ service CertificateAuthority {
   rpc IssueCertificate(IssueCertificateRequest) returns (core.Certificate) {}
 }
 
-// CertificateAuthority generates OCSP. We separate this out from
+// OCSPGenerator generates OCSP. We separate this out from
 // CertificateAuthority so that we can restrict access to a different subset of
 // hosts, so the hosts that need to request OCSP generation don't need to be
 // able to request certificate issuance.
