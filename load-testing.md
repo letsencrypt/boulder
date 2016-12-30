@@ -21,6 +21,11 @@ Initialize the necessary tokens:
     local-machine$ drun --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
     local-machine$ drun --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
 
+Run the pkcs11key benchmark to check raw signing speed at various settings for
+GOMAXPROCS and SESSIONS:
+
+    local-machine$ drun -e GOMAXPROCS=4 -e SESSIONS=4 -e MODULE=/usr/local/lib/libpkcs11-proxy.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
+
 Run a local Boulder instance:
 
     local-machine$ drun boulder ./start.py
