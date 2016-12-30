@@ -15,16 +15,18 @@ Check that the port is open:
     local-machine$ nc -zv remote-machine 5657
     Connection to remote-machine 5657 port [tcp/*] succeeded!
 
-Initialize the necessary tokens:
+Set up a handy alias:
 
     local-machine$ alias drun="docker-compose run -e PKCS11_PROXY_SOCKET=tcp://remote-machine:5657 -e FAKE_DNS=172.17.0.1 --service-ports"
+
+Run the pkcs11key benchmark to check raw signing speed at various settings for SESSIONS:
+
+    local-machine$ drun -e SESSIONS=4 -e MODULE=/usr/local/lib/libpkcs11-proxy.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
+
+Initialize the tokens for use by Boulder:
+
     local-machine$ drun --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
     local-machine$ drun --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
-
-Run the pkcs11key benchmark to check raw signing speed at various settings for
-GOMAXPROCS and SESSIONS:
-
-    local-machine$ drun -e GOMAXPROCS=4 -e SESSIONS=4 -e MODULE=/usr/local/lib/libpkcs11-proxy.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
 
 Run a local Boulder instance:
 
@@ -34,7 +36,9 @@ Issue a bunch of certificates with test.js, ideally more than a hundred. Note:
 you may already have more than a hundred certificates already issued in your
 local database. If so, no need to do more.
 
-Using a MySQL client, artificially make all the OCSP responses go stale:
+Using a MySQL client, artificially make all the OCSP responses go stale (9 days
+is chosen to be between ocspStaleMaxAge and ocspMinTimeToExpiry in
+test/config/ocsp-updater.json):
 
     local-machine$ mysql -h 172.17.0.3 -u root -D boulder_sa_integration --silent
     MariaDB [boulder_sa_integration]> update certificateStatus set ocspLastUpdated = DATE_SUB(NOW(), INTERVAL 9 DAY);
@@ -67,8 +71,3 @@ as 1 (needs testing).
 
 Keep in mind that round-trip time between your local machine and your HSM
 machine greatly impact signing speed.
-
-You can also vary the GOMAXPROCS setting by passing `-e GOMAXPROCS=1` to the
-docker-compose command. In theory, performance will be limited by the lower of
-GOMAXPROCS and NumSessions, but in this test setup, GOMAXPROCS did not appear to
-have any effect.
