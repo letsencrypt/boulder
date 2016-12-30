@@ -8,7 +8,7 @@ Set up a SoftHSM instance running pkcs11-daemon on some remote host with more
 CPUs than your local machine. Easiest way to do this is to clone the Boulder
 repo, and on the remote machine run:
 
-    remote-machine$ docker-compose run --service-ports bhsm
+    remote-machine$ docker-compose run -p 5657:5657 bhsm
 
 Check that the port is open:
 
