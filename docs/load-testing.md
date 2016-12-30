@@ -1,7 +1,7 @@
 # Load testing the OCSP signing components.
 
 Here are instructions on how to realistically load test the OCSP signing
-components of Boulder, excercising the pkcs11key, boulder-ca, and
+components of Boulder, exercising the pkcs11key, boulder-ca, and
 ocsp-updater components.
 
 Set up a SoftHSM instance running pkcs11-daemon on some remote host with more
