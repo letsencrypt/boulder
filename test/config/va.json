@@ -9,7 +9,7 @@
       "tlsPort": 5001
     },
     "lookupIPV6": true,
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "amqp": {

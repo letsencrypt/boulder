@@ -8,7 +8,7 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "grpc": {
