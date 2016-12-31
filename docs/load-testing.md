@@ -40,7 +40,7 @@ Using a MySQL client, artificially make all the OCSP responses go stale (9 days
 is chosen to be between ocspStaleMaxAge and ocspMinTimeToExpiry in
 test/config/ocsp-updater.json):
 
-    local-machine$ mysql -h 172.17.0.3 -u root -D boulder_sa_integration --silent
+    local-machine$ docker-compose run boulder mysql -h boulder-mysql -u root -D boulder_sa_integration
     MariaDB [boulder_sa_integration]> update certificateStatus set ocspLastUpdated = DATE_SUB(NOW(), INTERVAL 9 DAY);
     Query OK, 641 rows affected (0.02 sec)
     Rows matched: 641  Changed: 641  Warnings: 0
