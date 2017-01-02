@@ -17,6 +17,9 @@ wait_tcp_port() {
     done
     exec 6>&-
 }
+cat <<EOF >> /etc/hosts
+127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder
+EOF
 
 # make sure we can reach the mysqldb
 wait_tcp_port boulder-mysql 3306

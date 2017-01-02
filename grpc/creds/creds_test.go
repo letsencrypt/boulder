@@ -21,10 +21,12 @@ func TestServerTransportCredentials(t *testing.T) {
 	acceptedSANs := map[string]struct{}{
 		"boulder-client": {},
 	}
-	goodCert, err := core.LoadCert("../../test/grpc-creds/boulder-client/cert.pem")
-	test.AssertNotError(t, err, "core.LoadCert('../../grpc-creds/boulder-client/cert.pem') failed")
-	badCert, err := core.LoadCert("../../test/test-root.pem")
-	test.AssertNotError(t, err, "core.LoadCert('../../test-root.pem') failed")
+	certFile := "testdata/boulder-client/cert.pem"
+	badCertFile := "testdata/example.com/cert.pem"
+	goodCert, err := core.LoadCert(certFile)
+	test.AssertNotError(t, err, "core.LoadCert failed on "+certFile)
+	badCert, err := core.LoadCert(badCertFile)
+	test.AssertNotError(t, err, "core.LoadCert failed on "+badCertFile)
 	servTLSConfig := &tls.Config{}
 
 	// NewServerCredentials with a nil serverTLSConfig should return an error
@@ -55,7 +57,10 @@ func TestServerTransportCredentials(t *testing.T) {
 		PeerCertificates: []*x509.Certificate{badCert},
 	}
 	err = bcreds.validateClient(wrongState)
-	test.AssertEquals(t, err, SANNotAcceptedErr)
+	_, ok := err.(SANNotAcceptedErr)
+	if !ok {
+		t.Errorf("Expected error of type SANNotAcceptedErr, got %T: %s", err, err)
+	}
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list

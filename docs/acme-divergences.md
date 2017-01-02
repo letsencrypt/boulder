@@ -6,6 +6,10 @@ This document details these differences, since ACME is not yet finalized it will
 
 Current draft: [`draft-ietf-acme-acme-04`](https://tools.ietf.org/html/draft-ietf-acme-acme-04).
 
+## [Section 5.2](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.2)
+
+Boulder enforces the presence of the `jwk` field in JWS objects, and does not support the `kid` field.
+
 ## [Section 5.4.1](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.4.1)
 
 Boulder does not use the `url` field from the JWS protected resource. Instead Boulder will validate the `resource` field from the JWS payload matches the resource being requested. Boulder implements the resource types described in [draft-ietf-acme-02 Section 6.1](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.1) plus the additional "KeyChange" resource. Boulder verifies the `resource` field contains the `/directory` URI for the requested resource.
