@@ -1,7 +1,7 @@
 {
   "ra": {
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
-    "maxConcurrentRPCServerRequests": 100000
+    "maxConcurrentRPCServerRequests": 100000,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
     "debugAddr": ":8002",
