@@ -15,7 +15,8 @@ recommended way to run it.
 
 Make sure you have a local copy of Boulder in your `$GOPATH`:
 
-    go get github.com/letsencrypt/boulder
+    export GOPATH=~/gopath
+    git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
 
 To start Boulder in a Docker container, run:
 
