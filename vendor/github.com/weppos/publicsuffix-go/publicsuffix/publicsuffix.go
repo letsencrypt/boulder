@@ -19,7 +19,7 @@ const (
 	// Version identifies the current library version.
 	// This is a pro-forma convention given that Go dependencies
 	// tends to be fetched directly from the repo.
-	Version = "0.3.0"
+	Version = "0.3.1"
 
 	NormalType    = 1
 	WildcardType  = 2

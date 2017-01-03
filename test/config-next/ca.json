@@ -131,7 +131,7 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
