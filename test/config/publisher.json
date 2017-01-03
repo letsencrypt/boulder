@@ -9,7 +9,8 @@
       "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
       "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "clientNames": [
-        "boulder-client"
+        "ra.boulder",
+        "ocsp-updater.boulder"
       ]
     },
     "amqp": {
