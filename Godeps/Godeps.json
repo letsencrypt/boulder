@@ -136,6 +136,14 @@
 			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
 		},
 		{
+			"ImportPath": "github.com/google/safebrowsing",
+			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
+		},
+		{
+			"ImportPath": "github.com/google/safebrowsing/internal/safebrowsing_proto",
+			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
+		},
+		{
 			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",
 			"Comment": "v1.1",
 			"Rev": "6b7015e65d366bf3f19b2b2a000a831940f0f7e0"
@@ -234,8 +242,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.0",
-			"Rev": "49fe4b0e8276b314e6703300ac26940d9c090a06"
+			"Comment": "v0.3.1",
+			"Rev": "3ea542729b4d7056a9d1356c9baf27bcad2bda7f"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",

@@ -8,22 +8,25 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "grpc": {
-      "address": "boulder:9092",
+      "address": ":9092",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "serverCertificatePath": "test/grpc-creds/va.boulder/cert.pem",
+      "serverKeyPath": "test/grpc-creds/va.boulder/key.pem",
       "clientNames": [
-        "boulder-client"
+        "ra.boulder"
       ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server"
+    },
+    "features": {
+      "GoogleSafeBrowsingV4": true
     }
   },
 

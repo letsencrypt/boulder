@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -218,9 +218,12 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 	// do GET)
 	urls := []string{}
 	for _, ocspServer := range cert.OCSPServer {
+		if !strings.HasSuffix(ocspServer, "/") {
+			ocspServer += "/"
+		}
 		urls = append(
 			urls,
-			path.Join(ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
+			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
 		)
 	}
 
