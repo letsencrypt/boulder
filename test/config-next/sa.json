@@ -5,12 +5,20 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": ":8003",
     "grpc": {
-      "address": "boulder:9095",
+      "address": ":9095",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "serverCertificatePath": "test/grpc-creds/sa.boulder/cert.pem",
+      "serverKeyPath": "test/grpc-creds/sa.boulder/key.pem",
       "clientNames": [
-        "boulder-client"
+        "admin-revoker.boulder",
+        "ca.boulder",
+        "expiration-mailer.boulder",
+        "ocsp-updater.boulder",
+        "orphan-finder.boulder",
+        "publisher.boulder",
+        "ra.boulder",
+        "sa.boulder",
+        "wfe.boulder"
       ]
     },
     "amqp": {
