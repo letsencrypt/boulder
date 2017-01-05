@@ -209,3 +209,13 @@ godep save ./...
 git add Godeps vendor
 git commit
 ```
+
+Adding RPCs
+-----------
+
+Boulder is moving towards using gRPC for all RPCs. To add a new RPC method, add
+it to the relevant .proto file, then run:
+
+    docker-compose run boulder go generate ./path/to/pkg/...
+
+
