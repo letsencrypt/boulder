@@ -31,8 +31,8 @@
       "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "15s"
     },
-    "caService": {
-      "serverAddresses": ["ca.boulder:9093"],
+    "ocspGeneratorService": {
+      "serverAddresses": ["ca.boulder:9096"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
       "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
       "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",

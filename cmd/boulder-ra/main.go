@@ -136,7 +136,10 @@ func main() {
 	if c.RA.CAService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.CAService, scope)
 		cmd.FailOnError(err, "Unable to create CA client")
-		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn))
+		// Build a CA client that is only capable of issuing certificates, not
+		// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
+		// with a plain caPB.NewCertificateAuthorityClient.
+		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn), nil)
 	} else {
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create CA client")

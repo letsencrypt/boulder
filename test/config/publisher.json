@@ -4,12 +4,12 @@
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
     "grpc": {
-      "address": "boulder:9091",
+      "address": ":9091",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
       "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
       "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "clientNames": [
-        "ra.boulder",
+        "ca.boulder",
         "ocsp-updater.boulder"
       ]
     },
