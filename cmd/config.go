@@ -394,14 +394,3 @@ type CAADistributedResolverConfig struct {
 	MaxFailures int
 	Proxies     []string
 }
-
-// NonEmpty returns the first nonempty string in its list of arguments, if
-// applicable.
-func NonEmpty(s ...string) string {
-	for _, v := range s {
-		if len(v) > 0 {
-			return v
-		}
-	}
-	return ""
-}
