@@ -199,12 +199,12 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     last_reminder = expiry + datetime.timedelta(days=-2)
     try:
         urllib2.urlopen("http://localhost:9381/clear", data='')
-        if subprocess.Popen(
-                (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/config/expiration-mailer.json && ' * 3) + 'true') %
-                (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
-                shell=True).wait() != 0:
-            print("\nExpiry mailer failed")
-            return MAILER_FAILED
+        get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+            default_config_dir, no_reminder)
+        get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+            default_config_dir, first_reminder)
+        get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+            default_config_dir, last_reminder)
         resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
         mailcount = int(resp.read())
         if mailcount != 2:
