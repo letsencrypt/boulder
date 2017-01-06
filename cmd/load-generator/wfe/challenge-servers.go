@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"os"
@@ -24,36 +23,25 @@ type ChallSrv struct {
 
 	tlsOneAddr string
 
-	doMu       sync.RWMutex
-	dnsOne     map[string]string
-	dnsOneAddr string
-
-	rpcAddr string
+	// doMu       sync.RWMutex
+	// dnsOne     map[string]string
+	// dnsOneAddr string
 }
 
-// NewChallSrv returns a pointer to a new ChallSrv
-func NewChallSrv(hoAddr, rpcAddr string) *ChallSrv {
+func newChallSrv(httpOneAddr, tlsOneAddr string) *ChallSrv {
 	return &ChallSrv{
 		httpOne:     make(map[string]string),
-		httpOneAddr: hoAddr,
-		tlsOneAddr:  "127.0.0.1:5001",
-		rpcAddr:     rpcAddr,
+		httpOneAddr: httpOneAddr,
+		tlsOneAddr:  tlsOneAddr,
 	}
 }
 
 // Run runs the challenge server on the configured address
-func (s *ChallSrv) Run() {
+func (s *ChallSrv) run() {
 	go func() {
 		err := s.httpOneServer()
 		if err != nil {
 			fmt.Printf("[!] http-0 server failed: %s\n", err)
-			os.Exit(1)
-		}
-	}()
-	go func() {
-		err := s.rpcServer()
-		if err != nil {
-			fmt.Printf("[!] RPC server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
@@ -64,8 +52,6 @@ func (s *ChallSrv) Run() {
 			os.Exit(1)
 		}
 	}()
-	forever := make(chan struct{}, 1)
-	<-forever
 }
 
 func (s *ChallSrv) addHTTPOneChallenge(token, content string) {
@@ -113,18 +99,6 @@ func (s *ChallSrv) httpOneServer() error {
 	return srv.ListenAndServe()
 }
 
-func (s *ChallSrv) hoRPC(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		fmt.Printf("[!] Failed to read RPC body: %s\n", err)
-		w.WriteHeader(400)
-		return
-	}
-	fields := strings.Split(string(body), ";;")
-	s.addHTTPOneChallenge(fields[0], fields[1])
-	w.WriteHeader(200)
-}
-
 func (s *ChallSrv) tlsOneServer() error {
 	fmt.Println("[+] Starting tls-sni-01 server")
 
@@ -167,10 +141,4 @@ func (s *ChallSrv) tlsOneServer() error {
 			continue
 		}
 	}
-}
-
-func (s *ChallSrv) rpcServer() error {
-	fmt.Println("[+] Starting challenge RPC server")
-	http.HandleFunc("/http-01", s.hoRPC)
-	return http.ListenAndServe(s.rpcAddr, nil)
 }
