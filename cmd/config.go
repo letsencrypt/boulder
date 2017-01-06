@@ -221,16 +221,16 @@ func (t TLSConfig) Load() (*tls.Config, error) {
 	}
 	caCertBytes, err := ioutil.ReadFile(*t.CACertFile)
 	if err != nil {
-		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
+		return nil, fmt.Errorf("reading CA cert from %s: %s", *t.CACertFile, err)
 	}
 	rootCAs := x509.NewCertPool()
 	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
-		return nil, fmt.Errorf("parsing CA cert from %q: %s", *t.CACertFile, err)
+		return nil, fmt.Errorf("parsing CA certs from %s failed", *t.CACertFile)
 	}
 	cert, err := tls.LoadX509KeyPair(*t.CertFile, *t.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
-			t.CertFile, t.KeyFile, err)
+		return nil, fmt.Errorf("loading key pair from %s and %s: %s",
+			*t.CertFile, *t.KeyFile, err)
 	}
 	return &tls.Config{
 		RootCAs:      rootCAs,
@@ -359,11 +359,12 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddresses       []string
+	ServerAddresses []string
+	Timeout         ConfigDuration
+	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
-	Timeout               ConfigDuration
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
@@ -373,7 +374,7 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	ClientNames []string `json:"clientNames" yaml:"client-names"`
-	// Deprecated. Use TLSConfig instead. TODO(jsha): Delete these.
+	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
 	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
 	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
 	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
