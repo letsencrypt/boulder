@@ -12,11 +12,13 @@
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/expiration-mailer.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
+    },
     "saService": {
       "serverAddresses": ["sa.boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/expiration-mailer.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/expiration-mailer.boulder/key.pem",
       "timeout": "15s"
     },
     "features": {
