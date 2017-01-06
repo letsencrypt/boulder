@@ -221,7 +221,7 @@ func (t TLSConfig) Load() (*tls.Config, error) {
 	}
 	caCertBytes, err := ioutil.ReadFile(*t.CACertFile)
 	if err != nil {
-		return nil, fmt.Errorf("reading CA cert from %s: %s", *t.CACertFile, err)
+		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
 	}
 	rootCAs := x509.NewCertPool()
 	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
@@ -229,7 +229,7 @@ func (t TLSConfig) Load() (*tls.Config, error) {
 	}
 	cert, err := tls.LoadX509KeyPair(*t.CertFile, *t.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("loading key pair from %s and %s: %s",
+		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
 			*t.CertFile, *t.KeyFile, err)
 	}
 	return &tls.Config{
