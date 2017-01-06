@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"flag"
@@ -169,9 +170,15 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
+	var tls *tls.Config
+	if c.CA.TLS.CertFile != nil {
+		tls, err = c.CA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	amqpConf := c.CA.AMQP
 	if c.CA.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
@@ -186,7 +193,7 @@ func main() {
 
 	var caSrv *grpc.Server
 	if c.CA.GRPCCA != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, scope)
+		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
@@ -198,7 +205,7 @@ func main() {
 	}
 	var ocspSrv *grpc.Server
 	if c.CA.GRPCOCSPGenerator != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, scope)
+		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
