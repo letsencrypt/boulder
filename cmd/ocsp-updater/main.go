@@ -334,11 +334,6 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 		return nil, err
 	}
 
-	_, err = x509.ParseCertificate(cert.DER)
-	if err != nil {
-		return nil, err
-	}
-
 	signRequest := core.OCSPSigningRequest{
 		CertDER:   cert.DER,
 		Reason:    status.RevokedReason,
