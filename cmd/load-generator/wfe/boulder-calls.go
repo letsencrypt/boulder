@@ -14,7 +14,7 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/square/go-jose"
@@ -22,23 +22,25 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-var magic = &State{}
-
-var stringToOperation = map[string]func(*context) error{
-	"newRegistration":   magic.newRegistration,
-	"getRegistration":   magic.getRegistration,
-	"newAuthorization":  magic.newAuthorization,
-	"solveHTTPOne":      magic.solveHTTPOne,
-	"solveTLSOne":       magic.solveTLSOne,
-	"newCertificate":    magic.newCertificate,
-	"revokeCertificate": magic.revokeCertificate,
-}
-
+// not entirely sure this will actually work...?
+var (
+	mMu               = sync.Mutex{}
+	magic             = &State{}
+	stringToOperation = map[string]func(*context) error{
+		"newRegistration":   magic.newRegistration,
+		"getRegistration":   magic.getRegistration,
+		"newAuthorization":  magic.newAuthorization,
+		"solveHTTPOne":      magic.solveHTTPOne,
+		"solveTLSOne":       magic.solveTLSOne,
+		"newCertificate":    magic.newCertificate,
+		"revokeCertificate": magic.revokeCertificate,
+	}
+)
 var plainReg = []byte(`{"resource":"new-reg"}`)
 
 func (s *State) newRegistration(ctx *context) error {
 	// if we have generated the max number of registrations just become getRegistration
-	if s.numRegs != 0 && atomic.LoadInt64(&s.numRegs) >= s.numRegs {
+	if s.maxRegs != 0 && s.numRegs() >= s.maxRegs {
 		return s.getRegistration(ctx)
 	}
 	signKey, err := rsa.GenerateKey(rand.Reader, 2048)

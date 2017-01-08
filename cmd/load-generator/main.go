@@ -62,6 +62,7 @@ func main() {
 			config.MaxRegs,
 			config.Results,
 			config.RegEmail,
+			config.Plan.Actions,
 		)
 		cmd.FailOnError(err, "Failed to create WFE generator")
 

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -38,6 +39,15 @@ type registration struct {
 	signer         jose.Signer
 	finalizedAuthz []string
 	certs          []string
+	mu             sync.Mutex
+}
+
+func (r *registration) update(finalizedAuthz, certs []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.finalizedAuthz = append(r.finalizedAuthz, finalizedAuthz...)
+	r.certs = append(r.certs, certs...)
 }
 
 type context struct {
@@ -68,8 +78,8 @@ type State struct {
 
 	operations []func(*context) error
 
-	regPool sync.Pool
-	numRegs int64
+	rMu  sync.RWMutex
+	regs []*registration
 
 	challSrv    *ChallSrv
 	callLatency *latency.File
@@ -90,16 +100,18 @@ type snapshot struct {
 	Registrations []rawRegistration
 }
 
+func (s *State) numRegs() int {
+	s.rMu.RLock()
+	defer s.rMu.RUnlock()
+	return len(s.regs)
+}
+
 // Snapshot will save out generated registrations and certs (ignoring authorizations)
 func (s *State) Snapshot(filename string) error {
 	fmt.Printf("[+] Saving registrations to %s\n", filename)
 	snap := snapshot{}
-	for i := int64(0); i < s.numRegs; i++ {
-		r := s.regPool.Get()
-		if r == nil {
-			panic("expected to pull a registration from the pool")
-		}
-		reg := r.(*registration)
+	// assume rMu lock operations aren't happening right now
+	for _, reg := range s.regs {
 		snap.Registrations = append(snap.Registrations, rawRegistration{
 			Certs:          reg.certs,
 			FinalizedAuthz: reg.finalizedAuthz,
@@ -136,7 +148,7 @@ func (s *State) Restore(filename string) error {
 			continue
 		}
 		signer.SetNonceSource(s)
-		s.addRegistration(&registration{
+		s.regs = append(s.regs, &registration{
 			key:    key,
 			signer: signer,
 			certs:  r.Certs,
@@ -146,8 +158,8 @@ func (s *State) Restore(filename string) error {
 	return nil
 }
 
-// New returns a pointer to a new State struct, or an error
-func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs int, latencyPath string, userEmail string) (*State, error) {
+// New returns a pointer to a new State struct or an error
+func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs int, latencyPath string, userEmail string, operations []string) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -160,7 +172,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 			}).Dial,
 			TLSHandshakeTimeout: 10 * time.Second,
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: true, // CDN bypass can cause validation failures
 			},
 		},
 	}
@@ -168,7 +180,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 	if err != nil {
 		return nil, err
 	}
-	return &State{
+	s := &State{
 		nMu:         new(sync.RWMutex),
 		client:      client,
 		apiBase:     apiBase,
@@ -179,7 +191,21 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		realIP:      realIP,
 		maxRegs:     maxRegs,
 		email:       userEmail,
-	}, nil
+	}
+	mMu.Lock()
+	magic = s
+	mMu.Unlock()
+
+	// convert operations strings to methods
+	for _, opName := range operations {
+		op, present := stringToOperation[opName]
+		if !present {
+			return nil, fmt.Errorf("unknown operation %q", opName)
+		}
+		s.operations = append(s.operations, op)
+	}
+
+	return s, nil
 }
 
 // Run runs the WFE load-generator for either the specified runtime/rate or the execution plan
@@ -298,21 +324,21 @@ func (s *State) addNonce(nonce string) {
 	s.noncePool = append(s.noncePool, nonce)
 }
 
-func (s *State) addRegistration(reg *registration) error {
-	if reg == nil {
-		return errors.New("passed nil registration")
-	}
-	s.regPool.Put(reg)
-	atomic.AddInt64(&s.numRegs, 1)
-	return nil
+func (s *State) addRegistration(reg *registration) {
+	s.rMu.Lock()
+	defer s.rMu.Unlock()
+
+	s.regs = append(s.regs, reg)
 }
 
 func (s *State) getRegistration(ctx *context) error {
-	reg := s.regPool.Get()
-	if reg == nil {
-		return errors.New("no registrations available")
+	s.rMu.RLock()
+	defer s.rMu.RUnlock()
+
+	if len(s.regs) == 0 {
+		return errors.New("no registrations to return")
 	}
-	ctx.reg = reg.(*registration)
+	ctx.reg = s.regs[mrand.Intn(len(s.regs))]
 	return nil
 }
 
@@ -329,16 +355,8 @@ func (s *State) sendCall() {
 			break
 		}
 	}
-	if len(ctx.pendingAuthz) > 0 {
-		// do something?
-	}
 	if ctx.reg != nil {
-		if len(ctx.finalizedAuthz) > 0 {
-			ctx.reg.finalizedAuthz = append(ctx.reg.finalizedAuthz, ctx.finalizedAuthz...)
-		}
-		err := s.addRegistration(ctx.reg)
-		if err != nil {
-			fmt.Printf("[FAILED] addRegistration: %s\n", err)
-		}
+		ctx.reg.update(ctx.finalizedAuthz, ctx.certs)
+		s.addRegistration(ctx.reg)
 	}
 }
