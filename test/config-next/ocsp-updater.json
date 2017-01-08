@@ -17,25 +17,21 @@
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
+    },
     "publisher": {
       "serverAddresses": ["publisher.boulder:9091"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "10s"
     },
     "saService": {
       "serverAddresses": ["sa.boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
       "timeout": "15s"
     },
-    "caService": {
-      "serverAddresses": ["ca.boulder:9093"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
+    "ocspGeneratorService": {
+      "serverAddresses": ["ca.boulder:9096"],
       "timeout": "15s"
     },
     "features": {

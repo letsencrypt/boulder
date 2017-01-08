@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -768,24 +769,43 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 ) {
 	amqpConf := c.AMQP
 
+	// TODO(jsha): Publisher is currently configured in production using old-style
+	// GRPC config fields. Remove this once production is switched over.
+	if c.Publisher != nil && c.TLS.CertFile == nil {
+		c.TLS = cmd.TLSConfig{
+			CertFile:   &c.Publisher.ClientCertificatePath,
+			KeyFile:    &c.Publisher.ClientKeyPath,
+			CACertFile: &c.Publisher.ServerIssuerPath,
+		}
+	}
+
+	var tls *tls.Config
+	var err error
+	if c.TLS.CertFile != nil {
+		tls, err = c.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
 	var cac core.CertificateAuthority
-	if c.CAService != nil {
-		conn, err := bgrpc.ClientSetup(c.CAService, stats)
+	if c.OCSPGeneratorService != nil {
+		conn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		cac = bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(conn))
+		// Make a CA client that is only capable of signing OCSP.
+		// TODO(jsha): Once we've fully moved to gRPC, replace this
+		// with a plain caPB.NewOCSPGeneratorClient.
+		cac = bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(conn))
 	} else {
 		var err error
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create CA client")
 	}
 
-	conn, err := bgrpc.ClientSetup(c.Publisher, stats)
+	conn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
 	var sac core.StorageAuthority
 	if c.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.SAService, stats)
+		conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
