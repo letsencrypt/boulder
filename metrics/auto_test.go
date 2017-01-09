@@ -42,4 +42,9 @@ func TestAutoProm(t *testing.T) {
 	if result != madeGauge {
 		t.Errorf("got back a different gauge than we made")
 	}
+	// Try again, make sure it was memoized again.
+	result2 := ap.get("foo.bar", recorder)
+	if result != result2 {
+		t.Errorf("expected to get same result twice, got a new result")
+	}
 }
