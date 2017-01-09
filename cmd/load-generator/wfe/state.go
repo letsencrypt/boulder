@@ -166,15 +166,18 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 	}
 	client := &http.Client{
 		Transport: &http.Transport{
-			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
 				KeepAlive: 30 * time.Second,
-			}).Dial,
-			TLSHandshakeTimeout: 10 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout: 5 * time.Second,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // CDN bypass can cause validation failures
 			},
+			MaxIdleConns:    500,
+			IdleConnTimeout: 90 * time.Second,
 		},
+		Timeout: 5 * time.Second,
 	}
 	latencyFile, err := latency.New(latencyPath)
 	if err != nil {
@@ -350,6 +353,5 @@ func (s *State) sendCall() {
 	}
 	if ctx.reg != nil {
 		ctx.reg.update(ctx.finalizedAuthz, ctx.certs)
-		s.addRegistration(ctx.reg)
 	}
 }

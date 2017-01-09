@@ -38,20 +38,24 @@ func newChallSrv(httpOneAddr, tlsOneAddr string) *ChallSrv {
 
 // Run runs the challenge server on the configured address
 func (s *ChallSrv) run() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
 	go func() {
-		err := s.httpOneServer()
+		err := s.httpOneServer(wg)
 		if err != nil {
 			fmt.Printf("[!] http-0 server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
+	wg.Add(1)
 	go func() {
-		err := s.tlsOneServer()
+		err := s.tlsOneServer(wg)
 		if err != nil {
 			fmt.Printf("[!] tls-sni-01 server failed: %s\n", err)
 			os.Exit(1)
 		}
 	}()
+	wg.Wait()
 }
 
 func (s *ChallSrv) addHTTPOneChallenge(token, content string) {
@@ -87,7 +91,7 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *ChallSrv) httpOneServer() error {
+func (s *ChallSrv) httpOneServer(wg *sync.WaitGroup) error {
 	fmt.Println("[+] Starting http-01 server")
 	srv := &http.Server{
 		Addr:         s.httpOneAddr,
@@ -96,10 +100,11 @@ func (s *ChallSrv) httpOneServer() error {
 		WriteTimeout: 5 * time.Second,
 	}
 	srv.SetKeepAlivesEnabled(false)
+	wg.Done()
 	return srv.ListenAndServe()
 }
 
-func (s *ChallSrv) tlsOneServer() error {
+func (s *ChallSrv) tlsOneServer(wg *sync.WaitGroup) error {
 	fmt.Println("[+] Starting tls-sni-01 server")
 
 	tinyKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -127,6 +132,7 @@ func (s *ChallSrv) tlsOneServer() error {
 	if err != nil {
 		return err
 	}
+	wg.Done()
 	for {
 		conn, err := l.Accept()
 		if err != nil {

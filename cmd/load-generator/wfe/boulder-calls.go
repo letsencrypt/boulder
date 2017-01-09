@@ -130,6 +130,7 @@ func newRegistration(s *State, ctx *context) error {
 	}
 
 	ctx.reg = &registration{key: signKey, signer: signer}
+	s.addRegistration(ctx.reg)
 	return nil
 }
 
