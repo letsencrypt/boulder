@@ -128,11 +128,6 @@
       }
     },
     "maxConcurrentRPCServerRequests": 100000,
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "CA.server"
-    },
     "features": {
         "IDNASupport": true
     }
