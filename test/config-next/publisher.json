@@ -20,6 +20,11 @@
       "clientKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "timeout": "15s"
     },
+    "amqp": {
+      "serverURLFile": "test/secrets/amqp_url",
+      "insecure": true,
+      "serviceQueue": "Publisher.server"
+    }
   },
 
   "statsd": {

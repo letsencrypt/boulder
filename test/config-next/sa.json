@@ -23,6 +23,11 @@
         "wfe.boulder"
       ]
     },
+    "amqp": {
+      "serverURLFile": "test/secrets/amqp_url",
+      "insecure": true,
+      "serviceQueue": "SA.server"
+    },
     "features": {
       "AllowAccountDeactivation": true,
       "CertStatusOptimizationsMigrated": true
