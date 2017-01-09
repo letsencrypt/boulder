@@ -1,6 +1,6 @@
 {
   "publisher": {
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
     "grpc": {

@@ -2,9 +2,7 @@ package grpc
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"io/ioutil"
 	"net"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -20,39 +18,25 @@ import (
 var CodedError = grpc.Errorf
 
 var errNilScope = errors.New("boulder/grpc: received nil scope")
+var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
-// NewServer loads various TLS certificates and creates a
-// gRPC Server that verifies the client certificate was
-// issued by the provided issuer certificate and presents a
-// a server TLS certificate.
-func NewServer(c *cmd.GRPCServerConfig, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
+// NewServer creates a gRPC server that uses the provided *tls.Config, and
+// verifies that clients present a certificate that (a) is signed by one of
+// the configured ClientCAs, and (b) contains at least one
+// subjectAlternativeName matching the accepted list from GRPCServerConfig.
+func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
 	if stats == nil {
 		return nil, nil, errNilScope
 	}
-	cert, err := tls.LoadX509KeyPair(c.ServerCertificatePath, c.ServerKeyPath)
-	if err != nil {
-		return nil, nil, err
+	if tls == nil {
+		return nil, nil, errNilTLS
 	}
-	clientIssuerBytes, err := ioutil.ReadFile(c.ClientIssuerPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	clientCAs := x509.NewCertPool()
-	if ok := clientCAs.AppendCertsFromPEM(clientIssuerBytes); !ok {
-		return nil, nil, errors.New("Failed to parse client issuer certificates")
-	}
-	servTLSConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    clientCAs,
-	}
-
 	acceptedSANs := make(map[string]struct{})
 	for _, name := range c.ClientNames {
 		acceptedSANs[name] = struct{}{}
 	}
 
-	creds, err := bcreds.NewServerCredentials(servTLSConfig, acceptedSANs)
+	creds, err := bcreds.NewServerCredentials(tls, acceptedSANs)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -4,20 +4,24 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ca.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ca.boulder/key.pem"
+    },
     "saService": {
       "serverAddresses": ["sa.boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/ca.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/ca.boulder/key.pem",
       "timeout": "15s"
     },
-    "grpc": {
+    "grpcCA": {
       "address": ":9093",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/ca.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/ca.boulder/key.pem",
       "clientNames": [
-        "ra.boulder",
+        "ra.boulder"
+      ]
+    },
+    "grpcOCSPGenerator": {
+      "address": ":9096",
+      "clientNames": [
         "ocsp-updater.boulder"
       ]
     },
@@ -123,7 +127,7 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
