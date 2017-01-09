@@ -1,15 +1,13 @@
 package wfe
 
-import "time"
-
 type Config struct {
 	// Execution plan parameters
 	Plan struct {
-		Actions   []string      // things to do
-		Rate      int           // requests / s
-		RateDelta int           // requests / s^2
-		MaxRate   int           // XXX: is this needed?
-		Runtime   time.Duration // how long to run for
+		Actions   []string // things to do
+		Rate      int64    // requests / s
+		RateDelta string   // requests / s^2
+		MaxRate   int64    // XXX: is this needed?
+		Runtime   string   // how long to run for
 	}
 	ExternalState string   // path to file to load/save registrations etc to/from
 	DontSaveState bool     // don't save changes to external state

@@ -133,12 +133,14 @@ func (s *ChallSrv) tlsOneServer() error {
 			fmt.Printf("[!] TLS connection failed: %s\n", err)
 			continue
 		}
-		defer conn.Close()
-		tlsConn := conn.(*tls.Conn)
-		err = tlsConn.Handshake()
-		if err != nil {
-			fmt.Printf("[!] TLS handshake failed: %s\n", err)
-			continue
-		}
+		go func() {
+			defer conn.Close()
+			tlsConn := conn.(*tls.Conn)
+			err = tlsConn.Handshake()
+			if err != nil {
+				fmt.Printf("[!] TLS handshake failed: %s\n", err)
+				return
+			}
+		}()
 	}
 }

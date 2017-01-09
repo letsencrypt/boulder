@@ -58,11 +58,11 @@ type context struct {
 }
 
 type Plan struct {
-	runtime time.Duration
-	rate    int64
-	delta   *struct {
-		inc    int64
-		period time.Duration
+	Runtime time.Duration
+	Rate    int64
+	Delta   *struct {
+		Inc    int64
+		Period time.Duration
 	}
 }
 
@@ -76,7 +76,7 @@ type State struct {
 	realIP          string
 	certKey         *rsa.PrivateKey
 
-	operations []func(*context) error
+	operations []func(*State, *context) error
 
 	rMu  sync.RWMutex
 	regs []*registration
@@ -84,7 +84,7 @@ type State struct {
 	challSrv    *ChallSrv
 	callLatency *latency.File
 	client      *http.Client
-	nMu         *sync.RWMutex
+	nMu         sync.RWMutex
 	noncePool   []string
 
 	wg *sync.WaitGroup
@@ -181,7 +181,6 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		return nil, err
 	}
 	s := &State{
-		nMu:         new(sync.RWMutex),
 		client:      client,
 		apiBase:     apiBase,
 		certKey:     certKey,
@@ -192,9 +191,6 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		maxRegs:     maxRegs,
 		email:       userEmail,
 	}
-	mMu.Lock()
-	magic = s
-	mMu.Unlock()
 
 	// convert operations strings to methods
 	for _, opName := range operations {
@@ -214,11 +210,11 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	s.challSrv.run()
 	fmt.Printf("[+] Started challenge servers, http-01: %q, tls-sni-01: %q\n", httpOneAddr, tlsOneAddr)
 
-	if p.delta != nil {
+	if p.Delta != nil {
 		go func() {
 			for {
-				time.Sleep(p.delta.period)
-				atomic.AddInt64(&p.rate, p.delta.inc)
+				time.Sleep(p.Delta.Period)
+				atomic.AddInt64(&p.Rate, p.Delta.Inc)
 			}
 		}()
 	}
@@ -236,13 +232,13 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 			default:
 				s.wg.Add(1)
 				go s.sendCall()
-				time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&p.rate)))
+				time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&p.Rate)))
 			}
 		}
 	}()
 
 	select {
-	case <-time.After(p.runtime):
+	case <-time.After(p.Runtime):
 		fmt.Println("[+] Execution plan finished")
 	case sig := <-sigs:
 		fmt.Printf("[!] Execution plan interrupted: %s caught\n", sig.String())
@@ -287,9 +283,9 @@ func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, s
 
 // Nonce satisfies the interface jose.NonceSource
 func (s *State) Nonce() (string, error) {
-	s.nMu.RLock()
+	s.nMu.Lock()
+	defer s.nMu.Unlock()
 	if len(s.noncePool) == 0 {
-		s.nMu.RUnlock()
 		started := time.Now()
 		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
 		finished := time.Now()
@@ -306,9 +302,6 @@ func (s *State) Nonce() (string, error) {
 		state = "error"
 		return "", fmt.Errorf("Nonce header not supplied!")
 	}
-	s.nMu.RUnlock()
-	s.nMu.Lock()
-	defer s.nMu.Unlock()
 	nonce := s.noncePool[0]
 	if len(s.noncePool) > 1 {
 		s.noncePool = s.noncePool[1:]
@@ -331,7 +324,7 @@ func (s *State) addRegistration(reg *registration) {
 	s.regs = append(s.regs, reg)
 }
 
-func (s *State) getRegistration(ctx *context) error {
+func getRegistration(s *State, ctx *context) error {
 	s.rMu.RLock()
 	defer s.rMu.RUnlock()
 
@@ -347,7 +340,7 @@ func (s *State) sendCall() {
 	ctx := &context{}
 
 	for _, op := range s.operations {
-		err := op(ctx)
+		err := op(s, ctx)
 		if err != nil {
 			// baddy
 			method := runtime.FuncForPC(reflect.ValueOf(op).Pointer()).Name() // XXX: sketchy :/

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/cmd/load-generator/wfe"
@@ -71,7 +72,17 @@ func main() {
 			cmd.FailOnError(err, "Failed to load registration snapshot")
 		}
 
-		err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, wfe.Plan{})
+		runtime, err := time.ParseDuration(config.Plan.Runtime)
+		cmd.FailOnError(err, "Failed to parse plan runtime")
+
+		plan := wfe.Plan{
+			Runtime: runtime,
+			Rate:    config.Plan.Rate,
+		}
+		if config.Plan.RateDelta != "" {
+			// do stuff
+		}
+		err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, plan)
 		cmd.FailOnError(err, "Failed to run WFE load generator")
 
 		if config.ExternalState != "" && !config.DontSaveState {

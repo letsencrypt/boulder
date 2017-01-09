@@ -14,7 +14,6 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/square/go-jose"
@@ -24,24 +23,22 @@ import (
 
 // not entirely sure this will actually work...?
 var (
-	mMu               = sync.Mutex{}
-	magic             = &State{}
-	stringToOperation = map[string]func(*context) error{
-		"newRegistration":   magic.newRegistration,
-		"getRegistration":   magic.getRegistration,
-		"newAuthorization":  magic.newAuthorization,
-		"solveHTTPOne":      magic.solveHTTPOne,
-		"solveTLSOne":       magic.solveTLSOne,
-		"newCertificate":    magic.newCertificate,
-		"revokeCertificate": magic.revokeCertificate,
+	stringToOperation = map[string]func(*State, *context) error{
+		"newRegistration":   newRegistration,
+		"getRegistration":   getRegistration,
+		"newAuthorization":  newAuthorization,
+		"solveHTTPOne":      solveHTTPOne,
+		"solveTLSOne":       solveTLSOne,
+		"newCertificate":    newCertificate,
+		"revokeCertificate": revokeCertificate,
 	}
 )
 var plainReg = []byte(`{"resource":"new-reg"}`)
 
-func (s *State) newRegistration(ctx *context) error {
+func newRegistration(s *State, ctx *context) error {
 	// if we have generated the max number of registrations just become getRegistration
 	if s.maxRegs != 0 && s.numRegs() >= s.maxRegs {
-		return s.getRegistration(ctx)
+		return getRegistration(s, ctx)
 	}
 	signKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -86,7 +83,7 @@ func (s *State) newRegistration(ctx *context) error {
 			// just fail
 			return fmt.Errorf("bad response: %s", err)
 		}
-		return fmt.Errorf("bad response, status %q: %s", resp.StatusCode, body)
+		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
 	}
 
 	// get terms
@@ -129,7 +126,7 @@ func (s *State) newRegistration(ctx *context) error {
 		}
 		tState = "error"
 		fmt.Printf("[FAILED] reg, bad response: %s\n", string(body))
-		return fmt.Errorf("bad response, status %q: %s", resp.StatusCode, err)
+		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, err)
 	}
 
 	ctx.reg = &registration{key: signKey, signer: signer}
@@ -138,7 +135,7 @@ func (s *State) newRegistration(ctx *context) error {
 
 var dnsLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func (s *State) newAuthorization(ctx *context) error {
+func newAuthorization(s *State, ctx *context) error {
 	// generate a random domain name
 	var buff bytes.Buffer
 	mrand.Seed(time.Now().UnixNano())
@@ -180,7 +177,7 @@ func (s *State) newAuthorization(ctx *context) error {
 			return err
 		}
 		state = "error"
-		return fmt.Errorf("bad response, status %q: %s", resp.StatusCode, body)
+		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
 	}
 	// location := resp.Header.Get("Location")
 	body, err := ioutil.ReadAll(resp.Body)
@@ -196,6 +193,9 @@ func (s *State) newAuthorization(ctx *context) error {
 		state = "error"
 		return err
 	}
+	// populate authz ID from location header because we strip it
+	paths := strings.Split(resp.Header.Get("Location"), "/")
+	authz.ID = paths[len(paths)-1]
 
 	ctx.pendingAuthz = append(ctx.pendingAuthz, &authz)
 	return nil
@@ -208,7 +208,7 @@ func getPending(ctx *context) *core.Authorization {
 	return authz
 }
 
-func (s *State) solveHTTPOne(ctx *context) error {
+func solveHTTPOne(s *State, ctx *context) error {
 	if len(ctx.pendingAuthz) == 0 {
 		return errors.New("no pending authorizations to complete")
 	}
@@ -297,14 +297,14 @@ func (s *State) solveHTTPOne(ctx *context) error {
 	return nil
 }
 
-func (s *State) solveTLSOne(ctx *context) error {
+func solveTLSOne(s *State, ctx *context) error {
 	if len(ctx.pendingAuthz) == 0 {
 		return errors.New("no pending authorizations to complete")
 	}
 	authz := getPending(ctx)
 	var chall *core.Challenge
 	for _, c := range authz.Challenges {
-		if c.Type == "http-01" {
+		if c.Type == "tls-sni-01" {
 			chall = &c
 			break
 		}
@@ -392,7 +392,7 @@ func min(a, b int) int {
 	return a
 }
 
-func (s *State) newCertificate(ctx *context) error {
+func newCertificate(s *State, ctx *context) error {
 	authsLen := len(ctx.finalizedAuthz)
 	num := min(mrand.Intn(authsLen), s.maxNamesPerCert)
 	dnsNames := []string{}
@@ -435,7 +435,7 @@ func (s *State) newCertificate(ctx *context) error {
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("bad response, status %q: %s", resp.StatusCode, body)
+		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
 	}
 
 	if certLoc := resp.Header.Get("Location"); certLoc != "" {
@@ -445,7 +445,7 @@ func (s *State) newCertificate(ctx *context) error {
 	return nil
 }
 
-func (s *State) revokeCertificate(ctx *context) error {
+func revokeCertificate(s *State, ctx *context) error {
 	// randomly select a cert to revoke
 	if len(ctx.certs) == 0 {
 		return errors.New("no certificates to revoke")
@@ -484,7 +484,7 @@ func (s *State) revokeCertificate(ctx *context) error {
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("bad response, status %q: %s", resp.StatusCode, body)
+		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
 	}
 
 	ctx.certs = append(ctx.certs[:index], ctx.certs[index+1:]...)
