@@ -78,6 +78,10 @@ func main() {
 		plan := wfe.Plan{
 			Runtime: runtime,
 			Rate:    config.Plan.Rate,
+			// Delta: &wfe.RateDelta{
+			// 	Inc:    5,
+			// 	Period: time.Minute,
+			// },
 		}
 		if config.Plan.RateDelta != "" {
 			// do stuff

@@ -15,8 +15,7 @@ import (
 	"time"
 )
 
-// ChallSrv wraps a tiny challenge webserver
-type ChallSrv struct {
+type challSrv struct {
 	hoMu        sync.RWMutex
 	httpOne     map[string]string
 	httpOneAddr string
@@ -28,8 +27,8 @@ type ChallSrv struct {
 	// dnsOneAddr string
 }
 
-func newChallSrv(httpOneAddr, tlsOneAddr string) *ChallSrv {
-	return &ChallSrv{
+func newChallSrv(httpOneAddr, tlsOneAddr string) *challSrv {
+	return &challSrv{
 		httpOne:     make(map[string]string),
 		httpOneAddr: httpOneAddr,
 		tlsOneAddr:  tlsOneAddr,
@@ -37,7 +36,7 @@ func newChallSrv(httpOneAddr, tlsOneAddr string) *ChallSrv {
 }
 
 // Run runs the challenge server on the configured address
-func (s *ChallSrv) run() {
+func (s *challSrv) run() {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go func() {
@@ -58,13 +57,13 @@ func (s *ChallSrv) run() {
 	wg.Wait()
 }
 
-func (s *ChallSrv) addHTTPOneChallenge(token, content string) {
+func (s *challSrv) addHTTPOneChallenge(token, content string) {
 	s.hoMu.Lock()
 	defer s.hoMu.Unlock()
 	s.httpOne[token] = content
 }
 
-func (s *ChallSrv) deleteHTTPOneChallenge(token string) {
+func (s *challSrv) deleteHTTPOneChallenge(token string) {
 	s.hoMu.Lock()
 	defer s.hoMu.Unlock()
 	if _, ok := s.httpOne[token]; ok {
@@ -72,14 +71,14 @@ func (s *ChallSrv) deleteHTTPOneChallenge(token string) {
 	}
 }
 
-func (s *ChallSrv) getHTTPOneChallenge(token string) (string, bool) {
+func (s *challSrv) getHTTPOneChallenge(token string) (string, bool) {
 	s.hoMu.RLock()
 	defer s.hoMu.RUnlock()
 	content, present := s.httpOne[token]
 	return content, present
 }
 
-func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *challSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
 	if strings.HasPrefix(requestPath, "/.well-known/acme-challenge/") {
 		token := requestPath[28:]
@@ -91,7 +90,7 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *ChallSrv) httpOneServer(wg *sync.WaitGroup) error {
+func (s *challSrv) httpOneServer(wg *sync.WaitGroup) error {
 	fmt.Println("[+] Starting http-01 server")
 	srv := &http.Server{
 		Addr:         s.httpOneAddr,
@@ -104,7 +103,7 @@ func (s *ChallSrv) httpOneServer(wg *sync.WaitGroup) error {
 	return srv.ListenAndServe()
 }
 
-func (s *ChallSrv) tlsOneServer(wg *sync.WaitGroup) error {
+func (s *challSrv) tlsOneServer(wg *sync.WaitGroup) error {
 	fmt.Println("[+] Starting tls-sni-01 server")
 
 	tinyKey, err := rsa.GenerateKey(rand.Reader, 2048)

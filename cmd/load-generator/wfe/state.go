@@ -2,8 +2,9 @@ package wfe
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -35,7 +36,7 @@ type RatePeriod struct {
 }
 
 type registration struct {
-	key            *rsa.PrivateKey
+	key            *ecdsa.PrivateKey
 	signer         jose.Signer
 	finalizedAuthz []string
 	certs          []string
@@ -55,15 +56,18 @@ type context struct {
 	pendingAuthz   []*core.Authorization
 	finalizedAuthz []string
 	certs          []string
+	ns             *nonceSource
+}
+
+type RateDelta struct {
+	Inc    int64
+	Period time.Duration
 }
 
 type Plan struct {
 	Runtime time.Duration
 	Rate    int64
-	Delta   *struct {
-		Inc    int64
-		Period time.Duration
-	}
+	Delta   *RateDelta
 }
 
 // State holds *all* the stuff
@@ -74,18 +78,16 @@ type State struct {
 	maxRegs         int
 	maxNamesPerCert int
 	realIP          string
-	certKey         *rsa.PrivateKey
+	certKey         *ecdsa.PrivateKey
 
 	operations []func(*State, *context) error
 
 	rMu  sync.RWMutex
 	regs []*registration
 
-	challSrv    *ChallSrv
+	challSrv    *challSrv
 	callLatency *latency.File
 	client      *http.Client
-	nMu         sync.RWMutex
-	noncePool   []string
 
 	wg *sync.WaitGroup
 }
@@ -112,10 +114,15 @@ func (s *State) Snapshot(filename string) error {
 	snap := snapshot{}
 	// assume rMu lock operations aren't happening right now
 	for _, reg := range s.regs {
+		k, err := x509.MarshalECPrivateKey(reg.key)
+		if err != nil {
+			return err
+		}
 		snap.Registrations = append(snap.Registrations, rawRegistration{
 			Certs:          reg.certs,
 			FinalizedAuthz: reg.finalizedAuthz,
-			RawKey:         x509.MarshalPKCS1PrivateKey(reg.key),
+			// RawKey:         x509.MarshalPKCS1PrivateKey(reg.key),
+			RawKey: k,
 		})
 	}
 	cont, err := json.Marshal(snap)
@@ -138,16 +145,16 @@ func (s *State) Restore(filename string) error {
 		return err
 	}
 	for _, r := range snap.Registrations {
-		key, err := x509.ParsePKCS1PrivateKey(r.RawKey)
+		// key, err := x509.ParsePKCS1PrivateKey(r.RawKey)
+		key, err := x509.ParseECPrivateKey(r.RawKey)
 		if err != nil {
 			continue
 		}
-		key.Precompute()
+		// key.Precompute()
 		signer, err := jose.NewSigner(jose.RS256, key)
 		if err != nil {
 			continue
 		}
-		signer.SetNonceSource(s)
 		s.regs = append(s.regs, &registration{
 			key:    key,
 			signer: signer,
@@ -160,7 +167,7 @@ func (s *State) Restore(filename string) error {
 
 // New returns a pointer to a new State struct or an error
 func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs int, latencyPath string, userEmail string, operations []string) (*State, error) {
-	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +184,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 			MaxIdleConns:    500,
 			IdleConnTimeout: 90 * time.Second,
 		},
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 	latencyFile, err := latency.New(latencyPath)
 	if err != nil {
@@ -207,7 +214,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 	return s, nil
 }
 
-// Run runs the WFE load-generator for either the specified runtime/rate or the execution plan
+// Run runs the WFE load-generator
 func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	s.challSrv = newChallSrv(httpOneAddr, tlsOneAddr)
 	s.challSrv.run()
@@ -227,16 +234,34 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Println("[+] Beginning execution plan")
+	i := int64(0)
 	go func() {
+		// ticker := time.NewTicker(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&p.Rate)))
+		// for range ticker.C {
 		for {
+			start := time.Now()
 			select {
 			case <-stop:
 				return
 			default:
 				s.wg.Add(1)
 				go s.sendCall()
-				time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&p.Rate)))
+				atomic.AddInt64(&i, 1)
 			}
+			sf := time.Duration(time.Second.Nanoseconds()/atomic.LoadInt64(&p.Rate)) - time.Since(start)
+			// fmt.Printf("%d: sleeping for %s\n", i, sf)
+			// ss := time.Now()
+			time.Sleep(sf)
+			// fmt.Printf("%d: slept for %s\n", i, time.Since(ss))
+		}
+	}()
+	go func() {
+		lastTotal := int64(0)
+		for {
+			time.Sleep(time.Second)
+			curTotal := atomic.LoadInt64(&i)
+			fmt.Printf("Rate was: %d/s\n", curTotal-lastTotal)
+			lastTotal = curTotal
 		}
 	}()
 
@@ -254,7 +279,7 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 
 // HTTP utils
 
-func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
+func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
@@ -264,7 +289,7 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 	resp, err := s.client.Do(req)
 	if resp != nil {
 		if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
-			s.addNonce(newNonce)
+			ns.addNonce(newNonce)
 		}
 	}
 	if err != nil {
@@ -284,40 +309,51 @@ func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, s
 	return []byte(jws.FullSerialize()), nil
 }
 
-// Nonce satisfies the interface jose.NonceSource
-func (s *State) Nonce() (string, error) {
-	s.nMu.Lock()
-	defer s.nMu.Unlock()
-	if len(s.noncePool) == 0 {
-		started := time.Now()
-		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
-		finished := time.Now()
-		state := "good"
-		defer func() { s.callLatency.Add("HEAD /directory", started, finished, state) }()
-		if err != nil {
-			state = "error"
-			return "", err
-		}
-		defer resp.Body.Close()
-		if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
-			return nonce, nil
-		}
+type nonceSource struct {
+	mu        sync.Mutex
+	noncePool []string
+	s         *State
+}
+
+func (ns *nonceSource) getNonce() (string, error) {
+	started := time.Now()
+	resp, err := ns.s.client.Head(fmt.Sprintf("%s/directory", ns.s.apiBase))
+	finished := time.Now()
+	state := "good"
+	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()
+	if err != nil {
 		state = "error"
-		return "", fmt.Errorf("Nonce header not supplied!")
+		return "", err
 	}
-	nonce := s.noncePool[0]
-	if len(s.noncePool) > 1 {
-		s.noncePool = s.noncePool[1:]
+	defer resp.Body.Close()
+	if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
+		return nonce, nil
+	}
+	state = "error"
+	return "", errors.New("'Replay-Nonce' header not supplied")
+}
+
+// Nonce satisfies the interface jose.NonceSource,  should probably actually be per context but ¯\_(ツ)_/¯ for now
+func (ns *nonceSource) Nonce() (string, error) {
+	ns.mu.Lock()
+	if len(ns.noncePool) == 0 {
+		ns.mu.Unlock()
+		return ns.getNonce()
+	}
+	defer ns.mu.Unlock()
+	nonce := ns.noncePool[0]
+	if len(ns.noncePool) > 1 {
+		ns.noncePool = ns.noncePool[1:]
 	} else {
-		s.noncePool = []string{}
+		ns.noncePool = []string{}
 	}
 	return nonce, nil
 }
 
-func (s *State) addNonce(nonce string) {
-	s.nMu.Lock()
-	defer s.nMu.Unlock()
-	s.noncePool = append(s.noncePool, nonce)
+func (ns *nonceSource) addNonce(nonce string) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.noncePool = append(ns.noncePool, nonce)
 }
 
 func (s *State) addRegistration(reg *registration) {
@@ -335,6 +371,8 @@ func getRegistration(s *State, ctx *context) error {
 		return errors.New("no registrations to return")
 	}
 	ctx.reg = s.regs[mrand.Intn(len(s.regs))]
+	ctx.ns = &nonceSource{s: s}
+	ctx.reg.signer.SetNonceSource(ctx.ns)
 	return nil
 }
 
@@ -345,7 +383,6 @@ func (s *State) sendCall() {
 	for _, op := range s.operations {
 		err := op(s, ctx)
 		if err != nil {
-			// baddy
 			method := runtime.FuncForPC(reflect.ValueOf(op).Pointer()).Name() // XXX: sketchy :/
 			fmt.Printf("[FAILED] %s: %s\n", method, err)
 			break

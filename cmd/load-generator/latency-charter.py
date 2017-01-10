@@ -66,8 +66,8 @@ def plot_section(all_data, title, outputPath):
 
             bad_rate = bad.set_index('finished')
             bad_rate['rate'] = [0] * len(bad_rate.index)
-            bad_rate = bad_rate.resample('10S').count()
-            bad_rate['rate'] = bad_rate['rate'].divide(10)
+            bad_rate = bad_rate.resample('5S').count()
+            bad_rate['rate'] = bad_rate['rate'].divide(5)
             rateMax = bad_rate['rate'].max()
             ax2.plot_date(bad_rate.index, bad_rate['rate'], linestyle='-', marker='', color='red', label='error')
         if groups.groups.get('good', False):
@@ -76,8 +76,8 @@ def plot_section(all_data, title, outputPath):
 
             good_rate = good.set_index('finished')
             good_rate['rate'] = [0] * len(good_rate.index)
-            good_rate = good_rate.resample('10S').count()
-            good_rate['rate'] = good_rate['rate'].divide(10)
+            good_rate = good_rate.resample('5S').count()
+            good_rate['rate'] = good_rate['rate'].divide(5)
             rateMax = good_rate['rate'].max()
             ax2.plot_date(good_rate.index, good_rate['rate'], linestyle='-', marker='', color='green', label='good')
 
@@ -87,8 +87,8 @@ def plot_section(all_data, title, outputPath):
         sent_rate = pandas.DataFrame(calls['sent'])
         sent_rate = sent_rate.set_index('sent')
         sent_rate['rate'] = [0] * len(sent_rate.index)
-        sent_rate = sent_rate.resample('10S').count()
-        sent_rate['rate'] = sent_rate['rate'].divide(10)
+        sent_rate = sent_rate.resample('5S').count()
+        sent_rate['rate'] = sent_rate['rate'].divide(5)
         if sent_rate['rate'].max() > rateMax:
             rateMax = sent_rate['rate'].max()
         ax2.plot_date(sent_rate.index, sent_rate['rate'], linestyle='--', marker='', color='black', label='sent')
@@ -100,7 +100,7 @@ def plot_section(all_data, title, outputPath):
         calls = calls.sort_index()
         quan = pandas.DataFrame(calls['took'])
         for q, c in [[.5, 'green'], [.9, 'orange'], [.99, 'red']]:
-            quanN = quan.rolling(25, center=True).quantile(q)
+            quanN = quan.rolling(500, center=True).quantile(q)
             ax3.plot(quanN['took'].index, quanN['took'], color=c)
 
         # ax3.grid(False)

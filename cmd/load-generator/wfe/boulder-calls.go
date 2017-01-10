@@ -3,10 +3,13 @@ package wfe
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,16 +43,18 @@ func newRegistration(s *State, ctx *context) error {
 	if s.maxRegs != 0 && s.numRegs() >= s.maxRegs {
 		return getRegistration(s, ctx)
 	}
-	signKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	// signKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	signKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
 	}
-	signKey.Precompute()
-	signer, err := jose.NewSigner(jose.RS256, signKey)
+	// signKey.Precompute()
+	signer, err := jose.NewSigner(jose.ES256, signKey)
 	if err != nil {
 		return err
 	}
-	signer.SetNonceSource(s)
+	ctx.ns = &nonceSource{s: s}
+	signer.SetNonceSource(ctx.ns)
 
 	// create the registration object
 	var regStr []byte
@@ -66,7 +71,7 @@ func newRegistration(s *State, ctx *context) error {
 	}
 
 	nStarted := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-reg", s.apiBase), requestPayload)
+	resp, err := s.post(fmt.Sprintf("%s/acme/new-reg", s.apiBase), requestPayload, ctx.ns)
 	nFinished := time.Now()
 	nState := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-reg", nStarted, nFinished, nState) }()
@@ -107,7 +112,7 @@ func newRegistration(s *State, ctx *context) error {
 	}
 
 	tStarted := time.Now()
-	resp, err = s.post(resp.Header.Get("Location"), requestPayload)
+	resp, err = s.post(resp.Header.Get("Location"), requestPayload, ctx.ns)
 	tFinished := time.Now()
 	tState := "good"
 	defer func() { s.callLatency.Add("POST /acme/reg/{ID}", tStarted, tFinished, tState) }()
@@ -134,17 +139,12 @@ func newRegistration(s *State, ctx *context) error {
 	return nil
 }
 
-var dnsLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
 func newAuthorization(s *State, ctx *context) error {
-	// generate a random domain name
-	var buff bytes.Buffer
-	mrand.Seed(time.Now().UnixNano())
-	randLen := mrand.Intn(59-len(s.domainBase)) + 1
-	for i := 0; i < randLen; i++ {
-		buff.WriteByte(dnsLetters[mrand.Intn(len(dnsLetters))])
-	}
-	randomDomain := fmt.Sprintf("%s.%s", buff.String(), s.domainBase)
+	// generate a random(-ish) domain name,  will cause some multiples but not enough to make rate limits annoying!
+	n := time.Now().UnixNano()
+	b := new(bytes.Buffer)
+	binary.Write(b, binary.LittleEndian, n)
+	randomDomain := fmt.Sprintf("%x.%s", sha1.Sum(b.Bytes()), s.domainBase)
 
 	// create the registration object
 	initAuth := fmt.Sprintf(`{"resource":"new-authz","identifier":{"type":"dns","value":"%s"}}`, randomDomain)
@@ -160,7 +160,7 @@ func newAuthorization(s *State, ctx *context) error {
 	}
 
 	started := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-authz", s.apiBase), requestPayload)
+	resp, err := s.post(fmt.Sprintf("%s/acme/new-authz", s.apiBase), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-authz", started, finished, state) }()
@@ -240,7 +240,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 	}
 
 	cStarted := time.Now()
-	resp, err := s.post(chall.URI, requestPayload)
+	resp, err := s.post(chall.URI, requestPayload, ctx.ns)
 	cFinished := time.Now()
 	cState := "good"
 	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
@@ -328,7 +328,7 @@ func solveTLSOne(s *State, ctx *context) error {
 	}
 
 	cStarted := time.Now()
-	resp, err := s.post(chall.URI, requestPayload)
+	resp, err := s.post(chall.URI, requestPayload, ctx.ns)
 	cFinished := time.Now()
 	cState := "good"
 	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
@@ -421,7 +421,7 @@ func newCertificate(s *State, ctx *context) error {
 	}
 
 	started := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-cert", s.apiBase), requestPayload)
+	resp, err := s.post(fmt.Sprintf("%s/acme/new-cert", s.apiBase), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-cert", started, finished, state) }()
@@ -470,7 +470,7 @@ func revokeCertificate(s *State, ctx *context) error {
 	}
 
 	started := time.Now()
-	resp, err = s.post(fmt.Sprintf("%s/acme/revoke-cert", s.apiBase), requestPayload)
+	resp, err = s.post(fmt.Sprintf("%s/acme/revoke-cert", s.apiBase), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
 	s.callLatency.Add("POST /acme/revoke-cert", started, finished, state)
