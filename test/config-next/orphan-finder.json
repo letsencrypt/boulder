@@ -8,11 +8,14 @@
     "prefix": "Boulder"
   },
 
+  "tls": {
+    "caCertFile": "test/grpc-creds/minica.pem",
+    "certFile": "test/grpc-creds/orphan-finder.boulder/cert.pem",
+    "keyFile": "test/grpc-creds/orphan-finder.boulder/key.pem"
+  },
+
   "saService": {
-    "serverAddresses": ["boulder:9095"],
-    "serverIssuerPath": "test/grpc-creds/minica.pem",
-    "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-    "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+    "serverAddresses": ["sa.boulder:9095"],
     "timeout": "15s"
   }
 }

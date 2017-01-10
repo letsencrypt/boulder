@@ -13,6 +13,11 @@ Boulder has a Dockerfile to make it easy to install and set up all its
 dependencies. This is how the maintainers work on Boulder, and is our main
 recommended way to run it.
 
+Make sure you have a local copy of Boulder in your `$GOPATH`:
+
+    export GOPATH=~/gopath
+    git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
+
 To start Boulder in a Docker container, run:
 
     docker-compose up

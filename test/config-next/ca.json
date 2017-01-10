@@ -4,30 +4,35 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ca.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ca.boulder/key.pem"
+    },
     "saService": {
-      "serverAddresses": ["boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
-    "grpc": {
-      "address": "boulder:9093",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+    "grpcCA": {
+      "address": ":9093",
       "clientNames": [
-        "boulder-client"
+        "ra.boulder"
+      ]
+    },
+    "grpcOCSPGenerator": {
+      "address": ":9096",
+      "clientNames": [
+        "ocsp-updater.boulder"
       ]
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca2.pem",
-      "NumSessions": 10
+      "NumSessions": 2
     }, {
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca.pem",
-      "NumSessions": 10
+      "NumSessions": 2
     }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
@@ -122,7 +127,7 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

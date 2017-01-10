@@ -45,7 +45,7 @@ func TestSendEarliestCertInfo(t *testing.T) {
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
 	expected := mocks.MailerMessage{
-		Subject: "",
+		Subject: "Certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),

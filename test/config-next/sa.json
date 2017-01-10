@@ -2,15 +2,25 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "debugAddr": ":8003",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/sa.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/sa.boulder/key.pem"
+    },
     "grpc": {
-      "address": "boulder:9095",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "address": ":9095",
       "clientNames": [
-        "boulder-client"
+        "admin-revoker.boulder",
+        "ca.boulder",
+        "expiration-mailer.boulder",
+        "ocsp-updater.boulder",
+        "orphan-finder.boulder",
+        "publisher.boulder",
+        "ra.boulder",
+        "sa.boulder",
+        "wfe.boulder"
       ]
     },
     "amqp": {

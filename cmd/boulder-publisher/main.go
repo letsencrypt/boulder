@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"os"
 
@@ -73,10 +74,26 @@ func main() {
 		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 	}
 
+	// TODO(jsha): Publisher is currently configured in production using old-style
+	// GRPC config fields. Remove this once production is switched over.
+	if c.Publisher.GRPC != nil && c.Publisher.TLS.CertFile == nil {
+		c.Publisher.TLS = cmd.TLSConfig{
+			CertFile:   &c.Publisher.GRPC.ServerCertificatePath,
+			KeyFile:    &c.Publisher.GRPC.ServerKeyPath,
+			CACertFile: &c.Publisher.GRPC.ClientIssuerPath,
+		}
+	}
+
+	var tls *tls.Config
+	if c.Publisher.TLS.CertFile != nil {
+		tls, err = c.Publisher.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	amqpConf := c.Publisher.AMQP
 	var sac core.StorageAuthority
 	if c.Publisher.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
@@ -94,7 +111,7 @@ func main() {
 
 	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, scope)
+		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, tls, scope)
 		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)

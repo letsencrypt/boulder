@@ -110,9 +110,10 @@ func TestSendNags(t *testing.T) {
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
-		subject:       testEmailSubject,
-		rs:            rs,
-		clk:           fc,
+		// Explicitly override the default subject to use testEmailSubject
+		subject: testEmailSubject,
+		rs:      rs,
+		clk:     fc,
 	}
 
 	cert := &x509.Certificate{
@@ -218,14 +219,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
 
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailARaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)`),
+		To: emailARaw,
+		// A certificte with only one domain should have only one domain listed in
+		// the subject
+		Subject: "Certificate expiration notice for domain \"example-a.com\"",
+		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
 	}, testCtx.mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailBRaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)`),
+		To: emailBRaw,
+		// A certificate with two domains should have only one domain listed and an
+		// additional count included
+		Subject: "Certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
+		Body:    "hi, cert for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)",
 	}, testCtx.mc.Messages[1])
 
 	// Check that regC's only certificate being renewed does not cause a log
@@ -338,7 +343,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 			CommonName: "happy C",
 		},
 		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
-		DNSNames:     []string{"example-c.com"},
+		DNSNames:     []string{"example-c.com", "another.example-c.com"},
 		SerialNumber: serial3,
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
@@ -823,8 +828,10 @@ func TestDedupOnRegistration(t *testing.T) {
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
 	expected := mocks.MailerMessage{
-		To:      emailARaw,
-		Subject: "",
+		To: emailARaw,
+		// A certificate with three domain names should have one in the subject and
+		// a count of '2 more' at the end
+		Subject: "Certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,7 +31,9 @@ import (
 
 var ctx = context.Background()
 
-type mockCA struct{}
+type mockCA struct {
+	sleepTime time.Duration
+}
 
 func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
@@ -38,6 +41,7 @@ func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateReques
 
 func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	ocsp = []byte{1, 2, 3}
+	time.Sleep(ca.sleepTime)
 	return
 }
 
@@ -192,26 +196,48 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
+	updater, sa, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCertA.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-	parsedCert, err = core.LoadCert("test-cert-b.pem")
+	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCertB.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
+
+	// We need to set a fake "ocspLastUpdated" value for the two certs we created
+	// in order to satisfy the "ocspStaleMaxAge" constraint.
+	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial IN (?, ?)",
+		fakeLastUpdate,
+		core.SerialToString(parsedCertA.SerialNumber),
+		core.SerialToString(parsedCertB.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
 
 	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 2)
 
-	err = updater.generateOCSPResponses(ctx, certs)
+	// Hacky test of parallelism: Make each request to the CA take 1 second, and
+	// produce 2 requests to the CA. If the pair of requests complete in about a
+	// second, they were made in parallel.
+	// Note that this test also tests the basic functionality of
+	// generateOCSPResponses.
+	start := time.Now()
+	updater.cac = &mockCA{time.Second}
+	updater.parallelGenerateOCSPRequests = 10
+	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
+	elapsed := time.Since(start)
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("generateOCSPResponses took too long, expected it to make calls in parallel.")
+	}
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -219,7 +245,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 }
 
 func TestFindStaleOCSPResponses(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
+	updater, sa, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -227,6 +253,15 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	// We need to set a fake "ocspLastUpdated" value for the cert we created
+	// in order to satisfy the "ocspStaleMaxAge" constraint.
+	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		fakeLastUpdate,
+		core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
 
 	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)
@@ -244,6 +279,46 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(certs), 0)
+}
+
+func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
+	updater, sa, dbMap, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCertA, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(ctx, parsedCertA.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+	parsedCertB, err := core.LoadCert("test-cert-b.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(ctx, parsedCertB.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
+
+	// Set a "ocspLastUpdated" value of 3 days ago for parsedCertA
+	okLastUpdated := fc.Now().Add(-time.Hour * 24 * 3)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		okLastUpdated,
+		core.SerialToString(parsedCertA.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated for parsedCertA")
+
+	// Set a "ocspLastUpdated" value of 35 days ago for parsedCertB
+	excludedLastUpdated := fc.Now().Add(-time.Hour * 24 * 35)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		excludedLastUpdated,
+		core.SerialToString(parsedCertB.SerialNumber))
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated for parsedCertB")
+
+	// Running `findStaleOCSPResponses should only find *ONE* of the above
+	// certificates, parsedCertA. The second should be excluded by the
+	// `ocspStaleMaxAge` cutoff.
+	earliest := fc.Now().Add(-time.Hour)
+	certs, err := updater.findStaleOCSPResponses(earliest, 10)
+	test.AssertNotError(t, err, "Couldn't find stale responses")
+	test.AssertEquals(t, len(certs), 1)
+	test.AssertEquals(t, certs[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
 }
 
 func TestGetCertificatesWithMissingResponses(t *testing.T) {
@@ -319,6 +394,61 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(certs), 0)
+}
+
+// TestOldOCSPResponesTickIsExpired checks that the old OCSP responses tick
+// updates the `IsExpired` field opportunistically as it encounters certificates
+// that are expired but whose certificate status rows do not have `IsExpired`
+// set.
+func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
+	// Explicitly enable the CertStatusOptimizationsMigrated feature so the OCSP
+	// updater can use the `IsExpired` field. This must be done before `setup()`
+	// so the correct dbMap associations are used
+	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
+	defer features.Reset()
+
+	updater, sa, dbMap, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	serial := core.SerialToString(parsedCert.SerialNumber)
+
+	// Add a new test certificate
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	// We need to set a fake "ocspLastUpdated" value for the cert we created
+	// in order to satisfy the "ocspStaleMaxAge" constraint. It needs to fall
+	// within the range of the updater.ocspMinTimeToExpiry we set later.
+	fakeLastUpdate := parsedCert.NotAfter.Add(-time.Hour)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		fakeLastUpdate,
+		serial)
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+
+	// The certificate isn't expired, so the certificate status should have
+	// a false `IsExpired`
+	cs, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	test.AssertEquals(t, cs.IsExpired, false)
+
+	// Advance the clock to the point that the certificate we added is now expired
+	fc.Set(parsedCert.NotAfter.Add(time.Hour))
+
+	// Run the oldOCSPResponsesTick so that it can have a chance to find expired
+	// certificates
+	updater.ocspMinTimeToExpiry = 1 * time.Hour
+	err = updater.oldOCSPResponsesTick(ctx, 10)
+	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
+
+	// Since we advanced the fakeclock beyond our test certificate's NotAfter we
+	// expect the certificate status has been updated to have a true `IsExpired`
+	cs, err = sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	test.AssertEquals(t, cs.IsExpired, true)
 }
 
 func TestMissingReceiptsTick(t *testing.T) {
