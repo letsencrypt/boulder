@@ -100,10 +100,10 @@ func NewRegistrationAuthorityImpl(
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
-		regByIPStats:                 stats.NewScope("RA", "RateLimit", "RegistrationsByIP"),
-		pendAuthByRegIDStats:         stats.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
-		certsForDomainStats:          stats.NewScope("RA", "RateLimit", "CertificatesForDomain"),
-		totalCertsStats:              stats.NewScope("RA", "RateLimit", "TotalCertificates"),
+		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
+		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
 	}
 	return ra
