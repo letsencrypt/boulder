@@ -88,14 +88,14 @@ func (s *StatsdScope) GaugeDelta(stat string, value int64) error {
 
 // Timing sends a latency stat and adds the Scope's prefix to the name
 func (s *StatsdScope) Timing(stat string, delta int64) error {
-	autoSummary(s.prefix + stat).Observe(float64(delta))
+	autoSummary(s.prefix + stat + "_seconds").Observe(float64(delta))
 	return s.statter.Timing(s.prefix+stat, delta, 1.0)
 }
 
 // TimingDuration sends a latency stat as a time.Duration and adds the Scope's
 // prefix to the name
 func (s *StatsdScope) TimingDuration(stat string, delta time.Duration) error {
-	autoSummary(s.prefix + stat).Observe(delta.Seconds())
+	autoSummary(s.prefix + stat + "_seconds").Observe(delta.Seconds())
 	return s.statter.TimingDuration(s.prefix+stat, delta, 1.0)
 }
 
