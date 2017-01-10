@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -75,18 +77,25 @@ func main() {
 		runtime, err := time.ParseDuration(config.Plan.Runtime)
 		cmd.FailOnError(err, "Failed to parse plan runtime")
 
-		plan := wfe.Plan{
+		var delta *wfe.RateDelta
+		if config.Plan.RateDelta != "" {
+			parts := strings.Split(config.Plan.RateDelta, "/")
+			if len(parts) != 2 {
+				fmt.Fprintf(os.Stderr, "RateDelta is malformed")
+				os.Exit(1)
+			}
+			rate, err := strconv.Atoi(parts[0])
+			cmd.FailOnError(err, "Failed to parse increase portion of RateDelta")
+			period, err := time.ParseDuration(parts[1])
+			cmd.FailOnError(err, "Failed to parse period portion of RateDelta")
+			delta = &wfe.RateDelta{Inc: int64(rate), Period: period}
+		}
+
+		err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, wfe.Plan{
 			Runtime: runtime,
 			Rate:    config.Plan.Rate,
-			// Delta: &wfe.RateDelta{
-			// 	Inc:    5,
-			// 	Period: time.Minute,
-			// },
-		}
-		if config.Plan.RateDelta != "" {
-			// do stuff
-		}
-		err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, plan)
+			Delta:   delta,
+		})
 		cmd.FailOnError(err, "Failed to run WFE load generator")
 
 		if config.ExternalState != "" && !config.DontSaveState {
