@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 	"github.com/letsencrypt/boulder/core"

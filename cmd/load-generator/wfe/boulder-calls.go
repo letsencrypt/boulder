@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/square/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
+
+	"gopkg.in/square/go-jose.v1"
 )
 
 // not entirely sure this will actually work...?
