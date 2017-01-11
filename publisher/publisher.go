@@ -85,7 +85,7 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	}
 	url.Path = strings.TrimSuffix(url.Path, "/")
 
-	pemPK := fmt.Sprintf(`-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----`,
+	pemPK := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----",
 		b64PK)
 	opts := jsonclient.Options{
 		Logger:    logAdaptor{logger},
