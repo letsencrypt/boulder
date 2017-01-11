@@ -350,7 +350,8 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 	status.OCSPResponse = ocspResponse
 
 	// Purge OCSP response from CDN, gated on client having been initialized
-	if updater.ccu != nil {
+	// and status being 'revoked'
+	if updater.ccu != nil && status.Status == core.OCSPStatusRevoked {
 		go updater.sendPurge(cert.DER)
 	}
 
