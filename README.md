@@ -209,3 +209,26 @@ godep save ./...
 git add Godeps vendor
 git commit
 ```
+
+NOTE: If you get "godep: no packages can be updated," there's a good chance
+you're trying to update a single package that belongs to a repo with other
+packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce
+this error, because it's part of the `golang.org/x/crypto` repo, from which we
+also import the `pkcs12` package. Godep requires that all packages from the same
+repo be on the same version, so it can't update just one. The error message is
+not particularly helpful. See https://github.com/tools/godep/issues/164 for the
+issue dedicated to fixing it.
+
+NOTE: Updating cfssl in particular is tricky, because (a) cfssl vendors
+`github.com/google/certificate-transparency/...` and
+`golang.org/x/crypto/ocsp/...`, which we also vendor, and (b)
+cfssl uses a different vendoring tool, so Godep doesn't fully understand the
+situation. When you update cfssl, you will get conflicting types between our
+vendored version and the cfssl vendored version. The solution is check out those
+two vendored repos at the same git revision that cfssl vendors (available in
+`vendor/manifest` in the cfssl repo), run the update, and then remove
+cloudflare's copy of the duplicated dependencies:
+
+    godep update golang.org/x/crypto/...  github.com/cloudflare/cfssl/... github.com/google/certificate-transparency/...
+    rm -r vendor/github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/
+    rm -r vendor/github.com/cloudflare/cfssl/vendor/golang.org/x/crypto/
