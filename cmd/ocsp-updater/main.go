@@ -199,6 +199,21 @@ func newUpdater(
 	return &updater, nil
 }
 
+func reverseBytes(b []byte) []byte {
+	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+		b[i], b[j] = b[j], b[i]
+	}
+	return b
+}
+
+func generatePOSTURL(der []byte, ocspServer string) string {
+	// Generate POST url, format is the URL that was POST'd to with a query string with
+	// the parameter 'body-mdy' and the value of the first two uint32s in little endian
+	// order in hex of the MD5 hash of the OCSP request body.
+	hash := md5.Sum(der)
+	return fmt.Sprintf("%s?body-mdy=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8]))
+}
+
 // sendPurge should only be called as a Goroutine as it will block until the purge
 // request is successful
 func (updater *OCSPUpdater) sendPurge(der []byte) {
@@ -216,12 +231,6 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 	// Create a GET and special Akamai POST style OCSP url for each endpoint in cert.OCSPServer
 	urls := []string{}
-	reverse := func(b []byte) []byte {
-		for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
-			b[i], b[j] = b[j], b[i]
-		}
-		return b
-	}
 	for _, ocspServer := range cert.OCSPServer {
 		if !strings.HasSuffix(ocspServer, "/") {
 			ocspServer += "/"
@@ -231,14 +240,7 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 			urls,
 			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
 		)
-		// Generate POST url, format is the URL that was POST'd to with a query string with
-		// the parameter 'body-mdy' and the value of the first two uint32s in little endian
-		// order in hex of the MD5 hash of the OCSP request body.
-		hash := md5.Sum(der)
-		urls = append(
-			urls,
-			fmt.Sprintf("%s?body-mdy=%x%x", ocspServer, reverse(hash[0:4]), reverse(hash[4:8])),
-		)
+		urls = append(urls, generatePOSTURL(der, ocspServer))
 	}
 
 	err = updater.ccu.Purge(urls)
