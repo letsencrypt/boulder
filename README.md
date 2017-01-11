@@ -219,16 +219,12 @@ repo be on the same version, so it can't update just one. The error message is
 not particularly helpful. See https://github.com/tools/godep/issues/164 for the
 issue dedicated to fixing it.
 
-NOTE: Updating cfssl in particular is tricky, because (a) cfssl vendors
+NOTE: Updating cfssl in particular is tricky, because cfssl vendors
 `github.com/google/certificate-transparency/...` and
-`golang.org/x/crypto/ocsp/...`, which we also vendor, and (b)
-cfssl uses a different vendoring tool, so Godep doesn't fully understand the
-situation. When you update cfssl, you will get conflicting types between our
-vendored version and the cfssl vendored version. The solution is check out those
-two vendored repos at the same git revision that cfssl vendors (available in
-`vendor/manifest` in the cfssl repo), run the update, and then remove
-cloudflare's copy of the duplicated dependencies:
+`golang.org/x/crypto/ocsp/...`, which we also vendor. In practice this means you
+need to check out those two dependencies to the same version cfssl uses
+(available in `vendor/manifest` in the cfssl repo). If you fail to do this,
+you will get conflicting types between our vendored version and the cfssl vendored version.
 
     godep update golang.org/x/crypto/...  github.com/cloudflare/cfssl/... github.com/google/certificate-transparency/...
-    rm -r vendor/github.com/cloudflare/cfssl/vendor/github.com/google/certificate-transparency/
-    rm -r vendor/github.com/cloudflare/cfssl/vendor/golang.org/x/crypto/
+    godep save ./...
