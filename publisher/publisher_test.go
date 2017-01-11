@@ -222,12 +222,14 @@ func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) 
 	m := http.NewServeMux()
 	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		if hits >= retries {
+			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, sct)
 		} else {
 			hits++
 			if after != nil {
 				w.Header().Add("Retry-After", fmt.Sprintf("%d", *after))
 				w.WriteHeader(503)
+				return
 			}
 			w.WriteHeader(http.StatusRequestTimeout)
 		}
@@ -434,7 +436,7 @@ func TestBadServer(t *testing.T) {
 	log.Clear()
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ecdsa signature")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ECDSA signature")), 1)
 }
 
 func TestLogCache(t *testing.T) {
