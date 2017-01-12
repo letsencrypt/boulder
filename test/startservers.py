@@ -43,6 +43,7 @@ def start(race_detection):
     startup. Anything that did start before this point can be cleaned
     up explicitly by calling stop(), or automatically atexit.
     """
+    signal.signal(signal.SIGTERM, lambda _, __: stop())
     global processes
     forward()
     progs = [
