@@ -5,9 +5,6 @@
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "clientNames": [
         "ra.boulder",
         "ocsp-updater.boulder"

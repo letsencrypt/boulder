@@ -765,16 +765,6 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 ) {
 	amqpConf := c.AMQP
 
-	// TODO(jsha): Publisher is currently configured in production using old-style
-	// GRPC config fields. Remove this once production is switched over.
-	if c.Publisher != nil && c.TLS.CertFile == nil {
-		c.TLS = cmd.TLSConfig{
-			CertFile:   &c.Publisher.ClientCertificatePath,
-			KeyFile:    &c.Publisher.ClientKeyPath,
-			CACertFile: &c.Publisher.ServerIssuerPath,
-		}
-	}
-
 	var tls *tls.Config
 	var err error
 	if c.TLS.CertFile != nil {

@@ -3,11 +3,13 @@
     "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
-    "grpc": {
-      "address": ":9091",
+    "tls": {
       "clientIssuerPath": "test/grpc-creds/minica.pem",
       "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
+      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem"
+    },
+    "grpc": {
+      "address": ":9091",
       "clientNames": [
         "ca.boulder",
         "ocsp-updater.boulder"

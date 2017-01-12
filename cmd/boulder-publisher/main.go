@@ -74,16 +74,6 @@ func main() {
 		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 	}
 
-	// TODO(jsha): Publisher is currently configured in production using old-style
-	// GRPC config fields. Remove this once production is switched over.
-	if c.Publisher.GRPC != nil && c.Publisher.TLS.CertFile == nil {
-		c.Publisher.TLS = cmd.TLSConfig{
-			CertFile:   &c.Publisher.GRPC.ServerCertificatePath,
-			KeyFile:    &c.Publisher.GRPC.ServerKeyPath,
-			CACertFile: &c.Publisher.GRPC.ClientIssuerPath,
-		}
-	}
-
 	var tls *tls.Config
 	if c.Publisher.TLS.CertFile != nil {
 		tls, err = c.Publisher.TLS.Load()
