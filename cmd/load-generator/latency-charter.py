@@ -60,7 +60,7 @@ def plot_section(all_data, title, outputPath):
         ax3.set_ylim(0, tookMax+tookMax*0.1)
 
         groups = calls.groupby('type')
-        if groups.groups.get('error', False):
+        if groups.groups.get('error', False) is not False:
             bad = groups.get_group('error')
             ax.plot_date(bad['finished'], bad['took'], color='red', marker='x', label='error')
 
@@ -70,7 +70,7 @@ def plot_section(all_data, title, outputPath):
             bad_rate['rate'] = bad_rate['rate'].divide(5)
             rateMax = bad_rate['rate'].max()
             ax2.plot_date(bad_rate.index, bad_rate['rate'], linestyle='-', marker='', color='red', label='error')
-        if groups.groups.get('good', False):
+        if groups.groups.get('good', False) is not False:
             good = groups.get_group('good')
             ax.plot_date(good['finished'], good['took'], color='green', marker='+', label='good')
 
