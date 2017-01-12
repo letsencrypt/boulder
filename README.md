@@ -55,6 +55,15 @@ Alternatively, you can override the docker-compose.yml default with an environme
 
     docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 
+Boulder's default VA configuration (`test/config/va.json`) is configured to
+connect to port 5002 to validate HTTP-01 challenges and port 5001 to validate
+TLS-SNI-01 challenges. If you want to solve challenges with a client running on
+your host you should make sure it uses these ports to respond to validation
+requests, or update the VA configuration's `portConfig` to use ports 80 and 443
+to match how the VA operates in production and staging environments. If you use
+a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow connections
+from the Docker instance to your host on the required ports.
+
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
 to do this is with this command:
