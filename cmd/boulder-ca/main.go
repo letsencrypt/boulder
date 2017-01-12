@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"flag"
@@ -169,9 +170,15 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
+	var tls *tls.Config
+	if c.CA.TLS.CertFile != nil {
+		tls, err = c.CA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	amqpConf := c.CA.AMQP
 	if c.CA.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
@@ -184,9 +191,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	var grpcSrv *grpc.Server
-	if c.CA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPC, scope)
+	var caSrv *grpc.Server
+	if c.CA.GRPCCA != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, scope)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
@@ -194,7 +201,19 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
-		grpcSrv = s
+		caSrv = s
+	}
+	var ocspSrv *grpc.Server
+	if c.CA.GRPCOCSPGenerator != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, scope)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
+		}()
+		ocspSrv = s
 	}
 
 	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
@@ -202,8 +221,11 @@ func main() {
 
 	go cmd.CatchSignals(logger, func() {
 		cas.Stop()
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
+		if caSrv != nil {
+			caSrv.GracefulStop()
+		}
+		if ocspSrv != nil {
+			ocspSrv.GracefulStop()
 		}
 	})
 

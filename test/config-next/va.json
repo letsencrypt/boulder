@@ -8,14 +8,16 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
+    "tls": {
+      "caCertfile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/va.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/va.boulder/key.pem"
+    },
     "grpc": {
       "address": ":9092",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/va.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/va.boulder/key.pem",
       "clientNames": [
         "ra.boulder"
       ]

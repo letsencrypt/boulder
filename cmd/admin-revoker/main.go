@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"flag"
@@ -52,6 +53,10 @@ type config struct {
 		// ServiceConfig, just an AMQPConfig.
 		AMQP *cmd.AMQPConfig
 
+		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
+		// but doesn't get the TLS field from ServiceConfig, so declares its own.
+		TLS cmd.TLSConfig
+
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 	}
@@ -65,10 +70,17 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
 
+	var tls *tls.Config
+	var err error
+	if c.Revoker.TLS.CertFile != nil {
+		tls, err = c.Revoker.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	amqpConf := c.Revoker.AMQP
 	var rac core.RegistrationAuthority
 	if c.Revoker.RAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, scope)
+		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
 	} else {
@@ -85,7 +97,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 
 	var sac core.StorageAuthority
 	if c.Revoker.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {

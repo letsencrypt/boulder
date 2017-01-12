@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -39,6 +40,7 @@ command descriptions:
 type config struct {
 	AMQP      cmd.AMQPConfig
 	Statsd    cmd.StatsdConfig
+	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
 	Syslog    cmd.SyslogConfig
 }
@@ -122,9 +124,15 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
 
+	var tls *tls.Config
+	if conf.TLS.CertFile != nil {
+		tls, err = conf.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	var sac core.StorageAuthority
 	if conf.SAService != nil {
-		conn, err := bgrpc.ClientSetup(conf.SAService, scope)
+		conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {

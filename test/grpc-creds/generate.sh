@@ -9,7 +9,8 @@ command -v minica >/dev/null 2>&1 || {
   exit 1;
 }
 
-# Make a server certificate (a CA will be created to issue it)
-minica -domains boulder-server,boulder -ip-addresses 127.0.0.1
-# Make a client certificate (reuses the CA created for the server)
-minica -domains boulder-client,boulder -ip-addresses 127.0.0.1
+for HOSTNAME in admin-revoker.boulder ca.boulder expiration-mailer.boulder \
+  ocsp-updater.boulder orphan-finder.boulder publisher.boulder ra.boulder \
+  sa.boulder va.boulder wfe.boulder ; do
+  minica -domains ${HOSTNAME}
+done

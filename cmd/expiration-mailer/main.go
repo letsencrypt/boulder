@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -394,6 +395,7 @@ type config struct {
 		// Path to a text/template email template
 		EmailTemplate string
 
+		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
 	}
 
@@ -440,9 +442,15 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
+	var tls *tls.Config
+	if c.Mailer.TLS.CertFile != nil {
+		tls, err = c.Mailer.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	var sac core.StorageAuthority
 	if c.Mailer.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {

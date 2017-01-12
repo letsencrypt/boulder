@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net"
@@ -121,10 +122,16 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
+	var tls *tls.Config
+	if c.RA.TLS.CertFile != nil {
+		tls, err = c.RA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	amqpConf := c.RA.AMQP
 	var vac core.ValidationAuthority
 	if c.RA.VAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.VAService, scope)
+		conn, err := bgrpc.ClientSetup(c.RA.VAService, tls, scope)
 		cmd.FailOnError(err, "Unable to create VA client")
 		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 	} else {
@@ -134,9 +141,12 @@ func main() {
 
 	var cac core.CertificateAuthority
 	if c.RA.CAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.CAService, scope)
+		conn, err := bgrpc.ClientSetup(c.RA.CAService, tls, scope)
 		cmd.FailOnError(err, "Unable to create CA client")
-		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn))
+		// Build a CA client that is only capable of issuing certificates, not
+		// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
+		// with a plain caPB.NewCertificateAuthorityClient.
+		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn), nil)
 	} else {
 		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Unable to create CA client")
@@ -144,14 +154,14 @@ func main() {
 
 	var pubc core.Publisher
 	if c.RA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, scope)
+		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 	}
 
 	var sac core.StorageAuthority
 	if c.RA.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.SAService, scope)
+		conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, scope)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
@@ -221,7 +231,7 @@ func main() {
 	var grpcSrv *grpc.Server
 	if c.RA.GRPC != nil {
 		var listener net.Listener
-		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, scope)
+		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, tls, scope)
 		cmd.FailOnError(err, "Unable to setup RA gRPC server")
 		gw := bgrpc.NewRegistrationAuthorityServer(rai)
 		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)

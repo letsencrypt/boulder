@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
@@ -45,6 +46,8 @@ type config struct {
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
 
+		TLS cmd.TLSConfig
+
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
@@ -66,8 +69,16 @@ type config struct {
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
 	amqpConf := c.WFE.AMQP
 	var rac core.RegistrationAuthority
+
+	var tls *tls.Config
+	var err error
+	if c.WFE.TLS.CertFile != nil {
+		tls, err = c.WFE.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
 	if c.WFE.RAService != nil {
-		conn, err := bgrpc.ClientSetup(c.WFE.RAService, stats)
+		conn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
 	} else {
@@ -78,7 +89,7 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 
 	var sac core.StorageAuthority
 	if c.WFE.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.WFE.SAService, stats)
+		conn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, stats)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
