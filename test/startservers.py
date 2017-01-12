@@ -136,4 +136,4 @@ def check():
 def stop():
     for p in processes:
         if p.poll() is None:
-            p.kill()
+            p.send_signal(signal.SIGTERM)
