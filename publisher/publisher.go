@@ -12,6 +12,7 @@ import (
 
 	ct "github.com/google/certificate-transparency/go"
 	ctClient "github.com/google/certificate-transparency/go/client"
+	"github.com/google/certificate-transparency/go/jsonclient"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
@@ -37,7 +38,7 @@ type logCache struct {
 
 // AddLog adds a *Log to the cache by constructing the statName, client and
 // verifier for the given uri & base64 public key.
-func (c *logCache) AddLog(uri, b64PK string) (*Log, error) {
+func (c *logCache) AddLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	// Lock the mutex for reading to check the cache
 	c.RLock()
 	log, present := c.logs[b64PK]
@@ -53,7 +54,7 @@ func (c *logCache) AddLog(uri, b64PK string) (*Log, error) {
 	defer c.Unlock()
 
 	// Construct a Log, add it to the cache, and return it to the caller
-	log, err := NewLog(uri, b64PK)
+	log, err := NewLog(uri, b64PK, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -68,15 +69,34 @@ func (c *logCache) Len() int {
 	return len(c.logs)
 }
 
+type logAdaptor struct {
+	blog.Logger
+}
+
+func (la logAdaptor) Printf(s string, args ...interface{}) {
+	la.Logger.Info(fmt.Sprintf(s, args...))
+}
+
 // NewLog returns an initialized Log struct
-func NewLog(uri, b64PK string) (*Log, error) {
+func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	url, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
 	}
 	url.Path = strings.TrimSuffix(url.Path, "/")
-	client := ctClient.New(url.String(), nil)
 
+	pemPK := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----",
+		b64PK)
+	opts := jsonclient.Options{
+		Logger:    logAdaptor{logger},
+		PublicKey: pemPK,
+	}
+	client, err := ctClient.New(url.String(), &http.Client{}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("making CT client: %s", err)
+	}
+
+	// TODO: Maybe this isn't necessary any more now that ctClient can check sigs?
 	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to decode base64 log public key")
@@ -170,7 +190,7 @@ func (pub *Impl) SubmitToSingleCT(
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
 	// and returned.
-	ctLog, err := pub.ctLogsCache.AddLog(logURL, logPublicKey)
+	ctLog, err := pub.ctLogsCache.AddLog(logURL, logPublicKey, pub.log)
 	if err != nil {
 		pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
 		return err
@@ -212,7 +232,7 @@ func (pub *Impl) singleLogSubmit(
 	serial string,
 	ctLog *Log) error {
 
-	sct, err := ctLog.client.AddChainWithContext(ctx, chain)
+	sct, err := ctLog.client.AddChain(ctx, chain)
 	if err != nil {
 		return err
 	}
