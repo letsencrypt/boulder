@@ -720,7 +720,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		count, ok := counts[name]
 		if !ok {
 			// Shouldn't happen, but let's be careful anyhow.
-			return errors.New("StorageAuthority failed to return a count for every name")
+			return errors.New("CountCertificatesByNames failed to return a count for every name")
 		}
 		if count >= limit.GetThreshold(name, regID) {
 			badNames = append(badNames, name)

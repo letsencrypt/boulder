@@ -5,6 +5,7 @@ import base64
 import datetime
 import json
 import os
+import random
 import re
 import shutil
 import socket
@@ -405,7 +406,8 @@ def main():
             print("\n Installing NPM modules failed")
             die(ExitStatus.Error)
         # Pick a random hostname so we don't run into certificate rate limiting.
-        domain = "www." + subprocess.check_output("openssl rand -hex 6", shell=True).strip() + "-TEST.com"
+        domain = "www.%x-TEST.com,%x-test.com" % (
+            random.randrange(2**32), random.randrange(2**32))
         challenge_types = ["http-01", "dns-01"]
 
         expected_ct_submissions = 1
