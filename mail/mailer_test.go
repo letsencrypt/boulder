@@ -99,7 +99,7 @@ func authenticateClient(t *testing.T, conn net.Conn) {
 	_, _ = conn.Write([]byte("250-PIPELINING\n"))
 	_, _ = conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
 	_, _ = conn.Write([]byte("250 8BITMIME\n"))
-	// Base64 encoding of "user@example.com\0paswd"
+	// Base64 encoding of "\0user@example.com\0paswd"
 	if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzd2Q="); err != nil {
 		return
 	}
