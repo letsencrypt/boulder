@@ -183,7 +183,7 @@ Notes:
   * Verify that the CSR has a non-zero number of domain names
   * Verify that the public key in the CSR is different from the account key
   * For each authorization referenced in the certificate request
-    * Retreive the authorization from the database
+    * Retrieve the authorization from the database
     * Verify that the authorization corresponds to the account key
     * Verify that the authorization is valid
     * Verify that the authorization is still valid
