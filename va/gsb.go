@@ -11,7 +11,7 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
-// SafeBrowsing is an interface for a third-party safe browing API client.
+// SafeBrowsing is an interface for a third-party safe browsing API client.
 type SafeBrowsing interface {
 	// IsListed returns a non-empty string if the domain was bad. Specifically,
 	// it is which Google Safe Browsing list the domain was found on.
