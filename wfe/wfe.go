@@ -530,7 +530,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnparsableJWSPayload", 1)
+		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
 	}
