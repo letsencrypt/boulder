@@ -393,7 +393,7 @@ func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 	}
 
 	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
-	// no differentation between a DNSSEC failure and an unknown host. If we
+	// no differentiation between a DNSSEC failure and an unknown host. If we
 	// do not verify DNSSEC ourselves, this function should be modified.
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
