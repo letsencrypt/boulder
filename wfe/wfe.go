@@ -1088,7 +1088,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	var challengeUpdate core.Challenge
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		logEvent.AddError("error JSON unmarshalling challenge response: %s", err)
+		logEvent.AddError("error JSON unmarshaling challenge response: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
 	}
