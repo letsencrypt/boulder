@@ -125,7 +125,7 @@ Notes:
   * Parse the challenge object (i.e., the response)
 
 * 2-3: RA does the following:
-  * Merge the response with the challenge in the authorzation object
+  * Merge the response with the challenge in the authorization object
   * Store the updated authorization object
 
 * 3-4: VA does the following:
