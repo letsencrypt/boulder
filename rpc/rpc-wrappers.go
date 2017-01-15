@@ -664,7 +664,7 @@ func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats metri
 	return &PublisherClient{rpc: client}, err
 }
 
-// SubmitToCT sends a request to submit a certifcate to CT logs
+// SubmitToCT sends a request to submit a certificate to CT logs
 func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err error) {
 	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
 	return
