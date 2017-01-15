@@ -1482,7 +1482,7 @@ func (cac StorageAuthorityClient) AddSCTReceipt(ctx context.Context, sct core.Si
 	return
 }
 
-// CountFQDNSets reutrns the number of currently valid sets with hash |setHash|
+// CountFQDNSets returns the number of currently valid sets with hash |setHash|
 func (cac StorageAuthorityClient) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	data, err := json.Marshal(countFQDNsRequest{window, names})
 	if err != nil {
