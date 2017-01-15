@@ -423,7 +423,7 @@ def main():
             die(ExitStatus.NodeFailure)
 
         if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
-            print("\nIssused certificate for domain with bad CAA records")
+            print("\nIssued certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
         run_expired_authz_purger_test()
