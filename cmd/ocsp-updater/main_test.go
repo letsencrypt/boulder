@@ -396,7 +396,7 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	test.AssertEquals(t, len(certs), 0)
 }
 
-// TestOldOCSPResponesTickIsExpired checks that the old OCSP responses tick
+// TestOldOCSPResponsesTickIsExpired checks that the old OCSP responses tick
 // updates the `IsExpired` field opportunistically as it encounters certificates
 // that are expired but whose certificate status rows do not have `IsExpired`
 // set.

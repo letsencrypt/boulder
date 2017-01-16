@@ -200,7 +200,7 @@ type IssuerConfig struct {
 	NumSessions int
 }
 
-// TLSConfig reprents certificates and a key for authenticated TLS.
+// TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
 	CertFile   *string
 	KeyFile    *string

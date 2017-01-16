@@ -56,7 +56,7 @@ type OCSPUpdater struct {
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	// Used to caculate how far back in time the findStaleOCSPResponse will look
+	// Used to calculate how far back in time the findStaleOCSPResponse will look
 	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration

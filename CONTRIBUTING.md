@@ -2,7 +2,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 
 # Patch Requirements
 * All new functionality and fixed bugs must be accompanied by tests.
-* Boulder currently implements the ACME-01 draft as defined by [acme-spec](https://tools.ietf.org/html/draft-ietf-acme-acme-01). If a spec change is required for Boulder functionality, you should propose it on the ACME mailing list (acme@ietf.org), possibly accompanid by a pull request on the [spec repo](https://github.com/ietf-wg-acme/acme/).
+* Boulder currently implements the ACME-01 draft as defined by [acme-spec](https://tools.ietf.org/html/draft-ietf-acme-acme-01). If a spec change is required for Boulder functionality, you should propose it on the ACME mailing list (acme@ietf.org), possibly accompanied by a pull request on the [spec repo](https://github.com/ietf-wg-acme/acme/).
 * All patches must meet the deployability requirements listed below.
 * We prefer pull requests from external forks be created with the ["Allow edits from maintainers"](https://github.com/blog/2247-improving-collaboration-with-forks) checkbox selected.
 

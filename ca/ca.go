@@ -174,7 +174,7 @@ func makeInternalIssuers(
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
-// from a single issuer (the first first in the issers slice), and can sign OCSP
+// from a single issuer (the first first in the issuers slice), and can sign OCSP
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
 	config cmd.CAConfig,
