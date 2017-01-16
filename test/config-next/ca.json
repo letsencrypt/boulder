@@ -28,11 +28,11 @@
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca2.pem",
-      "NumSessions": 10
+      "NumSessions": 2
     }, {
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca.pem",
-      "NumSessions": 10
+      "NumSessions": 2
     }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
@@ -51,7 +51,7 @@
               "client auth"
             ],
             "backdate": "1h",
-            "is_ca": false,
+            "ca_constraint": { "is_ca": false },
             "issuer_urls": [
               "http://127.0.0.1:4000/acme/issuer-cert"
             ],

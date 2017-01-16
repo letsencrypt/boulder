@@ -664,7 +664,7 @@ func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats metri
 	return &PublisherClient{rpc: client}, err
 }
 
-// SubmitToCT sends a request to submit a certifcate to CT logs
+// SubmitToCT sends a request to submit a certificate to CT logs
 func (pub PublisherClient) SubmitToCT(ctx context.Context, der []byte) (err error) {
 	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
 	return
@@ -1482,7 +1482,7 @@ func (cac StorageAuthorityClient) AddSCTReceipt(ctx context.Context, sct core.Si
 	return
 }
 
-// CountFQDNSets reutrns the number of currently valid sets with hash |setHash|
+// CountFQDNSets returns the number of currently valid sets with hash |setHash|
 func (cac StorageAuthorityClient) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	data, err := json.Marshal(countFQDNsRequest{window, names})
 	if err != nil {

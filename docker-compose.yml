@@ -55,3 +55,13 @@ brabbitmq:
     environment:
         RABBITMQ_NODE_IP_ADDRESS: "0.0.0.0"
     log_driver: none
+prom:
+    image: prom/prometheus
+    net: bridge
+    ports:
+      - 9090:9090
+    volumes:
+      - $PWD/test/prometheus/:/promconf/
+    command: -config.file /promconf/prometheus.yml
+    links:
+      - boulder

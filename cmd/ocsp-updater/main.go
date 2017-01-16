@@ -56,7 +56,7 @@ type OCSPUpdater struct {
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	// Used to caculate how far back in time the findStaleOCSPResponse will look
+	// Used to calculate how far back in time the findStaleOCSPResponse will look
 	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
@@ -334,11 +334,6 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 		return nil, err
 	}
 
-	_, err = x509.ParseCertificate(cert.DER)
-	if err != nil {
-		return nil, err
-	}
-
 	signRequest := core.OCSPSigningRequest{
 		CertDER:   cert.DER,
 		Reason:    status.RevokedReason,
@@ -493,19 +488,20 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	wait := func() {
 		sem <- 1 // Block until there's capacity.
 	}
-	done := func() {
+	done := func(start time.Time) {
 		<-sem // Indicate there's more capacity.
+		stats.TimingDuration("GenerateAndStore", time.Since(start))
 	}
 
 	work := func(status core.CertificateStatus) {
-		defer done()
+		defer done(updater.clk.Now())
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
 			stats.Inc("Errors.ResponseGeneration", 1)
 			return
 		}
-		updater.stats.Inc("GeneratedResponses", 1)
+		stats.Inc("GeneratedResponses", 1)
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))

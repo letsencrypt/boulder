@@ -186,7 +186,7 @@ func TestReloadFailure(t *testing.T) {
 	// Create a file with no permissions
 	oldReadFile := readFile
 	readFile = func(string) ([]byte, error) {
-		return nil, fmt.Errorf("permisssion denied")
+		return nil, fmt.Errorf("permission denied")
 	}
 
 	fakeTick <- time.Now()
