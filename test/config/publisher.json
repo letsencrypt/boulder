@@ -4,9 +4,9 @@
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
     "tls": {
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem"
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
     "grpc": {
       "address": ":9091",
