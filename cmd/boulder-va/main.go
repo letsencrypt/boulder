@@ -93,7 +93,7 @@ func main() {
 	// implements the v4 api instead of the legacy letsencrypt fork of
 	// go-safebrowsing-api
 	if features.Enabled(features.GoogleSafeBrowsingV4) {
-		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing)
+		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
 	} else {
 		sbc = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 	}
