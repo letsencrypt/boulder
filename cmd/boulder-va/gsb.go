@@ -118,7 +118,7 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		cmd.FailOnError(err, fmt.Sprintf(
 			"unable to create safe browsing v4 db file %q", dbFile))
 	}
-	dbFileHandle.Close()
+	_ = dbFileHandle.Close()
 
 	sb, err := safebrowsingv4.NewSafeBrowser(safebrowsingv4.Config{
 		APIKey:    gsb.APIKey,
