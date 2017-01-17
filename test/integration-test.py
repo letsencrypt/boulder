@@ -184,7 +184,7 @@ def verify_gsb_lookups(url, expected, server):
     if actual != expected:
         print "Expected %d Google Safe Browsing lookups for %s, found %d" % (expected, url, actual)
         die(ExitStatus.GSBFailure)
-   return 0
+    return 0
 
 def run_node_test(domain, chall_type, expected_ct_submissions):
     email_addr = "js.integration.test@letsencrypt.org"
