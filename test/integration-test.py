@@ -443,16 +443,17 @@ def main():
             print("\nIssued certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
-        # Try to issue for a name that we know the gsb-test-srv rejects. If this
-        # doesn't fail it is an error!
-        if run_node_test("honest.achmeds.discount.hosting.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
-            print("\nIssued certificate for domain on Google Safe Browsing test server list")
-            die(ExitStatus.GSBFailure)
-        
-        # Verify that GSB was consulted for the domain by checking the
-        # gsb-test-srv's `/hits` endpoint for the URL we tried to issue for. The
-        # GSB server should have been consulted for this exact URL 1 time.
-        verify_gsb_lookups("honest.achmeds.discount.hosting.com", 1, "http://localhost:6000/hits")
+        if default_config_dir.startswith("test/config-next"):
+            # Try to issue for a name that we know the gsb-test-srv rejects. If this
+            # doesn't fail it is an error!
+            if run_node_test("honest.achmeds.discount.hosting.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
+                print("\nIssued certificate for domain on Google Safe Browsing test server list")
+                die(ExitStatus.GSBFailure)
+
+            # Verify that GSB was consulted for the domain by checking the
+            # gsb-test-srv's `/hits` endpoint for the URL we tried to issue for. The
+            # GSB server should have been consulted for this exact URL 1 time.
+            verify_gsb_lookups("honest.achmeds.discount.hosting.com", 1, "http://localhost:6000/hits")
 
         run_expired_authz_purger_test()
 
