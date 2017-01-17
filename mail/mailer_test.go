@@ -99,8 +99,8 @@ func authenticateClient(t *testing.T, conn net.Conn) {
 	_, _ = conn.Write([]byte("250-PIPELINING\n"))
 	_, _ = conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
 	_, _ = conn.Write([]byte("250 8BITMIME\n"))
-	// Base64 encoding of "user@example.com\0paswd"
-	if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzd2Q="); err != nil {
+	// Base64 encoding of "\0user@example.com\0passwd"
+	if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzc3dk"); err != nil {
 		return
 	}
 	_, _ = conn.Write([]byte("235 2.7.0 Authentication successful\n"))
@@ -192,7 +192,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		"localhost",
 		fmt.Sprintf("%d", port),
 		"user@example.com",
-		"paswd",
+		"passwd",
 		*fromAddress,
 		log,
 		stats,
