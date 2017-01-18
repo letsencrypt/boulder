@@ -1,12 +1,14 @@
 package grpc
 
 import (
+	"encoding/json"
 	"errors"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // gRPC error codes used by Boulder. While the gRPC codes
@@ -23,6 +25,7 @@ const (
 	BadNonceError
 	NoSuchRegistrationError
 	InternalServerError
+	ProblemDetails
 )
 
 var (
@@ -52,13 +55,27 @@ func errorToCode(err error) codes.Code {
 		return NoSuchRegistrationError
 	case core.InternalServerError:
 		return InternalServerError
+	case *probs.ProblemDetails:
+		return ProblemDetails
 	default:
 		return codes.Unknown
 	}
 }
 
 func wrapError(err error) error {
-	return grpc.Errorf(errorToCode(err), err.Error())
+	code := errorToCode(err)
+	var body string
+	if code == ProblemDetails {
+		pd := err.(*probs.ProblemDetails)
+		bodyBytes, jsonErr := json.Marshal(pd)
+		if jsonErr != nil {
+			return err // fail open
+		}
+		body = string(bodyBytes)
+	} else {
+		body = err.Error()
+	}
+	return grpc.Errorf(code, body)
 }
 
 func unwrapError(err error) error {
@@ -85,6 +102,13 @@ func unwrapError(err error) error {
 		return core.LengthRequiredError(errBody)
 	case BadNonceError:
 		return core.BadNonceError(errBody)
+	case ProblemDetails:
+		pd := probs.ProblemDetails{}
+		jsonErr := json.Unmarshal([]byte(errBody), &pd)
+		if jsonErr != nil {
+			return err // fail open
+		}
+		return &pd
 	default:
 		return err
 	}
