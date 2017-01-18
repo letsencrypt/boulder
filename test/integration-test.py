@@ -178,7 +178,7 @@ def verify_gsb_lookups(url, expected, server):
 
     # The GSB test server tracks hits with a trailing / on the URL
     if not url.endswith("/"):
-        url = url + "/"
+        url += "/"
 
     actual = hits.get(url, 0)
     if actual != expected:
