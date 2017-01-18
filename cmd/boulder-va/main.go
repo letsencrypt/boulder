@@ -98,10 +98,11 @@ func main() {
 	// implements the v4 api instead of the legacy letsencrypt fork of
 	// go-safebrowsing-api
 	if features.Enabled(features.GoogleSafeBrowsingV4) {
-		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
+		sbc, err = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
 	} else {
-		sbc = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+		sbc, err = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 	}
+	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {

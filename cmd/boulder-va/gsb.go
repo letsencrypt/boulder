@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -33,6 +32,8 @@ var (
 	BadDataDirErr = errors.New("a Google Safe Browsing data directory was " +
 		"given but it cannot be opened")
 	EmptyURLThreatErr = errors.New("Empty URLThreat from LookupURLs[0]")
+	BadDBFileErr      = errors.New("unable to create Google Safe Browsing v4 db " +
+		"file in data directory")
 )
 
 // configCheck returns an error if:
@@ -102,21 +103,20 @@ func (a gsbLogAdapter) Write(b []byte) (int, error) {
 
 // newGoogleSafeBrowsingV4 constructs a va.SafeBrowsing instance using the new
 // Google upstream Safe Browsing version 4 client.
-func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logger) va.SafeBrowsing {
+func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logger) (va.SafeBrowsing, error) {
 	// If there is no GSB configuration, don't create a client
 	if gsb == nil {
-		return nil
+		return nil, nil
 	}
 	if err := configCheck(gsb); err != nil {
-		cmd.FailOnError(err, "unable to create new safe browsing v4 client")
+		return nil, err
 	}
 
 	// Create the DB file if it doesn't exist
 	dbFile := filepath.Join(gsb.DataDir, v4DbFilename)
 	dbFileHandle, err := os.Create(dbFile)
 	if err != nil {
-		cmd.FailOnError(err, fmt.Sprintf(
-			"unable to create safe browsing v4 db file %q", dbFile))
+		return nil, BadDBFileErr
 	}
 	_ = dbFileHandle.Close()
 
@@ -127,24 +127,24 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		Logger:    gsbLogAdapter{logger},
 	})
 	if err != nil {
-		cmd.FailOnError(err, "unable to create new safe browsing v4 client")
+		return nil, err
 	}
-	return gsbAdapter{sb}
+	return gsbAdapter{sb}, nil
 }
 
 // newGoogleSafeBrowsing constructs a va.SafeBrowsing instance using the legacy
 // letsencrypt fork of the go-safebrowsing-api client.
-func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) va.SafeBrowsing {
+func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) (va.SafeBrowsing, error) {
 	// If there is no GSB configuration, don't create a client
 	if gsb == nil {
-		return nil
+		return nil, nil
 	}
 	if err := configCheck(gsb); err != nil {
-		cmd.FailOnError(err, "unable to create new safe browsing client")
+		return nil, err
 	}
 	sbc, err := safebrowsing.NewSafeBrowsing(gsb.APIKey, gsb.DataDir)
 	if err != nil {
-		cmd.FailOnError(err, "unable to create new safe browsing client")
+		return nil, err
 	}
-	return sbc
+	return sbc, nil
 }
