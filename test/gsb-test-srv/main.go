@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/golang/protobuf/proto"
-	gsb_proto "github.com/letsencrypt/boulder/test/gsb-test-srv/proto"
+	gsb "github.com/letsencrypt/boulder/test/gsb-test-srv/proto"
 )
 
 // testSrv implements a bare bones mock Google Safe Browsing server. The `hits`
@@ -38,15 +38,15 @@ var defaultUnsafeURLs = []string{
 
 // emptyThreatListUpdateResp is an empty threat list update response for padding
 // responses out to include the correct number of list updates clients expect
-var emptyThreatListUpdateResp = &gsb_proto.FetchThreatListUpdatesResponse_ListUpdateResponse{
-	ThreatType:      gsb_proto.ThreatType_MALWARE,
-	PlatformType:    gsb_proto.PlatformType_ANY_PLATFORM,
-	ThreatEntryType: gsb_proto.ThreatEntryType_URL,
-	ResponseType:    gsb_proto.FetchThreatListUpdatesResponse_ListUpdateResponse_FULL_UPDATE,
+var emptyThreatListUpdateResp = &gsb.FetchThreatListUpdatesResponse_ListUpdateResponse{
+	ThreatType:      gsb.ThreatType_MALWARE,
+	PlatformType:    gsb.PlatformType_ANY_PLATFORM,
+	ThreatEntryType: gsb.ThreatEntryType_URL,
+	ResponseType:    gsb.FetchThreatListUpdatesResponse_ListUpdateResponse_FULL_UPDATE,
 	/*
 	 * This is the SHA1Sum of `[]byte{}`, e.g. of an empty list of additions
 	 */
-	Checksum: &gsb_proto.Checksum{
+	Checksum: &gsb.Checksum{
 		Sha256: []byte{
 			0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
 			0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c,
@@ -141,30 +141,30 @@ func (list safebrowsingList) findByHash(h string) *listEntry {
 
 // dbUpdateResponse creates a Google Safe Browsing threat list update response
 // that includes each of the test server's list entries
-func (t *testSrv) dbUpdateResponse() *gsb_proto.FetchThreatListUpdatesResponse {
+func (t *testSrv) dbUpdateResponse() *gsb.FetchThreatListUpdatesResponse {
 	// First we construct an overall update response to populate
-	updateResp := &gsb_proto.FetchThreatListUpdatesResponse{}
+	updateResp := &gsb.FetchThreatListUpdatesResponse{}
 
 	// Next, we create the full update type list update response, with an
 	// initially blank list of threat entries to process as list additions
-	addResponse := &gsb_proto.FetchThreatListUpdatesResponse_ListUpdateResponse{
+	addResponse := &gsb.FetchThreatListUpdatesResponse_ListUpdateResponse{
 		// We use the MALWARE type, ignoring platform and sending URLs
-		ThreatType:      gsb_proto.ThreatType_MALWARE,
-		PlatformType:    gsb_proto.PlatformType_ANY_PLATFORM,
-		ThreatEntryType: gsb_proto.ThreatEntryType_URL,
+		ThreatType:      gsb.ThreatType_MALWARE,
+		PlatformType:    gsb.PlatformType_ANY_PLATFORM,
+		ThreatEntryType: gsb.ThreatEntryType_URL,
 		// We want this to be a "FULL UPDATE" to populate the intial DB contents
-		ResponseType: gsb_proto.FetchThreatListUpdatesResponse_ListUpdateResponse_FULL_UPDATE,
-		Additions: []*gsb_proto.ThreatEntrySet{
-			&gsb_proto.ThreatEntrySet{},
+		ResponseType: gsb.FetchThreatListUpdatesResponse_ListUpdateResponse_FULL_UPDATE,
+		Additions: []*gsb.ThreatEntrySet{
+			&gsb.ThreatEntrySet{},
 		},
 	}
 
 	// Next, we create the threat entry additions, initially leaving the raw hashes empty
-	additions := []*gsb_proto.ThreatEntrySet{
-		&gsb_proto.ThreatEntrySet{
+	additions := []*gsb.ThreatEntrySet{
+		&gsb.ThreatEntrySet{
 			// Our responses aren't compressed
-			CompressionType: gsb_proto.CompressionType_RAW,
-			RawHashes: &gsb_proto.RawHashes{
+			CompressionType: gsb.CompressionType_RAW,
+			RawHashes: &gsb.RawHashes{
 				// We send full SHA256 hashes as "prefixes"
 				PrefixSize: sha256.Size,
 			},
@@ -182,7 +182,7 @@ func (t *testSrv) dbUpdateResponse() *gsb_proto.FetchThreatListUpdatesResponse {
 	// Update the add response to have the populated additions
 	addResponse.Additions = additions
 	// Update the add responses' checksum to be that of the overall list
-	addResponse.Checksum = &gsb_proto.Checksum{Sha256: t.list.sha256()}
+	addResponse.Checksum = &gsb.Checksum{Sha256: t.list.sha256()}
 
 	/*
 	 * The `sblookup` client is hardcoded to expect exactly three list update
@@ -194,7 +194,7 @@ func (t *testSrv) dbUpdateResponse() *gsb_proto.FetchThreatListUpdatesResponse {
 	 * Its important to send these in the order empty, empty, non-empty because
 	 * each sblookup update response squashes the previous' contents (Unclear why)
 	 */
-	updateResp.ListUpdateResponses = []*gsb_proto.FetchThreatListUpdatesResponse_ListUpdateResponse{
+	updateResp.ListUpdateResponses = []*gsb.FetchThreatListUpdatesResponse_ListUpdateResponse{
 		emptyThreatListUpdateResp,
 		emptyThreatListUpdateResp,
 		addResponse,
@@ -206,7 +206,7 @@ func (t *testSrv) dbUpdateResponse() *gsb_proto.FetchThreatListUpdatesResponse {
 func (t *testSrv) threatListUpdateFetch(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the request from the client - we ignore the contents for now and
 	// unmarshal just to check the syntax of the request
-	updateReq := &gsb_proto.FetchThreatListUpdatesRequest{}
+	updateReq := &gsb.FetchThreatListUpdatesRequest{}
 	err := unmarshalPB(r, updateReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -229,7 +229,7 @@ func (t *testSrv) threatListUpdateFetch(w http.ResponseWriter, r *http.Request) 
 func (t *testSrv) fullHashesFind(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the request from the client - we use this to determine which hash
 	// they were looking for
-	findReq := &gsb_proto.FindFullHashesRequest{}
+	findReq := &gsb.FindFullHashesRequest{}
 	err := unmarshalPB(r, findReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -249,11 +249,11 @@ func (t *testSrv) fullHashesFind(w http.ResponseWriter, r *http.Request) {
 	threat := te[0]
 
 	// We start by populating an empty hash lookup response
-	resp := &gsb_proto.FindFullHashesResponse{
-		MinimumWaitDuration: &gsb_proto.Duration{
+	resp := &gsb.FindFullHashesResponse{
+		MinimumWaitDuration: &gsb.Duration{
 			Seconds: 1,
 		},
-		NegativeCacheDuration: &gsb_proto.Duration{
+		NegativeCacheDuration: &gsb.Duration{
 			Seconds: 1,
 		},
 	}
@@ -268,16 +268,16 @@ func (t *testSrv) fullHashesFind(w http.ResponseWriter, r *http.Request) {
 
 	if match != nil {
 		// If there was a match we need to update the response to have a ThreatMatch
-		resp.Matches = []*gsb_proto.ThreatMatch{
-			&gsb_proto.ThreatMatch{
-				ThreatType:      gsb_proto.ThreatType_MALWARE,
-				PlatformType:    gsb_proto.PlatformType_ANY_PLATFORM,
-				ThreatEntryType: gsb_proto.ThreatEntryType_URL,
-				Threat: &gsb_proto.ThreatEntry{
+		resp.Matches = []*gsb.ThreatMatch{
+			&gsb.ThreatMatch{
+				ThreatType:      gsb.ThreatType_MALWARE,
+				PlatformType:    gsb.PlatformType_ANY_PLATFORM,
+				ThreatEntryType: gsb.ThreatEntryType_URL,
+				Threat: &gsb.ThreatEntry{
 					Hash: []byte(match.hash),
 					Url:  match.url,
 				},
-				CacheDuration: &gsb_proto.Duration{
+				CacheDuration: &gsb.Duration{
 					Seconds: 1,
 				},
 			},
