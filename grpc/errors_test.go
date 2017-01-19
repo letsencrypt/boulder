@@ -14,22 +14,18 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-type errorServer struct{}
+type errorServer struct {
+	err error
+}
 
-func (s *errorServer) Chill(ctx context.Context, in *testproto.Time) (*testproto.Time, error) {
-	var err error
-	switch *in.Time {
-	case 0:
-		err = core.MalformedRequestError("yup")
-	case 1:
-		err = &probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"}
-	}
-	return nil, wrapError(err)
+func (s *errorServer) Chill(_ context.Context, _ *testproto.Time) (*testproto.Time, error) {
+	return nil, wrapError(s.err)
 }
 
 func TestErrorWrapping(t *testing.T) {
 	srv := grpc.NewServer()
-	testproto.RegisterChillerServer(srv, &errorServer{})
+	es := &errorServer{}
+	testproto.RegisterChillerServer(srv, es)
 	lis, err := net.Listen("tcp", ":")
 	test.AssertNotError(t, err, "Failed to create listener")
 	go func() { _ = srv.Serve(lis) }()
@@ -48,6 +44,7 @@ func TestErrorWrapping(t *testing.T) {
 		{0, core.MalformedRequestError("yup")},
 		{1, &probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"}},
 	} {
+		es.err = tc.expected
 		_, err := client.Chill(context.Background(), &testproto.Time{Time: &tc.code})
 		test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 		test.AssertDeepEquals(t, unwrapError(err), tc.expected)
