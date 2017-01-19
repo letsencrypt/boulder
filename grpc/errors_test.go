@@ -29,6 +29,7 @@ func TestErrorWrapping(t *testing.T) {
 	lis, err := net.Listen("tcp", ":")
 	test.AssertNotError(t, err, "Failed to create listener")
 	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
 
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
@@ -37,16 +38,13 @@ func TestErrorWrapping(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := testproto.NewChillerClient(conn)
 
-	for _, tc := range []struct {
-		code     int64
-		expected error
-	}{
-		{0, core.MalformedRequestError("yup")},
-		{1, &probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"}},
+	for _, tc := range []error{
+		core.MalformedRequestError("yup"),
+		&probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"},
 	} {
-		es.err = tc.expected
-		_, err := client.Chill(context.Background(), &testproto.Time{Time: &tc.code})
+		es.err = tc
+		_, err := client.Chill(context.Background(), &testproto.Time{})
 		test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
-		test.AssertDeepEquals(t, unwrapError(err), tc.expected)
+		test.AssertDeepEquals(t, unwrapError(err), tc)
 	}
 }
