@@ -23,6 +23,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -50,8 +51,7 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	r, ok := f.RegByID[id]
 	if !ok {
-		msg := fmt.Sprintf("no such registration %d", id)
-		return r, core.NoSuchRegistrationError(msg)
+		return r, berrors.New(berrors.NotFound, "no registration found")
 	}
 	return r, nil
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -256,7 +257,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context,
 		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 			ra.regByIPStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
-			return core.RateLimitedError("Too many registrations from this IP")
+			return berrors.New(berrors.RateLimit, "Too many registrations for this IP")
 		}
 		ra.regByIPStats.Inc("Pass", 1)
 	}
@@ -266,7 +267,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context,
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (reg core.Registration, err error) {
 	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
-		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
+		return core.Registration{}, berrors.New(berrors.Malformed, "Invalid public key: %s", err.Error())
 	}
 	if err = ra.checkRegistrationLimit(ctx, init.InitialIP); err != nil {
 		return core.Registration{}, err
@@ -290,9 +291,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		// InternalServerError since the user-data was validated before being
+		// berrors.InternalServer since the user-data was validated before being
 		// passed to the SA.
-		err = core.InternalServerError(err.Error())
+		err = berrors.New(berrors.InternalServer, "NewRegistration: %s", err)
 	}
 
 	ra.stats.Inc("NewRegistrations", 1)
@@ -304,24 +305,31 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		return nil // Nothing to validate
 	}
 	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
-		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
-			len(*contacts), ra.maxContactsPerReg))
+		return berrors.New(
+			berrors.Malformed,
+			"Too many contacts provided: %d > %d",
+			len(*contacts),
+			ra.maxContactsPerReg,
+		)
 	}
 
 	for _, contact := range *contacts {
 		if contact == "" {
-			return core.MalformedRequestError("Empty contact")
+			return berrors.New(berrors.Malformed, "Empty contact")
 		}
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return core.MalformedRequestError("Invalid contact")
+			return berrors.New(berrors.Malformed, "Invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", parsed.Scheme))
+			return berrors.New(berrors.Malformed, "Contact method %s is not supported", parsed.Scheme)
 		}
 		if !core.IsASCII(contact) {
-			return core.MalformedRequestError(
-				fmt.Sprintf("Contact email [%s] contains non-ASCII characters", contact))
+			return berrors.New(
+				berrors.Malformed,
+				"Contact email [%s] contains non-ASCII characters",
+				contact,
+			)
 		}
 
 		start := ra.clk.Now()
@@ -351,7 +359,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		if count >= limit.GetThreshold(noKey, regID) {
 			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID))
-			return core.RateLimitedError("Too many currently pending authorizations.")
+			return berrors.New(berrors.RateLimit, "Too many currently pending authorizations")
 		}
 		ra.pendAuthByRegIDStats.Inc("Pass", 1)
 	}
@@ -376,22 +384,25 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if identifier.Type == core.IdentifierDNS {
 		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
-			outErr := core.InternalServerError("unable to determine if domain was safe")
-			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
+			outErr := berrors.New(berrors.InternalServer, "NewAuthorization: unable to determine if domain was safe")
+			ra.log.Warning(fmt.Sprintf("%s: %s", outErr, err))
 			return authz, outErr
 		}
 		if !isSafeResp.GetIsSafe() {
-			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
+			return authz, berrors.New(berrors.Unauthorized, "%q was considered an unsafe domain by a third-party API", identifier.Value)
 		}
 	}
 
 	if ra.reuseValidAuthz {
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
-			outErr := core.InternalServerError(
-				fmt.Sprintf("unable to get existing validations for regID: %d, identifier: %s",
-					regID, identifier.Value))
-			ra.log.Warning(string(outErr))
+			outErr := berrors.New(
+				berrors.InternalServer,
+				"NewAuthorization: unable to get existing validations for regID: %d, identifier: %s",
+				regID,
+				identifier.Value,
+			)
+			ra.log.Warning(outErr.Error())
 			return authz, outErr
 		}
 
@@ -401,10 +412,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			// `Challenge` values that the client expects in the result.
 			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
 			if err != nil {
-				outErr := core.InternalServerError(
-					fmt.Sprintf("unable to get existing authorization for auth ID: %s",
-						existingAuthz.ID))
-				ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+				outErr := berrors.New(
+					berrors.InternalServer,
+					"NewAuthorization: unable to get existing authorization for auth ID: %s",
+					existingAuthz.ID,
+				)
+				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 				return authz, outErr
 			}
 
@@ -436,18 +449,18 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
-		// InternalServerError since the user-data was validated before being
+		// berrors.InternalServer since the user-data was validated before being
 		// passed to the SA.
-		err = core.InternalServerError(fmt.Sprintf("Invalid authorization request: %s", err))
+		err = berrors.New(berrors.InternalServer, "NewAuthorization: invalid authorization request: %s", err)
 		return core.Authorization{}, err
 	}
 
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
 		if !challenge.IsSaneForClientOffer() {
-			// InternalServerError because we generated these challenges, they should
+			// berrors.InternalServer because we generated these challenges, they should
 			// be OK.
-			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenge))
+			err = berrors.New(berrors.InternalServer, "NewAuthorization: Challenge didn't pass sanity check: %+v", challenge)
 			return core.Authorization{}, err
 		}
 	}
@@ -479,12 +492,12 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 	hostNames = core.UniqueLowerNames(hostNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
-		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate public key doesn't match CSR public key")
 		return
 	}
 	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
 		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
-		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate CommonName doesn't match CSR CommonName")
 		return
 	}
 	// Sort both slices of names before comparison.
@@ -492,39 +505,39 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 	sort.Strings(parsedNames)
 	sort.Strings(hostNames)
 	if !reflect.DeepEqual(parsedNames, hostNames) {
-		err = core.InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate DNSNames don't match CSR DNSNames")
 		return
 	}
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
-		err = core.InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate IPAddresses don't match CSR IPAddresses")
 		return
 	}
 	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		err = core.InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate EmailAddresses don't match CSR EmailAddresses")
 		return
 	}
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
 		len(parsedCertificate.Subject.PostalCode) > 0 {
-		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName, or SerialNumber")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate Subject contains fields other than CommonName, or SerialNumber")
 		return
 	}
 	now := ra.clk.Now()
 	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
-		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore))
 		return
 	}
 	if !parsedCertificate.BasicConstraintsValid {
-		err = core.InternalServerError("Generated certificate doesn't have basic constraints set")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate doesn't have basic constraints set")
 		return
 	}
 	if parsedCertificate.IsCA {
-		err = core.InternalServerError("Generated certificate can sign other certificates")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate can sign other certificates")
 		return
 	}
 	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
-		err = core.InternalServerError("Generated certificate doesn't have correct key usage extensions")
+		err = berrors.New(berrors.InternalServer, "MatchesCSR: Generated certificate doesn't have correct key usage extensions")
 		return
 	}
 
@@ -548,16 +561,18 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 		if authz == nil {
 			badNames = append(badNames, name)
 		} else if authz.Expires == nil {
-			return fmt.Errorf("Found an authorization with a nil Expires field: id %s", authz.ID)
+			return berrors.New(berrors.InternalServer, "Found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}
 	}
 
 	if len(badNames) > 0 {
-		return core.UnauthorizedError(fmt.Sprintf(
+		return berrors.New(
+			berrors.Unauthorized,
 			"Authorizations for these names not found or expired: %s",
-			strings.Join(badNames, ", ")))
+			strings.Join(badNames, ", "),
+		)
 	}
 	return nil
 }
@@ -584,7 +599,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	}()
 
 	if regID <= 0 {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
+		err = berrors.New(berrors.Malformed, "Invalid registration ID: %d", regID)
 		return emptyCert, err
 	}
 
@@ -597,7 +612,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// Verify the CSR
 	csr := req.CSR
 	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
-		err = core.MalformedRequestError(err.Error())
+		err = berrors.New(berrors.Malformed, err.Error())
 		return emptyCert, err
 	}
 
@@ -609,13 +624,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	copy(names, csr.DNSNames)
 
 	if len(names) == 0 {
-		err = core.UnauthorizedError("CSR has no names in it")
+		err = berrors.New(berrors.Unauthorized, "CSR has no names in it")
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
-		err = core.MalformedRequestError("Certificate public key must be different than account key")
+		err = berrors.New(berrors.Malformed, "Certificate public key must be different than account key")
 		return emptyCert, err
 	}
 
@@ -659,9 +674,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		// InternalServerError because the certificate from the CA should be
+		// berrors.InternalServer because the certificate from the CA should be
 		// parseable.
-		err = core.InternalServerError(err.Error())
+		err = berrors.New(berrors.InternalServer, "checkAuthorizations: %s", err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -741,8 +756,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))
-		return core.RateLimitedError(fmt.Sprintf(
-			"Too many certificates already issued for: %s", domains))
+		return berrors.New(
+			berrors.RateLimit,
+			"Too many certificates already issued for: %s",
+			domains,
+		)
 
 	}
 	ra.certsForDomainStats.Inc("Pass", 1)
@@ -757,10 +775,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	}
 	names = core.UniqueLowerNames(names)
 	if int(count) > limit.GetThreshold(strings.Join(names, ","), regID) {
-		return core.RateLimitedError(fmt.Sprintf(
+		return berrors.New(
+			berrors.RateLimit,
 			"Too many certificates already issued for exact set of domains: %s",
 			strings.Join(names, ","),
-		))
+		)
 	}
 	return nil
 }
@@ -773,12 +792,16 @@ func (ra *RegistrationAuthorityImpl) checkTotalCertificatesLimit() error {
 	// or not yet updated, fail.
 	if ra.clk.Now().After(ra.totalIssuedLastUpdate.Add(5*time.Minute)) ||
 		ra.totalIssuedLastUpdate.IsZero() {
-		return core.InternalServerError(fmt.Sprintf("Total certificate count out of date: updated %s", ra.totalIssuedLastUpdate))
+		return berrors.New(
+			berrors.InternalServer,
+			"checkTotalCertificatesLimit: Total certificate count out of date: updated %s",
+			ra.totalIssuedLastUpdate,
+		)
 	}
 	if ra.totalIssuedCount >= totalCertLimits.Threshold {
 		ra.totalCertsStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, totalIssued: %d, lastUpdated %s", ra.totalIssuedCount, ra.totalIssuedLastUpdate))
-		return core.RateLimitedError("Global certificate issuance limit reached. Try again in an hour.")
+		return berrors.New(berrors.RateLimit, "Global certificate issuance limit reached. Try again in an hour")
 	}
 	ra.totalCertsStats.Inc("Pass", 1)
 	return nil
@@ -829,9 +852,9 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 
 	err = ra.SA.UpdateRegistration(ctx, base)
 	if err != nil {
-		// InternalServerError since the user-data was validated before being
+		// berrors.InternalServer since the user-data was validated before being
 		// passed to the SA.
-		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
+		err = berrors.New(berrors.InternalServer, "UpdateRegistration: Could not update registration: %s", err)
 		return core.Registration{}, err
 	}
 
@@ -904,23 +927,26 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
-		err = core.NotFoundError("Expired authorization")
+		err = berrors.New(berrors.Malformed, "Expired authorization")
 		return
 	}
 
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
+		err = berrors.New(berrors.Malformed, "Invalid challenge index '%d'", challengeIndex)
 		return
 	}
 
 	ch := &authz.Challenges[challengeIndex]
 
 	if response.Type != "" && ch.Type != response.Type {
-		// TODO(riking): Check the rate on this, uncomment error return if negligible
 		ra.stats.Inc("StartChallengeWrongType", 1)
-		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
-		// return
+		return authz, berrors.New(
+			berrors.Malformed,
+			"Invalid challenge update: provided type was %s but actual type is %s",
+			response.Type,
+			ch.Type,
+		)
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try
@@ -936,7 +962,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.New(berrors.InternalServer, "UpdateAuthorization: %s", err)
 		return
 	}
 
@@ -944,11 +970,11 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// check it against the value provided
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
-		err = core.InternalServerError("Could not compute expected key authorization value")
+		err = berrors.New(berrors.InternalServer, "UpdateAuthorization: could not compute expected key authorization value")
 		return
 	}
 	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
-		err = core.MalformedRequestError("Provided key authorization was incorrect")
+		err = berrors.New(berrors.Malformed, "Provided key authorization was incorrect")
 		return
 	}
 
@@ -957,7 +983,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Double check before sending to VA
 	if !ch.IsSaneForValidation() {
-		err = core.MalformedRequestError("Response does not complete challenge")
+		err = berrors.New(berrors.Malformed, "Response does not complete challenge")
 		return
 	}
 
@@ -965,7 +991,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
 		ra.log.Warning(fmt.Sprintf(
 			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
-		err = core.InternalServerError("Could not update pending authorization")
+		err = berrors.New(berrors.InternalServer, "UpdateAuthorization: could not update pending authorization")
 		return
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
@@ -1128,11 +1154,11 @@ func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, aut
 // DeactivateRegistration deactivates a valid registration
 func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
 	if reg.Status != core.StatusValid {
-		return core.MalformedRequestError("Only valid registrations can be deactivated")
+		return berrors.New(berrors.Malformed, "Only valid registrations can be deactivated")
 	}
 	err := ra.SA.DeactivateRegistration(ctx, reg.ID)
 	if err != nil {
-		return core.InternalServerError(err.Error())
+		return berrors.New(berrors.InternalServer, "DeactivateRegistration: %s", err)
 	}
 	return nil
 }
@@ -1140,11 +1166,11 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
 	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
-		return core.MalformedRequestError("Only valid and pending authorizations can be deactivated")
+		return berrors.New(berrors.Malformed, "Only valid and pending authorizations can be deactivated")
 	}
 	err := ra.SA.DeactivateAuthorization(ctx, auth.ID)
 	if err != nil {
-		return core.InternalServerError(err.Error())
+		return berrors.New(berrors.InternalServer, "DeactivateAuthorization: %s", err)
 	}
 	return nil
 }

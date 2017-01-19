@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -18,6 +17,7 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -121,9 +121,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 		model, err = selectRegistration(ssa.dbMap, query, id)
 	}
 	if err == sql.ErrNoRows {
-		return core.Registration{}, core.NoSuchRegistrationError(
-			fmt.Sprintf("No registrations with ID %d", id),
-		)
+		return core.Registration{}, berrors.New(berrors.NotFound, "GetRegistration: registration with ID '%d' not found", id)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -149,8 +147,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		model, err = selectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
-		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
-		return core.Registration{}, core.NoSuchRegistrationError(msg)
+		return core.Registration{}, berrors.New(berrors.NotFound, "GetRegistration: registration with key hash '%s' not found", sha)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -217,7 +214,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
-		return nil, errors.New("GetValidAuthorizations: no names received")
+		return nil, berrors.New(berrors.Malformed, "GetValidAuthorizations: no names received")
 	}
 
 	params := make([]interface{}, len(names))
@@ -420,7 +417,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 
 	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+		return core.Certificate{}, berrors.New(berrors.NotFound, "GetCertificate: certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return core.Certificate{}, err
@@ -556,7 +553,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 	if n == 0 {
-		err = errors.New("No certificate updated. Maybe the lock column was off?")
+		err = berrors.New(berrors.InternalServer, "MarkCertificateRevoked: no certificate updated")
 		err = Rollback(tx, err)
 		return err
 	}
@@ -575,8 +572,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
 	}
 	if err == sql.ErrNoRows {
-		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
-		return core.NoSuchRegistrationError(msg)
+		return berrors.New(berrors.NotFound, "UpdateRegistration: registration with ID '%d' not found", reg.ID)
 	}
 
 	updatedRegModel, err := registrationToModel(&reg)
@@ -605,8 +601,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		return err
 	}
 	if n == 0 {
-		msg := fmt.Sprintf("Requested registration not found %d", reg.ID)
-		return core.NoSuchRegistrationError(msg)
+		return berrors.New(berrors.NotFound, "UpdateRegistration: registration with ID '%d' not found", reg.ID)
 	}
 
 	return nil
@@ -672,23 +667,24 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !statusIsPending(authz.Status) {
-		err = errors.New("Use FinalizeAuthorization() to update to a final status")
+		err = berrors.New(berrors.InternalServer, "UpdatePendingAuthorization: authorization is not pending")
 		return Rollback(tx, err)
 	}
 
 	if existingFinal(tx, authz.ID) {
-		err = errors.New("Cannot update a final authorization")
+		err = berrors.New(berrors.InternalServer, "UpdatePendingAuthorization: cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 
 	if !existingPending(tx, authz.ID) {
-		err = errors.New("Requested authorization not found " + authz.ID)
+		err = berrors.New(berrors.InternalServer, "UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
+		err = berrors.New(berrors.InternalServer, "UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
+		return Rollback(tx, err)
 	}
 	if err != nil {
 		return Rollback(tx, err)
@@ -716,18 +712,18 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = errors.New("Cannot finalize an authorization that is not pending")
+		err = berrors.New(berrors.InternalServer, "FinalizeAuthorization: authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
-		err = errors.New("Cannot finalize to a non-final status")
+		err = berrors.New(berrors.InternalServer, "FinalizeAuthorization: authorization with ID %q is not pending", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	auth := &authzModel{authz}
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
+		return Rollback(tx, berrors.New(berrors.InternalServer, "FinalizeAuthorization: authorization with ID %q not found", authz.ID))
 	}
 	if err != nil {
 		return Rollback(tx, err)

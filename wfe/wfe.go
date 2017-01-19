@@ -22,6 +22,7 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -464,7 +465,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
-	if _, ok := err.(core.NoSuchRegistrationError); ok && !regCheck {
+	if berrors.Is(err, berrors.NotFound) && !regCheck {
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
@@ -478,7 +479,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// For all other errors, or if regCheck is true, return error immediately.
 		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
-		if _, ok := err.(core.NoSuchRegistrationError); ok {
+		if berrors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 

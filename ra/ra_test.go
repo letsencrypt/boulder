@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1103,7 +1104,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["example.com"] = 10
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
@@ -1122,7 +1123,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["bigissuer.com"] = 100
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type")
 	}
 
@@ -1130,7 +1131,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -115,7 +116,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 
 	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+		return berrors.New(berrors.NotFound, "revokeBySerial: certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return err

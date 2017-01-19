@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -66,7 +67,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 	if err == nil {
 		return errAlreadyExists
 	}
-	if _, ok := err.(core.NotFoundError); ok {
+	if berrors.Is(err, berrors.NotFound) {
 		return nil
 	}
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)

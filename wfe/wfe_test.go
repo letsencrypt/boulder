@@ -25,6 +25,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1195,16 +1196,16 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
-// An SA mock that always returns NoSuchRegistrationError. This is necessary
+// An SA mock that always returns a berrors.NotFound type error. This is necessary
 // because the standard mock in our mocks package always returns a given test
 // registration when GetRegistrationByKey is called, and we want to get a
-// NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
+// berrors.NotFound type error for tests that pass regCheck = false to verifyPOST.
 type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
 func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
-	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
+	return core.Registration{}, berrors.New(berrors.NotFound, "reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert
