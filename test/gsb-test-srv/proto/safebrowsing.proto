@@ -1,3 +1,5 @@
+// Copied into the Boulder repo from https://github.com/google/safebrowsing/blob/fb5517391094054b6c87007fd85752f29e9b6075/internal/safebrowsing_proto/safebrowsing.proto
+//
 // Copyright 2016 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
