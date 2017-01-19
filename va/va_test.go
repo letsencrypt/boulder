@@ -492,6 +492,20 @@ func TestTLSSNI(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
+	httpOnly := httpSrv(t, "")
+	defer httpOnly.Close()
+	port, err = getPort(httpOnly)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va.tlsPort = port
+
+	log.Clear()
+	_, err = va.validateTLSSNI01(ctx, ident, chall)
+	test.AssertError(t, err, "TLS SNI validation passed when talking to a HTTP-only server")
+	test.Assert(t, strings.HasSuffix(
+		err.Error(),
+		"Server only speaks HTTP, not TLS",
+	), "validateTLSSNI01 didn't return useful error")
 }
 
 func brokenTLSSrv() *httptest.Server {
