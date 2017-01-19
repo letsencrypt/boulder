@@ -18,7 +18,7 @@ import (
 )
 
 // testSrv implements a bare bones mock Google Safe Browsing server. The `hits`
-// and `hp` fields are protected against concurrent updates using `mu`.
+// and `list` fields are protected against concurrent updates using `mu`.
 type testSrv struct {
 	apiKey string
 	list   safebrowsingList
@@ -331,10 +331,10 @@ func (t *testSrv) addSite(w http.ResponseWriter, r *http.Request) {
 		urlData.Url += "/"
 	}
 
-	newHp := newListEntry(urlData.Url)
-	match := t.list.findByHash(newHp.hash)
+	newLE := newListEntry(urlData.Url)
+	match := t.list.findByHash(newLE.hash)
 	if match != nil {
-		log.Printf("Skipped adding %q - Already on the list\n", newHp.url)
+		log.Printf("Skipped adding %q - Already on the list\n", newLE.url)
 		return
 	}
 
@@ -343,7 +343,7 @@ func (t *testSrv) addSite(w http.ResponseWriter, r *http.Request) {
 	defer t.mu.Unlock()
 
 	// Add the new hash prefix and resort the list
-	t.list = append(t.list, newHp)
+	t.list = append(t.list, newLE)
 	t.list.sort()
 	log.Printf("Added %q to safe browsing list\n", urlData.Url)
 }
