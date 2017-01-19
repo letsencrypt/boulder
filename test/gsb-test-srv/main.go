@@ -110,7 +110,7 @@ func (list safebrowsingList) sha256() []byte {
 }
 
 // bytes returns the overall safebrowsing list's entries all coverted to bytes
-// and concatinated together
+// and concatenated together
 func (list safebrowsingList) bytes() []byte {
 	var buf []byte
 	for _, entry := range list {
