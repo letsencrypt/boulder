@@ -69,7 +69,7 @@ func wrapError(err error) error {
 		pd := err.(*probs.ProblemDetails)
 		bodyBytes, jsonErr := json.Marshal(pd)
 		if jsonErr != nil {
-			return err // fail open
+			return err
 		}
 		body = string(bodyBytes)
 	} else {
@@ -104,9 +104,8 @@ func unwrapError(err error) error {
 		return core.BadNonceError(errBody)
 	case ProblemDetails:
 		pd := probs.ProblemDetails{}
-		jsonErr := json.Unmarshal([]byte(errBody), &pd)
-		if jsonErr != nil {
-			return err // fail open
+		if json.Unmarshal([]byte(errBody), &pd) != nil {
+			return err
 		}
 		return &pd
 	default:
