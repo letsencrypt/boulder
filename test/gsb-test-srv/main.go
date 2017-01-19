@@ -44,7 +44,7 @@ var emptyThreatListUpdateResp = &gsb.FetchThreatListUpdatesResponse_ListUpdateRe
 	ThreatEntryType: gsb.ThreatEntryType_URL,
 	ResponseType:    gsb.FetchThreatListUpdatesResponse_ListUpdateResponse_FULL_UPDATE,
 	/*
-	 * This is the SHA1Sum of `[]byte{}`, e.g. of an empty list of additions
+	 * This is the SHA256 hash of `[]byte{}`, e.g. of an empty list of additions
 	 */
 	Checksum: &gsb.Checksum{
 		Sha256: []byte{
