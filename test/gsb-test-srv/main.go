@@ -286,11 +286,7 @@ func (t *testSrv) fullHashesFind(w http.ResponseWriter, r *http.Request) {
 		// to track that someone asked about an entry on the list
 		t.mu.Lock()
 		defer t.mu.Unlock()
-		if _, found := t.hits[match.url]; !found {
-			t.hits[match.url] = 1
-		} else {
-			t.hits[match.url] += 1
-		}
+		t.hits[match.url] += 1
 		log.Printf("Lookup hit for %q. Count: %d\n", match.url, t.hits[match.url])
 	}
 
