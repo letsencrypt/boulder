@@ -69,6 +69,8 @@ func wrapError(err error) error {
 		pd := err.(*probs.ProblemDetails)
 		bodyBytes, jsonErr := json.Marshal(pd)
 		if jsonErr != nil {
+			// Since gRPC will wrap this itself using grpc.Errorf(codes.Unknown, ...)
+			// we just pass the original error back to the caller
 			return err
 		}
 		body = string(bodyBytes)

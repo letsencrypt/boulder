@@ -23,8 +23,6 @@ func (s *errorServer) Chill(ctx context.Context, in *testproto.Time) (*testproto
 		err = core.MalformedRequestError("yup")
 	case 1:
 		err = &probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"}
-		// case 2:
-		//	err = berrors.New(berrors.Malformed, "yup")
 	}
 	return nil, wrapError(err)
 }
@@ -32,12 +30,12 @@ func (s *errorServer) Chill(ctx context.Context, in *testproto.Time) (*testproto
 func TestErrorWrapping(t *testing.T) {
 	srv := grpc.NewServer()
 	testproto.RegisterChillerServer(srv, &errorServer{})
-	lis, err := net.Listen("tcp", ":19876")
-	test.AssertNotError(t, err, "Failed to listen on localhost:19876")
+	lis, err := net.Listen("tcp", ":")
+	test.AssertNotError(t, err, "Failed to create listener")
 	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.Dial(
-		"localhost:19876",
+		lis.Addr().String(),
 		grpc.WithInsecure(),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
