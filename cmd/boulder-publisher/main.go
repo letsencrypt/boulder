@@ -59,7 +59,7 @@ func main() {
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key)
+		logs[i], err = publisher.NewLog(ld.URI, ld.Key, logger)
 		cmd.FailOnError(err, "Unable to parse CT log description")
 	}
 

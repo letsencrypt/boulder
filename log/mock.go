@@ -76,7 +76,7 @@ func newMockWriter() *mockWriter {
 	return w
 }
 
-// GetAll returns all messages logged since insantiation or the last call to
+// GetAll returns all messages logged since instantiation or the last call to
 // Clear().
 //
 // The caller must not modify the returned slice or its elements.

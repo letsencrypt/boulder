@@ -187,7 +187,6 @@ func setup(t *testing.T) *testCtx {
 				Profiles: map[string]*cfsslConfig.SigningProfile{
 					rsaProfileName: {
 						Usage:     []string{"digital signature", "key encipherment", "server auth"},
-						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
 						OCSP:      "http://not-example.com/ocsp",
 						CRL:       "http://not-example.com/crl",
@@ -211,7 +210,6 @@ func setup(t *testing.T) *testCtx {
 					},
 					ecdsaProfileName: {
 						Usage:     []string{"digital signature", "server auth"},
-						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
 						OCSP:      "http://not-example.com/ocsp",
 						CRL:       "http://not-example.com/crl",

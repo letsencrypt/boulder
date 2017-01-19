@@ -28,7 +28,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, stats metrics.Scope) 
 		return nil, errNilTLS
 	}
 
-	grpc_prometheus.EnableHandlingTimeHistogram()
+	grpc_prometheus.EnableClientHandlingTimeHistogram()
 
 	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default(), c.Timeout.Duration}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)

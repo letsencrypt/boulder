@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	ct "github.com/google/certificate-transparency/go"
+	ctTLS "github.com/google/certificate-transparency/go/tls"
 )
 
 func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
@@ -47,9 +48,11 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
 	sig, _ := asn1.Marshal(ecdsaSig)
 
 	ds := ct.DigitallySigned{
-		HashAlgorithm:      ct.SHA256,
-		SignatureAlgorithm: ct.ECDSA,
-		Signature:          sig,
+		Algorithm: ctTLS.SignatureAndHashAlgorithm{
+			Hash:      ctTLS.SHA256,
+			Signature: ctTLS.ECDSA,
+		},
+		Signature: sig,
 	}
 
 	var jsonSCTObj struct {
