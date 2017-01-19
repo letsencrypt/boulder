@@ -112,14 +112,7 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		return nil, err
 	}
 
-	// Create the DB file if it doesn't exist
 	dbFile := filepath.Join(gsb.DataDir, v4DbFilename)
-	dbFileHandle, err := os.Create(dbFile)
-	if err != nil {
-		return nil, BadDBFileErr
-	}
-	_ = dbFileHandle.Close()
-
 	sb, err := safebrowsingv4.NewSafeBrowser(safebrowsingv4.Config{
 		APIKey:    gsb.APIKey,
 		DBPath:    dbFile,
