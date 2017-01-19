@@ -31,7 +31,6 @@ const (
 )
 
 // defaultUnsafeURLs is the list of URLs that we return a "unsafe" response for.
-// Additional URLs are added by sending POSTs to the `/add` HTTP endpoint.
 var defaultUnsafeURLs = []string{
 	"honest.achmeds.discount.hosting.com",
 }
@@ -299,51 +298,6 @@ func (t *testSrv) fullHashesFind(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Processed fullHashesFind for client\n")
 }
 
-// addSite processes a request to add a new URL to the mock safebrowsing list
-// Requests should include a JSON Body of the form `{"url":"example.com"}`
-func (t *testSrv) addSite(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Request method must be POST", http.StatusMethodNotAllowed)
-		return
-	}
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	urlData := &struct {
-		Url string
-	}{}
-	if err := json.Unmarshal(body, urlData); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// The safe browsing library looks up URLs with a trailing slash and expects
-	// the DB contents/hashes to reflect that. We add the slash here as required
-	if !strings.HasSuffix(urlData.Url, "/") {
-		urlData.Url += "/"
-	}
-
-	newLE := newListEntry(urlData.Url)
-	match := t.list.findByHash(newLE.hash)
-	if match != nil {
-		log.Printf("Skipped adding %q - Already on the list\n", newLE.url)
-		return
-	}
-
-	// Lock the mutex for writing
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Add the new hash prefix and resort the list
-	t.list = append(t.list, newLE)
-	t.list.sort()
-	log.Printf("Added %q to safe browsing list\n", urlData.Url)
-}
-
 // getHits returns a JSON object describing how many times each URL on the mock
 // safebrowsing list was asked about by a client. E.g.
 // ```
@@ -407,7 +361,6 @@ func (t *testSrv) start(listenAddr string) {
 	mux.Handle("/v4/threatListUpdates:fetch", t.gsbHandler(t.threatListUpdateFetch))
 	mux.Handle("/v4/fullHashes:find", t.gsbHandler(t.fullHashesFind))
 	mux.Handle("/hits", http.HandlerFunc(t.getHits))
-	mux.Handle("/add", http.HandlerFunc(t.addSite))
 
 	go func() {
 		err := http.ListenAndServe(listenAddr, mux)
