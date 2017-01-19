@@ -34,7 +34,7 @@ func TestErrorWrapping(t *testing.T) {
 	testproto.RegisterChillerServer(srv, &errorServer{})
 	lis, err := net.Listen("tcp", ":19876")
 	test.AssertNotError(t, err, "Failed to listen on localhost:19876")
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.Dial(
 		"localhost:19876",
