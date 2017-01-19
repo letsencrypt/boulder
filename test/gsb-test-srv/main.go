@@ -421,12 +421,6 @@ func (t *testSrv) start(listenAddr string) {
 // newTestServer constructs a testSrv instance with its list constructed from
 // the provided slice of strings.
 func newTestServer(apiKey string, unsafeURLs []string) testSrv {
-	ts := testSrv{
-		apiKey: apiKey,
-		hits:   make(map[string]int),
-		mu:     new(sync.RWMutex),
-	}
-
 	var initialList safebrowsingList
 	for _, s := range unsafeURLs {
 		// The safe browsing library looks up URLs with a trailing slash and expects
@@ -437,8 +431,13 @@ func newTestServer(apiKey string, unsafeURLs []string) testSrv {
 		initialList = append(initialList, newListEntry(s))
 	}
 	initialList.sort()
-	ts.list = initialList
-	return ts
+
+	return testSrv{
+		apiKey: apiKey,
+		hits:   make(map[string]int),
+		mu:     new(sync.RWMutex),
+		list:   initialList,
+	}
 }
 
 // main() processes command line flags, creates, and starts a `testSrv`
