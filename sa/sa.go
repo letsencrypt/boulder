@@ -916,7 +916,16 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 		Type:  core.IdentifierDNS,
 		Value: *req.Hostname,
 	}
-	err = ssa.dbMap.SelectOne(&count,
+
+	idJSON, err := json.Marshal(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	count = &sapb.Count{
+		Count: new(int64),
+	}
+	err = ssa.dbMap.SelectOne(count.Count,
 		`SELECT COUNT(1) FROM authz
 		WHERE registrationID = :regID AND
 		identifier = :identifier AND
@@ -924,10 +933,10 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 		expires <= :latest AND
 		status = :invalid`,
 		map[string]interface{}{
-			"regID":      req.RegistrationID,
-			"identifier": identifier,
-			"earliest":   req.Range.Earliest,
-			"latest":     req.Range.Latest,
+			"regID":      *req.RegistrationID,
+			"identifier": idJSON,
+			"earliest":   time.Unix(0, *req.Range.Earliest),
+			"latest":     time.Unix(0, *req.Range.Latest),
 			"invalid":    string(core.StatusInvalid),
 		})
 	return

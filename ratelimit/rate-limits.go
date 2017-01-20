@@ -124,6 +124,8 @@ type rateLimitConfig struct {
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
 	// Number of invalid authorizations that can be failed per account within the
 	// given window. Overrides by key are not applied, but overrides by registration are.
+	// Note that this limit is actually "per account, per hostname," but that
+	// is too long for the variable name.
 	InvalidAuthorizationsPerAccount RateLimitPolicy `yaml:"invalidAuthorizationsPerAccount"`
 	// Number of certificates that can be extant containing a specific set
 	// of DNS names.
