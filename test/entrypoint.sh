@@ -4,7 +4,10 @@ set -e -u
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# start rsyslog
+# Start rsyslog. Note: Sometimes for unknown reasons /var/run/rsyslogd.pid is
+# already present, which prevents the whole container from starting. We remove
+# it just in case it's there.
+rm -f /var/run/rsyslogd.pid
 service rsyslog start
 
 wait_tcp_port() {
@@ -17,6 +20,9 @@ wait_tcp_port() {
     done
     exec 6>&-
 }
+cat <<EOF >> /etc/hosts
+127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder
+EOF
 
 # make sure we can reach the mysqldb
 wait_tcp_port boulder-mysql 3306

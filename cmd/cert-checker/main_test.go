@@ -236,7 +236,7 @@ func (db mismatchedCountDB) SelectOne(output interface{}, _ string, _ ...interfa
 }
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
-// a dasterdly switch-a-roo here and return an empty set
+// a dastardly switch-a-roo here and return an empty set
 func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
 	// But actually return nothing
 	outputPtr, _ := output.(*[]core.Certificate)

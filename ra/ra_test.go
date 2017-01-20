@@ -1287,7 +1287,7 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 }
 
 // Return a map of domain -> certificate count. Note: This naive implementation
-// ignores names, earliest and latest paremeters and always returns the same
+// ignores names, earliest and latest parameters and always returns the same
 // nameCount map.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
 	return m.nameCounts, nil

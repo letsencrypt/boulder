@@ -9,35 +9,34 @@
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
     "missingSCTBatchSize": 5000,
+    "parallelGenerateOCSPRequests": 10,
     "revokedCertificateBatchSize": 1000,
     "ocspMinTimeToExpiry": "72h",
+    "ocspStaleMaxAge": "720h",
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
+    },
     "publisher": {
-      "serverAddresses": ["boulder:9091"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "serverAddresses": ["publisher.boulder:9091"],
       "timeout": "10s"
     },
     "saService": {
-      "serverAddresses": ["boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
-    "caService": {
-      "serverAddresses": ["boulder:9093"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+    "ocspGeneratorService": {
+      "serverAddresses": ["ca.boulder:9096"],
       "timeout": "15s"
     },
     "features": {
-      "ResubmitMissingSCTsOnly": true
+      "ResubmitMissingSCTsOnly": true,
+      "CertStatusOptimizationsMigrated": true
     }
   },
 
@@ -56,7 +55,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500",
+          "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ]

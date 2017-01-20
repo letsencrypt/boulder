@@ -5,8 +5,16 @@ option go_package = "proto";
 
 import "core/proto/core.proto";
 
+// CertificateAuthority issues certificates.
 service CertificateAuthority {
   rpc IssueCertificate(IssueCertificateRequest) returns (core.Certificate) {}
+}
+
+// OCSPGenerator generates OCSP. We separate this out from
+// CertificateAuthority so that we can restrict access to a different subset of
+// hosts, so the hosts that need to request OCSP generation don't need to be
+// able to request certificate issuance.
+service OCSPGenerator {
   rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
 }
 

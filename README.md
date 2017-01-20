@@ -13,6 +13,11 @@ Boulder has a Dockerfile to make it easy to install and set up all its
 dependencies. This is how the maintainers work on Boulder, and is our main
 recommended way to run it.
 
+Make sure you have a local copy of Boulder in your `$GOPATH`:
+
+    export GOPATH=~/gopath
+    git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
+
 To start Boulder in a Docker container, run:
 
     docker-compose up
@@ -49,6 +54,15 @@ match.
 Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
 
     docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
+
+Boulder's default VA configuration (`test/config/va.json`) is configured to
+connect to port 5002 to validate HTTP-01 challenges and port 5001 to validate
+TLS-SNI-01 challenges. If you want to solve challenges with a client running on
+your host you should make sure it uses these ports to respond to validation
+requests, or update the VA configuration's `portConfig` to use ports 80 and 443
+to match how the VA operates in production and staging environments. If you use
+a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow connections
+from the Docker instance to your host on the required ports.
 
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
@@ -205,6 +219,25 @@ git add Godeps vendor
 git commit
 ```
 
+NOTE: If you get "godep: no packages can be updated," there's a good chance
+you're trying to update a single package that belongs to a repo with other
+packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce
+this error, because it's part of the `golang.org/x/crypto` repo, from which we
+also import the `pkcs12` package. Godep requires that all packages from the same
+repo be on the same version, so it can't update just one. The error message is
+not particularly helpful. See https://github.com/tools/godep/issues/164 for the
+issue dedicated to fixing it.
+
+NOTE: Updating cfssl in particular is tricky, because cfssl vendors
+`github.com/google/certificate-transparency/...` and
+`golang.org/x/crypto/ocsp/...`, which we also vendor. In practice this means you
+need to check out those two dependencies to the same version cfssl uses
+(available in `vendor/manifest` in the cfssl repo). If you fail to do this,
+you will get conflicting types between our vendored version and the cfssl vendored version.
+
+    godep update golang.org/x/crypto/...  github.com/cloudflare/cfssl/... github.com/google/certificate-transparency/...
+    godep save ./...
+
 Adding RPCs
 -----------
 
@@ -212,5 +245,3 @@ Boulder is moving towards using gRPC for all RPCs. To add a new RPC method, add
 it to the relevant .proto file, then run:
 
     docker-compose run boulder go generate ./path/to/pkg/...
-
-

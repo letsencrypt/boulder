@@ -2,7 +2,7 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "debugAddr": ":8003",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

@@ -1,22 +1,23 @@
 {
   "publisher": {
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
     "grpc": {
-      "address": "boulder:9091",
+      "address": ":9091",
       "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/boulder-server/cert.pem",
-      "serverKeyPath": "test/grpc-creds/boulder-server/key.pem",
+      "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
+      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "clientNames": [
-        "boulder-client"
+        "ra.boulder",
+        "ocsp-updater.boulder"
       ]
     },
     "saService": {
-      "serverAddresses": ["boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/boulder-client/cert.pem",
-      "clientKeyPath": "test/grpc-creds/boulder-client/key.pem",
+      "clientCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "timeout": "15s"
     },
     "amqp": {
@@ -40,7 +41,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500",
+          "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],

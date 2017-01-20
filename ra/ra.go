@@ -102,10 +102,10 @@ func NewRegistrationAuthorityImpl(
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
-		regByIPStats:                 stats.NewScope("RA", "RateLimit", "RegistrationsByIP"),
-		pendAuthByRegIDStats:         stats.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
-		certsForDomainStats:          stats.NewScope("RA", "RateLimit", "CertificatesForDomain"),
-		totalCertsStats:              stats.NewScope("RA", "RateLimit", "TotalCertificates"),
+		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
+		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
 	}
 	return ra
@@ -764,7 +764,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		count, ok := counts[name]
 		if !ok {
 			// Shouldn't happen, but let's be careful anyhow.
-			return errors.New("StorageAuthority failed to return a count for every name")
+			return errors.New("CountCertificatesByNames failed to return a count for every name")
 		}
 		if count >= limit.GetThreshold(name, regID) {
 			badNames = append(badNames, name)

@@ -490,7 +490,9 @@ func (sas StorageAuthorityServerWrapper) GetValidAuthorizations(ctx context.Cont
 		if err != nil {
 			return nil, err
 		}
-		resp.Valid = append(resp.Valid, &sapb.ValidAuthorizations_MapElement{Domain: &k, Authz: authzPB})
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Valid = append(resp.Valid, &sapb.ValidAuthorizations_MapElement{Domain: &kCopy, Authz: authzPB})
 	}
 
 	return resp, nil
@@ -566,7 +568,9 @@ func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Co
 	resp := &sapb.CountByNames{}
 	for k, v := range byNames {
 		castedV := int64(v)
-		resp.CountByNames = append(resp.CountByNames, &sapb.CountByNames_MapElement{Name: &k, Count: &castedV})
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.CountByNames = append(resp.CountByNames, &sapb.CountByNames_MapElement{Name: &kCopy, Count: &castedV})
 	}
 
 	return resp, nil

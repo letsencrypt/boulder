@@ -1,0 +1,10 @@
+language: go
+
+go:
+  - 1.6
+  - 1.7
+
+script:
+  - test -z "$(gofmt -s -l $(find . -name '*.go' -type f -print) | tee /dev/stderr)"
+  - go test -v ./...
+  - go test -race -v ./...

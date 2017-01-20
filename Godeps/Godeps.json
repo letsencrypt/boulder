@@ -17,73 +17,73 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers/derhelpers",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp/config",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer/local",
-			"Comment": "1.2.0-70-gdeed6ed",
-			"Rev": "deed6eddef4f5e28c14d26d3c25b1fc454ce8baf"
+			"Comment": "1.2.0-117-g6689808",
+			"Rev": "6689808d58e76953d878fc623b1298032cf39911"
 		},
 		{
 			"ImportPath": "github.com/davecgh/go-spew/spew",
@@ -117,23 +117,39 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
-			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/asn1",
-			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/client",
-			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency/go/jsonclient",
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency/go/tls",
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509",
-			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509/pkix",
-			"Rev": "0f6e3d1d1ba4d03fdaab7cd716f36255c2e48341"
+			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
+		},
+		{
+			"ImportPath": "github.com/google/safebrowsing",
+			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
+		},
+		{
+			"ImportPath": "github.com/google/safebrowsing/internal/safebrowsing_proto",
+			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
 		},
 		{
 			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",
@@ -234,20 +250,20 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.0",
-			"Rev": "49fe4b0e8276b314e6703300ac26940d9c090a06"
+			"Comment": "v0.3.1",
+			"Rev": "3ea542729b4d7056a9d1356c9baf27bcad2bda7f"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
+			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
-			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
+			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12/internal/rc2",
-			"Rev": "2c99acdd1e9b90d779ca23f632aad86af9909c62"
+			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",

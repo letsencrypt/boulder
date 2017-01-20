@@ -443,7 +443,7 @@ func TestTLSSNI(t *testing.T) {
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
-		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
+		t.Fatalf("Unexpected failure in validateTLSSNI01: %s", prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
@@ -668,6 +668,18 @@ func TestPerformValidationInvalid(t *testing.T) {
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
+}
+
+func TestDNSValidationEmpty(t *testing.T) {
+	va, stats, _ := setup()
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"empty-txts.com",
+		chalDNS,
+		core.Authorization{})
+	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 

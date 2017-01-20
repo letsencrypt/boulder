@@ -6,6 +6,14 @@ This document details these differences, since ACME is not yet finalized it will
 
 Current draft: [`draft-ietf-acme-acme-04`](https://tools.ietf.org/html/draft-ietf-acme-acme-04).
 
+## [Section 5.2](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.2)
+
+Boulder enforces the presence of the `jwk` field in JWS objects, and does not support the `kid` field.
+
+## [Section 5.4.1](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.4.1)
+
+Boulder does not use the `url` field from the JWS protected resource. Instead Boulder will validate the `resource` field from the JWS payload matches the resource being requested. Boulder implements the resource types described in [draft-ietf-acme-02 Section 6.1](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.1) plus the additional "KeyChange" resource. Boulder verifies the `resource` field contains the `/directory` URI for the requested resource.
+
 ## [Section 5.6.](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.6)
 
 Boulder does not provide a `Retry-After` header when a user hits a rate-limit, nor does it provide `Link` headers to further documentation on rate-limiting.
@@ -45,6 +53,8 @@ Boulder doesn't implement the `new-nonce` endpoint, instead it responds to `HEAD
 ## [Section 6.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-6.3)
 
 Boulder only allows `mailto` URIs in the registrations `contact` list.
+
+Boulder uses a HTTP status code 409 (Conflict) response for an already existing registration instead of 200 (OK). Boulder returns the URI of the already existing registration in a `Location` header field instead of a `Content-Location` header field.
 
 ## [Section 6.3.2.](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-6.3.2)
 

@@ -393,7 +393,7 @@ func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 	}
 
 	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
-	// no differentation between a DNSSEC failure and an unknown host. If we
+	// no differentiation between a DNSSEC failure and an unknown host. If we
 	// do not verify DNSSEC ourselves, this function should be modified.
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
@@ -426,6 +426,13 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 
 		return nil, bdns.ProblemDetailsFromDNSError(err)
+	}
+
+	// If there weren't any TXT records return a distinct error message to allow
+	// troubleshooters to differentiate between no TXT records and
+	// invalid/incorrect TXT records.
+	if len(txts) == 0 {
+		return nil, probs.Unauthorized("No TXT records found for DNS challenge")
 	}
 
 	for _, element := range txts {
