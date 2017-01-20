@@ -723,6 +723,7 @@ func TestExtensions(t *testing.T) {
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
+	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
@@ -730,11 +731,13 @@ func TestExtensions(t *testing.T) {
 	// extension into the cert
 	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
+	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	singleStapleCert := sign(mustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
+	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
 
@@ -750,6 +753,7 @@ func TestExtensions(t *testing.T) {
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	stats.EXPECT().Inc(metricCSRExtensionOther, int64(1)).Return(nil)
+	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
 }
