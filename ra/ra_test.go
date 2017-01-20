@@ -578,7 +578,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	// We expect that calling NewAuthorization will fail gracefully with an error
 	// about the existing validations
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
+	test.AssertEquals(t, err.Error(), "NewAuthorization: unable to get existing validations for regID: 1, identifier: not-example.com")
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -1104,7 +1104,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["example.com"] = 10
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
-	if berrors.Is(err, berrors.RateLimit) {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
@@ -1123,7 +1123,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["bigissuer.com"] = 100
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
-	if berrors.Is(err, berrors.RateLimit) {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type")
 	}
 
@@ -1131,7 +1131,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
-	if berrors.Is(err, berrors.RateLimit) {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 }

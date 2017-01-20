@@ -394,7 +394,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	if issuer.cert.NotAfter.Before(notAfter) {
-		err = berrors.New(berrors.InternalServer, "IssueCertificate: cannot issue a certificate that expires after the issuer certificate")
+		err = berrors.New(berrors.Malformed, "IssueCertificate: cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}

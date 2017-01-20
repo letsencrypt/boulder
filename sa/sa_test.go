@@ -122,19 +122,19 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(ctx, 100)
-	if berrors.Is(err, berrors.NotFound) {
-		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistration: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	jwk := satest.GoodJWK()
 	_, err = sa.GetRegistrationByKey(ctx, jwk)
-	if berrors.Is(err, berrors.NotFound) {
-		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistrationByKey: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
-	if berrors.Is(err, berrors.NotFound) {
-		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
 	}
 }
 
