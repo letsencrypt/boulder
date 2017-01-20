@@ -76,15 +76,12 @@ func (sb gsbAdapter) IsListed(url string) (string, error) {
 		return "error", err
 	}
 	if len(threats) > 0 && threats[0] != nil {
-		// NOTE: We only return the _first_ URL threat's first ThreatType here. It's
-		// possible a URL could return multiple threat's with distinct ThreatTypes,
-		// but the va.SafeBrowser interface only returns 1 string that is compared
-		// against "" to make a "safe or not" decision. We do not need more
-		// granularity.
-		if len(threats[0]) == 0 {
-			return "error", EmptyURLThreatErr
-		}
-		return threats[0][0].ThreatType.String(), nil
+		// Note: We don't bother to examine the threats for their ThreatType or
+		// other information. The va.SafeBrowser interface expects a "hit" return
+		// string that is compared against "" to make a "safe or not" decision. For
+		// our purposes it is sufficient to return a fixed string instead of further
+		// processing of the results.
+		return "v4-gsb-hit", nil
 	}
 	return "", nil
 }
