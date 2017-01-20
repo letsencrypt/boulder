@@ -23,7 +23,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -366,11 +366,11 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// gRPC, not in AMQP-RPC. So we check the underlying type of our SA client. If
 	// it corresponds to the gRPC client, we know we can use the gRPC-only method.
 	// Otherwise, we don't bother checking this limit.
-	saGRPC, usingGRPC := ra.SA.(bgrpc.StorageAuthorityClientWrapper)
+	saGRPC, usingGRPC := ra.SA.(*grpc.StorageAuthorityClientWrapper)
 	if !limit.Enabled() || !usingGRPC {
 		return nil
 	}
-	latest := ra.clk.Now().Add(ra.authorizationLifetime)
+	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 	earliest := latest.Add(-limit.Window.Duration)
 	latestNanos := latest.UnixNano()
 	earliestNanos := earliest.UnixNano()
