@@ -3,11 +3,15 @@ package grpc
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -62,7 +66,12 @@ func errorToCode(err error) codes.Code {
 	}
 }
 
-func wrapError(err error) error {
+func wrapError(ctx context.Context, err error) error {
+	if berr, ok := err.(*berrors.BoulderError); ok {
+		grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
+		return grpc.Errorf(codes.Unknown, err.Error())
+	}
+	// TODO(XXX): depreciated, remove once boulder/errors code has been deployed
 	code := errorToCode(err)
 	var body string
 	if code == ProblemDetails {
@@ -80,7 +89,28 @@ func wrapError(err error) error {
 	return grpc.Errorf(code, body)
 }
 
-func unwrapError(err error) error {
+func unwrapError(err error, md metadata.MD) error {
+	if errTypeStrs, ok := md["errortype"]; ok {
+		unwrappedErr := grpc.ErrorDesc(err)
+		if len(errTypeStrs) != 1 {
+			return berrors.New(
+				berrors.InternalServer,
+				"boulder/grpc: multiple errorType metadata, wrapped error %q",
+				unwrappedErr,
+			)
+		}
+		errType, decErr := strconv.Atoi(errTypeStrs[0])
+		if decErr != nil {
+			return berrors.New(
+				berrors.InternalServer,
+				"boulder/grpc: failed to decode error type, decoding error %q, wrapped error %q",
+				decErr,
+				unwrappedErr,
+			)
+		}
+		return berrors.New(berrors.ErrorType(errType), unwrappedErr)
+	}
+	// TODO(XXX): depreciated, remove once boulder/errors code has been deployed
 	code := grpc.Code(err)
 	errBody := grpc.ErrorDesc(err)
 	switch code {

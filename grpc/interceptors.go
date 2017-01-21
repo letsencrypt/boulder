@@ -1,16 +1,17 @@
 package grpc
 
 import (
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/letsencrypt/boulder/metrics"
-
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/letsencrypt/boulder/metrics"
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 // serverInterceptor is a gRPC interceptor that adds statsd and Prometheus
@@ -36,7 +37,7 @@ func cleanMethod(m string, trimService bool) string {
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		si.stats.Inc("NoInfo", 1)
-		return nil, errors.New("passed nil *grpc.UnaryServerInfo")
+		return nil, berrors.New(berrors.InternalServer, "boulder/grpc: passed nil *grpc.UnaryServerInfo")
 	}
 	s := si.clk.Now()
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))
@@ -47,6 +48,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
 		methodScope.Inc("Failed", 1)
+		err = wrapError(ctx, err)
 	}
 	return resp, err
 }
@@ -83,11 +85,14 @@ func (ci *clientInterceptor) intercept(
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
+	md := metadata.New(nil)
+	opts = append(opts, grpc.Trailer(&md))
 	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
 	methodScope.TimingDuration("Latency", ci.clk.Since(s))
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
 		methodScope.Inc("Failed", 1)
+		err = unwrapError(err, md)
 	}
 	return err
 }
