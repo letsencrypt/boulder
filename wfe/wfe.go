@@ -46,6 +46,7 @@ const (
 	issuerPath     = "/acme/issuer-cert"
 	buildIDPath    = "/build"
 	rolloverPath   = "/acme/key-change"
+	newNoncePath   = "/acme/new-nonce"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -290,6 +291,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	if features.Enabled(features.AllowKeyRollover) {
 		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	}
+	wfe.HandleFunc(m, newNoncePath, wfe.NewNonce, "GET")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -354,11 +356,14 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
 	}
-	if features.Enabled(features.AllowKeyRollover) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
+	if !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
 		// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
 		// encounter a directory containing elements they don't expect so we gate adding the key-change
 		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
-		directoryEndpoints["key-change"] = rolloverPath
+		if features.Enabled(features.AllowKeyRollover) {
+			directoryEndpoints["key-change"] = rolloverPath
+		}
+		directoryEndpoints["new-nonce"] = newNoncePath
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -1511,4 +1516,8 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
+}
+
+func (wfe *WebFrontEndImpl) NewNonce(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	response.WriteHeader(http.StatusNoContent)
 }
