@@ -851,3 +851,17 @@ func TestMissingLogs(t *testing.T) {
 		}
 	}
 }
+
+func TestReverseBytes(t *testing.T) {
+	a := []byte{0, 1, 2, 3}
+	test.AssertDeepEquals(t, reverseBytes(a), []byte{3, 2, 1, 0})
+}
+
+func TestGeneratePOSTURL(t *testing.T) {
+	der := []byte{0}
+	test.AssertEquals(
+		t,
+		generatePOSTURL(der, "ocsp.invalid/"),
+		"ocsp.invalid/?body-mdy=ad85b89389a00dfe",
+	)
+}
