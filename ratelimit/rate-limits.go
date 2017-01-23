@@ -16,6 +16,7 @@ type Limits interface {
 	CertificatesPerName() RateLimitPolicy
 	RegistrationsPerIP() RateLimitPolicy
 	PendingAuthorizationsPerAccount() RateLimitPolicy
+	InvalidAuthorizationsPerAccount() RateLimitPolicy
 	CertificatesPerFQDNSet() RateLimitPolicy
 	LoadPolicies(contents []byte) error
 }
@@ -65,6 +66,15 @@ func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
 	return r.rlPolicy.PendingAuthorizationsPerAccount
 }
 
+func (r *limitsImpl) InvalidAuthorizationsPerAccount() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+	return r.rlPolicy.InvalidAuthorizationsPerAccount
+}
+
 func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
@@ -112,6 +122,11 @@ type rateLimitConfig struct {
 	// Number of pending authorizations that can exist per account. Overrides by
 	// key are not applied, but overrides by registration are.
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
+	// Number of invalid authorizations that can be failed per account within the
+	// given window. Overrides by key are not applied, but overrides by registration are.
+	// Note that this limit is actually "per account, per hostname," but that
+	// is too long for the variable name.
+	InvalidAuthorizationsPerAccount RateLimitPolicy `yaml:"invalidAuthorizationsPerAccount"`
 	// Number of certificates that can be extant containing a specific set
 	// of DNS names.
 	CertificatesPerFQDNSet RateLimitPolicy `yaml:"certificatesPerFQDNSet"`
