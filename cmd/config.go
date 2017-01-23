@@ -286,8 +286,9 @@ type OCSPUpdaterConfig struct {
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
 // Google Safe Browsing API.
 type GoogleSafeBrowsingConfig struct {
-	APIKey  string
-	DataDir string
+	APIKey    string
+	DataDir   string
+	ServerURL string
 }
 
 // SyslogConfig defines the config for syslogging.

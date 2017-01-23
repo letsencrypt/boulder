@@ -23,7 +23,7 @@ REVOCATION_FAILED = 2
 MAILER_FAILED = 3
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure = range(8)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure, GSBFailure = range(9)
 
 JS_DIR = 'test/js'
 
@@ -168,6 +168,23 @@ def verify_ct_submission(expectedSubmissions, url):
     if int(submissionStr) != expectedSubmissions:
         print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
         die(ExitStatus.CTFailure)
+    return 0
+
+# verify_gsb_lookups will check a gsb-test-srv's at `server` to see that `url`
+# has received exactly `expected` lookup hits or will exit with ExistStatus.GSBFailure
+def verify_gsb_lookups(url, expected, server):
+    resp = urllib2.urlopen(server)
+    hitStr = resp.read()
+    hits = json.loads(hitStr)
+
+    # The GSB test server tracks hits with a trailing / on the URL
+    if not url.endswith("/"):
+        url += "/"
+
+    actual = hits.get(url, 0)
+    if actual != expected:
+        print "Expected %d Google Safe Browsing lookups for %s, found %d" % (expected, url, actual)
+        die(ExitStatus.GSBFailure)
     return 0
 
 def run_node_test(domain, chall_type, expected_ct_submissions):
@@ -427,6 +444,18 @@ def main():
         if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
             print("\nIssued certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
+
+        if default_config_dir.startswith("test/config-next"):
+            # Try to issue for a name that we know the gsb-test-srv rejects. If this
+            # doesn't fail it is an error!
+            if run_node_test("honest.achmeds.discount.hosting.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
+                print("\nIssued certificate for domain on Google Safe Browsing test server list")
+                die(ExitStatus.GSBFailure)
+
+            # Verify that GSB was consulted for the domain by checking the
+            # gsb-test-srv's `/hits` endpoint for the URL we tried to issue for. The
+            # GSB server should have been consulted for this exact URL 1 time.
+            verify_gsb_lookups("honest.achmeds.discount.hosting.com", 1, "http://localhost:6000/hits")
 
         run_expired_authz_purger_test()
 
