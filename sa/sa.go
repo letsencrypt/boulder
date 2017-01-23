@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // SQLStorageAuthority defines a Storage Authority
@@ -900,6 +901,43 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 			"regID":   regID,
 			"now":     ssa.clk.Now(),
 			"pending": string(core.StatusPending),
+		})
+	return
+}
+
+// CountInvalidAuthorizations counts invalid authorizations for a user expiring
+// in a given time range.
+// authorizations for the give registration.
+func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
+	ctx context.Context,
+	req *sapb.CountInvalidAuthorizationsRequest,
+) (count *sapb.Count, err error) {
+	identifier := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: *req.Hostname,
+	}
+
+	idJSON, err := json.Marshal(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	count = &sapb.Count{
+		Count: new(int64),
+	}
+	err = ssa.dbMap.SelectOne(count.Count,
+		`SELECT COUNT(1) FROM authz
+		WHERE registrationID = :regID AND
+		identifier = :identifier AND
+		expires > :earliest AND
+		expires <= :latest AND
+		status = :invalid`,
+		map[string]interface{}{
+			"regID":      *req.RegistrationID,
+			"identifier": idJSON,
+			"earliest":   time.Unix(0, *req.Range.Earliest),
+			"latest":     time.Unix(0, *req.Range.Latest),
+			"invalid":    string(core.StatusInvalid),
 		})
 	return
 }

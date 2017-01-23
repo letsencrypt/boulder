@@ -43,6 +43,8 @@ type config struct {
 
 		// Feature flag to enable enforcement of CAA SERVFAILs.
 		CAASERVFAILExceptions string
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -67,6 +69,9 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(c.VA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "VA")
@@ -93,10 +98,11 @@ func main() {
 	// implements the v4 api instead of the legacy letsencrypt fork of
 	// go-safebrowsing-api
 	if features.Enabled(features.GoogleSafeBrowsingV4) {
-		sbc = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing)
+		sbc, err = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
 	} else {
-		sbc = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+		sbc, err = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 	}
+	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {

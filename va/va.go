@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -385,11 +386,19 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	return va.validateTLSWithZName(ctx, identifier, challenge, ZName)
 }
 
+// badTLSHeader contains the string 'HTTP /' which is returned when
+// we try to talk TLS to a server that only talks HTTP
+var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
+
 // parseHTTPConnError returns a ProblemDetails corresponding to an error
 // that occurred during domain validation.
 func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
+	}
+
+	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
+		return probs.Malformed(fmt.Sprintf("%s: Server only speaks HTTP, not TLS", detail))
 	}
 
 	// XXX: On all of the resolvers I tested that validate DNSSEC, there is

@@ -22,7 +22,7 @@ import chisel
 from chisel import auth_and_issue
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure = range(8)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure, GSBFailure = range(9)
 
 class ProcInfo:
     """
@@ -150,6 +150,26 @@ def wait_for_ocsp_revoked(cert_file, issuer_file, url):
 
 def test_multidomain():
     auth_and_issue([random_domain(), random_domain()])
+
+def test_gsb_lookups():
+    """Attempt issuances for a GSB-blocked domain, and expect it to fail. Also
+       check the gsb-test-srv's count of received queries to ensure it got a
+       request."""
+    # TODO(jsha): Once gsbv4 is enabled in both config and config-next, remove
+    # this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
+    hostname = "honest.achmeds.discount.hosting.com"
+    chisel.expect_problem("urn:acme:error:unauthorized",
+        lambda: auth_and_issue([hostname]))
+
+    hits_map = json.loads(urllib2.urlopen("http://localhost:6000/hits").read())
+
+    # The GSB test server tracks hits with a trailing / on the URL
+    hits = hits_map.get(hostname + "/", 0)
+    if hits != 1:
+        raise("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
 
 def test_ocsp():
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -376,6 +396,7 @@ def main():
 def run_chisel():
     # XXX: Test multiple challenge types
 
+    test_gsb_lookups()
     test_expired_authz_purger()
     test_multidomain()
     test_expiration_mailer()

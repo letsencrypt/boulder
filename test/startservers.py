@@ -48,6 +48,9 @@ def start(race_detection):
     global processes
     forward()
     progs = [
+        # The gsb-test-srv needs to be started before the VA or its intial DB
+        # update will fail and all subsequent lookups will be invalid
+        'gsb-test-srv -apikey my-voice-is-my-passport',
         'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
         'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
