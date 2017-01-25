@@ -280,27 +280,38 @@ def test_single_ocsp():
     wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
 
     p.send_signal(signal.SIGTERM)
+    p.wait()
 
 def get_future_output(cmd, date, cwd=None):
     return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
 
 def test_expired_authz_purger():
-    # Make an authz, but don't attempt its challenges.
-    chisel.make_client().request_domain_challenges("eap-test.com")
-
     def expect(target_time, num):
-        expected_output = 'Deleted a total of %d expired pending authorizations' % num
+        expected_output = ''
+        if num is not None:
+            expected_output = 'Deleted a total of %d expired pending authorizations' % num
+
         try:
             out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
             if expected_output not in out:
-                print("\nOutput from expired-authz-purger did not contain '%s'. Actual: %s"
-                    % (expected_output, out))
+                print(("expired-authz-purger did not print '%s'. " +
+                      "Maybe not built with `integration` build tag? Output:\n%s") % (
+                      expected_output, out))
                 die(ExitStatus.NodeFailure)
         except subprocess.CalledProcessError as e:
             print("\nFailed to run authz purger: %s" % e)
             die(ExitStatus.NodeFailure)
 
     now = datetime.datetime.utcnow()
+
+    # Run the purger once to clear out any backlog so we have a clean slate.
+    expect(now, None)
+
+    # Make an authz, but don't attempt its challenges.
+    chisel.make_client().request_domain_challenges("eap-test.com")
+
+    # Run the authz twice: Once immediate, expecting nothing to be purged, and
+    # once as if it were the future, expecting one purged authz.
     after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
     expect(now, 0)
     expect(after_grace_period, 1)
