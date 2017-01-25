@@ -252,9 +252,13 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
-# Run the single-ocsp command, which is used to generate OCSP responses for
-# intermediate certificates on a manual basis.
-def single_ocsp_sign():
+def test_single_ocsp():
+    """Run the single-ocsp command, which is used to generate OCSP responses for
+       intermediate certificates on a manual basis. Then start up an
+       ocsp-responder configured to respond using the output of single-ocsp,
+       check that it successfully answers OCSP requests, and shut the responder
+       back down.
+    """
     try:
         subprocess.check_output("""./bin/single-ocsp -issuer test/test-root.pem \
                     -responder test/test-root.pem \
@@ -394,7 +398,8 @@ def main():
     exit_status = ExitStatus.OK
 
 def run_chisel():
-    # XXX: Test multiple challenge types
+    # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add DNS and
+    # TLS-SNI tests.
 
     test_gsb_lookups()
     test_expired_authz_purger()
@@ -406,7 +411,7 @@ def run_chisel():
     test_admin_revoker_authz()
     test_certificates_per_name()
     test_ocsp()
-    single_ocsp_sign()
+    test_single_ocsp()
 
 if __name__ == "__main__":
     try:

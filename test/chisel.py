@@ -30,6 +30,8 @@ from acme import standalone
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
+
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
@@ -37,7 +39,7 @@ def make_client(email=None):
     net = acme_client.ClientNetwork(key, verify_ssl=False,
                                     user_agent="Boulder integration tester")
 
-    client = acme_client.Client("http://localhost:4000/directory", key=key, net=net)
+    client = acme_client.Client(DIRECTORY, key=key, net=net)
     account = client.register(messages.NewRegistration.from_data(email=email))
     client.agree_to_tos(account)
     return client
@@ -74,7 +76,9 @@ class ValidationError(Exception):
 def issue(client, authzs, cert_output=None):
     """Given a list of authzs that are being processed by the server,
        wait for them to be ready, then request issuance of a cert with a random
-       key for the given domains."""
+       key for the given domains.
+
+       If cert_output is provided, write the cert as a PEM file to that path."""
     domains = [authz.body.identifier.value for authz in authzs]
     pkey = OpenSSL.crypto.PKey()
     pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
@@ -105,7 +109,7 @@ def issue(client, authzs, cert_output=None):
                     raise ValidationError(domain, err['type'], err['detail'])
         # If none of the authz's had an error, just re-raise.
         raise
-    if cert_output != None:
+    if cert_output is not None:
         pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM,
                                               cert_resource.body)
         with open(cert_output, 'w') as f:
@@ -123,7 +127,7 @@ def auth_and_issue(domains, email=None, cert_output=None, client=None):
     """Make authzs for each of the given domains, set up a server to answer the
        challenges in those authzs, tell the ACME server to validate the challenges,
        then poll for the authzs to be ready and issue a cert."""
-    if client == None:
+    if client is None:
         client = make_client(email)
     authzs, challenges = make_authzs(client, domains)
     port = 5002
@@ -168,11 +172,15 @@ def expect_problem(problem_type, func):
         else:
             raise
     if not ok:
-        raise Exception("Expected %s, got no error" % problem_type)
+        raise Exception('Expected %s, got no error' % problem_type)
 
 if __name__ == "__main__":
+    domains = sys.argv[1:]
+    if len(domains) == 0:
+        print __doc__
+        sys.exit(0)
     try:
-        auth_and_issue(sys.argv[1:])
+        auth_and_issue(domains)
     except messages.Error, e:
         print e
         sys.exit(1)
