@@ -234,11 +234,8 @@ def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not."""
     auth_and_issue(["good-caa-reserved.com"])
 
-    # TODO(#2514): Currently, the gRPC setup doesn't correctly set the error
-    # field on failed validations. Once #2514 is fixed, remove this if statement.
-    if os.getenv('BOULDER_CONFIG_DIR') != 'test/config-next':
-        chisel.expect_problem("urn:acme:error:connection",
-            lambda: auth_and_issue(["bad-caa-reserved.com"]))
+    chisel.expect_problem("urn:acme:error:connection",
+        lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
 def run_custom(cmd, cwd=None):
     if subprocess.Popen(cmd, shell=True, cwd=cwd, executable='/bin/bash').wait() != 0:
