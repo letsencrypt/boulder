@@ -135,11 +135,14 @@ def check():
 
 @atexit.register
 def stop():
-    # When we are about to exit, send SIGTERM to each subprocess and wait for
+    # When we are about to exit, send SIGKILL to each subprocess and wait for
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
+    # TODO(jsha): Switch to SIGTERM once we fix
+    # https://github.com/letsencrypt/boulder/issues/2410 and remove AMQP, to
+    # make shutdown less noisy.
     for p in processes:
         if p.poll() is None:
-            p.send_signal(signal.SIGTERM)
+            p.send_signal(signal.SIGKILL)
     for p in processes:
         p.wait()
