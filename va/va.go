@@ -333,17 +333,29 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.AuditInfo(fmt.Sprintf("TLS-SNI-01 challenge for %s received certificate (%d of %d): cert=[%s]",
 			identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
-	for _, name := range certs[0].DNSNames {
+	leafCert := certs[0]
+	for _, name := range leafCert.DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			return validationRecords, nil
 		}
 	}
 
+	// Collect up all of the leaf cert's names (including Subject CN)
+	// and reduce to the unique set for an error message
+	var names []string
+	if leafCert.Subject.CommonName != "" {
+		names = append(names, leafCert.Subject.CommonName)
+	}
+	names = append(names, leafCert.DNSNames...)
+	names = core.UniqueLowerNames(names)
+
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for TLS-SNI-01 challenge. "+
+			"Requested %s from %s. Received %d certificate(s), "+
+			"first certificate had names %q",
+		zName, hostPort, len(certs), strings.Join(names, ", "))
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
-	return validationRecords, probs.Unauthorized(
-		fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
-			"Requested %s from %s. Received certificate containing '%s'",
-			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")))
+	return validationRecords, probs.Unauthorized(errText)
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
