@@ -243,9 +243,10 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 		encReq := base64.StdEncoding.EncodeToString(req)
 		urls = append(
 			urls,
-			// OCSP generally doesn't use proper URL encoding but as far
-			// as I know our server supports both encoded and unencoded
-			// URLs, so we purge both URL styles just in case
+			// RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST properly url-encode the base64
+			// encoded' request but a large enough portion of tools do not properly do this
+			// (~10% of GET requests we receive) such that we must purge both the encoded
+			// and un-encoded URLs.
 			fmt.Sprintf("%s%s", ocspServer, encReq),
 			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
 			// Also purge the POST'd request using Akamai's special format
