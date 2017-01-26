@@ -862,6 +862,6 @@ func TestGeneratePOSTURL(t *testing.T) {
 	test.AssertEquals(
 		t,
 		generatePOSTURL(der, "ocsp.invalid/"),
-		"ocsp.invalid/?body-mdy=ad85b89389a00dfe",
+		"ocsp.invalid/?body-md5=ad85b89389a00dfe",
 	)
 }

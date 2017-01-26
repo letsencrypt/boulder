@@ -209,10 +209,13 @@ func reverseBytes(b []byte) []byte {
 
 func generatePOSTURL(der []byte, ocspServer string) string {
 	// Generate POST url, format is the URL that was POST'd to with a query string with
-	// the parameter 'body-mdy' and the value of the first two uint32s in little endian
+	// the parameter 'body-md5' and the value of the first two uint32s in little endian
 	// order in hex of the MD5 hash of the OCSP request body.
+	//
+	// There is no public documentation of this feature that has been published by Akamai
+	// as far as we are aware.
 	hash := md5.Sum(der)
-	return fmt.Sprintf("%s?body-mdy=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8]))
+	return fmt.Sprintf("%s?body-md5=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8]))
 }
 
 // sendPurge should only be called as a Goroutine as it will block until the purge
@@ -237,11 +240,17 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 			ocspServer += "/"
 		}
 		// Generate GET url
+		encReq := base64.StdEncoding.EncodeToString(req)
 		urls = append(
 			urls,
-			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
+			// OCSP generally doesn't use proper URL encoding but as far
+			// as I know our server supports both encoded and unencoded
+			// URLs, so we purge both URL styles just in case
+			fmt.Sprintf("%s%s", ocspServer, encReq),
+			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
+			// Also purge the POST'd request using Akamai's special format
+			generatePOSTURL(req, ocspServer),
 		)
-		urls = append(urls, generatePOSTURL(der, ocspServer))
 	}
 
 	err = updater.ccu.Purge(urls)
