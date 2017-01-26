@@ -1,4 +1,4 @@
-package wfe
+package main
 
 import (
 	"bytes"
@@ -18,6 +18,8 @@ import (
 	"os/signal"
 	"reflect"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -25,7 +27,6 @@ import (
 
 	"gopkg.in/square/go-jose.v1"
 
-	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -70,6 +71,11 @@ type Plan struct {
 	Delta   *RateDelta
 }
 
+type respCode struct {
+	code int
+	num  int
+}
+
 // State holds *all* the stuff
 type State struct {
 	apiBase         string
@@ -86,8 +92,13 @@ type State struct {
 	regs []*registration
 
 	challSrv    *challSrv
-	callLatency *latency.File
+	callLatency *latencyFile
 	client      *http.Client
+
+	getTotal  int64
+	postTotal int64
+	respCodes map[int]*respCode
+	cMu       sync.Mutex
 
 	wg *sync.WaitGroup
 }
@@ -186,7 +197,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		},
 		Timeout: 10 * time.Second,
 	}
-	latencyFile, err := latency.New(latencyPath)
+	latencyFile, err := newLatencyFile(latencyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +211,7 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		realIP:      realIP,
 		maxRegs:     maxRegs,
 		email:       userEmail,
+		respCodes:   make(map[int]*respCode),
 	}
 
 	// convert operations strings to methods
@@ -236,8 +248,6 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	fmt.Println("[+] Beginning execution plan")
 	i := int64(0)
 	go func() {
-		// ticker := time.NewTicker(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&p.Rate)))
-		// for range ticker.C {
 		for {
 			start := time.Now()
 			select {
@@ -249,19 +259,31 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 				atomic.AddInt64(&i, 1)
 			}
 			sf := time.Duration(time.Second.Nanoseconds()/atomic.LoadInt64(&p.Rate)) - time.Since(start)
-			// fmt.Printf("%d: sleeping for %s\n", i, sf)
-			// ss := time.Now()
 			time.Sleep(sf)
-			// fmt.Printf("%d: slept for %s\n", i, time.Since(ss))
 		}
 	}()
 	go func() {
 		lastTotal := int64(0)
+		lastGet := int64(0)
+		lastPost := int64(0)
 		for {
 			time.Sleep(time.Second)
 			curTotal := atomic.LoadInt64(&i)
-			fmt.Printf("Rate was: %d/s\n", curTotal-lastTotal)
+			curGet := atomic.LoadInt64(&s.getTotal)
+			curPost := atomic.LoadInt64(&s.postTotal)
+			fmt.Printf(
+				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s [POST: %d/s, GET: %d/s], Responses: [%s]\n",
+				time.Now().Format("2006-01-02 15:04:05"),
+				curTotal-lastTotal,
+				atomic.LoadInt64(&p.Rate),
+				(curGet+curPost)-(lastGet+lastPost),
+				curGet-lastGet,
+				curPost-lastPost,
+				s.respCodeString(),
+			)
 			lastTotal = curTotal
+			lastGet = curGet
+			lastPost = curPost
 		}
 	}()
 
@@ -279,6 +301,46 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 
 // HTTP utils
 
+func (s *State) addRespCode(code int) {
+	s.cMu.Lock()
+	defer s.cMu.Unlock()
+	code = code / 100
+	if e, ok := s.respCodes[code]; ok {
+		e.num++
+	} else if !ok {
+		s.respCodes[code] = &respCode{code, 1}
+	}
+}
+
+type codes []*respCode
+
+func (c codes) Len() int {
+	return len(c)
+}
+
+func (c codes) Less(i, j int) bool {
+	return c[i].code < c[j].code
+}
+
+func (c codes) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+
+func (s *State) respCodeString() string {
+	s.cMu.Lock()
+	list := codes{}
+	for _, v := range s.respCodes {
+		list = append(list, v)
+	}
+	s.cMu.Unlock()
+	sort.Sort(list)
+	counts := []string{}
+	for _, v := range list {
+		counts = append(counts, fmt.Sprintf("%dxx: %d", v.code, v.num))
+	}
+	return strings.Join(counts, ", ")
+}
+
 func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
 	if err != nil {
@@ -286,15 +348,31 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", "boulder load-generator -- heyo ^_^")
+	atomic.AddInt64(&s.postTotal, 1)
 	resp, err := s.client.Do(req)
-	if resp != nil {
-		if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
-			ns.addNonce(newNonce)
-		}
-	}
 	if err != nil {
 		return nil, err
 	}
+	go s.addRespCode(resp.StatusCode)
+	if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
+		ns.addNonce(newNonce)
+	}
+	return resp, nil
+}
+
+func (s *State) get(path string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("X-Real-IP", s.realIP)
+	req.Header.Add("User-Agent", "boulder load-generator -- heyo ^_^")
+	atomic.AddInt64(&s.getTotal, 1)
+	resp, err := s.client.Get(path)
+	if err != nil {
+		return nil, err
+	}
+	go s.addRespCode(resp.StatusCode)
 	return resp, nil
 }
 

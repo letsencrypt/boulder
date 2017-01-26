@@ -1,4 +1,4 @@
-package wfe
+package main
 
 import (
 	"bytes"
@@ -66,8 +66,7 @@ func newRegistration(s *State, ctx *context) error {
 	// build the JWS object
 	requestPayload, err := s.signWithNonce("/acme/new-reg", true, regStr, signer)
 	if err != nil {
-		fmt.Printf("[FAILED] new-reg, sign failed: %s\n", err)
-		return err
+		return fmt.Errorf("/acme/new-reg, sign failed: %s", err)
 	}
 
 	nStarted := time.Now()
@@ -76,9 +75,8 @@ func newRegistration(s *State, ctx *context) error {
 	nState := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-reg", nStarted, nFinished, nState) }()
 	if err != nil {
-		fmt.Printf("[FAILED] new-reg, post failed: %s\n", err)
 		nState = "error"
-		return err
+		return fmt.Errorf("/acme/new-reg, post failed: %s", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
@@ -86,9 +84,9 @@ func newRegistration(s *State, ctx *context) error {
 		nState = "error"
 		if err != nil {
 			// just fail
-			return fmt.Errorf("bad response: %s", err)
+			return fmt.Errorf("/acme/new-reg, bad response: %s", body)
 		}
-		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
+		return fmt.Errorf("/acme/new-reg, bad response status %d: %s", resp.StatusCode, body)
 	}
 
 	// get terms
@@ -107,8 +105,7 @@ func newRegistration(s *State, ctx *context) error {
 	// build the JWS object
 	requestPayload, err = s.signWithNonce("/acme/reg", false, regStr, signer)
 	if err != nil {
-		fmt.Printf("[FAILED] reg, sign failed: %s\n", err)
-		return err
+		return fmt.Errorf("/acme/reg, sign failed: %s", err)
 	}
 
 	tStarted := time.Now()
@@ -117,9 +114,8 @@ func newRegistration(s *State, ctx *context) error {
 	tState := "good"
 	defer func() { s.callLatency.Add("POST /acme/reg/{ID}", tStarted, tFinished, tState) }()
 	if err != nil {
-		fmt.Printf("[FAILED] reg, post failed: %s\n", err)
 		tState = "error"
-		return err
+		return fmt.Errorf("/acme/reg, post failed: %s", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 202 {
@@ -130,8 +126,7 @@ func newRegistration(s *State, ctx *context) error {
 			return err
 		}
 		tState = "error"
-		fmt.Printf("[FAILED] reg, bad response: %s\n", string(body))
-		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, err)
+		return fmt.Errorf("/acme/reg, bad response status %d: %s", resp.StatusCode, body)
 	}
 
 	ctx.reg = &registration{key: signKey, signer: signer}
@@ -257,14 +252,13 @@ func solveHTTPOne(s *State, ctx *context) error {
 	ident := ""
 	for i := 0; i < 3; i++ {
 		aStarted := time.Now()
-		resp, err = s.client.Get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
+		resp, err = s.get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
 		aFinished := time.Now()
 		aState := "good"
 		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
 		if err != nil {
-			fmt.Printf("[FAILED] authzer: %s\n", err)
 			aState = "error"
-			return err
+			return fmt.Errorf("/acme/authz bad response: %s", err)
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
@@ -276,22 +270,20 @@ func solveHTTPOne(s *State, ctx *context) error {
 		var newAuthz core.Authorization
 		err = json.Unmarshal(body, &newAuthz)
 		if err != nil {
-			fmt.Printf("[FAILED] authz: %s\n", string(body))
 			aState = "error"
-			return err
+			return fmt.Errorf("/acme/authz bad response: %s", body)
 		}
 		if newAuthz.Status == "valid" {
 			ident = newAuthz.Identifier.Value
 			break
 		}
 		if newAuthz.Status == "invalid" {
-			fmt.Printf("[FAILED] http-01 failed: %s\n", string(body))
-			break
+			return fmt.Errorf("HTTP-01 challenge invalid: %s", string(body))
 		}
 		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
 	}
 	if ident == "" {
-		return errors.New("failed to complete http-01 challenge")
+		return errors.New("HTTP-01 challenge validation timed out")
 	}
 
 	ctx.finalizedAuthz = append(ctx.finalizedAuthz, ident)
@@ -345,36 +337,33 @@ func solveTLSOne(s *State, ctx *context) error {
 	ident := ""
 	for i := 0; i < 3; i++ {
 		aStarted := time.Now()
-		resp, err = s.client.Get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
+		resp, err = s.get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
 		aFinished := time.Now()
 		aState := "good"
 		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
 		if err != nil {
-			fmt.Printf("[FAILED] authzer: %s\n", err)
 			aState = "error"
-			return err
+			return fmt.Errorf("/acme/authz bad response: %s", err)
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			// just fail
 			aState = "error"
-			return err
+			return fmt.Errorf("/acme/authz bad response: %s", err)
 		}
 		var newAuthz core.Authorization
 		err = json.Unmarshal(body, &newAuthz)
 		if err != nil {
-			fmt.Printf("[FAILED] authz: %s\n", string(body))
 			aState = "error"
-			return err
+			return fmt.Errorf("/acme/authz bad response: %s", string(body))
 		}
 		if newAuthz.Status == "valid" {
 			ident = newAuthz.Identifier.Value
 			break
 		}
 		if newAuthz.Status == "invalid" {
-			fmt.Printf("[FAILED] tls-sni-01 failed: %s\n", string(body))
-			break
+			return fmt.Errorf("TLS-SNI-01 challenge invalid: %s", string(body))
 		}
 		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
 	}
@@ -453,7 +442,7 @@ func revokeCertificate(s *State, ctx *context) error {
 	}
 
 	index := mrand.Intn(len(ctx.certs))
-	resp, err := s.client.Get(ctx.certs[index])
+	resp, err := s.get(ctx.certs[index])
 	if err != nil {
 		return err
 	}

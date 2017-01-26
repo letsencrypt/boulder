@@ -1,4 +1,4 @@
-package latency
+package main
 
 import (
 	"encoding/json"
@@ -15,21 +15,19 @@ type point struct {
 	Action   string    `json:"action"`
 }
 
-// File holds per endpoint metrics
-type File struct {
+type latencyFile struct {
 	metrics chan *point
 	f       *os.File
 	die     chan struct{}
 }
 
-// New returns a new latency metrics file
-func New(filename string) (*File, error) {
+func newLatencyFile(filename string) (*latencyFile, error) {
 	fmt.Printf("[+] Opening results file %s\n", filename)
 	file, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
-	f := &File{
+	f := &latencyFile{
 		metrics: make(chan *point, 2048),
 		die:     make(chan struct{}, 1),
 		f:       file,
@@ -38,7 +36,7 @@ func New(filename string) (*File, error) {
 	return f, nil
 }
 
-func (f *File) write() {
+func (f *latencyFile) write() {
 	for {
 		select {
 		case p := <-f.metrics:
@@ -57,7 +55,7 @@ func (f *File) write() {
 }
 
 // Add writes a point to the file
-func (f *File) Add(action string, sent, finished time.Time, pType string) {
+func (f *latencyFile) Add(action string, sent, finished time.Time, pType string) {
 	f.metrics <- &point{
 		Sent:     sent,
 		Finished: finished,
@@ -68,7 +66,7 @@ func (f *File) Add(action string, sent, finished time.Time, pType string) {
 }
 
 // Close stops f.write() and closes the file, any remaining metrics will be discarded
-func (f *File) Close() {
+func (f *latencyFile) Close() {
 	f.die <- struct{}{}
 	_ = f.f.Close()
 }

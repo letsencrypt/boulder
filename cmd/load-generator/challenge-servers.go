@@ -1,4 +1,4 @@
-package wfe
+package main
 
 import (
 	rand "crypto/rand"

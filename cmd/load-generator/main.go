@@ -11,8 +11,31 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/cmd/load-generator/wfe"
 )
+
+type Config struct {
+	// Execution plan parameters
+	Plan struct {
+		Actions   []string // things to do
+		Rate      int64    // requests / s
+		RateDelta string   // requests / s^2
+		MaxRate   int64    // XXX: is this needed?
+		Runtime   string   // how long to run for
+	}
+	ExternalState string   // path to file to load/save registrations etc to/from
+	DontSaveState bool     // don't save changes to external state
+	APIBase       string   // ACME API address to send requests to
+	DomainBase    string   // base domain name to create authorizations for
+	ChallTypes    []string // which challenges to complete, empty means use all
+	HTTPOneAddr   string   // address to listen for http-01 validation requests on
+	TLSOneAddr    string   // address to listen for tls-sni-01 validation requests on
+	RealIP        string   // value of the Real-IP header to use when bypassing CDN
+	RegKeySize    int      // size of the key to use in registrations
+	CertKeySize   int      // size of the key to use when creating CSRs
+	RegEmail      string   // email to use in registrations
+	Results       string   // path to save metrics to
+	MaxRegs       int      // maximum number of registrations to create
+}
 
 func main() {
 	configPath := flag.String("config", "", "Path to configuration file for WFE load-generator")
@@ -27,7 +50,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", &configPath, err)
 		os.Exit(1)
 	}
-	var config wfe.Config
+	var config Config
 	err = json.Unmarshal(configBytes, &config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to parse wfe config file: %s\n", err)
@@ -47,7 +70,7 @@ func main() {
 		config.Plan.RateDelta = *deltaArg
 	}
 
-	s, err := wfe.New(
+	s, err := New(
 		config.APIBase,
 		config.CertKeySize,
 		config.DomainBase,
@@ -67,7 +90,7 @@ func main() {
 	runtime, err := time.ParseDuration(config.Plan.Runtime)
 	cmd.FailOnError(err, "Failed to parse plan runtime")
 
-	var delta *wfe.RateDelta
+	var delta *RateDelta
 	if config.Plan.RateDelta != "" {
 		parts := strings.Split(config.Plan.RateDelta, "/")
 		if len(parts) != 2 {
@@ -78,10 +101,10 @@ func main() {
 		cmd.FailOnError(err, "Failed to parse increase portion of RateDelta")
 		period, err := time.ParseDuration(parts[1])
 		cmd.FailOnError(err, "Failed to parse period portion of RateDelta")
-		delta = &wfe.RateDelta{Inc: int64(rate), Period: period}
+		delta = &RateDelta{Inc: int64(rate), Period: period}
 	}
 
-	err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, wfe.Plan{
+	err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, Plan{
 		Runtime: runtime,
 		Rate:    config.Plan.Rate,
 		Delta:   delta,
