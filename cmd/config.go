@@ -281,6 +281,8 @@ type OCSPUpdaterConfig struct {
 	Publisher            *GRPCClientConfig
 	SAService            *GRPCClientConfig
 	OCSPGeneratorService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the

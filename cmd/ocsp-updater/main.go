@@ -836,6 +836,8 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	conf := c.OCSPUpdater
+	err = features.Set(conf.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
