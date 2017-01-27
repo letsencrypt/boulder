@@ -858,14 +858,14 @@ func TestReverseBytes(t *testing.T) {
 }
 
 func TestGenerateOCSPCacheKeys(t *testing.T) {
-	der := []byte{0}
+	der := []byte{105, 239, 255}
 	test.AssertDeepEquals(
 		t,
 		generateOCSPCacheKeys(der, "ocsp.invalid/"),
 		[]string{
-			"ocsp.invalid/?body-md5=ad85b89389a00dfe",
-			"ocsp.invalid/AA==",
-			"ocsp.invalid/AA%3D%3D",
+			"ocsp.invalid/?body-md5=d6101198a9d9f1f6",
+			"ocsp.invalid/ae/",
+			"ocsp.invalid/ae%2F%2F",
 		},
 	)
 }

@@ -222,7 +222,11 @@ func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
 		// encoded' request but a large enough portion of tools do not properly do this
 		// (~10% of GET requests we receive) such that we must purge both the encoded
 		// and un-encoded URLs.
-		fmt.Sprintf("%s%s", ocspServer, encReq),
+		//
+		// Due to Akamai proxy/cache behavior which collapses '//' -> '/' we also
+		// collapse double slashes in the un-encoded URL so that we properly purge
+		// what is stored in the cache.
+		fmt.Sprintf("%s%s", ocspServer, strings.Replace(encReq, "//", "/", -1)),
 		fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
 	}
 }
