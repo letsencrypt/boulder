@@ -566,6 +566,41 @@ func misconfiguredTLSSrv() *httptest.Server {
 	return server
 }
 
+func TestCertNames(t *testing.T) {
+	// We duplicate names inside the SAN set
+	names := []string{
+		"hello.world", "goodbye.world",
+		"hello.world", "goodbye.world",
+		"bonjour.le.monde", "au.revoir.le.monde",
+		"bonjour.le.monde", "au.revoir.le.monde",
+	}
+	// We expect only unique names, in sorted order
+	expected := []string{
+		"au.revoir.le.monde", "bonjour.le.monde",
+		"goodbye.world", "hello.world",
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		Subject: pkix.Name{
+			// We also duplicate a name from the SANs as the CN
+			CommonName: names[0],
+		},
+		DNSNames: names,
+	}
+
+	// Create the certificate, check that certNames provides the expected result
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert, _ := x509.ParseCertificate(certBytes)
+	actual := certNames(cert)
+	test.AssertDeepEquals(t, actual, expected)
+}
+
 // TestSNIErrInvalidChain sets up a TLS server with two certificates, neither of
 // which validate the SNI challenge.
 func TestSNIErrInvalidChain(t *testing.T) {

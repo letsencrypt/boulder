@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -290,6 +291,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	return body, validationRecords, nil
 }
 
+// certNames collects up all of a certificate's subject names (Subject CN and
+// Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
+// error message
+func certNames(cert *x509.Certificate) []string {
+	var names []string
+	if cert.Subject.CommonName != "" {
+		names = append(names, cert.Subject.CommonName)
+	}
+	names = append(names, cert.DNSNames...)
+	names = core.UniqueLowerNames(names)
+	return names
+}
+
 func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
@@ -340,15 +354,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		}
 	}
 
-	// Collect up all of the leaf cert's names (including Subject CN)
-	// and reduce to the unique set for an error message
-	var names []string
-	if leafCert.Subject.CommonName != "" {
-		names = append(names, leafCert.Subject.CommonName)
-	}
-	names = append(names, leafCert.DNSNames...)
-	names = core.UniqueLowerNames(names)
-
+	names := certNames(leafCert)
 	errText := fmt.Sprintf(
 		"Incorrect validation certificate for TLS-SNI-01 challenge. "+
 			"Requested %s from %s. Received %d certificate(s), "+
