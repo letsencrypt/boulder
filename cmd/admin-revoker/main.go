@@ -185,7 +185,7 @@ func main() {
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Revoker.Features)
-	cmd.FailOnError(err, "Could not set configured Features")
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	ctx := context.Background()
 	args := flagSet.Args()

@@ -837,7 +837,7 @@ func main() {
 
 	conf := c.OCSPUpdater
 	err = features.Set(conf.Features)
-	cmd.FailOnError(err, "Could not set configured Features")
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
