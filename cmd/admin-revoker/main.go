@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -59,6 +60,8 @@ type config struct {
 
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -181,6 +184,8 @@ func main() {
 	var c config
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Revoker.Features)
+	cmd.FailOnError(err, "Could not set configured Features")
 
 	ctx := context.Background()
 	args := flagSet.Args()
