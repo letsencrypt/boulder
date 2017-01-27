@@ -14,6 +14,7 @@ import (
 	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -30,6 +31,8 @@ type eapConfig struct {
 
 		GracePeriod cmd.ConfigDuration
 		BatchSize   int
+
+		Features map[string]bool
 	}
 }
 
@@ -111,6 +114,8 @@ func main() {
 	var config eapConfig
 	err = json.Unmarshal(configJSON, &config)
 	cmd.FailOnError(err, "Failed to parse config")
+	err = features.Set(config.ExpiredAuthzPurger.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	// Set up logging
 	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
