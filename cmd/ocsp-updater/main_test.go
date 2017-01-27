@@ -857,11 +857,15 @@ func TestReverseBytes(t *testing.T) {
 	test.AssertDeepEquals(t, reverseBytes(a), []byte{3, 2, 1, 0})
 }
 
-func TestGeneratePOSTURL(t *testing.T) {
+func TestGenerateOCSPCacheKeys(t *testing.T) {
 	der := []byte{0}
-	test.AssertEquals(
+	test.AssertDeepEquals(
 		t,
-		generatePOSTURL(der, "ocsp.invalid/"),
-		"ocsp.invalid/?body-md5=ad85b89389a00dfe",
+		generateOCSPCacheKeys(der, "ocsp.invalid/"),
+		[]string{
+			"ocsp.invalid/?body-md5=ad85b89389a00dfe",
+			"ocsp.invalid/AA==",
+			"ocsp.invalid/AA%3D%3D",
+		},
 	)
 }
