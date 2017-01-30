@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 func TestWrapError(t *testing.T) {
@@ -58,8 +58,8 @@ func TestWrapError(t *testing.T) {
 			errors.New(""),
 		},
 		{
-			berrors.New(berrors.Malformed, "foo"),
-			berrors.New(berrors.Malformed, "foo"),
+			berrors.MalformedError("foo"),
+			berrors.MalformedError("foo"),
 		},
 	}
 	for i, tc := range complicated {

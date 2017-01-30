@@ -42,3 +42,35 @@ func Is(err error, errType ErrorType) bool {
 	}
 	return bErr.Type == errType
 }
+
+func InternalServerError(msg string, args ...interface{}) error {
+	return New(InternalServer, msg, args...)
+}
+
+func NotSupportedError(msg string, args ...interface{}) error {
+	return New(NotSupported, msg, args...)
+}
+
+func MalformedError(msg string, args ...interface{}) error {
+	return New(Malformed, msg, args...)
+}
+
+func UnauthorizedError(msg string, args ...interface{}) error {
+	return New(Unauthorized, msg, args...)
+}
+
+func NotFoundError(msg string, args ...interface{}) error {
+	return New(NotFound, msg, args...)
+}
+
+func SignatureValidationError(msg string, args ...interface{}) error {
+	return New(SignatureValidation, msg, args...)
+}
+
+func RateLimitError(msg string, args ...interface{}) error {
+	return New(RateLimit, msg, args...)
+}
+
+func TooManyRequestsError(msg string, args ...interface{}) error {
+	return New(TooManyRequets, msg, args...)
+}

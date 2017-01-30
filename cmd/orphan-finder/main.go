@@ -67,7 +67,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 	if err == nil {
 		return errAlreadyExists
 	}
-	if berrors.Is(err, berrors.NotFound) {
+	if _, ok := err.(core.NotFoundError); ok || berrors.Is(err, berrors.NotFound) {
 		return nil
 	}
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)

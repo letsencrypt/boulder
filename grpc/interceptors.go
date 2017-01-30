@@ -4,14 +4,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/letsencrypt/boulder/metrics"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // serverInterceptor is a gRPC interceptor that adds statsd and Prometheus
@@ -37,7 +37,7 @@ func cleanMethod(m string, trimService bool) string {
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		si.stats.Inc("NoInfo", 1)
-		return nil, berrors.New(berrors.InternalServer, "boulder/grpc: passed nil *grpc.UnaryServerInfo")
+		return nil, berrors.InternalServerError("boulder/grpc.intercept: passed nil *grpc.UnaryServerInfo")
 	}
 	s := si.clk.Now()
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))

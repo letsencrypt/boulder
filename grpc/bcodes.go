@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strconv"
 
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -93,17 +93,15 @@ func unwrapError(err error, md metadata.MD) error {
 	if errTypeStrs, ok := md["errortype"]; ok {
 		unwrappedErr := grpc.ErrorDesc(err)
 		if len(errTypeStrs) != 1 {
-			return berrors.New(
-				berrors.InternalServer,
-				"boulder/grpc: multiple errorType metadata, wrapped error %q",
+			return berrors.InternalServerError(
+				"boulder/grpc.unwrapError: multiple errorType metadata, wrapped error %q",
 				unwrappedErr,
 			)
 		}
 		errType, decErr := strconv.Atoi(errTypeStrs[0])
 		if decErr != nil {
-			return berrors.New(
-				berrors.InternalServer,
-				"boulder/grpc: failed to decode error type, decoding error %q, wrapped error %q",
+			return berrors.InternalServerError(
+				"boulder/grpc.unwrapError: failed to decode error type, decoding error %q, wrapped error %q",
 				decErr,
 				unwrappedErr,
 			)

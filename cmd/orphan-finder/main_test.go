@@ -29,7 +29,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate
 	if m.certificate.DER != nil {
 		return m.certificate, nil
 	}
-	return core.Certificate{}, berrors.New(berrors.NotFound, "no cert stored")
+	return core.Certificate{}, berrors.NotFoundError("no cert stored")
 }
 
 func checkNoErrors(t *testing.T) {

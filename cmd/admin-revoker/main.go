@@ -116,7 +116,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 
 	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return berrors.New(berrors.NotFound, "revokeBySerial: certificate with serial %q not found", serial)
+		return berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return err

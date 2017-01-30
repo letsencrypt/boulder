@@ -3,11 +3,11 @@ package csr
 import (
 	"crypto"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
@@ -31,12 +31,12 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey       = errors.New("invalid public key in CSR")
-	unsupportedSigAlg   = errors.New("signature algorithm not supported")
-	invalidSig          = errors.New("invalid signature on CSR")
-	invalidEmailPresent = errors.New("CSR contains one or more email address fields")
-	invalidIPPresent    = errors.New("CSR contains one or more IP address fields")
-	invalidNoDNS        = errors.New("at least one DNS name is required")
+	invalidPubKey       = berrors.MalformedError("invalid public key in CSR")
+	unsupportedSigAlg   = berrors.MalformedError("signature algorithm not supported")
+	invalidSig          = berrors.MalformedError("invalid signature on CSR")
+	invalidEmailPresent = berrors.MalformedError("CSR contains one or more email address fields")
+	invalidIPPresent    = berrors.MalformedError("CSR contains one or more IP address fields")
+	invalidNoDNS        = berrors.MalformedError("at least one DNS name is required")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes

@@ -1205,7 +1205,7 @@ type mockSANoSuchRegistration struct {
 }
 
 func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
-	return core.Registration{}, berrors.New(berrors.NotFound, "reg not found")
+	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert

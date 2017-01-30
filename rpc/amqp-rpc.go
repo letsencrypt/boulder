@@ -6,11 +6,11 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"strconv"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,10 +22,10 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,
@@ -244,9 +244,8 @@ func unwrapError(rpcError *rpcError) error {
 			if strings.HasPrefix(rpcError.Type, "berr:") {
 				errType, decErr := strconv.Atoi(rpcError.Type[5:])
 				if decErr != nil {
-					return berrors.New(
-						berrors.InternalServer,
-						"boulder/rpc: failed to decode error type, decoding error %q, wrapped error %q",
+					return berrors.InternalServerError(
+						"boulder/rpc.unwrapError: failed to decode error type, decoding error %q, wrapped error %q",
 						decErr,
 						rpcError.Value,
 					)
