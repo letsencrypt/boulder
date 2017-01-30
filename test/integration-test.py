@@ -21,9 +21,6 @@ import startservers
 import chisel
 from chisel import auth_and_issue
 
-class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs, RevokerFailure, GSBFailure = range(9)
-
 class ProcInfo:
     """
         Args:
@@ -34,13 +31,6 @@ class ProcInfo:
     def __init__(self, cmd, proc):
         self.cmd = cmd
         self.proc = proc
-
-
-def die(status):
-    global exit_status
-    # Set exit_status so cleanup handler knows what to report.
-    exit_status = status
-    sys.exit(exit_status)
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
@@ -61,10 +51,8 @@ def make_ocsp_req(cert_file, issuer_file):
     """Return the bytes of an OCSP request for the given certificate file."""
     ocsp_req_file = os.path.join(tempdir, "ocsp.req")
     # First generate the OCSP request in DER form
-    cmd = ("openssl ocsp -no_nonce -issuer %s -cert %s -reqout %s" % (
+    run("openssl ocsp -no_nonce -issuer %s -cert %s -reqout %s" % (
         issuer_file, cert_file, ocsp_req_file))
-    print cmd
-    subprocess.check_output(cmd, shell=True)
     with open(ocsp_req_file) as f:
         ocsp_req = f.read()
     return ocsp_req
@@ -88,9 +76,8 @@ def fetch_until(cert_file, issuer_file, url, initial, final):
     while True:
         time.sleep(0.25)
         if time.time() > timeout:
-            print("Timed out waiting for OCSP to go from '%s' to '%s'" % (
+            raise Exception("Timed out waiting for OCSP to go from '%s' to '%s'" % (
                 initial, final))
-            die(ExitStatus.OCSPFailure)
         responses = fetch_ocsp(ocsp_request, url)
         # This variable will be true at the end of the loop if all the responses
         # matched the final state.
@@ -104,42 +91,29 @@ def fetch_until(cert_file, issuer_file, url, initial, final):
                 continue
             else:
                 print verify_output
-                print("OCSP response didn't match '%s' or '%s'" %(
+                raise Exception("OCSP response didn't match '%s' or '%s'" %(
                     initial, final))
-                die(ExitStatus.OCSPFailure)
         if all_final:
             # Check that all responses were equal to each other.
             for resp in responses:
                 if resp != responses[0]:
-                    print "OCSP responses differed:"
-                    print(base64.b64encode(responses[0]))
-                    print(" vs ")
-                    print(base64.b64encode(resp))
-                    die(ExitStatus.OCSPFailure)
+                    raise Exception("OCSP responses differed: %s vs %s" %(
+                        base64.b64encode(responses[0]), base64.b64encode(resp)))
             return
 
 def ocsp_verify(cert_file, issuer_file, ocsp_response):
     ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
     with open(ocsp_resp_file, "w") as f:
         f.write(ocsp_response)
-    ocsp_verify_cmd = """openssl ocsp -no_nonce -issuer %s -cert %s \
+    output = run("openssl ocsp -no_nonce -issuer %s -cert %s \
       -verify_other %s -CAfile test/test-root.pem \
-      -respin %s""" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
-    print ocsp_verify_cmd
-    try:
-        output = subprocess.check_output(ocsp_verify_cmd,
-            shell=True, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        output = e.output
-        print output
-        print "subprocess returned non-zero: %s" % e
-        die(ExitStatus.OCSPFailure)
+      -respin %s" % (issuer_file, cert_file, issuer_file, ocsp_resp_file))
     # OpenSSL doesn't always return non-zero when response verify fails, so we
     # also look for the string "Response Verify Failure"
     verify_failure = "Response Verify Failure"
     if re.search(verify_failure, output):
         print output
-        die(ExitStatus.OCSPFailure)
+        raise Exception("OCSP verify failure")
     return output
 
 def wait_for_ocsp_good(cert_file, issuer_file, url):
@@ -188,8 +162,7 @@ def test_ct_submission():
     auth_and_issue([random_domain()])
     submissions = urllib2.urlopen(url).read()
     if int(submissions) != expected_submissions:
-        print "Expected %d submissions, found %s" % (expected_submissions, submissions)
-        die(ExitStatus.CTFailure)
+        raise Exception("Expected %d CT submissions, found %s" % (expected_submissions, submissions))
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
@@ -203,23 +176,18 @@ def test_expiration_mailer():
     no_reminder = expiry + datetime.timedelta(days=-31)
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
-    try:
-        urllib2.urlopen("http://localhost:9381/clear", data='')
-        print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-            default_config_dir, no_reminder)
-        print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-            default_config_dir, first_reminder)
-        print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-            default_config_dir, last_reminder)
-        resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
-        mailcount = int(resp.read())
-        if mailcount != 2:
-            print("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
-            die(1)
-    except Exception as e:
-        print("\nExpiry mailer failed:")
-        print(e)
-        die(1)
+
+    urllib2.urlopen("http://localhost:9381/clear", data='')
+    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        default_config_dir, no_reminder)
+    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        default_config_dir, first_reminder)
+    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        default_config_dir, last_reminder)
+    resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
+    mailcount = int(resp.read())
+    if mailcount != 2:
+        raise("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
 
 def test_revoke_by_account():
     cert_file_pem = os.path.join(tempdir, "revokeme.pem")
@@ -240,9 +208,8 @@ def test_caa():
         chisel.expect_problem("urn:acme:error:connection",
             lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
-def run_custom(cmd, cwd=None):
-    if subprocess.Popen(cmd, shell=True, cwd=cwd, executable='/bin/bash').wait() != 0:
-        die(ExitStatus.PythonFailure)
+def run(cmd, **kwargs):
+    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
 
 def run_client_tests():
     root = os.environ.get("CERTBOT_PATH")
@@ -250,7 +217,7 @@ def run_client_tests():
         "Please set CERTBOT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
-    run_custom(cmd, cwd=root)
+    run(cmd, cwd=root)
 
 def test_single_ocsp():
     """Run the single-ocsp command, which is used to generate OCSP responses for
@@ -259,18 +226,14 @@ def test_single_ocsp():
        check that it successfully answers OCSP requests, and shut the responder
        back down.
     """
-    try:
-        subprocess.check_output("""./bin/single-ocsp -issuer test/test-root.pem \
-                    -responder test/test-root.pem \
-                    -target test/test-ca2.pem \
-                    -pkcs11 test/test-root.key-pkcs11.json \
-                    -thisUpdate 2016-09-02T00:00:00Z \
-                    -nextUpdate 2020-09-02T00:00:00Z \
-                    -status 0 \
-                    -out /tmp/issuer-ocsp-responses.txt""", shell=True)
-    except subprocess.CalledProcessError as e:
-        print("\nFailed to run single-ocsp: %s" % e)
-        die(ExitStatus.PythonFailure)
+    run("./bin/single-ocsp -issuer test/test-root.pem \
+            -responder test/test-root.pem \
+            -target test/test-ca2.pem \
+            -pkcs11 test/test-root.key-pkcs11.json \
+            -thisUpdate 2016-09-02T00:00:00Z \
+            -nextUpdate 2020-09-02T00:00:00Z \
+            -status 0 \
+            -out /tmp/issuer-ocsp-responses.txt")
 
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
@@ -282,8 +245,8 @@ def test_single_ocsp():
     p.send_signal(signal.SIGTERM)
     p.wait()
 
-def get_future_output(cmd, date, cwd=None):
-    return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
+def get_future_output(cmd, date):
+    return run(cmd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")})
 
 def test_expired_authz_purger():
     def expect(target_time, num):
@@ -291,16 +254,12 @@ def test_expired_authz_purger():
         if num is not None:
             expected_output = 'Deleted a total of %d expired pending authorizations' % num
 
-        try:
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
-            if expected_output not in out:
-                print(("expired-authz-purger did not print '%s'. " +
-                      "Maybe not built with `integration` build tag? Output:\n%s") % (
-                      expected_output, out))
-                die(ExitStatus.NodeFailure)
-        except subprocess.CalledProcessError as e:
-            print("\nFailed to run authz purger: %s" % e)
-            die(ExitStatus.NodeFailure)
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
+        if 'via FAKECLOCK' not in out:
+            raise Exception("expired-authz-purger was not built with `integration` build tag")
+        if expected_output not in out:
+            raise Exception("expired-authz-purger did not print '%s'.  Output:\n%s" % (
+                  expected_output, out))
 
     now = datetime.datetime.utcnow()
 
@@ -329,11 +288,8 @@ def test_admin_revoker_cert():
     cert = auth_and_issue([random_domain()], cert_output=cert_file_pem).body
     serial = "%x" % cert.get_serial_number()
     # Revoke certificate by serial
-    if subprocess.Popen(
-        "./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
-                default_config_dir, serial, 1), shell=True).wait() != 0:
-        print("Failed to revoke certificate")
-        die(ExitStatus.RevokerFailure)
+    run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
+        default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
@@ -343,23 +299,17 @@ def test_admin_revoker_authz():
     authz_resource = chisel.make_client().request_domain_challenges("ar-auth-test.com")
     url = authz_resource.uri
     # Revoke authorization by domain
-    try:
-        output = subprocess.check_output(
-                "./bin/admin-revoker auth-revoke --config %s/admin-revoker.json ar-auth-test.com" % (default_config_dir), shell=True)
-    except subprocess.CalledProcessError as e:
-        print("Failed to revoke authorization: %s", e)
-        die(ExitStatus.RevokerFailure)
+    output = run(
+            "./bin/admin-revoker auth-revoke --config %s/admin-revoker.json ar-auth-test.com" % (default_config_dir))
     if not output.rstrip().endswith("Revoked 1 pending authorizations and 0 final authorizations"):
-        print("admin-revoker didn't revoke the expected number of pending and finalized authorizations")
-        die(ExitStatus.RevokerFailure)
+        raise Exception("admin-revoker didn't revoke the expected number of pending and finalized authorizations")
     # Check authorization has actually been revoked
     response = urllib2.urlopen(url)
     data = json.loads(response.read())
     if data['status'] != "revoked":
-        print("Authorization wasn't revoked")
-        die(ExitStatus.RevokerFailure)
+        raise Exception("Authorization wasn't revoked")
 
-exit_status = None
+exit_status = 1
 tempdir = tempfile.mkdtemp()
 
 def main():
@@ -373,12 +323,11 @@ def main():
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_node=False)
+    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False)
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
-        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --certbot, --chisel, or --custom"
-        die(ExitStatus.IncorrectCommandLineArgs)
+        raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, or --custom")
 
     # Keep track of whether we started the Boulder servers and need to shut them down.
     started_servers = False
@@ -389,7 +338,7 @@ def main():
         # WFE not running, start all of Boulder.
         started_servers = True
         if not startservers.start(race_detection=True):
-            die(ExitStatus.Error)
+            raise Exception("startservers failed")
 
     if args.run_all or args.run_chisel:
         run_chisel()
@@ -402,11 +351,13 @@ def main():
         run_client_tests()
 
     if args.custom:
-        run_custom(args.custom)
+        run(args.custom)
 
     if started_servers and not startservers.check():
-        die(ExitStatus.Error)
-    exit_status = ExitStatus.OK
+        raise Exception("startservers.check failed")
+
+    global exit_status
+    exit_status = 0
 
 def run_chisel():
     # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add DNS and
@@ -427,16 +378,14 @@ def run_chisel():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
-        exit_status = ExitStatus.Error
-        raise
+    except subprocess.CalledProcessError as e:
+        raise Exception("%s. Output:\n%s" % (e, e.output))
 
 @atexit.register
 def stop():
     import shutil
     shutil.rmtree(tempdir)
-    if exit_status == ExitStatus.OK:
+    if exit_status == 0:
         print("\n\nSUCCESS")
     else:
-        if exit_status:
-            print("\n\nFAILURE %d" % exit_status)
+        print("\n\nFAILURE")
