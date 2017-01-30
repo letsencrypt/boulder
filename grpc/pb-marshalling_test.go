@@ -114,6 +114,26 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "pbToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
+	ip := net.ParseIP("1.1.1.1")
+	chall.ValidationRecord = []core.ValidationRecord{
+		core.ValidationRecord{
+			Hostname:          "host",
+			Port:              "2020",
+			AddressesResolved: []net.IP{ip},
+			AddressUsed:       ip,
+			URL:               "url",
+			Authorities:       []string{"auth"},
+		},
+	}
+	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
+	pb, err = challengeToPB(chall)
+	test.AssertNotError(t, err, "challengeToPB failed")
+	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
+
+	recon, err = pbToChallenge(pb)
+	test.AssertNotError(t, err, "pbToChallenge failed")
+	test.AssertDeepEquals(t, recon, chall)
+
 	_, err = pbToChallenge(nil)
 	test.AssertError(t, err, "pbToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)

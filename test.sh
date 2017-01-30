@@ -191,7 +191,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
     source ${CERTBOT_PATH}/${VENV_NAME:-venv}/bin/activate
   fi
 
-  run python test/integration-test.py --all
+  run python test/integration-test.py --chisel
   end_context #integration
 fi
 

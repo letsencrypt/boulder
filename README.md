@@ -237,3 +237,11 @@ you will get conflicting types between our vendored version and the cfssl vendor
 
     godep update golang.org/x/crypto/...  github.com/cloudflare/cfssl/... github.com/google/certificate-transparency/...
     godep save ./...
+
+Adding RPCs
+-----------
+
+Boulder is moving towards using gRPC for all RPCs. To add a new RPC method, add
+it to the relevant .proto file, then run:
+
+    docker-compose run boulder go generate ./path/to/pkg/...
