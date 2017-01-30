@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -115,6 +116,7 @@ func main() {
 		ContactExporter struct {
 			cmd.DBConfig
 			cmd.PasswordConfig
+			Features map[string]bool
 		}
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
@@ -138,6 +140,8 @@ func main() {
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
+	err = features.Set(cfg.ContactExporter.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	dbURL, err := cfg.ContactExporter.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

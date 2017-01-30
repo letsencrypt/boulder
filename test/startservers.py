@@ -48,6 +48,9 @@ def start(race_detection):
     global processes
     forward()
     progs = [
+        # The gsb-test-srv needs to be started before the VA or its intial DB
+        # update will fail and all subsequent lookups will be invalid
+        'gsb-test-srv -apikey my-voice-is-my-passport',
         'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
         'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
@@ -135,11 +138,14 @@ def check():
 
 @atexit.register
 def stop():
-    # When we are about to exit, send SIGTERM to each subprocess and wait for
+    # When we are about to exit, send SIGKILL to each subprocess and wait for
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
+    # TODO(jsha): Switch to SIGTERM once we fix
+    # https://github.com/letsencrypt/boulder/issues/2410 and remove AMQP, to
+    # make shutdown less noisy.
     for p in processes:
         if p.poll() is None:
-            p.send_signal(signal.SIGTERM)
+            p.send_signal(signal.SIGKILL)
     for p in processes:
         p.wait()

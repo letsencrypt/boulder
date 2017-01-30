@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -44,6 +45,7 @@ type config struct {
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
 	Syslog    cmd.SyslogConfig
+	Features  map[string]bool
 }
 
 type certificateStorage interface {
@@ -122,6 +124,8 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 	var conf config
 	err = json.Unmarshal(configJSON, &conf)
 	cmd.FailOnError(err, "Failed to parse config file")
+	err = features.Set(conf.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
 

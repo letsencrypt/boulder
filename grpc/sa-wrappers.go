@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/revocation"
+	sa "github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -223,6 +224,10 @@ func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.
 	return int(*response.Count), nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	return sac.inner.CountInvalidAuthorizations(ctx, request)
+}
+
 func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
 	response, err := sac.inner.GetSCTReceipt(ctx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
 	if err != nil {
@@ -417,10 +422,10 @@ func (sac StorageAuthorityClientWrapper) DeactivateAuthorization(ctx context.Con
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
-	inner core.StorageAuthority
+	inner *sa.SQLStorageAuthority
 }
 
-func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
+func NewStorageAuthorityServer(inner *sa.SQLStorageAuthority) *StorageAuthorityServerWrapper {
 	return &StorageAuthorityServerWrapper{inner}
 }
 
@@ -597,6 +602,10 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations(ctx context.
 
 	castedCount := int64(count)
 	return &sapb.Count{Count: &castedCount}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	return sas.inner.CountInvalidAuthorizations(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetSCTReceipt(ctx context.Context, request *sapb.GetSCTReceiptRequest) (*sapb.SignedCertificateTimestamp, error) {

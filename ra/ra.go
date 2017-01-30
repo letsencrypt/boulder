@@ -24,12 +24,14 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -364,6 +366,44 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
+	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
+	// To implement this limit, we need to use an RPC that is defined only in
+	// gRPC, not in AMQP-RPC. So we check the underlying type of our SA client. If
+	// it corresponds to the gRPC client, we know we can use the gRPC-only method.
+	// Otherwise, we don't bother checking this limit.
+	saGRPC, usingGRPC := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+	if !limit.Enabled() || !usingGRPC {
+		return nil
+	}
+	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+	earliest := latest.Add(-limit.Window.Duration)
+	latestNanos := latest.UnixNano()
+	earliestNanos := earliest.UnixNano()
+	count, err := saGRPC.CountInvalidAuthorizations(ctx, &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &regID,
+		Hostname:       &hostname,
+		Range: &sapb.Range{
+			Earliest: &earliestNanos,
+			Latest:   &latestNanos,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if count == nil {
+		return fmt.Errorf("nil count")
+	}
+	// Most rate limits have a key for overrides, but there is no meaningful key
+	// here.
+	noKey := ""
+	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
+		return core.RateLimitedError("Too many invalid authorizations recently.")
+	}
+	return nil
+}
+
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
@@ -376,6 +416,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if err = ra.checkPendingAuthorizationLimit(ctx, regID); err != nil {
+		return authz, err
+	}
+
+	if err = ra.checkInvalidAuthorizationLimit(ctx, regID, identifier.Value); err != nil {
 		return authz, err
 	}
 

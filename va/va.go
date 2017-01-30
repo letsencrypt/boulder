@@ -1,9 +1,11 @@
 package va
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -289,6 +291,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	return body, validationRecords, nil
 }
 
+// certNames collects up all of a certificate's subject names (Subject CN and
+// Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
+// error message
+func certNames(cert *x509.Certificate) []string {
+	var names []string
+	if cert.Subject.CommonName != "" {
+		names = append(names, cert.Subject.CommonName)
+	}
+	names = append(names, cert.DNSNames...)
+	names = core.UniqueLowerNames(names)
+	return names
+}
+
 func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
@@ -332,17 +347,21 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.AuditInfo(fmt.Sprintf("TLS-SNI-01 challenge for %s received certificate (%d of %d): cert=[%s]",
 			identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
-	for _, name := range certs[0].DNSNames {
+	leafCert := certs[0]
+	for _, name := range leafCert.DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			return validationRecords, nil
 		}
 	}
 
+	names := certNames(leafCert)
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for TLS-SNI-01 challenge. "+
+			"Requested %s from %s. Received %d certificate(s), "+
+			"first certificate had names %q",
+		zName, hostPort, len(certs), strings.Join(names, ", "))
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
-	return validationRecords, probs.Unauthorized(
-		fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
-			"Requested %s from %s. Received certificate containing '%s'",
-			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")))
+	return validationRecords, probs.Unauthorized(errText)
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -385,11 +404,19 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	return va.validateTLSWithZName(ctx, identifier, challenge, ZName)
 }
 
+// badTLSHeader contains the string 'HTTP /' which is returned when
+// we try to talk TLS to a server that only talks HTTP
+var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
+
 // parseHTTPConnError returns a ProblemDetails corresponding to an error
 // that occurred during domain validation.
 func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
+	}
+
+	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
+		return probs.Malformed(fmt.Sprintf("%s: Server only speaks HTTP, not TLS", detail))
 	}
 
 	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
