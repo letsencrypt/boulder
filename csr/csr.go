@@ -49,7 +49,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(key); err != nil {
-		return fmt.Errorf("invalid public key in CSR: %s", err)
+		return berrors.MalformedError("invalid public key in CSR: %s", err)
 	}
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
 		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
@@ -69,10 +69,10 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		return invalidNoDNS
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
-		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
+		return berrors.MalformedError("CN was longer than %d bytes", maxCNLength)
 	}
 	if maxNames > 0 && len(csr.DNSNames) > maxNames {
-		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
+		return berrors.MalformedError("CSR contains more than %d DNS names", maxNames)
 	}
 	badNames := []string{}
 	for _, name := range csr.DNSNames {
@@ -84,7 +84,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		}
 	}
 	if len(badNames) > 0 {
-		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+		return berrors.MalformedError("policy forbids issuing for: %s", strings.Join(badNames, ", "))
 	}
 	return nil
 }

@@ -583,7 +583,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	// We expect that calling NewAuthorization will fail gracefully with an error
 	// about the existing validations
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertEquals(t, err.Error(), "NewAuthorization: unable to get existing validations for regID: 1, identifier: not-example.com")
+	test.AssertEquals(t, err.Error(), "boulder/ra.NewAuthorization: unable to get existing validations for regID: 1, identifier: not-example.com")
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -807,7 +807,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	// Registration has key == AccountKeyA
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
-	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
+	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 
 	t.Log("DONE TestCertificateKeyNotEqualAccountKey")
 }

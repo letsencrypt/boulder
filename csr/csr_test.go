@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -106,7 +107,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CN was longer than 64 bytes"),
+			berrors.MalformedError("CN was longer than 64 bytes"),
 		},
 		{
 			signedReqWithHosts,
@@ -114,7 +115,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("CSR contains more than 1 DNS names"),
+			berrors.MalformedError("CSR contains more than 1 DNS names"),
 		},
 		{
 			signedReqWithBadNames,
@@ -122,7 +123,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
+			berrors.MalformedError("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
 		},
 		{
 			signedReqWithEmailAddress,

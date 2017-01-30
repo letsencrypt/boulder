@@ -23,7 +23,7 @@ func algorithmForKey(key *jose.JsonWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", berrors.SignatureValidation("no suitable algorithm for key type")
+	return "", berrors.SignatureValidationError("no suitable algorithm for key type")
 }
 
 const (

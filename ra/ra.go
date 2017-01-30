@@ -979,7 +979,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	if response.Type != "" && ch.Type != response.Type {
 		ra.stats.Inc("StartChallengeWrongType", 1)
-		return authz, berrors.Malformed(
+		return authz, berrors.MalformedError(
 			"invalid challenge update: provided type was %s but actual type is %s",
 			response.Type,
 			ch.Type,
