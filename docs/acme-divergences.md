@@ -8,7 +8,7 @@ Current draft: [`draft-ietf-acme-acme-04`](https://tools.ietf.org/html/draft-iet
 
 ## [Section 5](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5)
 
-Boulder does not implement the [general JWS syntax](https://tools.ietf.org/html/rfc7515#page-20), but only accepts the [flattened syntax](https://tools.ietf.org/html/rfc7515#page-21). All examples in draft-ietf-acme-04 are using the supported flattened syntax.
+Boulder does not implement the [general JWS syntax](https://tools.ietf.org/html/rfc7515#page-20), but only accepts the [flattened syntax](https://tools.ietf.org/html/rfc7515#page-21).
 
 ## [Section 5.2](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.2)
 
