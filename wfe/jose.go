@@ -23,7 +23,7 @@ func algorithmForKey(key *jose.JsonWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", berrors.SignatureValidationError("no suitable algorithm for key type")
+	return "", berrors.SignatureValidationError("no signature algorithms suitable for given key type")
 }
 
 const (
@@ -50,7 +50,7 @@ func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (str
 		)
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return invalidJWSAlgorithm, berrors.SignatureValidationError(
+		return invalidAlgorithmOnKey, berrors.SignatureValidationError(
 			"algorithm '%s' on JWK is unacceptable",
 			key.Algorithm,
 		)

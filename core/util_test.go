@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/square/go-jose.v1"
 
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -117,6 +118,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		statusCode int
 		problem    probs.ProblemType
 	}{
+		// boulder/core error types
 		{InternalServerError("foo"), 500, probs.ServerInternalProblem},
 		{NotSupportedError("foo"), 501, probs.ServerInternalProblem},
 		{MalformedRequestError("foo"), 400, probs.MalformedProblem},
@@ -126,6 +128,14 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{RateLimitedError("foo"), 429, probs.RateLimitedProblem},
 		{LengthRequiredError("foo"), 411, probs.MalformedProblem},
 		{BadNonceError("foo"), 400, probs.BadNonceProblem},
+		// boulder/errors error types
+		{berrors.InternalServerError("foo"), 500, probs.ServerInternalProblem},
+		{berrors.NotSupportedError("foo"), 501, probs.ServerInternalProblem},
+		{berrors.MalformedError("foo"), 400, probs.MalformedProblem},
+		{berrors.UnauthorizedError("foo"), 403, probs.UnauthorizedProblem},
+		{berrors.NotFoundError("foo"), 404, probs.MalformedProblem},
+		{berrors.SignatureValidationError("foo"), 400, probs.MalformedProblem},
+		{berrors.RateLimitError("foo"), 429, probs.RateLimitedProblem},
 	}
 	for _, c := range testCases {
 		p := ProblemDetailsForError(c.err, "k")

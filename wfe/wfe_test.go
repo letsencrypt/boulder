@@ -808,7 +808,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com","status":403}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -1796,7 +1796,7 @@ func TestBadKeyCSR(t *testing.T) {
 
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the

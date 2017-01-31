@@ -404,7 +404,7 @@ func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
 // remaining messages are processed.
 func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 	tooManyGoroutines := rpcResponse{
-		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
+		Error: wrapError(berrors.TooManyRequests("RPC server has spawned too many Goroutines")),
 	}
 	tooManyRequestsResponse, err := json.Marshal(tooManyGoroutines)
 	if err != nil {

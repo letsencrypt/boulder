@@ -13,7 +13,7 @@ const (
 	NotFound
 	SignatureValidation
 	RateLimit
-	TooManyRequets
+	TooManyRequests
 )
 
 // BoulderError represents internal Boulder errors
@@ -72,5 +72,5 @@ func RateLimitError(msg string, args ...interface{}) error {
 }
 
 func TooManyRequestsError(msg string, args ...interface{}) error {
-	return New(TooManyRequets, msg, args...)
+	return New(TooManyRequests, msg, args...)
 }

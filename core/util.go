@@ -23,9 +23,11 @@ import (
 	"time"
 	"unicode"
 
+	jose "gopkg.in/square/go-jose.v1"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
-	jose "gopkg.in/square/go-jose.v1"
 )
 
 // Package Variables Variables
@@ -112,6 +114,31 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	switch e := err.(type) {
 	case *probs.ProblemDetails:
 		return e
+	case *berrors.BoulderError:
+		switch e.Type {
+		case berrors.NotSupported:
+			return &probs.ProblemDetails{
+				Type:       probs.ServerInternalProblem,
+				Detail:     fmt.Sprintf("%s :: %s", msg, err),
+				HTTPStatus: http.StatusNotImplemented,
+			}
+		case berrors.Malformed, berrors.SignatureValidation:
+			return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+		case berrors.Unauthorized:
+			return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
+		case berrors.NotFound:
+			return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+		case berrors.RateLimit:
+			return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
+		case berrors.InternalServer, berrors.TooManyRequests:
+			// Internal server error messages may include sensitive data, so we do
+			// not include it.
+			return probs.ServerInternal(msg)
+		default:
+			// Internal server error messages may include sensitive data, so we do
+			// not include it.
+			return probs.ServerInternal(msg)
+		}
 	case MalformedRequestError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case NotSupportedError:
