@@ -15,9 +15,9 @@ import (
 	"golang.org/x/net/idna"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/reloader"
 )
 
@@ -127,22 +127,22 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 }
 
 var (
-	errInvalidIdentifier   = probs.Malformed("Invalid identifier type")
-	errNonPublic           = probs.Malformed("Name does not end in a public suffix")
-	errICANNTLD            = probs.Malformed("Name is an ICANN TLD")
-	errBlacklisted         = probs.RejectedIdentifier("Policy forbids issuing for name")
-	errNotWhitelisted      = probs.Malformed("Name is not whitelisted")
-	errInvalidDNSCharacter = probs.Malformed("Invalid character in DNS name")
-	errNameTooLong         = probs.Malformed("DNS name too long")
-	errIPAddress           = probs.Malformed("Issuance for IP addresses not supported")
-	errTooManyLabels       = probs.Malformed("DNS name has too many labels")
-	errEmptyName           = probs.Malformed("DNS name was empty")
-	errNameEndsInDot       = probs.Malformed("DNS name ends in a period")
-	errTooFewLabels        = probs.Malformed("DNS name does not have enough labels")
-	errLabelTooShort       = probs.Malformed("DNS label is too short")
-	errLabelTooLong        = probs.Malformed("DNS label is too long")
-	errIDNNotSupported     = probs.UnsupportedIdentifier("Internationalized domain names (starting with xn--) not yet supported")
-	errMalformedIDN        = probs.Malformed("DNS label contains malformed punycode")
+	errInvalidIdentifier   = berrors.MalformedError("Invalid identifier type")
+	errNonPublic           = berrors.MalformedError("Name does not end in a public suffix")
+	errICANNTLD            = berrors.MalformedError("Name is an ICANN TLD")
+	errBlacklisted         = berrors.RejectedIdentifierError("Policy forbids issuing for name")
+	errNotWhitelisted      = berrors.MalformedError("Name is not whitelisted")
+	errInvalidDNSCharacter = berrors.MalformedError("Invalid character in DNS name")
+	errNameTooLong         = berrors.MalformedError("DNS name too long")
+	errIPAddress           = berrors.MalformedError("Issuance for IP addresses not supported")
+	errTooManyLabels       = berrors.MalformedError("DNS name has too many labels")
+	errEmptyName           = berrors.MalformedError("DNS name was empty")
+	errNameEndsInDot       = berrors.MalformedError("DNS name ends in a period")
+	errTooFewLabels        = berrors.MalformedError("DNS name does not have enough labels")
+	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
+	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
+	errIDNNotSupported     = berrors.UnsupportedIdentifierError("Internationalized domain names (starting with xn--) not yet supported")
+	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
+
+	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // DNSError wraps a DNS error with various relevant information
@@ -67,4 +69,11 @@ func ProblemDetailsFromDNSError(err error) *probs.ProblemDetails {
 		return probs.ConnectionFailure(dnsErr.Error())
 	}
 	return probs.ConnectionFailure(detailServerFailure)
+}
+
+func BoulderErrorFromDNSError(err error) error {
+	if dnsErr, ok := err.(*DNSError); ok {
+		return berrors.ConnectionFailureError(dnsErr.Error())
+	}
+	return berrors.ConnectionFailureError(detailServerFailure)
 }

@@ -340,20 +340,21 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, tc := range testFailures {
-		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
-		if problem.Type != probs.InvalidEmailProblem {
-			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		if !berrors.Is(err, berrors.InvalidEmail) {
+			t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
 		}
-		if problem.Detail != tc.expected {
+
+		if err.Error() != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, problem.Detail, tc.expected)
+				tc.input, err.Error(), tc.expected)
 		}
 	}
 
 	for _, addr := range testSuccesses {
-		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
-			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
-				addr, prob)
+		if err := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); err != nil {
+			t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
+				addr, err)
 		}
 	}
 }
@@ -681,11 +682,8 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
-	if _, ok := err.(*probs.ProblemDetails); !ok {
-		t.Errorf("Wrong type for NewAuthorization error: expected *probs.ProblemDetails, got %T", err)
-	}
-	if err.(*probs.ProblemDetails).Type != probs.MalformedProblem {
-		t.Errorf("Incorrect problem type. Expected %s got %s", probs.MalformedProblem, err.(*probs.ProblemDetails).Type)
+	if !berrors.Is(err, berrors.Malformed) {
+		t.Errorf("Wrong type for NewAuthorization error: expected berrors.Malformed type berrors.BoulderError, got %T", err)
 	}
 }
 

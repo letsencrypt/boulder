@@ -14,6 +14,10 @@ const (
 	SignatureValidation
 	RateLimit
 	TooManyRequests
+	RejectedIdentifier
+	UnsupportedIdentifier
+	InvalidEmail
+	ConnectionFailure
 )
 
 // BoulderError represents internal Boulder errors
@@ -42,6 +46,20 @@ func Is(err error, errType ErrorType) bool {
 	}
 	return bErr.Type == errType
 }
+
+// ChangeType is a convenience function for switching the internal type of a BoulderError.
+// If the passed error is not a BoulderError it will simply be wrapped with the requested
+// type
+func ChangeType(err error, errType ErrorType) error {
+	bErr, ok := err.(*BoulderError)
+	if !ok {
+		return New(errType, err.Error())
+	}
+	bErr.Type = errType
+	return bErr
+}
+
+// These methods should all be generated programmatically
 
 func InternalServerError(msg string, args ...interface{}) error {
 	return New(InternalServer, msg, args...)
@@ -73,4 +91,20 @@ func RateLimitError(msg string, args ...interface{}) error {
 
 func TooManyRequestsError(msg string, args ...interface{}) error {
 	return New(TooManyRequests, msg, args...)
+}
+
+func RejectedIdentifierError(msg string, args ...interface{}) error {
+	return New(RejectedIdentifier, msg, args...)
+}
+
+func UnsupportedIdentifierError(msg string, args ...interface{}) error {
+	return New(UnsupportedIdentifier, msg, args...)
+}
+
+func InvalidEmailError(msg string, args ...interface{}) error {
+	return New(InvalidEmail, msg, args...)
+}
+
+func ConnectionFailureError(msg string, args ...interface{}) error {
+	return New(ConnectionFailure, msg, args...)
 }

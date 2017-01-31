@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"reflect"
 	"sort"
 	"testing"
 
 	"gopkg.in/square/go-jose.v1"
 
-	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -110,48 +107,4 @@ func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
-}
-
-func TestProblemDetailsFromError(t *testing.T) {
-	testCases := []struct {
-		err        error
-		statusCode int
-		problem    probs.ProblemType
-	}{
-		// boulder/core error types
-		{InternalServerError("foo"), 500, probs.ServerInternalProblem},
-		{NotSupportedError("foo"), 501, probs.ServerInternalProblem},
-		{MalformedRequestError("foo"), 400, probs.MalformedProblem},
-		{UnauthorizedError("foo"), 403, probs.UnauthorizedProblem},
-		{NotFoundError("foo"), 404, probs.MalformedProblem},
-		{SignatureValidationError("foo"), 400, probs.MalformedProblem},
-		{RateLimitedError("foo"), 429, probs.RateLimitedProblem},
-		{LengthRequiredError("foo"), 411, probs.MalformedProblem},
-		{BadNonceError("foo"), 400, probs.BadNonceProblem},
-		// boulder/errors error types
-		{berrors.InternalServerError("foo"), 500, probs.ServerInternalProblem},
-		{berrors.NotSupportedError("foo"), 501, probs.ServerInternalProblem},
-		{berrors.MalformedError("foo"), 400, probs.MalformedProblem},
-		{berrors.UnauthorizedError("foo"), 403, probs.UnauthorizedProblem},
-		{berrors.NotFoundError("foo"), 404, probs.MalformedProblem},
-		{berrors.SignatureValidationError("foo"), 400, probs.MalformedProblem},
-		{berrors.RateLimitError("foo"), 429, probs.RateLimitedProblem},
-	}
-	for _, c := range testCases {
-		p := ProblemDetailsForError(c.err, "k")
-		if p.HTTPStatus != c.statusCode {
-			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, p.HTTPStatus)
-		}
-		if probs.ProblemType(p.Type) != c.problem {
-			t.Errorf("Expected problem urn %#v, got %#v", c.problem, p.Type)
-		}
-	}
-
-	expected := &probs.ProblemDetails{
-		Type:       probs.MalformedProblem,
-		HTTPStatus: 200,
-		Detail:     "gotcha",
-	}
-	p := ProblemDetailsForError(expected, "k")
-	test.AssertDeepEquals(t, expected, p)
 }

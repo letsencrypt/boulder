@@ -178,13 +178,13 @@ func problemIsTimeout(err error) bool {
 	return false
 }
 
-func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) error {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return probs.InvalidEmail(unparseableEmailDetail)
+		return berrors.InvalidEmailError(unparseableEmailDetail)
 	}
 	if len(emails) > 1 {
-		return probs.InvalidEmail(multipleAddressDetail)
+		return berrors.InvalidEmailError(multipleAddressDetail)
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -210,21 +210,17 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	}
 
 	if errMX != nil {
-		prob := bdns.ProblemDetailsFromDNSError(errMX)
-		prob.Type = probs.InvalidEmailProblem
-		return prob
+		return berrors.ChangeType(bdns.BoulderErrorFromDNSError(errMX), berrors.InvalidEmail)
 	} else if len(resultMX) > 0 {
 		return nil
 	}
 	if errA != nil {
-		prob := bdns.ProblemDetailsFromDNSError(errA)
-		prob.Type = probs.InvalidEmailProblem
-		return prob
+		return berrors.ChangeType(bdns.BoulderErrorFromDNSError(errA), berrors.InvalidEmail)
 	} else if len(resultA) > 0 {
 		return nil
 	}
 
-	return probs.InvalidEmail(emptyDNSResponseDetail)
+	return berrors.InvalidEmailError(emptyDNSResponseDetail)
 }
 
 type certificateRequestEvent struct {
@@ -334,11 +330,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 		start := ra.clk.Now()
 		ra.stats.Inc("ValidateEmail.Calls", 1)
-		problem := validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
+		err = validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
 		ra.stats.TimingDuration("ValidateEmail.Latency", ra.clk.Now().Sub(start))
-		if problem != nil {
+		if err != nil {
 			ra.stats.Inc("ValidateEmail.Errors", 1)
-			return problem
+			return err
 		}
 		ra.stats.Inc("ValidateEmail.Successes", 1)
 	}
