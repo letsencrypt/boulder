@@ -65,7 +65,6 @@ func (s *StatsdScope) Scope() string {
 
 // Inc increments the given stat and adds the Scope's prefix to the name
 func (s *StatsdScope) Inc(stat string, value int64) error {
-	autoCounter(s.prefix + stat).Add(float64(1))
 	return s.statter.Inc(s.prefix+stat, value, 1.0)
 }
 
@@ -76,26 +75,22 @@ func (s *StatsdScope) Dec(stat string, value int64) error {
 
 // Gauge sends a gauge stat and adds the Scope's prefix to the name
 func (s *StatsdScope) Gauge(stat string, value int64) error {
-	autoGauge(s.prefix + stat).Set(float64(value))
 	return s.statter.Gauge(s.prefix+stat, value, 1.0)
 }
 
 // GaugeDelta sends the change in a gauge stat and adds the Scope's prefix to the name
 func (s *StatsdScope) GaugeDelta(stat string, value int64) error {
-	autoGauge(s.prefix + stat).Add(float64(value))
 	return s.statter.GaugeDelta(s.prefix+stat, value, 1.0)
 }
 
 // Timing sends a latency stat and adds the Scope's prefix to the name
 func (s *StatsdScope) Timing(stat string, delta int64) error {
-	autoSummary(s.prefix + stat + "_seconds").Observe(float64(delta))
 	return s.statter.Timing(s.prefix+stat, delta, 1.0)
 }
 
 // TimingDuration sends a latency stat as a time.Duration and adds the Scope's
 // prefix to the name
 func (s *StatsdScope) TimingDuration(stat string, delta time.Duration) error {
-	autoSummary(s.prefix + stat + "_seconds").Observe(delta.Seconds())
 	return s.statter.TimingDuration(s.prefix+stat, delta, 1.0)
 }
 
@@ -106,7 +101,6 @@ func (s *StatsdScope) Set(stat string, value string) error {
 
 // SetInt sets a stat's integer value and adds the Scope's prefix to the name
 func (s *StatsdScope) SetInt(stat string, value int64) error {
-	autoGauge(s.prefix + stat).Set(float64(value))
 	return s.statter.SetInt(s.prefix+stat, value, 1.0)
 }
 
