@@ -22,6 +22,7 @@ type serverInterceptor struct {
 
 func cleanMethod(m string, trimService bool) string {
 	m = strings.TrimLeft(m, "-")
+	m = strings.Replace(m, "/", "_", -1)
 	if trimService {
 		s := strings.Split(m, "-")
 		if len(s) == 1 {

@@ -115,10 +115,12 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	sanitizedPath := strings.TrimPrefix(url.Path, "/")
 	sanitizedPath = strings.Replace(sanitizedPath, "/", ".", -1)
 
+	sanitizedHost := strings.Replace(url.Host, ":", "_", -1)
+
 	return &Log{
 		logID:    b64PK,
 		uri:      uri,
-		statName: fmt.Sprintf("%s.%s", url.Host, sanitizedPath),
+		statName: fmt.Sprintf("%s.%s", sanitizedHost, sanitizedPath),
 		client:   client,
 		verifier: verifier,
 	}, nil
