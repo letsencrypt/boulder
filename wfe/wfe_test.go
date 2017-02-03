@@ -689,6 +689,8 @@ func TestRelativeDirectory(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
+	defer features.Reset()
 	wfe, fc := setupWFE(t)
 	mux := wfe.Handler()
 	mockLog := wfe.log.(*blog.Mock)
@@ -838,6 +840,18 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `INFO: `)
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
+
+	mockLog.Clear()
+	responseWriter.HeaderMap = http.Header{}
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, wfe.nonceService)))
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
 	mockLog.Clear()
 	responseWriter.Body.Reset()
@@ -1648,6 +1662,8 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1670,6 +1686,20 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<http://localhost/acme/issuer-cert>;rel="up"`)
+
+	// Valid serial, UseAIAIssuerURL: true
+	mockLog.Clear()
+	responseWriter = httptest.NewRecorder()
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
+	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
+	req.RemoteAddr = "192.168.0.1"
+	mux.ServeHTTP(responseWriter, req)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
 	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
