@@ -156,13 +156,26 @@ def test_ocsp():
     wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
 
 def test_ct_submission():
-    url = "http://localhost:4500/submissions"
-    submissions = urllib2.urlopen(url).read()
-    expected_submissions = int(submissions)+1
+    url_a = "http://localhost:4500/submissions"
+    url_b = "http://localhost:4501/submissions"
+    submissions_a = urllib2.urlopen(url_a).read()
+    submissions_b = urllib2.urlopen(url_a).read()
+    expected_a_submissions = int(submissions_a)+1
+    expected_b_submissions = int(submissions_b)+1
     auth_and_issue([random_domain()])
-    submissions = urllib2.urlopen(url).read()
-    if int(submissions) != expected_submissions:
-        raise Exception("Expected %d CT submissions, found %s" % (expected_submissions, submissions))
+    submissions_a = urllib2.urlopen(url_a).read()
+    if int(submissions_a) != expected_a_submissions:
+        raise Exception("Expected %d CT submissions to localhost:4500, found %s" % (expected_a_submissions, submissions_a))
+    r = 0
+    while True:
+        submissions_b = urllib2.urlopen(url_b).read()
+        if int(submissions_b) == expected_b_submissions:
+            break
+        if r > 10:
+            raise Exception("Expected %d CT submissions to localhost:4501, found %s" % (expected_b_submissions, submissions_b))
+        r += 1
+        time.sleep(1)
+
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
@@ -360,11 +373,11 @@ def run_chisel():
     # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add DNS and
     # TLS-SNI tests.
 
+    test_ct_submission()
     test_gsb_lookups()
     test_expired_authz_purger()
     test_multidomain()
     test_expiration_mailer()
-    test_ct_submission()
     test_caa()
     test_admin_revoker_cert()
     test_admin_revoker_authz()
