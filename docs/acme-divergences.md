@@ -64,6 +64,10 @@ Boulder implements draft-04 style key roll-over with a few divergences. Since Bo
 
 Boulder does not implement applications, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of application requirements Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4). Certificates are not proactively issued, a user must request issuance via the `new-cert` endpoint instead of assuming a certificate will be created once all required authorizations are validated.
 
+## [Section 7.](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-7)
+
+Boulder returns an `uri` instead of an `url` field in challenge objects.
+
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-7.3)
 
 Boulder implements `tls-sni-01` from [draft-ietf-acme-01 Section 7.3](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3) instead of the `tls-sni-02` validation method.
