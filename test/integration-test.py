@@ -125,6 +125,9 @@ def wait_for_ocsp_revoked(cert_file, issuer_file, url):
 def test_multidomain():
     auth_and_issue([random_domain(), random_domain()])
 
+def test_dns_challenge():
+    auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
+
 def test_gsb_lookups():
     """Attempt issuances for a GSB-blocked domain, and expect it to fail. Also
        check the gsb-test-srv's count of received queries to ensure it got a
@@ -357,8 +360,7 @@ def main():
     exit_status = 0
 
 def run_chisel():
-    # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add DNS and
-    # TLS-SNI tests.
+    # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add TLS-SNI test.
 
     test_gsb_lookups()
     test_expired_authz_purger()
@@ -371,6 +373,7 @@ def run_chisel():
     test_certificates_per_name()
     test_ocsp()
     test_single_ocsp()
+    test_dns_challenge()
 
 if __name__ == "__main__":
     try:
