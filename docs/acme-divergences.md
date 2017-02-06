@@ -6,6 +6,10 @@ This document details these differences, since ACME is not yet finalized it will
 
 Current draft: [`draft-ietf-acme-acme-04`](https://tools.ietf.org/html/draft-ietf-acme-acme-04).
 
+## [Section 5](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5)
+
+Boulder does not implement the [general JWS syntax](https://tools.ietf.org/html/rfc7515#page-20), but only accepts the [flattened syntax](https://tools.ietf.org/html/rfc7515#page-21).
+
 ## [Section 5.2](https://tools.ietf.org/html/draft-ietf-acme-acme-04#section-5.2)
 
 Boulder enforces the presence of the `jwk` field in JWS objects, and does not support the `kid` field.
