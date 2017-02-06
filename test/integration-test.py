@@ -156,6 +156,13 @@ def test_ocsp():
     wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
 
 def test_ct_submission():
+    # When testing config-next we use a mismatching set of CT logs in the boulder-publisher
+    # and ocsp-updater configuration files. The ocsp-updater config has an extra log which the
+    # publisher does not. When the publisher does the initial submission it will only submit
+    # the certificate to a single log, when the ocsp-updater then runs looking for missing SCTs
+    # it will think we failed to retrieve an SCT for the extra log it is configured with and
+    # attempt to submit it to just that log instead of all of the logs it knows about (which
+    # is just the one it already has submitted to).
     url_a = "http://localhost:4500/submissions"
     url_b = "http://localhost:4501/submissions"
     submissions_a = urllib2.urlopen(url_a).read()
@@ -169,15 +176,15 @@ def test_ct_submission():
     # Only test when ResubmitMissingSCTsOnly is enabled
     if not default_config_dir.startswith("test/config-next"):
         return
-    r = 0
-    while True:
+    for _ in range(0, 10):
+        submissions_a = urllib2.urlopen(url_a).read()
         submissions_b = urllib2.urlopen(url_b).read()
-        if r > 10:
-            raise Exception("Expected %d CT submissions to localhost:4501, found %s" % (expected_b_submissions, submissions_b))
+        if int(submissions_a) != expected_a_submissions:
+            raise Exception("Expected no change in submissions to localhost:4500: expected %s, got %s" % (expected_a_submissions, submissions_a))
         if int(submissions_b) == expected_b_submissions:
-            break
-        r += 1
+            return
         time.sleep(1)
+    raise Exception("Expected %d CT submissions to localhost:4501, found %s" % (expected_b_submissions, submissions_b))
 
 
 def random_domain():
