@@ -166,13 +166,16 @@ def test_ct_submission():
     submissions_a = urllib2.urlopen(url_a).read()
     if int(submissions_a) != expected_a_submissions:
         raise Exception("Expected %d CT submissions to localhost:4500, found %s" % (expected_a_submissions, submissions_a))
+    # Only test when ResubmitMissingSCTsOnly is enabled
+    if not default_config_dir.startswith("test/config-next"):
+        return
     r = 0
     while True:
         submissions_b = urllib2.urlopen(url_b).read()
-        if int(submissions_b) == expected_b_submissions:
-            break
         if r > 10:
             raise Exception("Expected %d CT submissions to localhost:4501, found %s" % (expected_b_submissions, submissions_b))
+        if int(submissions_b) == expected_b_submissions:
+            break
         r += 1
         time.sleep(1)
 
