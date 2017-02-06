@@ -39,11 +39,11 @@ Run a local Boulder instance:
 
     local-machine$ docker-compose up
 
-Issue a bunch of certificates with test.js, ideally a few thousand
+Issue a bunch of certificates with chisel.py, ideally a few thousand
 (corresponding to the default batch size of 5000 in ocsp-updater.json, to make
 sure each batch is maxed out):
 
-    local-machine$ while true; do nodejs test.js --domains $(openssl rand -hex 4).com  ; done
+    local-machine$ while true; do python test/chisel.py $(openssl rand -hex 4).com ; done
 
 Use the local Prometheus instance to graph the number of complete gRPC calls:
 
