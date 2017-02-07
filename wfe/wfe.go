@@ -923,7 +923,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		logEvent.AddError("unable to parse certificate: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 		return
 	}
 	serial := parsedCertificate.SerialNumber
@@ -1344,7 +1344,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 		if err != nil {
 			logEvent.AddError("unable to parse certificate: %s", err)
-			wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 			return
 		}
 		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
