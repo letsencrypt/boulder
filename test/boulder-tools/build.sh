@@ -35,20 +35,19 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
 
 wait
 
-git clone https://github.com/certbot/certbot
-(
-  cd certbot
-  ./letsencrypt-auto --os-packages-only
-  ./tools/venv.sh
-)
+git clone https://github.com/certbot/certbot /certbot
+cd /certbot
+./letsencrypt-auto --os-packages-only
+./tools/venv.sh
+cd -
 
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
 # of writing
-git clone https://github.com/SUNET/pkcs11-proxy && \
-  cd pkcs11-proxy && \
+git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
+  cd /tmp/pkcs11-proxy && \
   git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
   cmake . && make && make install && \
-  cd -
+  cd - && rm -r /tmp/pkcs11-proxy
 
 # Setup SoftHSM
 echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
@@ -60,7 +59,7 @@ gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y build-essential cmake libssl-dev
+apt-get autoremove -y build-essential cmake libssl-dev ruby-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
