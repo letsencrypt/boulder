@@ -178,9 +178,7 @@ func main() {
 	var hdTLSSrv httpdown.Server
 	if c.WFE.TLSListenAddress != "" {
 		cer, err := tls.LoadX509KeyPair(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
-		if err != nil {
-			cmd.FailOnError(err, "Couldn't read WFE server certificate")
-		}
+		cmd.FailOnError(err, "Couldn't read WFE server certificate or key")
 		tlsConfig := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 		logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
