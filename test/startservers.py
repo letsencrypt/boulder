@@ -83,7 +83,7 @@ def start(race_detection):
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
-            ports = range(8000, 8005) + [4000]
+            ports = range(8000, 8005) + [4000, 4430]
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))

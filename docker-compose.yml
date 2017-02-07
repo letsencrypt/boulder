@@ -15,6 +15,7 @@ boulder:
       - 4000:4000 # ACME
       - 4002:4002 # OCSP
       - 4003:4003 # OCSP
+      - 4430:4430 # ACME via HTTPS
       - 4500:4500 # ct-test-srv
       - 6000:6000 # gsb-test-srv
       - 8000:8000 # debug ports

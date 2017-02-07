@@ -18,6 +18,7 @@ const (
 	AllowKeyRollover
 	ResubmitMissingSCTsOnly
 	GoogleSafeBrowsingV4
+	UseAIAIssuerURL
 )
 
 // List of features and their default value, protected by fMu
@@ -29,6 +30,7 @@ var features = map[FeatureFlag]bool{
 	AllowKeyRollover:                false,
 	ResubmitMissingSCTsOnly:         false,
 	GoogleSafeBrowsingV4:            false,
+	UseAIAIssuerURL:                 false,
 }
 
 var fMu = new(sync.RWMutex)
