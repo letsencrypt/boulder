@@ -932,7 +932,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
 	if features.Enabled(features.UseAIAIssuerURL) {
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate); err != nil {
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
 			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
 			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
 			return
@@ -1347,7 +1347,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 			wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
 			return
 		}
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate); err != nil {
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
 			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
 			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
 			return
@@ -1538,8 +1538,8 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 // addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
 // X.509 certificate to the HTTP response. If the IssuingCertificateURL
 // in a certificate is not https://, it will be upgraded to https://
-func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, cert *x509.Certificate) error {
-	for _, rawURL := range cert.IssuingCertificateURL {
+func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
+	for _, rawURL := range issuingCertificateURL {
 		parsedURI, err := url.ParseRequestURI(rawURL)
 		if err != nil {
 			return err
