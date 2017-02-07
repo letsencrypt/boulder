@@ -19,7 +19,8 @@ apt-get install -y --no-install-recommends \
   opensc &
 
 # Install port forwarder, database migration tool, and testing tools.
-GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
+export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
+go get \
   github.com/jsha/listenbuddy \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/lint/golint \
@@ -34,6 +35,15 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   golang.org/x/tools/cmd/stringer &
 
 wait
+
+# protoc-gen-go outputs a line that says:
+# const _ = grpc.SupportPackageIsVersion4
+# so it will fail to compile with a different version of the grpc package.
+# Since we currently have version 3 of the grpc package vendored, we have to
+# build a specific version of protoc-gen-go.
+cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
+git checkout a66a4fa9a8dd2304462f7aad7161e8bf53eee461
+go install ./
 
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
