@@ -174,7 +174,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
 
-  ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
+  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   run python test/integration-test.py --chisel
   end_context #integration
 fi
