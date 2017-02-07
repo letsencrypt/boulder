@@ -9,11 +9,6 @@ _obj
 _test
 bin
 
-# Test files
-test/js/node_modules
-test/js/*.pem
-test/github-secret.json
-
 # Architecture specific extensions/prefixes
 *.[568vq]
 [568vq].out
