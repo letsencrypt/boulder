@@ -29,7 +29,7 @@ const (
 	listTokenComment        = "//"
 )
 
-// defaultList is the default List and it is used by Parse and Domain.
+// DefaultList is the default List and it is used by Parse and Domain.
 var DefaultList = NewList()
 
 // DefaultRule is the default Rule that represents "*".
@@ -103,18 +103,18 @@ func NewListFromFile(path string, options *ParserOption) (*List, error) {
 	return l, err
 }
 
-// experimental
+// Load parses and loads a set of rules from an io.Reader into the current list.
 func (l *List) Load(r io.Reader, options *ParserOption) ([]Rule, error) {
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadString parses and loads a set of rules from a String into the current list.
 func (l *List) LoadString(src string, options *ParserOption) ([]Rule, error) {
 	r := strings.NewReader(src)
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadFile parses and loads a set of rules from a File into the current list.
 func (l *List) LoadFile(path string, options *ParserOption) ([]Rule, error) {
 	f, err := os.Open(path)
 	if err != nil {
