@@ -13,6 +13,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -287,6 +288,7 @@ func main() {
 			cmd.DBConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
+			Features map[string]bool
 		}
 		Statsd cmd.StatsdConfig
 		Syslog cmd.SyslogConfig
@@ -310,6 +312,8 @@ func main() {
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
+	err = features.Set(cfg.NotifyMailer.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
 	scope := metrics.NewStatsdScope(stats, "NotificationMailer")

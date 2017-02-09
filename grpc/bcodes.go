@@ -63,6 +63,9 @@ func errorToCode(err error) codes.Code {
 }
 
 func wrapError(err error) error {
+	if err == nil {
+		return nil
+	}
 	code := errorToCode(err)
 	var body string
 	if code == ProblemDetails {
@@ -81,6 +84,9 @@ func wrapError(err error) error {
 }
 
 func unwrapError(err error) error {
+	if err == nil {
+		return nil
+	}
 	code := grpc.Code(err)
 	errBody := grpc.ErrorDesc(err)
 	switch code {

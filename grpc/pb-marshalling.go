@@ -90,12 +90,25 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 
 func challengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	st := string(challenge.Status)
+	prob, err := problemDetailsToPB(challenge.Error)
+	if err != nil {
+		return nil, err
+	}
+	recordAry := make([]*corepb.ValidationRecord, len(challenge.ValidationRecord))
+	for i, v := range challenge.ValidationRecord {
+		recordAry[i], err = validationRecordToPB(v)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &corepb.Challenge{
-		Id:               &challenge.ID,
-		Type:             &challenge.Type,
-		Status:           &st,
-		Token:            &challenge.Token,
-		KeyAuthorization: &challenge.ProvidedKeyAuthorization,
+		Id:                &challenge.ID,
+		Type:              &challenge.Type,
+		Status:            &st,
+		Token:             &challenge.Token,
+		KeyAuthorization:  &challenge.ProvidedKeyAuthorization,
+		Error:             prob,
+		Validationrecords: recordAry,
 	}, nil
 }
 
@@ -106,12 +119,28 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
+	var recordAry []core.ValidationRecord
+	if len(in.Validationrecords) > 0 {
+		recordAry = make([]core.ValidationRecord, len(in.Validationrecords))
+		for i, v := range in.Validationrecords {
+			recordAry[i], err = pbToValidationRecord(v)
+			if err != nil {
+				return core.Challenge{}, err
+			}
+		}
+	}
+	prob, err := pbToProblemDetails(in.Error)
+	if err != nil {
+		return core.Challenge{}, err
+	}
 	return core.Challenge{
 		ID:     *in.Id,
 		Type:   *in.Type,
 		Status: core.AcmeStatus(*in.Status),
 		Token:  *in.Token,
 		ProvidedKeyAuthorization: *in.KeyAuthorization,
+		Error:            prob,
+		ValidationRecord: recordAry,
 	}, nil
 }
 

@@ -281,13 +281,16 @@ type OCSPUpdaterConfig struct {
 	Publisher            *GRPCClientConfig
 	SAService            *GRPCClientConfig
 	OCSPGeneratorService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
 // Google Safe Browsing API.
 type GoogleSafeBrowsingConfig struct {
-	APIKey  string
-	DataDir string
+	APIKey    string
+	DataDir   string
+	ServerURL string
 }
 
 // SyslogConfig defines the config for syslogging.

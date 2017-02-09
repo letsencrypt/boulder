@@ -27,6 +27,11 @@
       "insecure": true,
       "serviceQueue": "VA.server"
     },
+    "GoogleSafeBrowsing": {
+      "APIKey": "my-voice-is-my-passport",
+      "DataDir": "/tmp",
+      "ServerURL": "http://boulder:6000"
+    },
     "features": {
       "GoogleSafeBrowsingV4": true
     }

@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -270,6 +271,63 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 	test.AssertEquals(t, result.Identifier.Type, core.IdentifierDNS)
 	test.AssertEquals(t, result.Identifier.Value, "example.org")
 	test.AssertEquals(t, result.RegistrationID, reg.ID)
+}
+
+func TestCountInvalidAuthorizations(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	key2 := new(jose.JsonWebKey)
+	key2.Key = &rsa.PublicKey{N: big.NewInt(1), E: 3}
+	reg2, err := sa.NewRegistration(context.Background(), core.Registration{
+		Key:       key2,
+		InitialIP: net.ParseIP("88.77.66.11"),
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
+		Status:    core.StatusValid,
+	})
+	test.AssertNotError(t, err, "making registration")
+
+	baseTime := time.Date(2017, 3, 4, 5, 0, 0, 0, time.UTC)
+	latest := baseTime.Add(3 * time.Hour)
+
+	makeInvalidAuthz := func(regID int64, domain string, offset time.Duration) {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, regID)
+		exp := baseTime.Add(offset)
+		authz.Expires = &exp
+		authz.Status = "invalid"
+		err := sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	}
+
+	// We're going to count authzs for reg.ID and example.net, expiring between
+	// baseTime and baseTime + 3 hours, so add two examples that should be counted
+	// (1 hour from now and 2 hours from now), plus three that shouldn't be
+	// counted (too far future, wrong domain name, and wrong ID).
+	hostname := "example.net"
+	makeInvalidAuthz(reg.ID, hostname, time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 2*time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 24*time.Hour)
+	makeInvalidAuthz(reg.ID, "example.com", time.Hour)
+	makeInvalidAuthz(reg2.ID, hostname, time.Hour)
+
+	earliestNanos := baseTime.UnixNano()
+	latestNanos := latest.UnixNano()
+
+	count, err := sa.CountInvalidAuthorizations(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Hostname:       &hostname,
+		Range: &sapb.Range{
+			Earliest: &earliestNanos,
+			Latest:   &latestNanos,
+		},
+	})
+	test.AssertNotError(t, err, "counting invalid authorizations")
+
+	if *count.Count != 2 {
+		t.Errorf("expected to count 2 invalid authorizations, counted %d instead", *count.Count)
+	}
 }
 
 // Ensure we get the latest valid authorization for an ident
