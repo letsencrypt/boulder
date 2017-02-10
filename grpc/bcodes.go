@@ -68,7 +68,7 @@ func errorToCode(err error) codes.Code {
 
 func wrapError(ctx context.Context, err error) error {
 	if berr, ok := err.(*berrors.BoulderError); ok {
-		grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
+		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
 	// TODO(XXX): depreciated, remove once boulder/errors code has been deployed
