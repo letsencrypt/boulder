@@ -129,6 +129,15 @@ or changed the password you may have to adjust the file or recreate the commands
 Install SoftHSM to store the CA private key in a way that can be accessed using
 PKCS#11. Then run ./test/make-softhsm.sh and follow its instructions.
 
+Install Python packages for integration test:
+
+    virtualenv venv
+    . venv/bin/activate
+    pip install -r test/requirements.txt
+    # If you want to develop against a locally modified Python acme package,
+    # this will install the package such that updates are reflected immediately:
+    pip install -e ~/certbot/acme[dev]
+
 Start all boulder components with test configs (Ctrl-C kills all):
 
     ./start.py

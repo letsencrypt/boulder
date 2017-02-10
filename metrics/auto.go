@@ -1,22 +1,30 @@
 package metrics
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// per `prometheus/common/model/metric.go` and the `IsValidMetricName` function
+// only alphanumeric characters, underscore and `:` are valid characters in
+// a Prometheus metric name
+var invalidPromChars = regexp.MustCompile(`[^[:alnum:]\_:]+`)
+
 // promAdjust adjusts a name for use by Prometheus: It strips off a single label
 // of prefix (which is always the name of the service, and therefore duplicated
-// by Prometheus' instance labels), and replaces "-" and "." with "_".
+// by Prometheus' instance labels), and replaces "-" and "." with "_". Invalid
+// metric name characters that remain (e.g. `>`) are removed.
 func promAdjust(name string) string {
 	name = strings.Replace(name, "-", "_", -1)
 	labels := strings.Split(name, ".")
 	if len(labels) < 2 {
-		return labels[0]
+		return invalidPromChars.ReplaceAllString(labels[0], "")
 	}
-	return strings.Join(labels[1:], "_")
+	name = strings.Join(labels[1:], "_")
+	return invalidPromChars.ReplaceAllString(name, "")
 }
 
 // autoProm implements a bridge from statsd-style metrics to Prometheus-style

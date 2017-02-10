@@ -16,11 +16,13 @@ func TestPromAdjust(t *testing.T) {
 		{"RA.FOO-BAR", "FOO_BAR"},
 		{"RA.FOO-BAR", "FOO_BAR"},
 		{"RA", "RA"},
+		{"RA>CA", "RACA"},
+		{"RA?CA!- 99 @#$%&()", "RACA_99"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			if promAdjust(tc.input) != tc.output {
-				t.Errorf("expected %q, got %q", tc.input, tc.output)
+			if result := promAdjust(tc.input); result != tc.output {
+				t.Errorf("promAdjust(%q) - expected %q, got %q", tc.input, tc.output, result)
 			}
 		})
 	}

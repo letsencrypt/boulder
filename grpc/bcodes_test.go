@@ -34,4 +34,7 @@ func TestErrors(t *testing.T) {
 		test.AssertEquals(t, grpc.Code(wrappedErr), tc.expectedCode)
 		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))
 	}
+
+	test.AssertEquals(t, wrapError(nil), nil)
+	test.AssertEquals(t, unwrapError(nil), nil)
 }

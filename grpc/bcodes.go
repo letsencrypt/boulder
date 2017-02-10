@@ -67,6 +67,9 @@ func errorToCode(err error) codes.Code {
 }
 
 func wrapError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
 	if berr, ok := err.(*berrors.BoulderError); ok {
 		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
@@ -90,6 +93,9 @@ func wrapError(ctx context.Context, err error) error {
 }
 
 func unwrapError(err error, md metadata.MD) error {
+	if err == nil {
+		return nil
+	}
 	if errTypeStrs, ok := md["errortype"]; ok {
 		unwrappedErr := grpc.ErrorDesc(err)
 		if len(errTypeStrs) != 1 {
