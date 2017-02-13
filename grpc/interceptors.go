@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/letsencrypt/boulder/metrics"
-
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // serverInterceptor is a gRPC interceptor that adds statsd and Prometheus
@@ -47,6 +47,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
 		methodScope.Inc("Failed", 1)
+		err = wrapError(err)
 	}
 	return resp, err
 }
@@ -88,6 +89,7 @@ func (ci *clientInterceptor) intercept(
 	methodScope.GaugeDelta("InProgress", -1)
 	if err != nil {
 		methodScope.Inc("Failed", 1)
+		err = unwrapError(err)
 	}
 	return err
 }

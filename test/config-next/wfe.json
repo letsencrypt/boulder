@@ -1,6 +1,9 @@
 {
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
+    "TLSListenAddress": "0.0.0.0:4430",
+    "serverCertificatePath": "test/wfe.pem",
+    "serverKeyPath": "test/wfe.key",
     "requestTimeout": "10s",
     "allowOrigins": ["*"],
     "certCacheDuration": "6h",
@@ -28,7 +31,8 @@
     },
     "features": {
       "AllowAccountDeactivation": true,
-      "AllowKeyRollover": true
+      "AllowKeyRollover": true,
+      "UseAIAIssuerURL": true
     }
   },
 

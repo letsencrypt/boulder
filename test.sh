@@ -174,23 +174,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
 
-  if [ -z "$CERTBOT_PATH" ]; then
-    export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
-    echo "------------------------------------------------"
-    echo "--- Checking out letsencrypt client is slow. ---"
-    echo "--- Recommend setting \$CERTBOT_PATH to  ---"
-    echo "--- client repo with initialized virtualenv  ---"
-    echo "------------------------------------------------"
-    # Note: We check out the tag for the release that matches the
-    # Debian-packaged Certbot version in the current letsencrypt/boulder-tools
-    # Docker image.
-    run git clone -b v0.8.1 --depth=1 https://www.github.com/certbot/certbot.git $CERTBOT_PATH || exit 1
-  fi
-
-  if ! type certbot >/dev/null 2>/dev/null; then
-    source ${CERTBOT_PATH}/${VENV_NAME:-venv}/bin/activate
-  fi
-
+  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   run python test/integration-test.py --chisel
   end_context #integration
 fi

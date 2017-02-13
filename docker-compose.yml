@@ -15,6 +15,7 @@ boulder:
       - 4000:4000 # ACME
       - 4002:4002 # OCSP
       - 4003:4003 # OCSP
+      - 4430:4430 # ACME via HTTPS
       - 4500:4500 # ct-test-srv
       - 6000:6000 # gsb-test-srv
       - 8000:8000 # debug ports
@@ -37,7 +38,7 @@ boulder:
 bhsm:
     # To minimize the fetching of various layers this should match
     # the FROM image and tag in boulder/Dockerfile
-    image: letsencrypt/boulder-tools:2016-11-02
+    image: letsencrypt/boulder-tools:2017-02-07
     environment:
         PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
     command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so
