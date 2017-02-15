@@ -496,10 +496,6 @@ func TestMissingReceiptsTick(t *testing.T) {
 }
 
 func TestMissingOnlyReceiptsTick(t *testing.T) {
-	// Enable the ResubmitMissingSCTsOnly feature flag for this test run
-	_ = features.Set(map[string]bool{"ResubmitMissingSCTsOnly": true})
-	defer features.Reset()
-
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
@@ -515,6 +511,10 @@ func TestMissingOnlyReceiptsTick(t *testing.T) {
 	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
 	test.AssertNotError(t, err, "Failed to retrieve serials")
 	test.AssertEquals(t, len(serials), 1)
+
+	// Enable the ResubmitMissingSCTsOnly feature flag for this test run
+	_ = features.Set(map[string]bool{"ResubmitMissingSCTsOnly": true})
+	defer features.Reset()
 
 	// Use a mock publisher so we can EXPECT specific calls
 	ctrl := gomock.NewController(t)
