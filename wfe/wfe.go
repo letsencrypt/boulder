@@ -923,17 +923,24 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		logEvent.AddError("unable to parse certificate: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 		return
 	}
 	serial := parsedCertificate.SerialNumber
 	certURL := wfe.relativeEndpoint(request, certPath+core.SerialToString(serial))
 
-	relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
-
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	if features.Enabled(features.UseAIAIssuerURL) {
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+			return
+		}
+	} else {
+		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	}
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -1333,7 +1340,22 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.Header().Add("Link", link(issuerPath, "up"))
+	if features.Enabled(features.UseAIAIssuerURL) {
+		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+		if err != nil {
+			logEvent.AddError("unable to parse certificate: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
+			return
+		}
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+			return
+		}
+	} else {
+		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	}
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
 		logEvent.AddError(err.Error())
@@ -1511,4 +1533,19 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
+}
+
+// addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
+// X.509 certificate to the HTTP response. If the IssuingCertificateURL
+// in a certificate is not https://, it will be upgraded to https://
+func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
+	for _, rawURL := range issuingCertificateURL {
+		parsedURI, err := url.ParseRequestURI(rawURL)
+		if err != nil {
+			return err
+		}
+		parsedURI.Scheme = "https"
+		response.Header().Add("Link", link(parsedURI.String(), "up"))
+	}
+	return nil
 }
