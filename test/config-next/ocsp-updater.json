@@ -35,8 +35,7 @@
       "timeout": "15s"
     },
     "features": {
-      "ResubmitMissingSCTsOnly": true,
-      "CertStatusOptimizationsMigrated": true
+      "ResubmitMissingSCTsOnly": true
     }
   },
 
