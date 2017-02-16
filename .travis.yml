@@ -46,7 +46,6 @@ env:
 install:
   - ./test/travis-before-install.sh
   - docker-compose pull
-  - docker pull letsencrypt/boulder-tools:2017-02-07
   - docker-compose build
 
 script:
