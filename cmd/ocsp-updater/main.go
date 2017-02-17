@@ -269,14 +269,9 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	// If CertStatusOptimizationsMigrated is enabled then we can do this query
-	// using only the `certificateStatus` table, saving an expensive JOIN and
-	// improving performance substantially
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT
 				cs.serial,
 				cs.status,
 				cs.revokedDate,
@@ -287,37 +282,12 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
 				LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-		// If the migration hasn't been applied we don't have the `isExpired` or
-		// `notAfter` fields on the certificate status table to use and must do the
-		// expensive JOIN on `certificates`
-	} else {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
-				 cs.serial,
-				 cs.status,
-				 cs.revokedDate
-				 FROM certificateStatus AS cs
-				 JOIN certificates AS cert
-				 ON cs.serial = cert.serial
-				 WHERE cs.ocspLastUpdated > :maxAge
-				 AND cs.ocspLastUpdated < :lastUpdate
-				 AND cert.expires > now()
-				 ORDER BY cs.ocspLastUpdated ASC
-				 LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-	}
+		map[string]interface{}{
+			"lastUpdate": oldestLastUpdatedTime,
+			"maxAge":     maxAgeCutoff,
+			"limit":      batchSize,
+		},
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -326,21 +296,11 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		batchSize,
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -456,23 +416,12 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		string(core.OCSPStatusRevoked),
+		batchSize,
+	)
 	return statuses, err
 }
 
@@ -559,16 +508,11 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	tickEnd := updater.clk.Now()
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
 
-	// If the CertStatusOptimizationsMigrated flag is set then we need to
-	// opportunistically update the certificateStatus `isExpired` column for expired
-	// certificates we come across
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		for _, s := range statuses {
-			if !s.IsExpired && tickStart.After(s.NotAfter) {
-				err := updater.markExpired(s)
-				if err != nil {
-					return err
-				}
+	for _, s := range statuses {
+		if !s.IsExpired && tickStart.After(s.NotAfter) {
+			err := updater.markExpired(s)
+			if err != nil {
+				return err
 			}
 		}
 	}
