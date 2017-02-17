@@ -36,6 +36,8 @@ Boulder does not implement the `new-order` resource. Instead of `new-order` Boul
 
 Boulder also doesn't implement the `new-nonce` endpoint.
 
+Boulder implements the `new-account` ressource only under the `new-reg` key.
+
 ## [Section 6.1.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.1.1)
 
 Boulder does not implement the `meta` field returned by the `directory` endpoint.
