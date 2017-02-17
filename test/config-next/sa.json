@@ -29,7 +29,8 @@
       "serviceQueue": "SA.server"
     },
     "features": {
-      "AllowAccountDeactivation": true
+      "AllowAccountDeactivation": true,
+      "CertStatusOptimizationsMigrated": true
     }
   },
 

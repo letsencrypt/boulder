@@ -14,6 +14,7 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	IDNASupport
 	AllowAccountDeactivation
+	CertStatusOptimizationsMigrated
 	AllowKeyRollover
 	ResubmitMissingSCTsOnly
 	GoogleSafeBrowsingV4
@@ -22,13 +23,14 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	IDNASupport:              false,
-	AllowAccountDeactivation: false,
-	AllowKeyRollover:         false,
-	ResubmitMissingSCTsOnly:  false,
-	GoogleSafeBrowsingV4:     false,
-	UseAIAIssuerURL:          false,
+	unused:                          false,
+	IDNASupport:                     false,
+	AllowAccountDeactivation:        false,
+	CertStatusOptimizationsMigrated: false,
+	AllowKeyRollover:                false,
+	ResubmitMissingSCTsOnly:         false,
+	GoogleSafeBrowsingV4:            false,
+	UseAIAIssuerURL:                 false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -116,14 +116,26 @@ func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]
 	return models, err
 }
 
-const certStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol, notAfter, isExpired"
+const certStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol"
+const certStatusFieldsv2 = certStatusFields + ", notAfter, isExpired"
 
 // SelectCertificateStatus selects all fields of one certificate status model
-func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (certStatusModel, error) {
-	var model certStatusModel
+func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (certStatusModelv1, error) {
+	var model certStatusModelv1
 	err := s.SelectOne(
 		&model,
 		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
+		args...,
+	)
+	return model, err
+}
+
+// SelectCertificateStatusv2 selects all fields (including the v2 migrated fields) of one certificate status model
+func SelectCertificateStatusv2(s dbOneSelector, q string, args ...interface{}) (certStatusModelv2, error) {
+	var model certStatusModelv2
+	err := s.SelectOne(
+		&model,
+		"SELECT "+certStatusFieldsv2+" FROM certificateStatus "+q,
 		args...,
 	)
 	return model, err
@@ -135,6 +147,17 @@ func SelectCertificateStatuses(s dbSelector, q string, args ...interface{}) ([]c
 	_, err := s.Select(
 		&models,
 		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
+		args...,
+	)
+	return models, err
+}
+
+// SelectCertificateStatusesv2 selects all fields (including the v2 migrated fields) of multiple certificate status objects
+func SelectCertificateStatusesv2(s dbSelector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s.Select(
+		&models,
+		"SELECT "+certStatusFieldsv2+" FROM certificateStatus "+q,
 		args...,
 	)
 	return models, err
@@ -171,7 +194,13 @@ type regModelv2 struct {
 	Status string `db:"status"`
 }
 
-type certStatusModel struct {
+// We need two certStatus model structs, one for when boulder does *not* have
+// the 20160817143417_CertStatusOptimizations.sql migration applied
+// (certStatusModelv1) and one for when it does (certStatusModelv2)
+//
+// TODO(@cpu): Collapse into one struct once the migration has been applied
+//             & feature flag set.
+type certStatusModelv1 struct {
 	Serial                string            `db:"serial"`
 	SubscriberApproved    bool              `db:"subscriberApproved"`
 	Status                core.OCSPStatus   `db:"status"`
@@ -181,8 +210,12 @@ type certStatusModel struct {
 	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
 	OCSPResponse          []byte            `db:"ocspResponse"`
 	LockCol               int64             `json:"-"`
-	NotAfter              time.Time         `db:"notAfter"`
-	IsExpired             bool              `db:"isExpired"`
+}
+
+type certStatusModelv2 struct {
+	certStatusModelv1
+	NotAfter  time.Time `db:"notAfter"`
+	IsExpired bool      `db:"isExpired"`
 }
 
 // challModel is the description of a core.Challenge in the database

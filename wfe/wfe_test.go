@@ -1841,7 +1841,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 
 	mux := wfe.Handler()
 	s := httptest.NewServer(mux)
-	defer s.Close()
+	// TODO(#1989): Close s
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
