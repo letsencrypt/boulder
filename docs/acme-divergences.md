@@ -46,6 +46,8 @@ Boulder does not implement the `meta` field returned by the `directory` endpoint
 
 Boulder does not implement the `terms-of-service-agreed` or `orders` fields in the registration object (nor the endpoints the latter links to).
 
+Boulder does not return the `status` field.
+
 ## [Section 6.1.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.1.3)
 
 Boulder does not implement orders, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of authorizations in the order response, Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
@@ -79,6 +81,8 @@ Boulder ignores the `existing` field in authorization request objects.
 ## [Section 7.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-7)
 
 Boulder returns an `uri` instead of an `url` field in challenge objects.
+
+Boulder uses an HTTP status code 202 (Accepted) response for correct challenge responses instead of 200 (OK) as defined in [Section 6.1](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.1).
 
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-7.3)
 
