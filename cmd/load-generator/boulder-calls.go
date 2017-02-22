@@ -24,7 +24,6 @@ import (
 	"gopkg.in/square/go-jose.v1"
 )
 
-// not entirely sure this will actually work...?
 var (
 	stringToOperation = map[string]func(*State, *context) error{
 		"newRegistration":   newRegistration,
@@ -36,19 +35,23 @@ var (
 		"revokeCertificate": revokeCertificate,
 	}
 )
+
 var plainReg = []byte(`{"resource":"new-reg"}`)
+
+var newRegPath = "/acme/new-reg"
+var challengePath = "/acme/challenge"
+var newCertPath = "/acme/new-cert"
+var revokeCertPath = "/acme/revoke-cert"
 
 func newRegistration(s *State, ctx *context) error {
 	// if we have generated the max number of registrations just become getRegistration
 	if s.maxRegs != 0 && s.numRegs() >= s.maxRegs {
 		return getRegistration(s, ctx)
 	}
-	// signKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	signKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
 	}
-	// signKey.Precompute()
 	signer, err := jose.NewSigner(jose.ES256, signKey)
 	if err != nil {
 		return err
@@ -64,13 +67,13 @@ func newRegistration(s *State, ctx *context) error {
 		regStr = plainReg
 	}
 	// build the JWS object
-	requestPayload, err := s.signWithNonce("/acme/new-reg", true, regStr, signer)
+	requestPayload, err := s.signWithNonce(newRegPath, true, regStr, signer)
 	if err != nil {
 		return fmt.Errorf("/acme/new-reg, sign failed: %s", err)
 	}
 
 	nStarted := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-reg", s.apiBase), requestPayload, ctx.ns)
+	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newRegPath), requestPayload, ctx.ns)
 	nFinished := time.Now()
 	nState := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-reg", nStarted, nFinished, nState) }()
@@ -83,7 +86,6 @@ func newRegistration(s *State, ctx *context) error {
 		body, err := ioutil.ReadAll(resp.Body)
 		nState = "error"
 		if err != nil {
-			// just fail
 			return fmt.Errorf("/acme/new-reg, bad response: %s", body)
 		}
 		return fmt.Errorf("/acme/new-reg, bad response status %d: %s", resp.StatusCode, body)
@@ -121,7 +123,6 @@ func newRegistration(s *State, ctx *context) error {
 	if resp.StatusCode != 202 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			// just fail
 			tState = "error"
 			return err
 		}
@@ -146,6 +147,7 @@ func newAuthorization(s *State, ctx *context) error {
 
 	// build the JWS object
 	getNew := false
+	// do a coin flip to decide whether to get a new nonce via HEAD
 	if mrand.Intn(1) == 0 {
 		getNew = true
 	}
@@ -168,18 +170,15 @@ func newAuthorization(s *State, ctx *context) error {
 		// something
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			// just fail
 			state = "error"
 			return err
 		}
 		state = "error"
 		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
 	}
-	// location := resp.Header.Get("Location")
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		state = "error"
-		// just fail
 		return err
 	}
 
@@ -197,7 +196,7 @@ func newAuthorization(s *State, ctx *context) error {
 	return nil
 }
 
-func getPending(ctx *context) *core.Authorization {
+func popPending(ctx *context) *core.Authorization {
 	authzIndex := mrand.Intn(len(ctx.pendingAuthz))
 	authz := ctx.pendingAuthz[authzIndex]
 	ctx.pendingAuthz = append(ctx.pendingAuthz[:authzIndex], ctx.pendingAuthz[authzIndex+1:]...)
@@ -208,7 +207,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 	if len(ctx.pendingAuthz) == 0 {
 		return errors.New("no pending authorizations to complete")
 	}
-	authz := getPending(ctx)
+	authz := popPending(ctx)
 	var chall *core.Challenge
 	for _, c := range authz.Challenges {
 		if c.Type == "http-01" {
@@ -229,7 +228,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 	s.challSrv.addHTTPOneChallenge(chall.Token, authStr)
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
-	requestPayload, err := s.signWithNonce("/acme/challenge", false, []byte(update), ctx.reg.signer)
+	requestPayload, err := s.signWithNonce(challengePath, false, []byte(update), ctx.reg.signer)
 	if err != nil {
 		return err
 	}
@@ -248,7 +247,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 		cState = "error"
 		return fmt.Errorf("Unexpected error code")
 	}
-	// Sit and spin until status valid or invalid
+	// Sit and spin until status valid or invalid, replicating Certbot behavior
 	ident := ""
 	for i := 0; i < 3; i++ {
 		aStarted := time.Now()
@@ -263,7 +262,6 @@ func solveHTTPOne(s *State, ctx *context) error {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			// just fail
 			aState = "error"
 			return err
 		}
@@ -280,7 +278,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 		if newAuthz.Status == "invalid" {
 			return fmt.Errorf("HTTP-01 challenge invalid: %s", string(body))
 		}
-		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
+		time.Sleep(3 * time.Second)
 	}
 	if ident == "" {
 		return errors.New("HTTP-01 challenge validation timed out")
@@ -294,7 +292,7 @@ func solveTLSOne(s *State, ctx *context) error {
 	if len(ctx.pendingAuthz) == 0 {
 		return errors.New("no pending authorizations to complete")
 	}
-	authz := getPending(ctx)
+	authz := popPending(ctx)
 	var chall *core.Challenge
 	for _, c := range authz.Challenges {
 		if c.Type == "tls-sni-01" {
@@ -314,7 +312,7 @@ func solveTLSOne(s *State, ctx *context) error {
 	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
-	requestPayload, err := s.signWithNonce("/acme/challenge", false, []byte(update), ctx.reg.signer)
+	requestPayload, err := s.signWithNonce(challengePath, false, []byte(update), ctx.reg.signer)
 	if err != nil {
 		return err
 	}
@@ -329,7 +327,7 @@ func solveTLSOne(s *State, ctx *context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 202 {
+	if resp.StatusCode != http.StatusAccepted {
 		cState = "error"
 		return fmt.Errorf("Unexpected error code")
 	}
@@ -348,7 +346,6 @@ func solveTLSOne(s *State, ctx *context) error {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			// just fail
 			aState = "error"
 			return fmt.Errorf("/acme/authz bad response: %s", err)
 		}
@@ -404,13 +401,13 @@ func newCertificate(s *State, ctx *context) error {
 	)
 
 	// build the JWS object
-	requestPayload, err := s.signWithNonce("/acme/new-cert", false, []byte(request), ctx.reg.signer)
+	requestPayload, err := s.signWithNonce(newCertPath, false, []byte(request), ctx.reg.signer)
 	if err != nil {
 		return err
 	}
 
 	started := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-cert", s.apiBase), requestPayload, ctx.ns)
+	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newCertPath), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
 	defer func() { s.callLatency.Add("POST /acme/new-cert", started, finished, state) }()
@@ -453,13 +450,13 @@ func revokeCertificate(s *State, ctx *context) error {
 	}
 
 	request := fmt.Sprintf(`{"resource":"revoke-cert","certificate":"%s"}`, base64.URLEncoding.EncodeToString(body))
-	requestPayload, err := s.signWithNonce("/acme/revoke-cert", false, []byte(request), ctx.reg.signer)
+	requestPayload, err := s.signWithNonce(revokeCertPath, false, []byte(request), ctx.reg.signer)
 	if err != nil {
 		return err
 	}
 
 	started := time.Now()
-	resp, err = s.post(fmt.Sprintf("%s/acme/revoke-cert", s.apiBase), requestPayload, ctx.ns)
+	resp, err = s.post(fmt.Sprintf("%s%s", s.apiBase, revokeCertPath), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
 	s.callLatency.Add("POST /acme/revoke-cert", started, finished, state)

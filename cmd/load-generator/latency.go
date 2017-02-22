@@ -17,8 +17,8 @@ type point struct {
 
 type latencyFile struct {
 	metrics chan *point
-	f       *os.File
-	die     chan struct{}
+	output  *os.File
+	stop    chan struct{}
 }
 
 func newLatencyFile(filename string) (*latencyFile, error) {
@@ -29,8 +29,8 @@ func newLatencyFile(filename string) (*latencyFile, error) {
 	}
 	f := &latencyFile{
 		metrics: make(chan *point, 2048),
-		die:     make(chan struct{}, 1),
-		f:       file,
+		stop:    make(chan struct{}, 1),
+		output:  file,
 	}
 	go f.write()
 	return f, nil
@@ -44,11 +44,11 @@ func (f *latencyFile) write() {
 			if err != nil {
 				panic(err)
 			}
-			_, err = f.f.Write(append(data, []byte("\n")...))
+			_, err = f.output.Write(append(data, []byte("\n")...))
 			if err != nil {
 				panic(err)
 			}
-		case <-f.die:
+		case <-f.stop:
 			return
 		}
 	}
@@ -67,6 +67,6 @@ func (f *latencyFile) Add(action string, sent, finished time.Time, pType string)
 
 // Close stops f.write() and closes the file, any remaining metrics will be discarded
 func (f *latencyFile) Close() {
-	f.die <- struct{}{}
-	_ = f.f.Close()
+	f.stop <- struct{}{}
+	_ = f.output.Close()
 }

@@ -30,7 +30,6 @@ type Config struct {
 	HTTPOneAddr   string   // address to listen for http-01 validation requests on
 	TLSOneAddr    string   // address to listen for tls-sni-01 validation requests on
 	RealIP        string   // value of the Real-IP header to use when bypassing CDN
-	RegKeySize    int      // size of the key to use in registrations
 	CertKeySize   int      // size of the key to use when creating CSRs
 	RegEmail      string   // email to use in registrations
 	Results       string   // path to save metrics to

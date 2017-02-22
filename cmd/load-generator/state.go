@@ -156,12 +156,10 @@ func (s *State) Restore(filename string) error {
 		return err
 	}
 	for _, r := range snap.Registrations {
-		// key, err := x509.ParsePKCS1PrivateKey(r.RawKey)
 		key, err := x509.ParseECPrivateKey(r.RawKey)
 		if err != nil {
 			continue
 		}
-		// key.Precompute()
 		signer, err := jose.NewSigner(jose.RS256, key)
 		if err != nil {
 			continue
@@ -341,13 +339,15 @@ func (s *State) respCodeString() string {
 	return strings.Join(counts, ", ")
 }
 
+var userAgent = "boulder load-generator -- heyo ^_^"
+
 func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", "boulder load-generator -- heyo ^_^")
+	req.Header.Add("User-Agent", userAgent)
 	atomic.AddInt64(&s.postTotal, 1)
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -366,7 +366,7 @@ func (s *State) get(path string) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", "boulder load-generator -- heyo ^_^")
+	req.Header.Add("User-Agent", userAgent)
 	atomic.AddInt64(&s.getTotal, 1)
 	resp, err := s.client.Get(path)
 	if err != nil {
@@ -411,7 +411,7 @@ func (ns *nonceSource) getNonce() (string, error) {
 	return "", errors.New("'Replay-Nonce' header not supplied")
 }
 
-// Nonce satisfies the interface jose.NonceSource,  should probably actually be per context but ¯\_(ツ)_/¯ for now
+// Nonce satisfies the interface jose.NonceSource, should probably actually be per context but ¯\_(ツ)_/¯ for now
 func (ns *nonceSource) Nonce() (string, error) {
 	ns.mu.Lock()
 	if len(ns.noncePool) == 0 {

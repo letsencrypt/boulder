@@ -15,16 +15,14 @@ import (
 	"time"
 )
 
+var wellKnownPath = "/.well-known/acme-challenge/"
+
 type challSrv struct {
 	hoMu        sync.RWMutex
 	httpOne     map[string]string
 	httpOneAddr string
 
 	tlsOneAddr string
-
-	// doMu       sync.RWMutex
-	// dnsOne     map[string]string
-	// dnsOneAddr string
 }
 
 func newChallSrv(httpOneAddr, tlsOneAddr string) *challSrv {
@@ -80,10 +78,9 @@ func (s *challSrv) getHTTPOneChallenge(token string) (string, bool) {
 
 func (s *challSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
-	if strings.HasPrefix(requestPath, "/.well-known/acme-challenge/") {
-		token := requestPath[28:]
+	if strings.HasPrefix(requestPath, wellKnownPath) {
+		token := requestPath[len(wellKnownPath):]
 		if auth, found := s.getHTTPOneChallenge(token); found {
-			// fmt.Printf("http-0 challenge request for %s\n", token)
 			fmt.Fprintf(w, "%s", auth)
 			s.deleteHTTPOneChallenge(token)
 		}
@@ -112,7 +109,6 @@ func (s *challSrv) tlsOneServer(wg *sync.WaitGroup) error {
 	}
 
 	l, err := tls.Listen("tcp", s.tlsOneAddr, &tls.Config{
-		ClientAuth: tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			t := &x509.Certificate{
 				SerialNumber: big.NewInt(1),
@@ -126,7 +122,6 @@ func (s *challSrv) tlsOneServer(wg *sync.WaitGroup) error {
 			}
 			return &tls.Certificate{Certificate: [][]byte{inner}, PrivateKey: tinyKey}, nil
 		},
-		NextProtos: []string{"http/1.1"},
 	})
 	if err != nil {
 		return err
