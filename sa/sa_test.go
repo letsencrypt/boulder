@@ -427,15 +427,6 @@ func TestGetValidAuthorizationsMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	// Enable the feature for the `CertStatusOptimizationsMigrated` flag so that
-	// adding a new certificate will populate the `certificateStatus.NotAfter`
-	// field correctly. This will let the unit test assertion for `NotAfter`
-	// pass provided everything is working as intended. Note: this must be done
-	// **before** the DbMap is created in `initSA()` or the feature flag won't be
-	// set correctly at the time the table maps are set up.
-	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
-	defer features.Reset()
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 

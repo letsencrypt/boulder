@@ -41,6 +41,9 @@ container for service boulder" you should double check that your `$GOPATH`
 exists and doesn't contain any characters other than letters, numbers, `-`
 and `_`.
 
+If you have problems with Docker, you may want to try [removing all containers
+and volumes](https://www.digitalocean.com/community/tutorials/how-to-remove-docker-images-containers-and-volumes).
+
 By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 127.0.0.1. This is suitable for running integration tests inside the Docker
 container. If you want Boulder to be able to communicate with a client running

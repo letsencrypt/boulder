@@ -436,48 +436,26 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var status core.CertificateStatus
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err := ssa.dbMap.Get(certStatusModelv2{}, serial)
-		if err != nil {
-			return status, err
-		}
-		if statusObj == nil {
-			return status, nil
-		}
-		statusModel := statusObj.(*certStatusModelv2)
-		status = core.CertificateStatus{
-			Serial:                statusModel.Serial,
-			SubscriberApproved:    statusModel.SubscriberApproved,
-			Status:                statusModel.Status,
-			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-			RevokedDate:           statusModel.RevokedDate,
-			RevokedReason:         statusModel.RevokedReason,
-			LastExpirationNagSent: statusModel.LastExpirationNagSent,
-			OCSPResponse:          statusModel.OCSPResponse,
-			NotAfter:              statusModel.NotAfter,
-			IsExpired:             statusModel.IsExpired,
-			LockCol:               statusModel.LockCol,
-		}
-	} else {
-		statusObj, err := ssa.dbMap.Get(certStatusModelv1{}, serial)
-		if err != nil {
-			return status, err
-		}
-		if statusObj == nil {
-			return status, nil
-		}
-		statusModel := statusObj.(*certStatusModelv1)
-		status = core.CertificateStatus{
-			Serial:                statusModel.Serial,
-			SubscriberApproved:    statusModel.SubscriberApproved,
-			Status:                statusModel.Status,
-			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-			RevokedDate:           statusModel.RevokedDate,
-			RevokedReason:         statusModel.RevokedReason,
-			LastExpirationNagSent: statusModel.LastExpirationNagSent,
-			OCSPResponse:          statusModel.OCSPResponse,
-			LockCol:               statusModel.LockCol,
-		}
+	statusObj, err := ssa.dbMap.Get(certStatusModel{}, serial)
+	if err != nil {
+		return status, err
+	}
+	if statusObj == nil {
+		return status, nil
+	}
+	statusModel := statusObj.(*certStatusModel)
+	status = core.CertificateStatus{
+		Serial:                statusModel.Serial,
+		SubscriberApproved:    statusModel.SubscriberApproved,
+		Status:                statusModel.Status,
+		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
+		RevokedDate:           statusModel.RevokedDate,
+		RevokedReason:         statusModel.RevokedReason,
+		LastExpirationNagSent: statusModel.LastExpirationNagSent,
+		OCSPResponse:          statusModel.OCSPResponse,
+		NotAfter:              statusModel.NotAfter,
+		IsExpired:             statusModel.IsExpired,
+		LockCol:               statusModel.LockCol,
 	}
 
 	return status, nil
@@ -517,13 +495,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	}
 
 	const statusQuery = "WHERE serial = ?"
-	var statusObj interface{}
-
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err = SelectCertificateStatusv2(tx, statusQuery, serial)
-	} else {
-		statusObj, err = SelectCertificateStatus(tx, statusQuery, serial)
-	}
+	statusObj, err := SelectCertificateStatus(tx, statusQuery, serial)
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
@@ -536,19 +508,10 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	var n int64
 	now := ssa.clk.Now()
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		status := statusObj.(certStatusModelv2)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedDate = now
-		status.RevokedReason = reasonCode
-		n, err = tx.Update(&status)
-	} else {
-		status := statusObj.(certStatusModelv1)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedDate = now
-		status.RevokedReason = reasonCode
-		n, err = tx.Update(&status)
-	}
+	statusObj.Status = core.OCSPStatusRevoked
+	statusObj.RevokedDate = now
+	statusObj.RevokedReason = reasonCode
+	n, err = tx.Update(&statusObj)
 	if err != nil {
 		err = Rollback(tx, err)
 		return err
@@ -803,32 +766,16 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	var certStatusOb interface{}
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		certStatusOb = &certStatusModelv2{
-			certStatusModelv1: certStatusModelv1{
-				SubscriberApproved: false,
-				Status:             core.OCSPStatus("good"),
-				OCSPLastUpdated:    time.Time{},
-				OCSPResponse:       []byte{},
-				Serial:             serial,
-				RevokedDate:        time.Time{},
-				RevokedReason:      0,
-				LockCol:            0,
-			},
-			NotAfter: parsedCertificate.NotAfter,
-		}
-	} else {
-		certStatusOb = &certStatusModelv1{
-			SubscriberApproved: false,
-			Status:             core.OCSPStatus("good"),
-			OCSPLastUpdated:    time.Time{},
-			OCSPResponse:       []byte{},
-			Serial:             serial,
-			RevokedDate:        time.Time{},
-			RevokedReason:      0,
-			LockCol:            0,
-		}
+	certStatusOb := &certStatusModel{
+		SubscriberApproved: false,
+		Status:             core.OCSPStatus("good"),
+		OCSPLastUpdated:    time.Time{},
+		OCSPResponse:       []byte{},
+		Serial:             serial,
+		RevokedDate:        time.Time{},
+		RevokedReason:      0,
+		LockCol:            0,
+		NotAfter:           parsedCertificate.NotAfter,
 	}
 
 	tx, err := ssa.dbMap.Begin()
