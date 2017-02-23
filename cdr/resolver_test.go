@@ -40,7 +40,7 @@ func TestParseAnswer(t *testing.T) {
 
 func TestQueryCAA(t *testing.T) {
 	testServ := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
-	// TODO(#1989): Close testServ
+	defer testServ.Close()
 
 	req, err := http.NewRequest("GET", testServ.URL, nil)
 	test.AssertNotError(t, err, "Failed to create request")
@@ -63,7 +63,7 @@ func TestQueryCAA(t *testing.T) {
 
 func TestLookupCAA(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
-	// TODO(#1989): Close testServ
+	defer testSrv.Close()
 
 	cpr := CAADistributedResolver{
 		logger: log,
@@ -119,7 +119,7 @@ func (sbh *slightlyBrokenHandler) Handler(w http.ResponseWriter, r *http.Request
 func TestHTTPQuorum(t *testing.T) {
 	sbh := &slightlyBrokenHandler{}
 	testSrv := httptest.NewServer(http.HandlerFunc(sbh.Handler))
-	// TODO(#1989): Close testServ
+	defer testSrv.Close()
 
 	cpr := CAADistributedResolver{
 		logger: log,

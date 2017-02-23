@@ -20,9 +20,6 @@
     "saService": {
       "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
-    },
-    "features": {
-      "CertStatusOptimizationsMigrated": true
     }
   },
 
