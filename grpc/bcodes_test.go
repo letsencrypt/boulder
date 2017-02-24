@@ -35,6 +35,6 @@ func TestErrors(t *testing.T) {
 		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))
 	}
 
-	test.AssertEquals(t, wrapError(nil), nil)
-	test.AssertEquals(t, unwrapError(nil), nil)
+	test.AssertEquals(t, wrapError(nil, nil), nil)
+	test.AssertEquals(t, unwrapError(nil, nil), nil)
 }
