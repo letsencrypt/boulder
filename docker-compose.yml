@@ -38,7 +38,7 @@ boulder:
 bhsm:
     # To minimize the fetching of various layers this should match
     # the FROM image and tag in boulder/Dockerfile
-    image: letsencrypt/boulder-tools:2017-02-07
+    image: letsencrypt/boulder-tools:2017-02-20
     environment:
         PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
     command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so
