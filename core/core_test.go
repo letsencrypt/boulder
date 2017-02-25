@@ -34,6 +34,11 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("New tls-sni-01 challenge is not sane: %v", tlssni01)
 	}
 
+	tlssni02 := TLSSNIChallenge02()
+	if !tlssni02.IsSane(false) {
+		t.Errorf("New tls-sni-02 challenge is not sane: %v", tlssni02)
+	}
+
 	dns01 := DNSChallenge01()
 	if !dns01.IsSane(false) {
 		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
@@ -41,6 +46,7 @@ func TestChallenges(t *testing.T) {
 
 	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI02), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeDNS01), "Refused valid challenge")
 	test.Assert(t, !ValidChallenge("nonsense-71"), "Accepted invalid challenge")
 }

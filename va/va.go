@@ -39,6 +39,9 @@ const (
 	// allowed accept up to 128 bytes before rejecting a response
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
+
+	tlsSNITokenID = "token"
+	tlsSNIKaID    = "ka"
 )
 
 var validationTimeout = time.Second * 5
@@ -303,7 +306,7 @@ func certNames(cert *x509.Certificate) []string {
 	return names
 }
 
-func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
@@ -320,6 +323,86 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(addr.String(), portString)
 	validationRecords[0].Port = portString
+
+	certs, problem := va.getTLSSNICerts(hostPort, identifier, challenge, zName)
+	if problem != nil {
+		return validationRecords, problem
+	}
+
+	leafCert := certs[0]
+
+	for _, name := range leafCert.DNSNames {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
+			return validationRecords, nil
+		}
+	}
+
+	names := certNames(leafCert)
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Requested %s from %s. Received %d certificate(s), "+
+			"first certificate had names %q",
+		challenge.Type, zName, hostPort, len(certs), strings.Join(names, ", "))
+	va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
+	return validationRecords, probs.Unauthorized(errText)
+}
+
+func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, sanAName, sanBName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
+	validationRecords := []core.ValidationRecord{
+		{
+			Hostname:          identifier.Value,
+			AddressesResolved: allAddrs,
+			AddressUsed:       addr,
+		},
+	}
+	if problem != nil {
+		return validationRecords, problem
+	}
+
+	// Make a connection with SNI = nonceName
+	portString := strconv.Itoa(va.tlsPort)
+	hostPort := net.JoinHostPort(addr.String(), portString)
+	validationRecords[0].Port = portString
+
+	certs, problem := va.getTLSSNICerts(hostPort, identifier, challenge, sanAName)
+	if problem != nil {
+		return validationRecords, problem
+	}
+
+	leafCert := certs[0]
+
+	if len(leafCert.DNSNames) != 2 {
+		names := certNames(leafCert)
+		return validationRecords, probs.Malformed(fmt.Sprintf("%s challenge certificate doesn't include exactly 2 dNSName entries. Received %d certificate(s), first certificate had names %q", challenge.Type, len(certs), strings.Join(names, ", ")))
+	}
+
+	var validSanAName, validSanBName bool
+	for _, name := range leafCert.DNSNames {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(sanAName)) == 1 {
+			validSanAName = true
+		}
+
+		if subtle.ConstantTimeCompare([]byte(name), []byte(sanBName)) == 1 {
+			validSanBName = true
+		}
+	}
+
+	if validSanAName && validSanBName {
+		return validationRecords, nil
+	}
+
+	names := certNames(leafCert)
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Requested %s from %s. Received %d certificate(s), "+
+			"first certificate had names %q",
+		challenge.Type, sanAName, hostPort, len(certs), strings.Join(names, ", "))
+	va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
+	return validationRecords, probs.Unauthorized(errText)
+}
+
+func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
 		ServerName:         zName,
@@ -327,9 +410,9 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	})
 
 	if err != nil {
-		va.log.Info(fmt.Sprintf("TLS-01 connection failure for %s. err=[%#v] errStr=[%s]", identifier, err, err))
-		return validationRecords,
-			parseHTTPConnError(fmt.Sprintf("Failed to connect to %s for TLS-SNI-01 challenge", hostPort), err)
+		va.log.Info(fmt.Sprintf("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err))
+		return nil,
+			parseHTTPConnError(fmt.Sprintf("Failed to connect to %s for %s challenge", hostPort, challenge.Type), err)
 	}
 	// close errors are not important here
 	defer func() {
@@ -339,28 +422,14 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		va.log.Info(fmt.Sprintf("TLS-SNI-01 challenge for %s resulted in no certificates", identifier.Value))
-		return validationRecords, probs.Unauthorized("No certs presented for TLS SNI challenge")
+		va.log.Info(fmt.Sprintf("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value))
+		return nil, probs.Unauthorized(fmt.Sprintf("No certs presented for %s challenge", challenge.Type))
 	}
 	for i, cert := range certs {
-		va.log.AuditInfo(fmt.Sprintf("TLS-SNI-01 challenge for %s received certificate (%d of %d): cert=[%s]",
-			identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
+		va.log.AuditInfo(fmt.Sprintf("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
-	leafCert := certs[0]
-	for _, name := range leafCert.DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
-			return validationRecords, nil
-		}
-	}
-
-	names := certNames(leafCert)
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for TLS-SNI-01 challenge. "+
-			"Requested %s from %s. Received %d certificate(s), "+
-			"first certificate had names %q",
-		zName, hostPort, len(certs), strings.Join(names, ", "))
-	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
-	return validationRecords, probs.Unauthorized(errText)
+	return certs, nil
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -390,8 +459,8 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI was not DNS: %s", identifier))
-		return nil, probs.Malformed("Identifier type for TLS-SNI was not DNS")
+		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-01 was not DNS: %s", identifier))
+		return nil, probs.Malformed("Identifier type for TLS-SNI-01 was not DNS")
 	}
 
 	// Compute the digest that will appear in the certificate
@@ -400,7 +469,28 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
-	return va.validateTLSWithZName(ctx, identifier, challenge, ZName)
+	return va.validateTLSSNI01WithZName(ctx, identifier, challenge, ZName)
+}
+
+func (va *ValidationAuthorityImpl) validateTLSSNI02(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if identifier.Type != "dns" {
+		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-02 was not DNS: %s", identifier))
+		return nil, probs.Malformed("Identifier type for TLS-SNI-02 was not DNS")
+	}
+
+	// Compute the digest for the SAN b that will appear in the certificate
+	ha := sha256.New()
+	ha.Write([]byte(challenge.Token))
+	za := hex.EncodeToString(ha.Sum(nil))
+	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, core.TLSSNISuffix)
+
+	// Compute the digest for the SAN B that will appear in the certificate
+	hb := sha256.New()
+	hb.Write([]byte(challenge.ProvidedKeyAuthorization))
+	zb := hex.EncodeToString(hb.Sum(nil))
+	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, core.TLSSNISuffix)
+
+	return va.validateTLSSNI02WithZNames(ctx, identifier, challenge, sanAName, sanBName)
 }
 
 // badTLSHeader contains the string 'HTTP /' which is returned when
@@ -549,6 +639,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateHTTP01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSSNI01:
 		return va.validateTLSSNI01(ctx, identifier, challenge)
+	case core.ChallengeTypeTLSSNI02:
+		return va.validateTLSSNI02(ctx, identifier, challenge)
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	}

@@ -69,6 +69,7 @@ const (
 const (
 	ChallengeTypeHTTP01   = "http-01"
 	ChallengeTypeTLSSNI01 = "tls-sni-01"
+	ChallengeTypeTLSSNI02 = "tls-sni-02"
 	ChallengeTypeDNS01    = "dns-01"
 )
 
@@ -78,6 +79,8 @@ func ValidChallenge(name string) bool {
 	case ChallengeTypeHTTP01:
 		fallthrough
 	case ChallengeTypeTLSSNI01:
+		fallthrough
+	case ChallengeTypeTLSSNI02:
 		fallthrough
 	case ChallengeTypeDNS01:
 		return true
@@ -261,6 +264,8 @@ func (ch Challenge) RecordsSane() bool {
 			}
 		}
 	case ChallengeTypeTLSSNI01:
+		fallthrough
+	case ChallengeTypeTLSSNI02:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
