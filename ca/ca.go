@@ -374,6 +374,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+	methodName := "ca.IssueCertificate"
 	emptyCert := core.Certificate{}
 
 	if err := csrlib.VerifyCSR(
@@ -414,7 +415,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	serialBytes[0] = byte(ca.prefix)
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: failed to generate serial: %s", err)
+		err = berrors.InternalServerError("%s: failed to generate serial: %s", methodName, err)
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
@@ -429,7 +430,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	case *ecdsa.PublicKey:
 		profile = ca.ecdsaProfile
 	default:
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: unsupported key type %T", csr.PublicKey)
+		err = berrors.InternalServerError("%s: unsupported key type %T", methodName, csr.PublicKey)
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -455,21 +456,21 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: failed to sign certificate: %s", err)
+		err = berrors.InternalServerError("%s: failed to sign certificate: %s", methodName, err)
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 	ca.stats.Inc("Signatures.Certificate", 1)
 
 	if len(certPEM) == 0 {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: no certificate returned by server")
+		err = berrors.InternalServerError("%s: no certificate returned by server", methodName)
 		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: invalid certificate value returned")
+		err = berrors.InternalServerError("%s: invalid certificate value returned", methodName)
 		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
 			serialHex, certPEM, err))
 		return emptyCert, err
@@ -486,7 +487,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 
 	// This is one last check for uncaught errors
 	if err != nil {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: %s", err)
+		err = berrors.InternalServerError("%s: %s", methodName, err)
 		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
 			serialHex, hex.EncodeToString(certDER), err))
 		return emptyCert, err
@@ -495,7 +496,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	// Store the cert with the certificate authority, if provided
 	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
-		err = berrors.InternalServerError("boulder/ca.IssueCertificate: %s", err)
+		err = berrors.InternalServerError("%s: %s", methodName, err)
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(
