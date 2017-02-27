@@ -120,7 +120,7 @@ func newRegistration(s *State, ctx *context) error {
 		return fmt.Errorf("/acme/reg, post failed: %s", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 202 {
+	if resp.StatusCode != http.StatusAccepted {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			tState = "error"
@@ -167,7 +167,6 @@ func newAuthorization(s *State, ctx *context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
-		// something
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			state = "error"
@@ -243,7 +242,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 202 {
+	if resp.StatusCode != http.StatusAccepted {
 		cState = "error"
 		return fmt.Errorf("Unexpected error code")
 	}
@@ -465,7 +464,7 @@ func revokeCertificate(s *State, ctx *context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		state = "error"
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {

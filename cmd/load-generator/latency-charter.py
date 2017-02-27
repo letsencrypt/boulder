@@ -26,6 +26,7 @@ handles, labels = randAx.get_legend_handles_labels()
 
 # big ol' plotting method
 def plot_section(all_data, title, outputPath):
+    # group calls by the endpoint/method
     actions = all_data.groupby('action')
     h = len(actions.groups.keys())
     matplotlib.rcParams['figure.figsize'] = 20, 3 * h
@@ -36,23 +37,23 @@ def plot_section(all_data, title, outputPath):
         fig.suptitle(title, fontsize=20, y=0.93)
     gs = gridspec.GridSpec(h, 3)
 
-    # figure out left and right datetime bounds from started and stopped
+    # figure out left and right datetime bounds
     started = all_data['sent'].min()
     stopped = all_data['finished'].max()
 
     i = 0
+    # plot one row of charts for each endpoint/method combination
     for section in actions.groups.keys():
-        # ax = axes[i][0]
+        # setup the tree charts
         ax = fig.add_subplot(gs[i, 0])
         ax.set_title(section)
         ax.set_xlim(started, stopped)
-        # ax2 = axes[i][2]
         ax2 = fig.add_subplot(gs[i, 2])
         ax2.set_xlim(started, stopped)
-        # ax3 = axes[i][1]
         ax3 = fig.add_subplot(gs[i, 1])
         ax3.set_xlim(started, stopped)
 
+        # find the maximum y value and set it across all three charts
         calls = actions.get_group(section)
         tookMax = calls['took'].max()
         ax.set_ylim(0, tookMax+tookMax*0.1)
@@ -80,10 +81,9 @@ def plot_section(all_data, title, outputPath):
             good_rate['rate'] = good_rate['rate'].divide(5)
             rateMax = good_rate['rate'].max()
             ax2.plot_date(good_rate.index, good_rate['rate'], linestyle='-', marker='', color='green', label='good')
-
-        # ax.grid(False)
         ax.set_ylabel('Latency (ms)')
 
+        # calculate the request rate
         sent_rate = pandas.DataFrame(calls['sent'])
         sent_rate = sent_rate.set_index('sent')
         sent_rate['rate'] = [0] * len(sent_rate.index)
@@ -93,9 +93,9 @@ def plot_section(all_data, title, outputPath):
             rateMax = sent_rate['rate'].max()
         ax2.plot_date(sent_rate.index, sent_rate['rate'], linestyle='--', marker='', color='black', label='sent')
         ax2.set_ylim(0, rateMax+rateMax*0.1)
-        # ax2.grid(False)
         ax2.set_ylabel('Rate (per second)')
 
+        # calculate and plot latency quantiles
         calls = calls.set_index('finished')
         calls = calls.sort_index()
         quan = pandas.DataFrame(calls['took'])
@@ -103,18 +103,18 @@ def plot_section(all_data, title, outputPath):
             quanN = quan.rolling(500, center=True).quantile(q)
             ax3.plot(quanN['took'].index, quanN['took'], color=c)
 
-        # ax3.grid(False)
         ax3.set_ylabel('Latency quantiles (ms)')
 
         i += 1
 
+    # format x axes
     for ax in fig.axes:
         matplotlib.pyplot.sca(ax)
         plt.xticks(rotation=30, ha='right')
         majorFormatter = matplotlib.dates.DateFormatter('%H:%M:%S')
         ax.xaxis.set_major_formatter(majorFormatter)
 
-    # fig = plct.gcf()
+    # save image
     gs.update(wspace=0.275, hspace=0.5)
     fig.savefig(outputPath, bbox_inches='tight')
 

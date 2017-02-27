@@ -132,8 +132,7 @@ func (s *State) Snapshot(filename string) error {
 		snap.Registrations = append(snap.Registrations, rawRegistration{
 			Certs:          reg.certs,
 			FinalizedAuthz: reg.finalizedAuthz,
-			// RawKey:         x509.MarshalPKCS1PrivateKey(reg.key),
-			RawKey: k,
+			RawKey:         k,
 		})
 	}
 	cont, err := json.Marshal(snap)
@@ -168,7 +167,6 @@ func (s *State) Restore(filename string) error {
 			key:    key,
 			signer: signer,
 			certs:  r.Certs,
-			//			auths:  r.Auths,
 		})
 	}
 	return nil
@@ -461,7 +459,7 @@ func (s *State) sendCall() {
 	for _, op := range s.operations {
 		err := op(s, ctx)
 		if err != nil {
-			method := runtime.FuncForPC(reflect.ValueOf(op).Pointer()).Name() // XXX: sketchy :/
+			method := runtime.FuncForPC(reflect.ValueOf(op).Pointer()).Name()
 			fmt.Printf("[FAILED] %s: %s\n", method, err)
 			break
 		}
