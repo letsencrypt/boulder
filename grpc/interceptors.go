@@ -37,7 +37,7 @@ func cleanMethod(m string, trimService bool) string {
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		si.stats.Inc("NoInfo", 1)
-		return nil, berrors.InternalServerError("boulder/grpc.intercept: passed nil *grpc.UnaryServerInfo")
+		return nil, berrors.InternalServerError("grpc.intercept: passed nil *grpc.UnaryServerInfo")
 	}
 	s := si.clk.Now()
 	methodScope := si.stats.NewScope(cleanMethod(info.FullMethod, true))

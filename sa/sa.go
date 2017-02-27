@@ -517,7 +517,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 		return err
 	}
 	if n == 0 {
-		err = berrors.InternalServerError("boulder/sa.MarkCertificateRevoked: no certificate updated")
+		err = berrors.InternalServerError("sa.MarkCertificateRevoked: no certificate updated")
 		err = Rollback(tx, err)
 		return err
 	}
@@ -631,23 +631,23 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("boulder/sa.UpdatePendingAuthorization: authorization is not pending")
+		err = berrors.InternalServerError("sa.UpdatePendingAuthorization: authorization is not pending")
 		return Rollback(tx, err)
 	}
 
 	if existingFinal(tx, authz.ID) {
-		err = berrors.InternalServerError("boulder/sa.UpdatePendingAuthorization: cannot update a finalized authorization")
+		err = berrors.InternalServerError("sa.UpdatePendingAuthorization: cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 
 	if !existingPending(tx, authz.ID) {
-		err = berrors.InternalServerError("boulder/sa.UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("sa.UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		err = berrors.InternalServerError("boulder/sa.UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("sa.UpdatePendingAuthorization: authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if err != nil {
@@ -676,18 +676,18 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = berrors.InternalServerError("boulder/sa.FinalizeAuthorization: authorization with ID %q not found", authz.ID)
+		err = berrors.InternalServerError("sa.FinalizeAuthorization: authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("boulder/sa.FinalizeAuthorization: authorization with ID %q is not pending", authz.ID)
+		err = berrors.InternalServerError("sa.FinalizeAuthorization: authorization with ID %q is not pending", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	auth := &authzModel{authz}
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, berrors.InternalServerError("boulder/sa.FinalizeAuthorization: authorization with ID %q not found", authz.ID))
+		return Rollback(tx, berrors.InternalServerError("sa.FinalizeAuthorization: authorization with ID %q not found", authz.ID))
 	}
 	if err != nil {
 		return Rollback(tx, err)
