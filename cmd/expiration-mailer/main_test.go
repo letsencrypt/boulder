@@ -51,7 +51,7 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	r, ok := f.RegByID[id]
 	if !ok {
-		return r, berrors.NotFoundError("no registration found")
+		return r, berrors.NotFoundError("no registration found for %q", id)
 	}
 	return r, nil
 }

@@ -148,7 +148,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		model, err = selectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
-		return core.Registration{}, berrors.NotFoundError("registration with key hash '%s' not found", sha)
+		return core.Registration{}, berrors.NotFoundError("registration with key hash %q not found", sha)
 	}
 	if err != nil {
 		return core.Registration{}, err

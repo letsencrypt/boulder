@@ -974,12 +974,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	ch := &authz.Challenges[challengeIndex]
 
 	if response.Type != "" && ch.Type != response.Type {
+		// TODO(riking): Check the rate on this, uncomment error return if negligible
 		ra.stats.Inc("StartChallengeWrongType", 1)
-		return authz, berrors.MalformedError(
-			"invalid challenge update: provided type was %s but actual type is %s",
-			response.Type,
-			ch.Type,
-		)
+		// return authz, berrors.MalformedError(
+		// 	"invalid challenge update: provided type was %s but actual type is %s",
+		// 	response.Type,
+		// 	ch.Type,
+		// )
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try

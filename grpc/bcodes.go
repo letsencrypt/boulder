@@ -74,7 +74,7 @@ func wrapError(ctx context.Context, err error) error {
 		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
-	// TODO(XXX): depreciated, remove once boulder/errors code has been deployed
+	// TODO(2589): deprecated, remove once boulder/errors code has been deployed
 	code := errorToCode(err)
 	var body string
 	if code == ProblemDetails {
@@ -114,7 +114,7 @@ func unwrapError(err error, md metadata.MD) error {
 		}
 		return berrors.New(berrors.ErrorType(errType), unwrappedErr)
 	}
-	// TODO(XXX): depreciated, remove once boulder/errors code has been deployed
+	// TODO(2589): deprecated, remove once boulder/errors code has been deployed
 	code := grpc.Code(err)
 	errBody := grpc.ErrorDesc(err)
 	switch code {
