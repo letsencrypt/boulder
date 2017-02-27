@@ -62,7 +62,9 @@ Boulder doesn't implement the `new-nonce` endpoint, instead it responds to `HEAD
 
 Boulder only allows `mailto` URIs in the registrations `contact` list.
 
-Boulder uses a HTTP status code 409 (Conflict) response for an already existing registration instead of 200 (OK). Boulder returns the URI of the already existing registration in a `Location` header field instead of a `Content-Location` header field.
+Boulder uses an HTTP status code 409 (Conflict) response for an already existing registration instead of 200 (OK). Boulder returns the URI of the already existing registration in a `Location` header field instead of a `Content-Location` header field.
+
+Boulder does not return the `status` field.
 
 ## [Section 6.3.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.3.3)
 
@@ -79,6 +81,8 @@ Boulder ignores the `existing` field in authorization request objects.
 ## [Section 7.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-7)
 
 Boulder returns an `uri` instead of an `url` field in challenge objects.
+
+Boulder uses an HTTP status code 202 (Accepted) response for correct challenge responses instead of 200 (OK) as defined in [Section 6.1](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.1).
 
 ## [Section 7.3.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-7.3)
 
