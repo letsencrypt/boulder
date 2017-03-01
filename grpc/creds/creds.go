@@ -73,7 +73,10 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()
-			return nil, nil, fmt.Errorf("boulder/grpc/creds: TLS handshake failed: %s", err)
+			// directly return the error so that gRPC can use its
+			// 'isTemporary' method to check if this is a recoverable
+			// error
+			return nil, nil, err
 		}
 		return conn, nil, nil
 	}
