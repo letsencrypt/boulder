@@ -171,7 +171,7 @@ func TestClientTransportCredentials(t *testing.T) {
 	defer cancel()
 	conn, _, err = tc.ClientHandshake(ctx, "A:2020", rawConnC)
 	test.AssertError(t, err, "tc.ClientHandshake didn't timeout")
-	test.AssertEquals(t, err.Error(), "boulder/grpc/creds: context deadline exceeded")
+	test.AssertEquals(t, err.Error(), "context deadline exceeded")
 	test.Assert(t, conn == nil, "tc.ClientHandshake returned a non-nil net.Conn on failure")
 
 	stop <- struct{}{}
