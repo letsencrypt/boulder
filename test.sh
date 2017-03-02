@@ -204,7 +204,7 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_expect_silence errcheck \
     -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/letsencrypt/boulder/vendor/github.com/cactus/go-statsd-client/statsd:.* \
-    $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test | grep -v "load-generator")
+    $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test)
   end_context #errcheck
 fi
 

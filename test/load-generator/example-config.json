@@ -16,6 +16,6 @@
     "tlsOneAddr": "localhost:5001",
     "regKeySize": 2048,
     "certKeySize": 2048,
-    "regEmail": "test@blackhole.com",
+    "regEmail": "loadtesting@letsencrypt.org",
     "results": "example-latency.json"
 }

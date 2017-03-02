@@ -33,7 +33,6 @@ type Config struct {
 	CertKeySize   int      // size of the key to use when creating CSRs
 	RegEmail      string   // email to use in registrations
 	Results       string   // path to save metrics to
-	MaxRegs       int      // maximum number of registrations to create
 }
 
 func main() {
