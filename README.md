@@ -41,6 +41,9 @@ container for service boulder" you should double check that your `$GOPATH`
 exists and doesn't contain any characters other than letters, numbers, `-`
 and `_`.
 
+If you have problems with Docker, you may want to try [removing all containers
+and volumes](https://www.digitalocean.com/community/tutorials/how-to-remove-docker-images-containers-and-volumes).
+
 By default, Boulder uses a fake DNS resolver that resolves all hostnames to
 127.0.0.1. This is suitable for running integration tests inside the Docker
 container. If you want Boulder to be able to communicate with a client running
@@ -54,6 +57,15 @@ match.
 Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
 
     docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
+
+Boulder's default VA configuration (`test/config/va.json`) is configured to
+connect to port 5002 to validate HTTP-01 challenges and port 5001 to validate
+TLS-SNI-01 challenges. If you want to solve challenges with a client running on
+your host you should make sure it uses these ports to respond to validation
+requests, or update the VA configuration's `portConfig` to use ports 80 and 443
+to match how the VA operates in production and staging environments. If you use
+a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow connections
+from the Docker instance to your host on the required ports.
 
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
@@ -119,6 +131,15 @@ or changed the password you may have to adjust the file or recreate the commands
 
 Install SoftHSM to store the CA private key in a way that can be accessed using
 PKCS#11. Then run ./test/make-softhsm.sh and follow its instructions.
+
+Install Python packages for integration test:
+
+    virtualenv venv
+    . venv/bin/activate
+    pip install -r test/requirements.txt
+    # If you want to develop against a locally modified Python acme package,
+    # this will install the package such that updates are reflected immediately:
+    pip install -e ~/certbot/acme[dev]
 
 Start all boulder components with test configs (Ctrl-C kills all):
 
@@ -209,3 +230,30 @@ godep save ./...
 git add Godeps vendor
 git commit
 ```
+
+NOTE: If you get "godep: no packages can be updated," there's a good chance
+you're trying to update a single package that belongs to a repo with other
+packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce
+this error, because it's part of the `golang.org/x/crypto` repo, from which we
+also import the `pkcs12` package. Godep requires that all packages from the same
+repo be on the same version, so it can't update just one. The error message is
+not particularly helpful. See https://github.com/tools/godep/issues/164 for the
+issue dedicated to fixing it.
+
+NOTE: Updating cfssl in particular is tricky, because cfssl vendors
+`github.com/google/certificate-transparency/...` and
+`golang.org/x/crypto/ocsp/...`, which we also vendor. In practice this means you
+need to check out those two dependencies to the same version cfssl uses
+(available in `vendor/manifest` in the cfssl repo). If you fail to do this,
+you will get conflicting types between our vendored version and the cfssl vendored version.
+
+    godep update golang.org/x/crypto/...  github.com/cloudflare/cfssl/... github.com/google/certificate-transparency/...
+    godep save ./...
+
+Adding RPCs
+-----------
+
+Boulder is moving towards using gRPC for all RPCs. To add a new RPC method, add
+it to the relevant .proto file, then run:
+
+    docker-compose run boulder go generate ./path/to/pkg/...

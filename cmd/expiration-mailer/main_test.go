@@ -220,7 +220,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailARaw,
-		// A certificte with only one domain should have only one domain listed in
+		// A certificate with only one domain should have only one domain listed in
 		// the subject
 		Subject: "Certificate expiration notice for domain \"example-a.com\"",
 		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
@@ -313,6 +313,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial1String,
 		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	// Expires in 3d, already sent 4d nag at 4.5d
@@ -335,6 +336,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial2String,
 		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	// Expires in 7d and change, no nag sent at all yet
@@ -354,8 +356,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{
-		Serial: serial3String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial3String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertC.NotAfter,
 	}
 
 	// Expires in 3d, renewed
@@ -375,8 +378,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerD,
 	}
 	certStatusD := &core.CertificateStatus{
-		Serial: serial4String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial4String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertD.NotAfter,
 	}
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
@@ -442,7 +446,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
 	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
-	// Similarly, findExpiringCerticates() sends its latency as well
+	// Similarly, findExpiringCertificates() sends its latency as well
 	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
 	err := testCtx.m.findExpiringCertificates()
@@ -628,8 +632,9 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 
 	certStatusA := &core.CertificateStatus{
-		Serial: serial1String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial1String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertA.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -788,6 +793,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial1String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	rawCertB := newX509Cert("happy B",
@@ -806,6 +812,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial2String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)

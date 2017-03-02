@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -25,11 +26,15 @@ func TestErrors(t *testing.T) {
 		{core.BadNonceError("test 8"), BadNonceError},
 		{core.NoSuchRegistrationError("test 9"), NoSuchRegistrationError},
 		{core.InternalServerError("test 10"), InternalServerError},
+		{&probs.ProblemDetails{Type: probs.ConnectionProblem, Detail: "testing..."}, ProblemDetails},
 	}
 
 	for _, tc := range testcases {
 		wrappedErr := wrapError(tc.err)
 		test.AssertEquals(t, grpc.Code(wrappedErr), tc.expectedCode)
-		test.AssertEquals(t, tc.err, unwrapError(wrappedErr))
+		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr))
 	}
+
+	test.AssertEquals(t, wrapError(nil), nil)
+	test.AssertEquals(t, unwrapError(nil), nil)
 }

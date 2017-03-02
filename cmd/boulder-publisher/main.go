@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/publisher"
@@ -26,6 +27,7 @@ type config struct {
 		SubmissionTimeout              cmd.ConfigDuration
 		MaxConcurrentRPCServerRequests int64
 		SAService                      *cmd.GRPCClientConfig
+		Features                       map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -51,6 +53,8 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Publisher.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Publisher")
@@ -59,7 +63,7 @@ func main() {
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key)
+		logs[i], err = publisher.NewLog(ld.URI, ld.Key, logger)
 		cmd.FailOnError(err, "Unable to parse CT log description")
 	}
 

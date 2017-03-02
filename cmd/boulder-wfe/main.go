@@ -28,8 +28,12 @@ const clientName = "WFE"
 type config struct {
 	WFE struct {
 		cmd.ServiceConfig
-		BaseURL       string
-		ListenAddress string
+		BaseURL          string
+		ListenAddress    string
+		TLSListenAddress string
+
+		ServerCertificatePath string
+		ServerKeyPath         string
 
 		AllowOrigins []string
 
@@ -171,7 +175,28 @@ func main() {
 	hdSrv, err := hd.ListenAndServe(srv)
 	cmd.FailOnError(err, "Error starting HTTP server")
 
-	go cmd.CatchSignals(logger, func() { _ = hdSrv.Stop() })
+	var hdTLSSrv httpdown.Server
+	if c.WFE.TLSListenAddress != "" {
+		cer, err := tls.LoadX509KeyPair(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
+		cmd.FailOnError(err, "Couldn't read WFE server certificate or key")
+		tlsConfig := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+		logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
+		TLSSrv := &http.Server{
+			Addr:      c.WFE.TLSListenAddress,
+			Handler:   httpMonitor,
+			TLSConfig: tlsConfig,
+		}
+		hdTLSSrv, err = hd.ListenAndServe(TLSSrv)
+		cmd.FailOnError(err, "Error starting TLS server")
+	}
+
+	go cmd.CatchSignals(logger, func() {
+		_ = hdSrv.Stop()
+		if hdTLSSrv != nil {
+			_ = hdTLSSrv.Stop()
+		}
+	})
 
 	forever := make(chan struct{}, 1)
 	<-forever

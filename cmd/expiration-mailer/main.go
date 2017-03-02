@@ -260,11 +260,9 @@ func (m *mailer) findExpiringCertificates() error {
 		// sequentially fetch the certificate details. This avoids an expensive
 		// JOIN.
 		var serials []string
-		var err error
-		if features.Enabled(features.CertStatusOptimizationsMigrated) {
-			_, err = m.dbMap.Select(
-				&serials,
-				`SELECT
+		_, err := m.dbMap.Select(
+			&serials,
+			`SELECT
 				cs.serial
 				FROM certificateStatus AS cs
 				WHERE cs.notAfter > :cutoffA
@@ -273,35 +271,13 @@ func (m *mailer) findExpiringCertificates() error {
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
 				LIMIT :limit`,
-				map[string]interface{}{
-					"cutoffA":   left,
-					"cutoffB":   right,
-					"nagCutoff": expiresIn.Seconds(),
-					"limit":     m.limit,
-				},
-			)
-		} else {
-			_, err = m.dbMap.Select(
-				&serials,
-				`SELECT
-					cert.serial
-					FROM certificates AS cert
-					JOIN certificateStatus AS cs
-					ON cs.serial = cert.serial
-					AND cert.expires > :cutoffA
-					AND cert.expires <= :cutoffB
-					AND cs.status != "revoked"
-					AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-					ORDER BY cert.expires ASC
-					LIMIT :limit`,
-				map[string]interface{}{
-					"cutoffA":   left,
-					"cutoffB":   right,
-					"nagCutoff": expiresIn.Seconds(),
-					"limit":     m.limit,
-				},
-			)
-		}
+			map[string]interface{}{
+				"cutoffA":   left,
+				"cutoffB":   right,
+				"nagCutoff": expiresIn.Seconds(),
+				"limit":     m.limit,
+			},
+		)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
 			return err
@@ -397,6 +373,8 @@ type config struct {
 
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -420,6 +398,8 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Mailer.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Expiration")

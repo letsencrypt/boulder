@@ -4,12 +4,12 @@
     "maxDBConns": 10,
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
-    "missingSCTWindow": "1m",
+    "missingSCTWindow": "1s",
     "revokedCertificateWindow": "1s",
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
-    "parallelGenerateOCSPRequests": 10,
     "missingSCTBatchSize": 5000,
+    "parallelGenerateOCSPRequests": 10,
     "revokedCertificateBatchSize": 1000,
     "ocspMinTimeToExpiry": "72h",
     "oldestIssuedSCT": "72h",
@@ -51,7 +51,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500",
+          "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ]

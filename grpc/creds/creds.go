@@ -52,6 +52,8 @@ func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate)
 // connection and the corresponding auth information about the connection.
 // Implementations must use the provided context to implement timely cancellation.
 func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	// IMPORTANT: Don't wrap the errors returned from this method. gRPC expects to be
+	// able to check err.Temporary to spot temporary errors and reconnect when they happen.
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, nil, err
@@ -69,11 +71,11 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 	}()
 	select {
 	case <-ctx.Done():
-		return nil, nil, fmt.Errorf("boulder/grpc/creds: %s", ctx.Err())
+		return nil, nil, ctx.Err()
 	case err := <-errChan:
 		if err != nil {
 			_ = rawConn.Close()
-			return nil, nil, fmt.Errorf("boulder/grpc/creds: TLS handshake failed: %s", err)
+			return nil, nil, err
 		}
 		return conn, nil, nil
 	}

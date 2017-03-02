@@ -443,7 +443,7 @@ func TestTLSSNI(t *testing.T) {
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
-		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
+		t.Fatalf("Unexpected failure in validateTLSSNI01: %s", prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
@@ -492,6 +492,20 @@ func TestTLSSNI(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
+	httpOnly := httpSrv(t, "")
+	defer httpOnly.Close()
+	port, err = getPort(httpOnly)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va.tlsPort = port
+
+	log.Clear()
+	_, err = va.validateTLSSNI01(ctx, ident, chall)
+	test.AssertError(t, err, "TLS SNI validation passed when talking to a HTTP-only server")
+	test.Assert(t, strings.HasSuffix(
+		err.Error(),
+		"Server only speaks HTTP, not TLS",
+	), "validateTLSSNI01 didn't return useful error")
 }
 
 func brokenTLSSrv() *httptest.Server {
@@ -519,6 +533,97 @@ func TestTLSError(t *testing.T) {
 		t.Fatalf("TLS validation should have failed: What cert was used?")
 	}
 	test.AssertEquals(t, prob.Type, probs.TLSProblem)
+}
+
+// misconfiguredTLSSrv is a TLS HTTP test server that returns a certificate
+// chain with more than one cert, none of which will solve a TLS SNI challenge
+func misconfiguredTLSSrv() *httptest.Server {
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		Subject: pkix.Name{
+			CommonName: "hello.world",
+		},
+		DNSNames: []string{"goodbye.world", "hello.world"},
+	}
+
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert := &tls.Certificate{
+		Certificate: [][]byte{certBytes, certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+	server.TLS = &tls.Config{
+		Certificates: []tls.Certificate{*cert},
+	}
+	server.StartTLS()
+	return server
+}
+
+func TestCertNames(t *testing.T) {
+	// We duplicate names inside the SAN set
+	names := []string{
+		"hello.world", "goodbye.world",
+		"hello.world", "goodbye.world",
+		"bonjour.le.monde", "au.revoir.le.monde",
+		"bonjour.le.monde", "au.revoir.le.monde",
+	}
+	// We expect only unique names, in sorted order
+	expected := []string{
+		"au.revoir.le.monde", "bonjour.le.monde",
+		"goodbye.world", "hello.world",
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		Subject: pkix.Name{
+			// We also duplicate a name from the SANs as the CN
+			CommonName: names[0],
+		},
+		DNSNames: names,
+	}
+
+	// Create the certificate, check that certNames provides the expected result
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert, _ := x509.ParseCertificate(certBytes)
+	actual := certNames(cert)
+	test.AssertDeepEquals(t, actual, expected)
+}
+
+// TestSNIErrInvalidChain sets up a TLS server with two certificates, neither of
+// which validate the SNI challenge.
+func TestSNIErrInvalidChain(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := misconfiguredTLSSrv()
+
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va, _, _ := setup()
+	va.tlsPort = port
+
+	// Validate the SNI challenge with the test server, expecting it to fail
+	_, prob := va.validateTLSSNI01(ctx, ident, chall)
+	if prob == nil {
+		t.Fatalf("TLS validation should have failed")
+	}
+
+	// We expect that the error message will say 2 certificates were received, and
+	// we expect the error to contain a deduplicated list of domain names from the
+	// subject CN and SANs of the leaf cert
+	expected := "Received 2 certificate(s), first certificate had names \"goodbye.world, hello.world\""
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.AssertContains(t, prob.Detail, expected)
 }
 
 func TestValidateHTTP(t *testing.T) {

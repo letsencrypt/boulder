@@ -396,7 +396,7 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	test.AssertEquals(t, len(certs), 0)
 }
 
-// TestOldOCSPResponesTickIsExpired checks that the old OCSP responses tick
+// TestOldOCSPResponsesTickIsExpired checks that the old OCSP responses tick
 // updates the `IsExpired` field opportunistically as it encounters certificates
 // that are expired but whose certificate status rows do not have `IsExpired`
 // set.
@@ -850,4 +850,22 @@ func TestMissingLogs(t *testing.T) {
 			test.AssertEquals(t, missingLogs[i].logID, expectedLog.logID)
 		}
 	}
+}
+
+func TestReverseBytes(t *testing.T) {
+	a := []byte{0, 1, 2, 3}
+	test.AssertDeepEquals(t, reverseBytes(a), []byte{3, 2, 1, 0})
+}
+
+func TestGenerateOCSPCacheKeys(t *testing.T) {
+	der := []byte{105, 239, 255}
+	test.AssertDeepEquals(
+		t,
+		generateOCSPCacheKeys(der, "ocsp.invalid/"),
+		[]string{
+			"ocsp.invalid/?body-md5=d6101198a9d9f1f6",
+			"ocsp.invalid/ae/",
+			"ocsp.invalid/ae%2F%2F",
+		},
+	)
 }

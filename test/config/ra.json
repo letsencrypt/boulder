@@ -9,7 +9,7 @@
     "maxNames": 1000,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
-    "authorizationLifetimeDays": 90,
+    "authorizationLifetimeDays": 60,
     "pendingAuthorizationLifetimeDays": 7,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

@@ -200,7 +200,7 @@ type IssuerConfig struct {
 	NumSessions int
 }
 
-// TLSConfig reprents certificates and a key for authenticated TLS.
+// TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
 	CertFile   *string
 	KeyFile    *string
@@ -281,13 +281,16 @@ type OCSPUpdaterConfig struct {
 	Publisher            *GRPCClientConfig
 	SAService            *GRPCClientConfig
 	OCSPGeneratorService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
 // Google Safe Browsing API.
 type GoogleSafeBrowsingConfig struct {
-	APIKey  string
-	DataDir string
+	APIKey    string
+	DataDir   string
+	ServerURL string
 }
 
 // SyslogConfig defines the config for syslogging.
@@ -369,15 +372,15 @@ type GRPCClientConfig struct {
 
 // GRPCServerConfig contains the information needed to run a gRPC service
 type GRPCServerConfig struct {
-	Address string `json:"address" yaml:"address"`
+	Address string `json:"address"`
 	// ClientNames is a list of allowed client certificate subject alternate names
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
-	ClientNames []string `json:"clientNames" yaml:"client-names"`
+	ClientNames []string `json:"clientNames"`
 	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
-	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
-	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
-	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	ServerCertificatePath string `json:"serverCertificatePath"`
+	ServerKeyPath         string `json:"serverKeyPath"`
+	ClientIssuerPath      string `json:"clientIssuerPath"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote
