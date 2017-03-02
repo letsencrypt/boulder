@@ -92,7 +92,7 @@ type State struct {
 	regs []*registration
 
 	challSrv    *challSrv
-	callLatency *latencyFile
+	callLatency latencyWriter
 	client      *http.Client
 
 	getTotal  int64
