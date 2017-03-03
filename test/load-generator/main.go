@@ -19,7 +19,6 @@ type Config struct {
 		Actions   []string // things to do
 		Rate      int64    // requests / s
 		RateDelta string   // requests / s^2
-		MaxRate   int64    // XXX: is this needed?
 		Runtime   string   // how long to run for
 	}
 	ExternalState string   // path to file to load/save registrations etc to/from
@@ -33,6 +32,7 @@ type Config struct {
 	CertKeySize   int      // size of the key to use when creating CSRs
 	RegEmail      string   // email to use in registrations
 	Results       string   // path to save metrics to
+	MaxRegs       int      // maximum number of registrations to create
 }
 
 func main() {
