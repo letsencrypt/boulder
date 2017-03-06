@@ -330,7 +330,6 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 	}
 
 	leafCert := certs[0]
-
 	for _, name := range leafCert.DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			return validationRecords, nil

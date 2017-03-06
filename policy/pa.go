@@ -286,7 +286,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		challenges = append(challenges, core.TLSSNIChallenge01())
 	}
 
-	if pa.enabledChallenges[core.ChallengeTypeTLSSNI02] {
+	if features.Enabled(features.AllowTLS02Challenges) && pa.enabledChallenges[core.ChallengeTypeTLSSNI02] {
 		challenges = append(challenges, core.TLSSNIChallenge02())
 	}
 
