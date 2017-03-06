@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 07c79d4 (Mon Feb  6 10:59:44 2017)"
+const defaultListVersion = "PSL version 03089bf (Fri Mar  3 16:01:32 2017)"
 
 func init() {
-	r := [8110]Rule{
+	r := [8107]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -6220,7 +6220,6 @@ func init() {
 		{1, "durban", 1, false},
 		{1, "dvag", 1, false},
 		{1, "dvr", 1, false},
-		{1, "dwg", 1, false},
 		{1, "earth", 1, false},
 		{1, "eat", 1, false},
 		{1, "eco", 1, false},
@@ -6410,7 +6409,6 @@ func init() {
 		{1, "icu", 1, false},
 		{1, "ieee", 1, false},
 		{1, "ifm", 1, false},
-		{1, "iinet", 1, false},
 		{1, "ikano", 1, false},
 		{1, "imamat", 1, false},
 		{1, "imdb", 1, false},
@@ -6600,7 +6598,6 @@ func init() {
 		{1, "mtpc", 1, false},
 		{1, "mtr", 1, false},
 		{1, "mutual", 1, false},
-		{1, "mutuelle", 1, false},
 		{1, "nab", 1, false},
 		{1, "nadex", 1, false},
 		{1, "nagoya", 1, false},
@@ -6767,6 +6764,7 @@ func init() {
 		{1, "rogers", 1, false},
 		{1, "room", 1, false},
 		{1, "rsvp", 1, false},
+		{1, "rugby", 1, false},
 		{1, "ruhr", 1, false},
 		{1, "run", 1, false},
 		{1, "rwe", 1, false},
@@ -6909,7 +6907,6 @@ func init() {
 		{1, "thd", 1, false},
 		{1, "theater", 1, false},
 		{1, "theatre", 1, false},
-		{1, "theguardian", 1, false},
 		{1, "tiaa", 1, false},
 		{1, "tickets", 1, false},
 		{1, "tienda", 1, false},
@@ -7034,7 +7031,6 @@ func init() {
 		{1, "xn--42c2d9a", 1, false},
 		{1, "xn--45q11c", 1, false},
 		{1, "xn--4gbrim", 1, false},
-		{1, "xn--4gq48lf9j", 1, false},
 		{1, "xn--55qw42g", 1, false},
 		{1, "xn--55qx5d", 1, false},
 		{1, "xn--5su34j936bgsg", 1, false},
@@ -8057,6 +8053,7 @@ func init() {
 		{2, "stolos.io", 3, true},
 		{1, "spacekit.io", 2, true},
 		{1, "stackspace.space", 2, true},
+		{1, "storj.farm", 2, true},
 		{1, "diskstation.me", 2, true},
 		{1, "dscloud.biz", 2, true},
 		{1, "dscloud.me", 2, true},
