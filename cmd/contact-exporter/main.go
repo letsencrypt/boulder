@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"

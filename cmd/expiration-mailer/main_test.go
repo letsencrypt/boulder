@@ -19,7 +19,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"

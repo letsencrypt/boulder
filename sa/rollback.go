@@ -8,7 +8,7 @@ package sa
 import (
 	"fmt"
 
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 )
 
 // RollbackError is a combination of a database error and the error, if any,

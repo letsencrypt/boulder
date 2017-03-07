@@ -343,9 +343,9 @@
 			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
-			"ImportPath": "gopkg.in/gorp.v1",
-			"Comment": "v1.7.1",
-			"Rev": "c87af80f3cc5036b55b83d77171e156791085e2e"
+			"ImportPath": "gopkg.in/go-gorp/gorp.v2",
+			"Comment": "v2.0.0",
+			"Rev": "4deece61034873cb5b5416e81abe4cea7bd0da72"
 		},
 		{
 			"ImportPath": "gopkg.in/square/go-jose.v1",
