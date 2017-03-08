@@ -106,7 +106,7 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
-		problem := bdns.ProblemDetailsFromDNSError(err)
+		problem := probs.ConnectionFailure(err.Error())
 		return net.IP{}, nil, problem
 	}
 
@@ -452,7 +452,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 
-		return nil, bdns.ProblemDetailsFromDNSError(err)
+		return nil, probs.ConnectionFailure(err.Error())
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow
@@ -486,7 +486,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
 	present, valid, err := va.checkCAARecords(ctx, ident)
 	if err != nil {
-		return bdns.ProblemDetailsFromDNSError(err)
+		return probs.ConnectionFailure(err.Error())
 	}
 	va.log.AuditInfo(fmt.Sprintf(
 		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",

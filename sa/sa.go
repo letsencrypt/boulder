@@ -148,7 +148,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		model, err = selectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
-		return core.Registration{}, berrors.NotFoundError("registration with key hash %q not found", sha)
+		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -215,7 +215,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
-		return nil, berrors.MalformedError("no names received")
+		return nil, berrors.InternalServerError("no names received")
 	}
 
 	params := make([]interface{}, len(names))

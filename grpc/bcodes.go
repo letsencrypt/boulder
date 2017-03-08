@@ -18,6 +18,7 @@ import (
 // gRPC error codes used by Boulder. While the gRPC codes
 // end at 16 we start at 100 to provide a little leeway
 // in case they ever decide to add more
+// TODO(#2507): Depreciated, remove once boulder/errors code is deployed
 const (
 	MalformedRequestError = iota + 100
 	NotSupportedError
@@ -66,11 +67,21 @@ func errorToCode(err error) codes.Code {
 	}
 }
 
+// wrapError wraps the internal error types we use for transport across the gRPC
+// layer. core.XXXError and probs.ProblemDetails error types are encoded using the gRPC
+// error status code which has been deprecated (#2507). errors.BoulderError error types
+// are encoded using the grpc/metadata in the context.Context for the RPC which is
+// considered to be the 'proper' method of encoding custom error types (grpc/grpc#4543
+// and grpc/grpc-go#478)
 func wrapError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
 	if berr, ok := err.(*berrors.BoulderError); ok {
+		// If setting the metadata fails ignore the returned error and
+		// return the BoulderError detail so we still see the actual
+		// reason on the other side with the default InternalServer
+		// error type
 		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
@@ -92,6 +103,12 @@ func wrapError(ctx context.Context, err error) error {
 	return grpc.Errorf(code, body)
 }
 
+// unwrapError unwraps errors returned from gRPC client calls which were wrapped
+// with wrapError to their proper internal error type. If the error is a
+// BoulderError the grpc/metadata taken from the call context.Context is used to
+// determine the error type. If the error is a core.XXXError or a
+// probs.ProblemDetails the type is determined using the gRPC error code which
+// has been deprecated (#2507).
 func unwrapError(err error, md metadata.MD) error {
 	if err == nil {
 		return nil

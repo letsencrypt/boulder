@@ -164,10 +164,10 @@ func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
 	return nil
 }
 
-const (
-	unparseableEmailDetail = "not a valid e-mail address"
-	emptyDNSResponseDetail = "empty DNS response"
-	multipleAddressDetail  = "more than one e-mail address"
+var (
+	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
+	emptyDNSResponseError = berrors.InvalidEmailError("empty DNS response")
+	multipleAddressError  = berrors.InvalidEmailError("more than one e-mail address")
 )
 
 func problemIsTimeout(err error) bool {
@@ -181,10 +181,10 @@ func problemIsTimeout(err error) bool {
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) error {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return berrors.InvalidEmailError(unparseableEmailDetail)
+		return unparseableEmailError
 	}
 	if len(emails) > 1 {
-		return berrors.InvalidEmailError(multipleAddressDetail)
+		return multipleAddressError
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -210,17 +210,17 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	}
 
 	if errMX != nil {
-		return berrors.ChangeType(bdns.BoulderErrorFromDNSError(errMX), berrors.InvalidEmail)
+		return berrors.InvalidEmailError(errMX.Error())
 	} else if len(resultMX) > 0 {
 		return nil
 	}
 	if errA != nil {
-		return berrors.ChangeType(bdns.BoulderErrorFromDNSError(errA), berrors.InvalidEmail)
+		return berrors.InvalidEmailError(errA.Error())
 	} else if len(resultA) > 0 {
 		return nil
 	}
 
-	return berrors.InvalidEmailError(emptyDNSResponseDetail)
+	return emptyDNSResponseError
 }
 
 type certificateRequestEvent struct {
@@ -289,7 +289,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		// berrors.InternalServer since the user-data was validated before being
+		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = berrors.InternalServerError("ra.NewRegistration: %s", err)
 	}
@@ -488,7 +488,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
-		// berrors.InternalServer since the user-data was validated before being
+		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = berrors.InternalServerError("ra.NewAuthorization: invalid authorization request: %s", err)
 		return core.Authorization{}, err
@@ -497,7 +497,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
 		if !challenge.IsSaneForClientOffer() {
-			// berrors.InternalServer because we generated these challenges, they should
+			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = berrors.InternalServerError("ra.NewAuthorization: challenge didn't pass sanity check: %+v", challenge)
 			return core.Authorization{}, err
@@ -712,7 +712,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		// berrors.InternalServer because the certificate from the CA should be
+		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
 		err = berrors.InternalServerError("ra.newCertificate: failed to parse certificate: %s", err.Error())
 		logEvent.Error = err.Error()
@@ -887,7 +887,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 
 	err = ra.SA.UpdateRegistration(ctx, base)
 	if err != nil {
-		// berrors.InternalServer since the user-data was validated before being
+		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = berrors.InternalServerError("ra.UpdateRegistration: Could not update registration: %s", err)
 		return core.Registration{}, err

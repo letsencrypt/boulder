@@ -325,9 +325,9 @@ func TestValidateEmail(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"an email`", unparseableEmailDetail},
-		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@email.com, b@email.com", multipleAddressDetail},
+		{"an email`", unparseableEmailError.Error()},
+		{"a@always.invalid", emptyDNSResponseError.Error()},
+		{"a@email.com, b@email.com", multipleAddressError.Error()},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
@@ -683,7 +683,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
 	if !berrors.Is(err, berrors.Malformed) {
-		t.Errorf("Wrong type for NewAuthorization error: expected berrors.Malformed type berrors.BoulderError, got %T", err)
+		t.Errorf("expected berrors.BoulderError with internal type berrors.Malformed, got %T", err)
 	}
 }
 

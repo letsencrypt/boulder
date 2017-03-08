@@ -85,6 +85,7 @@ func (ci *clientInterceptor) intercept(
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
+	// Create grpc/metadata.Metadata to encode internal error type if one is returned
 	md := metadata.New(nil)
 	opts = append(opts, grpc.Trailer(&md))
 	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)

@@ -6,9 +6,6 @@ import (
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-
-	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 // DNSError wraps a DNS error with various relevant information
@@ -58,22 +55,3 @@ func (d DNSError) Timeout() bool {
 const detailDNSTimeout = "query timed out"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"
-
-// ProblemDetailsFromDNSError checks the error returned from Lookup...  methods
-// and tests if the error was an underlying net.OpError or an error caused by
-// resolver returning SERVFAIL or other invalid Rcodes and returns the relevant
-// core.ProblemDetails. The detail string will contain a mention of the DNS
-// record type and domain given.
-func ProblemDetailsFromDNSError(err error) *probs.ProblemDetails {
-	if dnsErr, ok := err.(*DNSError); ok {
-		return probs.ConnectionFailure(dnsErr.Error())
-	}
-	return probs.ConnectionFailure(detailServerFailure)
-}
-
-func BoulderErrorFromDNSError(err error) error {
-	if dnsErr, ok := err.(*DNSError); ok {
-		return berrors.ConnectionFailureError(dnsErr.Error())
-	}
-	return berrors.ConnectionFailureError(detailServerFailure)
-}

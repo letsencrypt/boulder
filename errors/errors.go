@@ -27,7 +27,7 @@ type BoulderError struct {
 }
 
 func (be *BoulderError) Error() string {
-	return be.Detail // add a stringer for the ErrorType?
+	return be.Detail
 }
 
 // New is a convenience function for creating a new BoulderError
@@ -46,20 +46,6 @@ func Is(err error, errType ErrorType) bool {
 	}
 	return bErr.Type == errType
 }
-
-// ChangeType is a convenience function for switching the internal type of a BoulderError.
-// If the passed error is not a BoulderError it will simply be wrapped with the requested
-// type
-func ChangeType(err error, errType ErrorType) error {
-	bErr, ok := err.(*BoulderError)
-	if !ok {
-		return New(errType, err.Error())
-	}
-	bErr.Type = errType
-	return bErr
-}
-
-// These methods should all be generated programmatically
 
 func InternalServerError(msg string, args ...interface{}) error {
 	return New(InternalServer, msg, args...)
