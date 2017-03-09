@@ -97,11 +97,10 @@ type verificationRequestEvent struct {
 	Error             string                  `json:",omitempty"`
 }
 
-// getAddr will query for all A records associated with hostname and return the
-// preferred address, the first net.IP in the addrs slice, and all addresses resolved.
-// This is the same choice made by the Go internal resolution library used by
-// net/http, except we only send A queries and accept IPv4 addresses.
-// TODO(#593): Add IPv6 support
+// getAddr will query for all A/AAAA records associated with hostname and return
+// the preferred address, the first net.IP in the addrs slice, and all addresses
+// resolved. This is the same choice made by the Go internal resolution library
+// used by net/http.
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
 	if err != nil {
