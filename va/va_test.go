@@ -160,23 +160,20 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 }
 
 func tlssni01Srv(t *testing.T, chall core.Challenge) *httptest.Server {
-	h := sha256.New()
-	h.Write([]byte(chall.ProvidedKeyAuthorization))
-	Z := hex.EncodeToString(h.Sum(nil))
+	h := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	Z := hex.EncodeToString(h[:])
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
 	return tlssniSrvWithNames(t, chall, ZName)
 }
 
 func tlssni02Srv(t *testing.T, chall core.Challenge) *httptest.Server {
-	ha := sha256.New()
-	ha.Write([]byte(chall.Token))
-	za := hex.EncodeToString(ha.Sum(nil))
+	ha := sha256.Sum256([]byte(chall.Token))
+	za := hex.EncodeToString(ha[:])
 	sanAName := fmt.Sprintf("%s.%s.token.acme.invalid", za[:32], za[32:])
 
-	hb := sha256.New()
-	hb.Write([]byte(chall.ProvidedKeyAuthorization))
-	zb := hex.EncodeToString(hb.Sum(nil))
+	hb := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	zb := hex.EncodeToString(hb[:])
 	sanBName := fmt.Sprintf("%s.%s.ka.acme.invalid", zb[:32], zb[32:])
 
 	return tlssniSrvWithNames(t, chall, sanAName, sanBName)

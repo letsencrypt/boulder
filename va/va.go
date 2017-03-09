@@ -370,7 +370,6 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 	}
 
 	leafCert := certs[0]
-
 	if len(leafCert.DNSNames) != 2 {
 		names := certNames(leafCert)
 		return validationRecords, probs.Malformed(fmt.Sprintf("%s challenge certificate doesn't include exactly 2 dNSName entries. Received %d certificate(s), first certificate had names %q", challenge.Type, len(certs), strings.Join(names, ", ")))
@@ -378,6 +377,9 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 
 	var validSanAName, validSanBName bool
 	for _, name := range leafCert.DNSNames {
+		// we don't continue when we get the right SAN
+		// so that there isn't a timing side channel
+		// for knowing if you have one of the two required SANs.
 		if subtle.ConstantTimeCompare([]byte(name), []byte(sanAName)) == 1 {
 			validSanAName = true
 		}
@@ -463,9 +465,8 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	}
 
 	// Compute the digest that will appear in the certificate
-	h := sha256.New()
-	h.Write([]byte(challenge.ProvidedKeyAuthorization))
-	Z := hex.EncodeToString(h.Sum(nil))
+	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
+	Z := hex.EncodeToString(h[:])
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
 	return va.validateTLSSNI01WithZName(ctx, identifier, challenge, ZName)
@@ -478,15 +479,13 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02(ctx context.Context, identif
 	}
 
 	// Compute the digest for the SAN b that will appear in the certificate
-	ha := sha256.New()
-	ha.Write([]byte(challenge.Token))
-	za := hex.EncodeToString(ha.Sum(nil))
+	ha := sha256.Sum256([]byte(challenge.Token))
+	za := hex.EncodeToString(ha[:])
 	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, core.TLSSNISuffix)
 
 	// Compute the digest for the SAN B that will appear in the certificate
-	hb := sha256.New()
-	hb.Write([]byte(challenge.ProvidedKeyAuthorization))
-	zb := hex.EncodeToString(hb.Sum(nil))
+	hb := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
+	zb := hex.EncodeToString(hb[:])
 	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, core.TLSSNISuffix)
 
 	return va.validateTLSSNI02WithZNames(ctx, identifier, challenge, sanAName, sanBName)

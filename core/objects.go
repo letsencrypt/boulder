@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/square/go-jose.v1"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -80,10 +81,10 @@ func ValidChallenge(name string) bool {
 		fallthrough
 	case ChallengeTypeTLSSNI01:
 		fallthrough
-	case ChallengeTypeTLSSNI02:
-		fallthrough
 	case ChallengeTypeDNS01:
 		return true
+	case ChallengeTypeTLSSNI02:
+		return features.Enabled(features.AllowTLS02Challenges)
 
 	default:
 		return false
