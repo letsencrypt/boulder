@@ -316,6 +316,9 @@ func main() {
 	config.CertChecker.BadResultsOnly = *badResultsOnly
 	config.CertChecker.CheckPeriod.Duration = *cp
 
+	err = features.Set(config.PA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
+
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 

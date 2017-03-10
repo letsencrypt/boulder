@@ -164,6 +164,7 @@ type PAConfig struct {
 	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
+	Features               map[string]bool
 }
 
 // HostnamePolicyConfig specifies a file from which to load a policy regarding
