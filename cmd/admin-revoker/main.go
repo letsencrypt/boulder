@@ -12,8 +12,7 @@ import (
 	"strconv"
 
 	"golang.org/x/net/context"
-
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
