@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    service: bhsm
+  name: bhsm
+spec:
+  clusterIP: None
+  ports:
+  - name: headless
+    port: 55555
+    targetPort: 0
+  selector:
+    service: bhsm
+status:
+  loadBalancer: {}

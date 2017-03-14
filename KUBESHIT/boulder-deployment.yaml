@@ -1,0 +1,57 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: boulder
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: boulder
+    spec:
+      containers:
+      - env:
+        - name: FAKE_DNS
+          value: 127.0.0.1
+        - name: PKCS11_PROXY_SOCKET
+          value: tcp://boulder-hsm:5657
+        name: boulder
+        ports:
+        - containerPort: 4000
+        - containerPort: 4002
+        - containerPort: 4003
+        - containerPort: 4430
+        - containerPort: 4500
+        - containerPort: 6000
+        - containerPort: 8000
+        - containerPort: 8001
+        - containerPort: 8002
+        - containerPort: 8003
+        - containerPort: 8004
+        - containerPort: 8005
+        - containerPort: 8006
+        - containerPort: 8008
+        - containerPort: 8009
+        - containerPort: 8010
+        - containerPort: 8055
+        - containerPort: 9380
+        - containerPort: 9381
+        resources: {}
+        volumeMounts:
+        - mountPath: /go/
+          name: boulder-claim0
+        - mountPath: /tmp
+          name: boulder-claim1
+      restartPolicy: Always
+      volumes:
+      - name: boulder-claim0
+        persistentVolumeClaim:
+          claimName: boulder-claim0
+      - name: boulder-claim1
+        persistentVolumeClaim:
+          claimName: boulder-claim1
+status: {}
