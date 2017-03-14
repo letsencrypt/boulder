@@ -340,8 +340,8 @@ func TestValidateEmail(t *testing.T) {
 
 	for _, tc := range testFailures {
 		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
-		if problem.Type != probs.InvalidEmailProblem {
-			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		if problem.Type != probs.InvalidContactProblem {
+			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidContactProblem)
 		}
 		if problem.Detail != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",

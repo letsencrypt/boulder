@@ -30,7 +30,7 @@ func TestProblemDetailsToStatusCode(t *testing.T) {
 		{&ProblemDetails{Type: UnknownHostProblem}, http.StatusBadRequest},
 		{&ProblemDetails{Type: RateLimitedProblem}, statusTooManyRequests},
 		{&ProblemDetails{Type: BadNonceProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: InvalidEmailProblem}, http.StatusBadRequest},
+		{&ProblemDetails{Type: InvalidContactProblem}, http.StatusBadRequest},
 		{&ProblemDetails{Type: "foo"}, http.StatusInternalServerError},
 		{&ProblemDetails{Type: "foo", HTTPStatus: 200}, 200},
 		{&ProblemDetails{Type: ConnectionProblem, HTTPStatus: 200}, 200},
@@ -51,7 +51,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		statusCode   int
 		detail       string
 	}{
-		{InvalidEmail("invalid email detail"), InvalidEmailProblem, http.StatusBadRequest, "invalid email detail"},
+		{InvalidContact("invalid email detail"), InvalidContactProblem, http.StatusBadRequest, "invalid email detail"},
 		{ConnectionFailure("connection failure detail"), ConnectionProblem, http.StatusBadRequest, "connection failure detail"},
 		{Malformed("malformed detail"), MalformedProblem, http.StatusBadRequest, "malformed detail"},
 		{ServerInternal("internal error detail"), ServerInternalProblem, http.StatusInternalServerError, "internal error detail"},
