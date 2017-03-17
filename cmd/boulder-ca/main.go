@@ -24,7 +24,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -176,20 +175,9 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.CA.AMQP
-	if c.CA.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
-
-	if amqpConf.Publisher != nil {
-		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Failed to create Publisher client")
-	}
+	conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	var caSrv *grpc.Server
 	if c.CA.GRPCCA != nil {
@@ -216,11 +204,7 @@ func main() {
 		ocspSrv = s
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
-	cmd.FailOnError(err, "Unable to create CA RPC server")
-
 	go cmd.CatchSignals(logger, func() {
-		cas.Stop()
 		if caSrv != nil {
 			caSrv.GracefulStop()
 		}
@@ -229,12 +213,8 @@ func main() {
 		}
 	})
 
-	err = rpc.NewCertificateAuthorityServer(cas, cai)
-	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
-
 	go cmd.DebugServer(c.CA.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	err = cas.Start(amqpConf)
-	cmd.FailOnError(err, "Unable to run CA RPC server")
+	select {}
 }
