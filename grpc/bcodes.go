@@ -18,7 +18,7 @@ import (
 // gRPC error codes used by Boulder. While the gRPC codes
 // end at 16 we start at 100 to provide a little leeway
 // in case they ever decide to add more
-// TODO(#2507): Depreciated, remove once boulder/errors code is deployed
+// TODO(#2507): Deprecated, remove once boulder/errors code is deployed
 const (
 	MalformedRequestError = iota + 100
 	NotSupportedError
