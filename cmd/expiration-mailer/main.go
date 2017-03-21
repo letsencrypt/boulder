@@ -34,29 +34,26 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const defaultNagCheckInterval = 24 * time.Hour
-
-type emailContent struct {
-	ExpirationDate   string
-	DaysToExpiration int
-	DNSNames         string
-}
+const (
+	defaultNagCheckInterval  = 24 * time.Hour
+	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+)
 
 type regStore interface {
 	GetRegistration(context.Context, int64) (core.Registration, error)
 }
 
 type mailer struct {
-	stats         metrics.Scope
-	log           blog.Logger
-	dbMap         *gorp.DbMap
-	rs            regStore
-	mailer        bmail.Mailer
-	emailTemplate *template.Template
-	subject       string
-	nagTimes      []time.Duration
-	limit         int
-	clk           clock.Clock
+	stats           metrics.Scope
+	log             blog.Logger
+	dbMap           *gorp.DbMap
+	rs              regStore
+	mailer          bmail.Mailer
+	emailTemplate   *template.Template
+	subjectTemplate *template.Template
+	nagTimes        []time.Duration
+	limit           int
+	clk             clock.Clock
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
@@ -101,33 +98,42 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	sort.Strings(domains)
 	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
 
-	var subject string
-	if m.subject != "" {
-		// If there is a subject from the configuration file, we should use it as-is
-		// to preserve the "classic" behaviour before we added a domain name.
-		subject = m.subject
-	} else {
-		// Otherwise, when no subject is configured we should make one using the
-		// domain names in the expiring certificate
-		subject = fmt.Sprintf("Certificate expiration notice for domain %q", domains[0])
-		if len(domains) > 1 {
-			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
-		}
+	// Construct the information about the expiring certificates for use in the
+	// subject template
+	expiringSubject := fmt.Sprintf("%q", domains[0])
+	if len(domains) > 1 {
+		expiringSubject += fmt.Sprintf(" (and %d more)", len(domains)-1)
 	}
 
-	email := emailContent{
+	// Execute the subjectTemplate by filling in the ExpirationSubject
+	subjBuf := new(bytes.Buffer)
+	err := m.subjectTemplate.Execute(subjBuf, struct {
+		ExpirationSubject string
+	}{
+		ExpirationSubject: expiringSubject,
+	})
+	if err != nil {
+		m.stats.Inc("Errors.SendingNag.SubjectTemplateFailure", 1)
+		return err
+	}
+
+	email := struct {
+		ExpirationDate   string
+		DaysToExpiration int
+		DNSNames         string
+	}{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
 		DaysToExpiration: int(expiresIn.Hours() / 24),
 		DNSNames:         strings.Join(domains, "\n"),
 	}
 	msgBuf := new(bytes.Buffer)
-	err := m.emailTemplate.Execute(msgBuf, email)
+	err = m.emailTemplate.Execute(msgBuf, email)
 	if err != nil {
 		m.stats.Inc("Errors.SendingNag.TemplateFailure", 1)
 		return err
 	}
 	startSending := m.clk.Now()
-	err = m.mailer.SendMail(emails, subject, msgBuf.String())
+	err = m.mailer.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
 		return err
 	}
@@ -444,6 +450,14 @@ func main() {
 	tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
 	cmd.FailOnError(err, "Could not parse email template")
 
+	// If there is no configured subject template, use a default
+	if c.Mailer.Subject == "" {
+		c.Mailer.Subject = defaultExpirationSubject
+	}
+	// Load subject template
+	subjTmpl, err := template.New("expiry-email-subject").Parse(c.Mailer.Subject)
+	cmd.FailOnError(err, fmt.Sprintf("Could not parse email subject template"))
+
 	fromAddress, err := netmail.ParseAddress(c.Mailer.From)
 	cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
 
@@ -482,16 +496,16 @@ func main() {
 	sort.Sort(nags)
 
 	m := mailer{
-		stats:         scope,
-		subject:       c.Mailer.Subject,
-		log:           logger,
-		dbMap:         dbMap,
-		rs:            sac,
-		mailer:        mailClient,
-		emailTemplate: tmpl,
-		nagTimes:      nags,
-		limit:         c.Mailer.CertLimit,
-		clk:           cmd.Clock(),
+		stats:           scope,
+		log:             logger,
+		dbMap:           dbMap,
+		rs:              sac,
+		mailer:          mailClient,
+		subjectTemplate: subjTmpl,
+		emailTemplate:   tmpl,
+		nagTimes:        nags,
+		limit:           c.Mailer.CertLimit,
+		clk:             cmd.Clock(),
 	}
 
 	go cmd.DebugServer(c.Mailer.DebugAddr)
