@@ -110,9 +110,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	err = features.Set(c.PA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
-
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 

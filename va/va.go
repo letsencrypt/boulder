@@ -39,9 +39,6 @@ const (
 	// allowed accept up to 128 bytes before rejecting a response
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
-
-	tlsSNITokenID = "token"
-	tlsSNIKaID    = "ka"
 )
 
 var validationTimeout = time.Second * 5
@@ -371,8 +368,9 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 
 	leafCert := certs[0]
 	if len(leafCert.DNSNames) != 2 {
-		names := certNames(leafCert)
-		return validationRecords, probs.Malformed(fmt.Sprintf("%s challenge certificate doesn't include exactly 2 dNSName entries. Received %d certificate(s), first certificate had names %q", challenge.Type, len(certs), strings.Join(names, ", ")))
+		names := strings.Join(certNames(leafCert), ", ")
+		msg := fmt.Sprintf("%s challenge certificate doesn't include exactly 2 DNSName entries. Received %d certificate(s), first certificate had names %q", challenge.Type, len(certs), names)
+		return validationRecords, probs.Malformed(msg)
 	}
 
 	var validSanAName, validSanBName bool
@@ -477,6 +475,9 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02(ctx context.Context, identif
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-02 was not DNS: %s", identifier))
 		return nil, probs.Malformed("Identifier type for TLS-SNI-02 was not DNS")
 	}
+
+	const tlsSNITokenID = "token"
+	const tlsSNIKaID = "ka"
 
 	// Compute the digest for the SAN b that will appear in the certificate
 	ha := sha256.Sum256([]byte(challenge.Token))

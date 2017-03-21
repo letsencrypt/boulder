@@ -55,7 +55,7 @@ func TestChallenges(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowTLS02Challenges": true})
 	defer features.Reset()
 
-	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI02), "Refuted valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI02), "Refused valid challenge")
 }
 
 // objects.go

@@ -46,7 +46,8 @@
     },
     "features": {
       "IDNASupport": true,
-      "AllowKeyRollover": true
+      "AllowKeyRollover": true,
+      "AllowTLS02Challenges": true
     }
   },
 

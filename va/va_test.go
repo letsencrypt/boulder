@@ -569,7 +569,7 @@ func TestTLSSNI02(t *testing.T) {
 	_, prob = va.validateTLSSNI02(ctx, ident, chall)
 	took := time.Since(started)
 	if prob == nil {
-		t.Fatalf("Validation should've failed")
+		t.Fatalf("Validation should have failed")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	// Check that the TLS connection times out after 5 seconds and doesn't block for 10 seconds

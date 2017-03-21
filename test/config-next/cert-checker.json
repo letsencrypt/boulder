@@ -3,7 +3,8 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10,
     "features": {
-      "IDNASupport": true
+      "IDNASupport": true,
+      "AllowTLS02Challenges": true
     },
     "hostnamePolicyFile": "test/hostname-policy.json"
   },
@@ -14,10 +15,6 @@
       "tls-sni-01": true,
       "dns-01": true,
       "tls-sni-02": true
-    },
-    "features": {
-      "AllowTLS02Challenges": true
-    }
     }
   },
 
