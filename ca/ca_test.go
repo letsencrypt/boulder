@@ -519,7 +519,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1)
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
-	test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
 
 func TestShortKey(t *testing.T) {

@@ -245,7 +245,7 @@ func unwrapError(rpcError *rpcError) error {
 				errType, decErr := strconv.Atoi(rpcError.Type[5:])
 				if decErr != nil {
 					return berrors.InternalServerError(
-						"boulder/rpc.unwrapError: failed to decode error type, decoding error %q, wrapped error %q",
+						"failed to decode error type, decoding error %q, wrapped error %q",
 						decErr,
 						rpcError.Value,
 					)

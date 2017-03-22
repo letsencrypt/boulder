@@ -116,14 +116,14 @@ func unwrapError(err error, md metadata.MD) error {
 		unwrappedErr := grpc.ErrorDesc(err)
 		if len(errTypeStrs) != 1 {
 			return berrors.InternalServerError(
-				"boulder/grpc.unwrapError: multiple errorType metadata, wrapped error %q",
+				"multiple errorType metadata, wrapped error %q",
 				unwrappedErr,
 			)
 		}
 		errType, decErr := strconv.Atoi(errTypeStrs[0])
 		if decErr != nil {
 			return berrors.InternalServerError(
-				"boulder/grpc.unwrapError: failed to decode error type, decoding error %q, wrapped error %q",
+				"failed to decode error type, decoding error %q, wrapped error %q",
 				decErr,
 				unwrappedErr,
 			)
