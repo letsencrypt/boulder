@@ -76,4 +76,5 @@ func TestPurgeAuthzs(t *testing.T) {
 	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM challenges")
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(0))
+
 }
