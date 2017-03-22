@@ -650,7 +650,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// Verify the CSR
 	csr := req.CSR
 	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
-		return emptyCert, err
+		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
 	logEvent.CommonName = csr.Subject.CommonName

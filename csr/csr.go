@@ -3,11 +3,11 @@ package csr
 import (
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
@@ -31,12 +31,12 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey       = berrors.MalformedError("invalid public key in CSR")
-	unsupportedSigAlg   = berrors.MalformedError("signature algorithm not supported")
-	invalidSig          = berrors.MalformedError("invalid signature on CSR")
-	invalidEmailPresent = berrors.MalformedError("CSR contains one or more email address fields")
-	invalidIPPresent    = berrors.MalformedError("CSR contains one or more IP address fields")
-	invalidNoDNS        = berrors.MalformedError("at least one DNS name is required")
+	invalidPubKey       = errors.New("invalid public key in CSR")
+	unsupportedSigAlg   = errors.New("signature algorithm not supported")
+	invalidSig          = errors.New("invalid signature on CSR")
+	invalidEmailPresent = errors.New("CSR contains one or more email address fields")
+	invalidIPPresent    = errors.New("CSR contains one or more IP address fields")
+	invalidNoDNS        = errors.New("at least one DNS name is required")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
@@ -49,7 +49,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(key); err != nil {
-		return berrors.MalformedError("invalid public key in CSR: %s", err)
+		return fmt.Errorf("invalid public key in CSR: %s", err)
 	}
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
 		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
@@ -69,10 +69,10 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		return invalidNoDNS
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
-		return berrors.MalformedError("CN was longer than %d bytes", maxCNLength)
+		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
 	}
 	if maxNames > 0 && len(csr.DNSNames) > maxNames {
-		return berrors.MalformedError("CSR contains more than %d DNS names", maxNames)
+		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
 	badNames := []string{}
 	for _, name := range csr.DNSNames {
@@ -84,7 +84,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 		}
 	}
 	if len(badNames) > 0 {
-		return berrors.MalformedError("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
 	}
 	return nil
 }
