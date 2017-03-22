@@ -375,9 +375,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 
 	var validSanAName, validSanBName bool
 	for _, name := range leafCert.DNSNames {
-		// we don't continue when we get the right SAN
-		// so that there isn't a timing side channel
-		// for knowing if you have one of the two required SANs.
+		// Note: ConstantTimeCompare is not strictly necessary here, but can't hurt.
 		if subtle.ConstantTimeCompare([]byte(name), []byte(sanAName)) == 1 {
 			validSanAName = true
 		}
