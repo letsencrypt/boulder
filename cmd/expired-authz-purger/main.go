@@ -66,26 +66,28 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 		ids = append(ids, idBatch...)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Fprintf(
-			os.Stdout,
-			"\nAbout to purge %d authorizations from %s and all associated challenges, proceed? [y/N]: ",
-			len(ids),
-			table,
-		)
-		text, err := reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		text = strings.ToLower(text)
-		if text != "y\n" && text != "n\n" && text != "\n" {
-			continue
-		}
-		if text == "n\n" || text == "\n" {
-			os.Exit(0)
-		} else {
-			break
+	if !yes {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			fmt.Fprintf(
+				os.Stdout,
+				"\nAbout to purge %d authorizations from %s and all associated challenges, proceed? [y/N]: ",
+				len(ids),
+				table,
+			)
+			text, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			text = strings.ToLower(text)
+			if text != "y\n" && text != "n\n" && text != "\n" {
+				continue
+			}
+			if text == "n\n" || text == "\n" {
+				os.Exit(0)
+			} else {
+				break
+			}
 		}
 	}
 
