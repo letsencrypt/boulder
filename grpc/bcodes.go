@@ -68,7 +68,8 @@ func errorToCode(err error) codes.Code {
 }
 
 // wrapError wraps the internal error types we use for transport across the gRPC
-// layer. core.XXXError and probs.ProblemDetails error types are encoded using the gRPC
+// layer and appends an appropriate errortype to the gRPC trailer via the provided
+// context. core.XXXError and probs.ProblemDetails error types are encoded using the gRPC
 // error status code which has been deprecated (#2507). errors.BoulderError error types
 // are encoded using the grpc/metadata in the context.Context for the RPC which is
 // considered to be the 'proper' method of encoding custom error types (grpc/grpc#4543
@@ -78,10 +79,9 @@ func wrapError(ctx context.Context, err error) error {
 		return nil
 	}
 	if berr, ok := err.(*berrors.BoulderError); ok {
-		// If setting the metadata fails ignore the returned error and
-		// return the BoulderError detail so we still see the actual
-		// reason on the other side with the default InternalServer
-		// error type
+		// Ignoring the error return here is safe because if setting the metadata
+		// fails, we'll still return an error, but it will be interpreted on the
+		// other side as an InternalServerError instead of a more specific one.
 		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
