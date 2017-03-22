@@ -104,11 +104,10 @@ func wrapError(ctx context.Context, err error) error {
 }
 
 // unwrapError unwraps errors returned from gRPC client calls which were wrapped
-// with wrapError to their proper internal error type. If the error is a
-// BoulderError the grpc/metadata taken from the call context.Context is used to
-// determine the error type. If the error is a core.XXXError or a
-// probs.ProblemDetails the type is determined using the gRPC error code which
-// has been deprecated (#2507).
+// with wrapError to their proper internal error type. If the provided metadata
+// object has an "errortype" field, that will be used to set the type of the
+// error. If the error is a core.XXXError or a probs.ProblemDetails the type
+// is determined using the gRPC error code which has been deprecated (#2507).
 func unwrapError(err error, md metadata.MD) error {
 	if err == nil {
 		return nil
