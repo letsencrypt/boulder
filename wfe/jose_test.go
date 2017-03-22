@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"testing"
 
-	"github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 func TestRejectsNone(t *testing.T) {

@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	_ "expvar" // For DebugServer, below.
+	"expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -29,15 +29,20 @@ import (
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
+	"syscall"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	"google.golang.org/grpc/grpclog"
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
+	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -48,15 +53,10 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(Version())
+			fmt.Println(VersionString(os.Args[0]))
 			os.Exit(0)
 		}
 	}
-}
-
-// Version returns a string representing the version of boulder running.
-func Version() string {
-	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
@@ -82,9 +82,38 @@ func (cl cfsslLogger) Emerg(msg string) {
 	cl.AuditErr(msg)
 }
 
+type grpcLogger struct {
+	blog.Logger
+}
+
+func (log grpcLogger) Fatal(args ...interface{}) {
+	log.Print(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalln(args ...interface{}) {
+	log.Println(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Print(args ...interface{}) {
+	log.AuditErr(fmt.Sprint(args...))
+}
+func (log grpcLogger) Printf(format string, args ...interface{}) {
+	log.AuditErr(fmt.Sprintf(format, args...))
+}
+func (log grpcLogger) Println(args ...interface{}) {
+	log.AuditErr(fmt.Sprintln(args...))
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
-// Also sets the constructed AuditLogger as the default logger.
+// Also sets the constructed AuditLogger as the default logger, and configures
+// the cfssl, mysql, and grpc packages to use our logger.
+// This must be called before any gRPC code is called, because gRPC's SetLogger
+// doesn't use any locking.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
@@ -106,6 +135,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
+	grpclog.SetLogger(grpcLogger{logger})
 
 	return stats, logger
 }
@@ -121,7 +151,8 @@ func FailOnError(err error, msg string) {
 }
 
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
-func ProfileCmd(profileName string, stats metrics.Statter) {
+func ProfileCmd(stats metrics.Scope) {
+	stats = stats.NewScope("Gostats")
 	var memoryStats runtime.MemStats
 	prevNumGC := int64(0)
 	c := time.Tick(1 * time.Second)
@@ -129,14 +160,14 @@ func ProfileCmd(profileName string, stats metrics.Statter) {
 		runtime.ReadMemStats(&memoryStats)
 
 		// Gather goroutine count
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+		stats.Gauge("Goroutines", int64(runtime.NumGoroutine()))
 
 		// Gather various heap metrics
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Alloc", profileName), int64(memoryStats.HeapAlloc), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+		stats.Gauge("Heap.Alloc", int64(memoryStats.HeapAlloc))
+		stats.Gauge("Heap.Objects", int64(memoryStats.HeapObjects))
+		stats.Gauge("Heap.Idle", int64(memoryStats.HeapIdle))
+		stats.Gauge("Heap.InUse", int64(memoryStats.HeapInuse))
+		stats.Gauge("Heap.Released", int64(memoryStats.HeapReleased))
 
 		// Gather various GC related metrics
 		if memoryStats.NumGC > 0 {
@@ -150,16 +181,16 @@ func ProfileCmd(profileName string, stats metrics.Statter) {
 			}
 			gcPauseAvg := totalRecentGC / uint64(realBufSize)
 			lastGC := memoryStats.PauseNs[(memoryStats.NumGC+255)%256]
-			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), int64(gcPauseAvg), 1.0)
-			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), int64(lastGC), 1.0)
+			stats.Timing("Gc.PauseAvg", int64(gcPauseAvg))
+			stats.Gauge("Gc.LastPause", int64(lastGC))
 		}
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+		stats.Gauge("Gc.NextAt", int64(memoryStats.NextGC))
 		// Send both a counter and a gauge here we can much more easily observe
 		// the GC rate (versus the raw number of GCs) in graphing tools that don't
 		// like deltas
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), int64(memoryStats.NumGC), 1.0)
+		stats.Gauge("Gc.Count", int64(memoryStats.NumGC))
 		gcInc := int64(memoryStats.NumGC) - prevNumGC
-		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Rate", profileName), gcInc, 1.0)
+		stats.Inc("Gc.Rate", gcInc)
 		prevNumGC += gcInc
 	}
 }
@@ -192,6 +223,8 @@ func LoadCert(path string) (cert []byte, err error) {
 //
 //   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
+	m := expvar.NewMap("enabled-features")
+	features.Export(m)
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
 	}
@@ -199,28 +232,50 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
+	http.Handle("/metrics", promhttp.Handler())
 	err = http.Serve(ln, nil)
 	if err != nil {
 		log.Fatalf("unable to boot debug server: %v", err)
 	}
 }
 
-// ReadJSONFile takes a file path as an argument and attempts to
+// ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component.
-func ReadJSONFile(filename string, out interface{}) error {
+func ReadConfigFile(filename string, out interface{}) error {
 	configData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(configData, out)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(configData, out)
 }
 
 // VersionString produces a friendly Application version string.
 func VersionString(name string) string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
+// method before exiting
+func CatchSignals(logger blog.Logger, callback func()) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+
+	if callback != nil {
+		callback()
+	}
+
+	logger.Info("Exiting")
+	os.Exit(0)
 }

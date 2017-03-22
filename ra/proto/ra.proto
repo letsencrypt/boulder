@@ -1,0 +1,51 @@
+syntax = "proto2";
+
+package ra;
+option go_package = "proto";
+
+import "core/proto/core.proto";
+
+service RegistrationAuthority {
+        rpc NewRegistration(core.Registration) returns (core.Registration) {}
+        rpc NewAuthorization(NewAuthorizationRequest) returns (core.Authorization) {}
+        rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
+        rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
+        rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (core.Authorization) {}
+        rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
+        rpc DeactivateRegistration(core.Registration) returns (core.Empty) {}
+        rpc DeactivateAuthorization(core.Authorization) returns (core.Empty) {}
+        rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (core.Empty) {}
+}
+
+message NewAuthorizationRequest {
+        optional core.Authorization authz = 1;
+        optional int64 regID = 2;
+}
+
+message NewCertificateRequest {
+        optional bytes csr = 1;
+        optional int64 regID = 2;
+}
+
+message UpdateRegistrationRequest {
+        optional core.Registration base = 1;
+        optional core.Registration update = 2;
+}
+
+message UpdateAuthorizationRequest {
+        optional core.Authorization authz = 1;
+        optional int64 challengeIndex = 2;
+        optional core.Challenge response = 3;
+}
+
+message RevokeCertificateWithRegRequest {
+        optional bytes cert = 1;
+        optional int64 code = 2;
+        optional int64 regID = 3;
+}
+
+message AdministrativelyRevokeCertificateRequest {
+        optional bytes cert = 1;
+        optional int64 code = 2;
+        optional string adminName = 3;
+}

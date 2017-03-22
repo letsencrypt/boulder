@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -10,17 +12,19 @@ import (
 	"strconv"
 
 	"golang.org/x/net/context"
-
-	"github.com/cactus/go-statsd-client/statsd"
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "AdminRevoker"
@@ -48,6 +52,15 @@ type config struct {
 		// The revoker isn't a long running service, so doesn't get a full
 		// ServiceConfig, just an AMQPConfig.
 		AMQP *cmd.AMQPConfig
+
+		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
+		// but doesn't get the TLS field from ServiceConfig, so declares its own.
+		TLS cmd.TLSConfig
+
+		RAService *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -55,40 +68,61 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
+func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority, metrics.Scope) {
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
+
+	var tls *tls.Config
+	var err error
+	if c.Revoker.TLS.CertFile != nil {
+		tls, err = c.Revoker.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
 
 	amqpConf := c.Revoker.AMQP
-	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create CA client")
+	var rac core.RegistrationAuthority
+	if c.Revoker.RAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
+	} else {
+		var err error
+		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Unable to create RA AMQP client")
+	}
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AdminRevoker"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Failed to create SA client")
+	var sac core.StorageAuthority
+	if c.Revoker.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
 
-	return *rac, logger, dbMap, *sac, stats
+	return rac, logger, dbMap, sac, scope
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	certObj, err := tx.Get(core.Certificate{}, serial)
+	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
+	if err == sql.ErrNoRows {
+		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+	}
 	if err != nil {
-		return
+		return err
 	}
-	certificate, ok := certObj.(*core.Certificate)
-	if !ok {
-		err = fmt.Errorf("Cast failure")
-		return
-	}
-	cert, err := x509.ParseCertificate(certificate.DER)
+	cert, err := x509.ParseCertificate(certObj.DER)
 	if err != nil {
 		return
 	}
@@ -103,7 +137,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -147,8 +181,10 @@ func main() {
 	}
 
 	var c config
-	err = cmd.ReadJSONFile(*configFile, &c)
+	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Revoker.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	ctx := context.Background()
 	args := flagSet.Args()
@@ -159,14 +195,14 @@ func main() {
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
-		cac, logger, dbMap, _, _ := setupContext(c)
+		rac, logger, dbMap, _, _ := setupContext(c)
 
 		tx, err := dbMap.Begin()
 		if err != nil {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 		}
 
-		err = revokeBySerial(ctx, serial, revocation.Reason(reasonCode), cac, logger, tx)
+		err = revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, tx)
 		if err != nil {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 		}
@@ -181,7 +217,7 @@ func main() {
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
-		cac, logger, dbMap, sac, _ := setupContext(c)
+		rac, logger, dbMap, sac, _ := setupContext(c)
 		defer logger.AuditPanic()
 
 		tx, err := dbMap.Begin()
@@ -194,7 +230,7 @@ func main() {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}
 
-		err = revokeByReg(ctx, regID, revocation.Reason(reasonCode), cac, logger, tx)
+		err = revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, tx)
 		if err != nil {
 			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 		}
@@ -221,11 +257,11 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
 		logger.Info(fmt.Sprintf(
 			"Revoked %d pending authorizations and %d final authorizations\n",
-			authsRevoked,
 			pendingAuthsRevoked,
+			authsRevoked,
 		))
-		stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
-		stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
+		stats.Inc("RevokedAuthorizations", authsRevoked)
+		stats.Inc("RevokedPendingAuthorizations", pendingAuthsRevoked)
 
 	default:
 		usage()

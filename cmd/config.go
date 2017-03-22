@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +43,7 @@ type ServiceConfig struct {
 	DebugAddr string
 	AMQP      *AMQPConfig
 	GRPC      *GRPCServerConfig
+	TLS       TLSConfig
 }
 
 // DBConfig defines how to connect to a database. The connect string may be
@@ -116,6 +119,9 @@ type CAConfig struct {
 	DBConfig
 	HostnamePolicyConfig
 
+	GRPCCA            *GRPCServerConfig
+	GRPCOCSPGenerator *GRPCServerConfig
+
 	RSAProfile   string
 	ECDSAProfile string
 	TestMode     bool
@@ -146,7 +152,9 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
-	PublisherService *GRPCClientConfig
+	SAService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -187,13 +195,49 @@ type IssuerConfig struct {
 	File       string
 	PKCS11     *pkcs11key.Config
 	CertFile   string
+	// Number of sessions to open with the HSM. For maximum performance,
+	// this should be equal to the number of cores in the HSM. Defaults to 1.
+	NumSessions int
 }
 
-// TLSConfig reprents certificates and a key for authenticated TLS.
+// TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
 	CertFile   *string
 	KeyFile    *string
 	CACertFile *string
+}
+
+// Load reads and parses the certificates and key listed in the TLSConfig, and
+// returns a *tls.Config suitable for either client or server use.
+func (t TLSConfig) Load() (*tls.Config, error) {
+	if t.CertFile == nil {
+		return nil, fmt.Errorf("nil CertFile in TLSConfig")
+	}
+	if t.KeyFile == nil {
+		return nil, fmt.Errorf("nil KeyFile in TLSConfig")
+	}
+	if t.CACertFile == nil {
+		return nil, fmt.Errorf("nil CACertFile in TLSConfig")
+	}
+	caCertBytes, err := ioutil.ReadFile(*t.CACertFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
+	}
+	rootCAs := x509.NewCertPool()
+	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
+		return nil, fmt.Errorf("parsing CA certs from %s failed", *t.CACertFile)
+	}
+	cert, err := tls.LoadX509KeyPair(*t.CertFile, *t.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
+			*t.CertFile, *t.KeyFile, err)
+	}
+	return &tls.Config{
+		RootCAs:      rootCAs,
+		ClientCAs:    rootCAs,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
 
 // RPCServerConfig contains configuration particular to a specific RPC server
@@ -219,8 +263,10 @@ type OCSPUpdaterConfig struct {
 	MissingSCTBatchSize         int
 	RevokedCertificateBatchSize int
 
-	OCSPMinTimeToExpiry ConfigDuration
-	OldestIssuedSCT     ConfigDuration
+	OCSPMinTimeToExpiry          ConfigDuration
+	OCSPStaleMaxAge              ConfigDuration
+	OldestIssuedSCT              ConfigDuration
+	ParallelGenerateOCSPRequests int
 
 	AkamaiBaseURL           string
 	AkamaiClientToken       string
@@ -232,14 +278,19 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
 
-	Publisher *GRPCClientConfig
+	Publisher            *GRPCClientConfig
+	SAService            *GRPCClientConfig
+	OCSPGeneratorService *GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
 // Google Safe Browsing API.
 type GoogleSafeBrowsingConfig struct {
-	APIKey  string
-	DataDir string
+	APIKey    string
+	DataDir   string
+	ServerURL string
 }
 
 // SyslogConfig defines the config for syslogging.
@@ -311,19 +362,25 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddresses       []string
+	ServerAddresses []string
+	Timeout         ConfigDuration
+	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
-	Timeout               ConfigDuration
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
 type GRPCServerConfig struct {
-	Address               string `json:"address" yaml:"address"`
-	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
-	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
-	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+	Address string `json:"address"`
+	// ClientNames is a list of allowed client certificate subject alternate names
+	// (SANs). The server will reject clients that do not present a certificate
+	// with a SAN present on the `ClientNames` list.
+	ClientNames []string `json:"clientNames"`
+	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
+	ServerCertificatePath string `json:"serverCertificatePath"`
+	ServerKeyPath         string `json:"serverKeyPath"`
+	ClientIssuerPath      string `json:"clientIssuerPath"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

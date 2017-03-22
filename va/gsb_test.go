@@ -4,13 +4,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -21,7 +21,7 @@ func TestIsSafeDomain(t *testing.T) {
 	// we rely on is a little funny and overcomplicated, but still hasn't
 	// learned out how not make HTTP requests in tests.
 
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -33,7 +33,6 @@ func TestIsSafeDomain(t *testing.T) {
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		sbc,
-		nil,
 		nil,
 		nil,
 		"user agent 1.0",
@@ -80,10 +79,9 @@ func TestIsSafeDomain(t *testing.T) {
 }
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
-		nil,
 		nil,
 		nil,
 		nil,

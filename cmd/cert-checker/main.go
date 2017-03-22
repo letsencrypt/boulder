@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -31,6 +33,26 @@ const (
 
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
+
+// For defense-in-depth in addition to using the PA & its hostnamePolicy to
+// check domain names we also perform a check against the regex's from the
+// forbiddenDomains array
+var forbiddenDomainPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^\s*$`),
+	regexp.MustCompile(`\.mil$`),
+	regexp.MustCompile(`\.local$`),
+	regexp.MustCompile(`^localhost$`),
+	regexp.MustCompile(`\.localhost$`),
+}
+
+func isForbiddenDomain(name string) (bool, string) {
+	for _, r := range forbiddenDomainPatterns {
+		if matches := r.FindAllStringSubmatch(name, -1); len(matches) > 0 {
+			return true, r.String()
+		}
+	}
+	return false, ""
+}
 
 var batchSize = 1000
 
@@ -91,11 +113,6 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period
 	return c
 }
 
-const (
-	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now"
-	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit"
-)
-
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
@@ -108,7 +125,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
-		getCertsCountQuery,
+		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
@@ -121,10 +138,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["limit"] = batchSize
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
-		var certs []core.Certificate
-		_, err = c.dbMap.Select(
-			&certs,
-			getCertsQuery,
+		certs, err := sa.SelectCertificates(
+			c.dbMap,
+			"WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit",
 			args,
 		)
 		if err != nil {
@@ -219,6 +235,16 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 			if err = c.pa.WillingToIssue(id); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			} else {
+				// For defense-in-depth, even if the PA was willing to issue for a name
+				// we double check it against a list of forbidden domains. This way even
+				// if the hostnamePolicyFile malfunctions we will flag the forbidden
+				// domain matches
+				if forbidden, pattern := isForbiddenDomain(name); forbidden {
+					problems = append(problems, fmt.Sprintf(
+						"Policy Authority was willing to issue but domain '%s' matches "+
+							"forbiddenDomains entry %q", name, pattern))
+				}
 			}
 		}
 		// Check the cert has the correct key usage extensions
@@ -239,6 +265,8 @@ type config struct {
 		UnexpiredOnly       bool
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
+
+		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
@@ -263,8 +291,11 @@ func main() {
 	}
 
 	var config config
-	err := cmd.ReadJSONFile(*configFile, &config)
+	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	err = features.Set(config.CertChecker.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")

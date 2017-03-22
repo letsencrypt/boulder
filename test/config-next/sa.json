@@ -2,12 +2,34 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
-    "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8003",
+    "maxConcurrentRPCServerRequests": 100000,
+    "debugAddr": ":8003",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/sa.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/sa.boulder/key.pem"
+    },
+    "grpc": {
+      "address": ":9095",
+      "clientNames": [
+        "admin-revoker.boulder",
+        "ca.boulder",
+        "expiration-mailer.boulder",
+        "ocsp-updater.boulder",
+        "orphan-finder.boulder",
+        "publisher.boulder",
+        "ra.boulder",
+        "sa.boulder",
+        "wfe.boulder"
+      ]
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
+    },
+    "features": {
+      "AllowAccountDeactivation": true
     }
   },
 

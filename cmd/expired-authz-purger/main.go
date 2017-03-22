@@ -1,24 +1,25 @@
 package main
 
 import (
-	"bufio"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
+
+const clientName = "ExpiredAuthzPurger"
 
 type eapConfig struct {
 	ExpiredAuthzPurger struct {
@@ -29,11 +30,13 @@ type eapConfig struct {
 
 		GracePeriod cmd.ConfigDuration
 		BatchSize   int
+
+		Features map[string]bool
 	}
 }
 
 type expiredAuthzPurger struct {
-	stats statsd.Statter
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 	db    *gorp.DbMap
@@ -42,57 +45,39 @@ type expiredAuthzPurger struct {
 }
 
 func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time) error {
-	if !yes {
-		var count int
-		err := p.db.SelectOne(&count, fmt.Sprintf(`SELECT COUNT(1) FROM %s AS pa WHERE expires <= ?`, table), purgeBefore)
-		if err != nil {
-			return err
-		}
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			fmt.Fprintf(os.Stdout, "\nAbout to purge %d authorizations from %s, proceed? [y/N]: ", count, table)
-			text, err := reader.ReadString('\n')
-			if err != nil {
-				return err
-			}
-			text = strings.ToLower(text)
-			if text != "y\n" && text != "n\n" && text != "\n" {
-				continue
-			}
-			if text == "n\n" || text == "\n" {
-				os.Exit(0)
-			} else {
-				break
-			}
-		}
-	}
-	purged := int64(0)
+	var ids []string
 	for {
-		result, err := p.db.Exec(fmt.Sprintf(`
-			DELETE FROM %s
-			WHERE expires <= ?
-			LIMIT ?
-			`, table),
+		var idBatch []string
+		_, err := p.db.Select(
+			&idBatch,
+			fmt.Sprintf("SELECT id FROM %s WHERE expires <= ? LIMIT ? OFFSET ?", table),
 			purgeBefore,
 			p.batchSize,
+			len(ids),
 		)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if len(idBatch) == 0 {
+			break
+		}
+		ids = append(ids, idBatch...)
+	}
+
+	for _, id := range ids {
+		// Delete challenges + authorization
+		_, err := p.db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
 		if err != nil {
 			return err
 		}
-		rows, err := result.RowsAffected()
+		_, err = p.db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", table), id)
 		if err != nil {
 			return err
-		}
-
-		p.stats.Inc("PendingAuthzDeleted", rows, 1.0)
-		purged += rows
-		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d) expired authorizations from: %s", rows, purged, table))
-
-		if rows < p.batchSize {
-			p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from: %s", purged, table))
-			return nil
 		}
 	}
+
+	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
+	return nil
 }
 
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) error {
@@ -119,10 +104,13 @@ func main() {
 	var config eapConfig
 	err = json.Unmarshal(configJSON, &config)
 	cmd.FailOnError(err, "Failed to parse config")
+	err = features.Set(config.ExpiredAuthzPurger.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	// Set up logging
 	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
-	auditlogger.Info(cmd.Version())
+	scope := metrics.NewStatsdScope(stats, "AuthzPurger")
+	auditlogger.Info(cmd.VersionString(clientName))
 
 	defer auditlogger.AuditPanic()
 
@@ -131,10 +119,10 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	purger := &expiredAuthzPurger{
-		stats:     stats,
+		stats:     scope,
 		log:       auditlogger,
 		clk:       cmd.Clock(),
 		db:        dbMap,

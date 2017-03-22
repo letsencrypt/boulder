@@ -18,11 +18,13 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	jose "github.com/square/go-jose"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -111,7 +113,7 @@ func TestAddRegistration(t *testing.T) {
 	var anotherJWK jose.JsonWebKey
 	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
 	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
-	_, err = sa.GetRegistrationByKey(ctx, anotherJWK)
+	_, err = sa.GetRegistrationByKey(ctx, &anotherJWK)
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
@@ -150,6 +152,13 @@ func TestCountPendingAuthorizations(t *testing.T) {
 	pendingAuthz, err := sa.NewPendingAuthorization(ctx, pendingAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	pendingAuthz.Status = core.StatusPending
+	pendingAuthz, err = sa.NewPendingAuthorization(ctx, pendingAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
@@ -262,6 +271,63 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 	test.AssertEquals(t, result.Identifier.Type, core.IdentifierDNS)
 	test.AssertEquals(t, result.Identifier.Value, "example.org")
 	test.AssertEquals(t, result.RegistrationID, reg.ID)
+}
+
+func TestCountInvalidAuthorizations(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	key2 := new(jose.JsonWebKey)
+	key2.Key = &rsa.PublicKey{N: big.NewInt(1), E: 3}
+	reg2, err := sa.NewRegistration(context.Background(), core.Registration{
+		Key:       key2,
+		InitialIP: net.ParseIP("88.77.66.11"),
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
+		Status:    core.StatusValid,
+	})
+	test.AssertNotError(t, err, "making registration")
+
+	baseTime := time.Date(2017, 3, 4, 5, 0, 0, 0, time.UTC)
+	latest := baseTime.Add(3 * time.Hour)
+
+	makeInvalidAuthz := func(regID int64, domain string, offset time.Duration) {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, regID)
+		exp := baseTime.Add(offset)
+		authz.Expires = &exp
+		authz.Status = "invalid"
+		err := sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	}
+
+	// We're going to count authzs for reg.ID and example.net, expiring between
+	// baseTime and baseTime + 3 hours, so add two examples that should be counted
+	// (1 hour from now and 2 hours from now), plus three that shouldn't be
+	// counted (too far future, wrong domain name, and wrong ID).
+	hostname := "example.net"
+	makeInvalidAuthz(reg.ID, hostname, time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 2*time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 24*time.Hour)
+	makeInvalidAuthz(reg.ID, "example.com", time.Hour)
+	makeInvalidAuthz(reg2.ID, hostname, time.Hour)
+
+	earliestNanos := baseTime.UnixNano()
+	latestNanos := latest.UnixNano()
+
+	count, err := sa.CountInvalidAuthorizations(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Hostname:       &hostname,
+		Range: &sapb.Range{
+			Earliest: &earliestNanos,
+			Latest:   &latestNanos,
+		},
+	})
+	test.AssertNotError(t, err, "counting invalid authorizations")
+
+	if *count.Count != 2 {
+		t.Errorf("expected to count 2 invalid authorizations, counted %d instead", *count.Count)
+	}
 }
 
 // Ensure we get the latest valid authorization for an ident
@@ -382,6 +448,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
+	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
 
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
@@ -529,24 +596,22 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	serial := "000000000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
 
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
-	beforeStatus := certificateStatusObj.(*core.CertificateStatus)
-	test.AssertEquals(t, beforeStatus.Status, core.OCSPStatusGood)
+	certificateStatusObj, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertEquals(t, certificateStatusObj.Status, core.OCSPStatusGood)
 
 	fc.Add(1 * time.Hour)
 
 	err = sa.MarkCertificateRevoked(ctx, serial, revocation.KeyCompromise)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
-	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
-	afterStatus := certificateStatusObj.(*core.CertificateStatus)
+	certificateStatusObj, err = sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
-	if revocation.KeyCompromise != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, afterStatus.RevokedReason)
+	if revocation.KeyCompromise != certificateStatusObj.RevokedReason {
+		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, certificateStatusObj.RevokedReason)
 	}
-	if !fc.Now().Equal(afterStatus.RevokedDate) {
-		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
+	if !fc.Now().Equal(certificateStatusObj.RevokedDate) {
+		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), certificateStatusObj.RevokedDate)
 	}
 }
 
@@ -586,19 +651,19 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	contact := "mailto:foo@example.com"
 
 	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})
@@ -827,4 +892,39 @@ func TestDeactivateAuthorization(t *testing.T) {
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+}
+
+func TestDeactivateAccount(t *testing.T) {
+	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
+	defer features.Reset()
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	err := sa.DeactivateRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+}
+
+func TestReverseName(t *testing.T) {
+	testCases := []struct {
+		inputDomain   string
+		inputReversed string
+	}{
+		{"", ""},
+		{"...", "..."},
+		{"com", "com"},
+		{"example.com", "com.example"},
+		{"www.example.com", "com.example.www"},
+		{"world.wide.web.example.com", "com.example.web.wide.world"},
+	}
+
+	for _, tc := range testCases {
+		output := reverseName(tc.inputDomain)
+		test.AssertEquals(t, output, tc.inputReversed)
+	}
 }

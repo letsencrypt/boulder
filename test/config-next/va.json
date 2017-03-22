@@ -2,42 +2,38 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": "localhost:8004",
+    "debugAddr": ":8004",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "lookupIPV6": true,
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
-    "caaService": {
-      "serverAddresses": ["boulder:9090"],
-      "serverIssuerPath": "test/grpc-creds/ca.pem",
-      "clientCertificatePath": "test/grpc-creds/client.pem",
-      "clientKeyPath": "test/grpc-creds/key.pem"
-    },
-    "caaPublicResolver": {
-        "timeout": "10s",
-        "keepalive": "30s",
-        "maxFailures": 1,
-        "proxies": []
+    "tls": {
+      "caCertfile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/va.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
-      "address": "boulder:9092",
-      "serverCertificatePath": "test/grpc-creds/server.pem",
-      "serverKeyPath": "test/grpc-creds/key.pem",
-      "clientIssuerPath": "test/grpc-creds/ca.pem"
+      "address": ":9092",
+      "clientNames": [
+        "ra.boulder"
+      ]
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "VA.server",
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      }
+      "serviceQueue": "VA.server"
+    },
+    "GoogleSafeBrowsing": {
+      "APIKey": "my-voice-is-my-passport",
+      "DataDir": "/tmp",
+      "ServerURL": "http://boulder:6000"
+    },
+    "features": {
+      "GoogleSafeBrowsingV4": true
     }
   },
 
@@ -53,7 +49,7 @@
 
   "common": {
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
+    "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
 }

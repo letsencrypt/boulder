@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -98,6 +100,14 @@ func (m *mailer) run() error {
 		return err
 	}
 
+	err = m.mailer.Connect()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
@@ -171,6 +181,9 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 		map[string]interface{}{
 			"id": id,
 		})
+	if err == sql.ErrNoRows {
+		return []string{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -275,6 +288,7 @@ func main() {
 			cmd.DBConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
+			Features map[string]bool
 		}
 		Statsd cmd.StatsdConfig
 		Syslog cmd.SyslogConfig
@@ -298,15 +312,18 @@ func main() {
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
+	err = features.Set(cfg.NotifyMailer.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
+	scope := metrics.NewStatsdScope(stats, "NotificationMailer")
 	defer log.AuditPanic()
 
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "NotificationMailer"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
@@ -336,17 +353,10 @@ func main() {
 			smtpPassword,
 			*address,
 			log,
-			stats,
+			scope,
 			*reconnBase,
 			*reconnMax)
 	}
-	err = mailClient.Connect()
-	cmd.FailOnError(err, fmt.Sprintf("Connecting to %s:%s",
-		cfg.NotifyMailer.Server, cfg.NotifyMailer.Port))
-	defer func() {
-		err = mailClient.Close()
-		cmd.FailOnError(err, "Closing mail client")
-	}()
 
 	m := mailer{
 		clk:           cmd.Clock(),

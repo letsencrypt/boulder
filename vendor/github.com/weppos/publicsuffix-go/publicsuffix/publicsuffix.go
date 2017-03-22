@@ -11,9 +11,16 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 const (
+	// Version identifies the current library version.
+	// This is a pro-forma convention given that Go dependencies
+	// tends to be fetched directly from the repo.
+	Version = "0.3.2"
+
 	NormalType    = 1
 	WildcardType  = 2
 	ExceptionType = 3
@@ -22,14 +29,14 @@ const (
 	listTokenComment        = "//"
 )
 
-// defaultList is the default List and it is used by Parse and Domain.
+// DefaultList is the default List and it is used by Parse and Domain.
 var DefaultList = NewList()
 
 // DefaultRule is the default Rule that represents "*".
-var DefaultRule = NewRule("*")
+var DefaultRule = MustNewRule("*")
 
 // DefaultParserOptions are the default options used to parse a Public Suffix list.
-var DefaultParserOptions = &ParserOption{PrivateDomains: true}
+var DefaultParserOptions = &ParserOption{PrivateDomains: true, ASCIIEncoded: false}
 
 // DefaultFindOptions are the default options used to perform the lookup of rules in the list.
 var DefaultFindOptions = &FindOptions{IgnorePrivate: false, DefaultRule: DefaultRule}
@@ -45,7 +52,15 @@ type Rule struct {
 // ParserOption are the options you can use to customize the way a List
 // is parsed from a file or a string.
 type ParserOption struct {
+	// Set to false to skip the private domains when parsing.
+	// Default to true, which means the private domains are included.
 	PrivateDomains bool
+
+	// Set to false if the input is encoded in U-labels (Unicode)
+	// as opposite to A-labels.
+	// Default to false, which means the list is containing Unicode domains.
+	// This is the default because the original PSL currently contains Unicode.
+	ASCIIEncoded bool
 }
 
 // FindOptions are the options you can use to customize the way a Rule
@@ -88,18 +103,18 @@ func NewListFromFile(path string, options *ParserOption) (*List, error) {
 	return l, err
 }
 
-// experimental
+// Load parses and loads a set of rules from an io.Reader into the current list.
 func (l *List) Load(r io.Reader, options *ParserOption) ([]Rule, error) {
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadString parses and loads a set of rules from a String into the current list.
 func (l *List) LoadString(src string, options *ParserOption) ([]Rule, error) {
 	r := strings.NewReader(src)
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadFile parses and loads a set of rules from a File into the current list.
 func (l *List) LoadFile(path string, options *ParserOption) ([]Rule, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -119,7 +134,7 @@ func (l *List) AddRule(r *Rule) error {
 	return nil
 }
 
-// experimental
+// Size returns the size of the list, which is the number of rules.
 func (l *List) Size() int {
 	return len(l.rules)
 }
@@ -154,7 +169,18 @@ Scanning:
 			break
 
 		default:
-			rule := NewRule(line)
+			var rule *Rule
+			var err error
+
+			if options.ASCIIEncoded {
+				rule, err = NewRule(line)
+			} else {
+				rule, err = NewRuleUnicode(line)
+			}
+			if err != nil {
+				return []Rule{}, err
+			}
+
 			rule.Private = (section == 2)
 			l.AddRule(rule)
 			rules = append(rules, *rule)
@@ -207,7 +233,9 @@ func (l *List) selectRules(name string, options *FindOptions) []Rule {
 }
 
 // NewRule parses the rule content, creates and returns a Rule.
-func NewRule(content string) *Rule {
+//
+// The content of the rule MUST be encoded in ASCII (A-labels).
+func NewRule(content string) (*Rule, error) {
 	var rule *Rule
 	var value string
 
@@ -225,6 +253,28 @@ func NewRule(content string) *Rule {
 	default: // normal
 		value = content
 		rule = &Rule{Type: NormalType, Value: value, Length: len(Labels(value))}
+	}
+
+	return rule, nil
+}
+
+// NewRuleUnicode is like NewRule, but expects the content to be encoded in Unicode (U-labels).
+func NewRuleUnicode(content string) (*Rule, error) {
+	var err error
+
+	content, err = idna.ToASCII(content)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewRule(content)
+}
+
+// MustNewRule is like NewRule, but panics if the content cannot be parsed.
+func MustNewRule(content string) *Rule {
+	rule, err := NewRule(content)
+	if err != nil {
+		panic(err)
 	}
 	return rule
 }

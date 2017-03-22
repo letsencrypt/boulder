@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.6.3
+  - 1.8
 
 addons:
   hosts:
@@ -34,6 +34,7 @@ branches:
 env:
   global:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
+    - GO15VENDOREXPERIMENT=1
   matrix:
     - RUN="vet fmt migrations integration godep-restore errcheck generate"
     # Config changes that have landed in master but not yet been applied to
@@ -45,7 +46,6 @@ env:
 install:
   - ./test/travis-before-install.sh
   - docker-compose pull
-  - docker pull letsencrypt/boulder-tools
   - docker-compose build
 
 script:

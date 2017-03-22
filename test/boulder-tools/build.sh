@@ -2,21 +2,10 @@
 
 # Boulder deps
 apt-get update
-apt-get install -y --no-install-recommends apt-transport-https ca-certificates
-
-curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
-cat >/etc/apt/sources.list.d/bouldertools.list <<EOAPT
-deb https://deb.nodesource.com/node_4.x trusty main
-deb-src https://deb.nodesource.com/node_4.x trusty main
-deb http://ftp.debian.org/debian jessie-backports main
-EOAPT
-apt-get update
-apt-get install -y --no-install-recommends  -t jessie-backports certbot python-certbot python-certbot-apache python-cffi
 
 apt-get install -y --no-install-recommends \
   libltdl-dev \
   mariadb-client-core-10.0 \
-  nodejs \
   rpm \
   ruby \
   ruby-dev \
@@ -30,7 +19,8 @@ apt-get install -y --no-install-recommends \
   opensc &
 
 # Install port forwarder, database migration tool, and testing tools.
-GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
+export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
+go get \
   github.com/jsha/listenbuddy \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/lint/golint \
@@ -41,28 +31,45 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
-  golang.org/x/tools/cover &
+  golang.org/x/tools/cover \
+  golang.org/x/tools/cmd/stringer &
 
 wait
 
+# protoc-gen-go outputs a line that says:
+# const _ = grpc.SupportPackageIsVersion4
+# so it will fail to compile with a different version of the grpc package.
+# Since we currently have version 3 of the grpc package vendored, we have to
+# build a specific version of protoc-gen-go.
+cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
+git checkout a66a4fa9a8dd2304462f7aad7161e8bf53eee461
+go install ./
+
+git clone https://github.com/certbot/certbot /certbot
+cd /certbot
+./letsencrypt-auto --os-packages-only
+./tools/venv.sh
+cd -
+
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
 # of writing
-git clone https://github.com/SUNET/pkcs11-proxy && \
-  cd pkcs11-proxy && \
+git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
+  cd /tmp/pkcs11-proxy && \
   git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
   cmake . && make && make install && \
-  cd -
+  cd - && rm -r /tmp/pkcs11-proxy
 
 # Setup SoftHSM
 echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-token --label token_label --so-pin 1234
-pkcs11-tool --module=/usr/lib/softhsm/libsofthsm.so --init-pin --label token_label --pin 5678 --login --so-pin 1234
+echo "1:/var/lib/softhsm/slot1.db" >> /etc/softhsm/softhsm.conf
+softhsm --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
+softhsm --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
 gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y build-essential cmake libssl-dev
+apt-get autoremove -y build-essential cmake libssl-dev ruby-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

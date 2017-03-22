@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -31,11 +32,7 @@ type config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
-		LookupIPv6 bool
-
 		GoogleSafeBrowsing *cmd.GoogleSafeBrowsingConfig
-
-		CAAService *cmd.GRPCClientConfig
 
 		CAADistributedResolver *cmd.CAADistributedResolverConfig
 
@@ -46,6 +43,8 @@ type config struct {
 
 		// Feature flag to enable enforcement of CAA SERVFAILs.
 		CAASERVFAILExceptions string
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -68,16 +67,16 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.VA.DebugAddr)
+	err = features.Set(c.VA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "VA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
-
-	go cmd.ProfileCmd("VA", stats)
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,
@@ -94,21 +93,22 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	var caaClient caaPB.CAACheckerClient
-	if c.VA.CAAService != nil {
-		conn, err := bgrpc.ClientSetup(c.VA.CAAService)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		caaClient = caaPB.NewCAACheckerClient(conn)
+	var sbc va.SafeBrowsing
+	// If the feature flag is set, use the Google safebrowsing library that
+	// implements the v4 api instead of the legacy letsencrypt fork of
+	// go-safebrowsing-api
+	if features.Enabled(features.GoogleSafeBrowsingV4) {
+		sbc, err = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
+	} else {
+		sbc, err = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 	}
-
-	scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
-	sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
 
 	var cdrClient *cdr.CAADistributedResolver
 	if c.VA.CAADistributedResolver != nil {
 		var err error
 		cdrClient, err = cdr.New(
-			scoped,
+			scope,
 			c.VA.CAADistributedResolver.Timeout.Duration,
 			c.VA.CAADistributedResolver.MaxFailures,
 			c.VA.CAADistributedResolver.Proxies,
@@ -131,32 +131,32 @@ func main() {
 			dnsTimeout,
 			[]string{c.Common.DNSResolver},
 			caaSERVFAILExceptions,
-			scoped,
+			scope,
 			clk,
 			dnsTries)
-		r.LookupIPv6 = c.VA.LookupIPv6
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
-		r.LookupIPv6 = c.VA.LookupIPv6
+		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
 		resolver = r
 	}
 
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
-		caaClient,
 		cdrClient,
 		resolver,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
-		stats,
+		scope,
 		clk,
 		logger)
 
 	amqpConf := c.VA.AMQP
+	var grpcSrv *grpc.Server
 	if c.VA.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.VA.GRPC, metrics.NewStatsdScope(stats, "VA"))
+		tls, err := c.VA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+		s, l, err := bgrpc.NewServer(c.VA.GRPC, tls, scope)
 		cmd.FailOnError(err, "Unable to setup VA gRPC server")
 		err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 		cmd.FailOnError(err, "Unable to register VA gRPC server")
@@ -164,12 +164,24 @@ func main() {
 			err = s.Serve(l)
 			cmd.FailOnError(err, "VA gRPC service failed")
 		}()
+		grpcSrv = s
 	}
 
-	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
+	vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create VA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		vas.Stop()
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewValidationAuthorityServer(vas, vai)
 	cmd.FailOnError(err, "Unable to setup VA RPC server")
+
+	go cmd.DebugServer(c.VA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = vas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run VA RPC server")

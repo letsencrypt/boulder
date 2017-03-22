@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	jose "github.com/square/go-jose"
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
+	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 )

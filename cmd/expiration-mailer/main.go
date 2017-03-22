@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -18,17 +19,19 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const defaultNagCheckInterval = 24 * time.Hour
@@ -44,11 +47,11 @@ type regStore interface {
 }
 
 type mailer struct {
-	stats         statsd.Statter
+	stats         metrics.Scope
 	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
-	mailer        mail.Mailer
+	mailer        bmail.Mailer
 	emailTemplate *template.Template
 	subject       string
 	nagTimes      []time.Duration
@@ -96,8 +99,21 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
-
 	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
+
+	var subject string
+	if m.subject != "" {
+		// If there is a subject from the configuration file, we should use it as-is
+		// to preserve the "classic" behaviour before we added a domain name.
+		subject = m.subject
+	} else {
+		// Otherwise, when no subject is configured we should make one using the
+		// domain names in the expiring certificate
+		subject = fmt.Sprintf("Certificate expiration notice for domain %q", domains[0])
+		if len(domains) > 1 {
+			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
+		}
+	}
 
 	email := emailContent{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
@@ -107,17 +123,17 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	msgBuf := new(bytes.Buffer)
 	err := m.emailTemplate.Execute(msgBuf, email)
 	if err != nil {
-		m.stats.Inc("Mailer.Expiration.Errors.SendingNag.TemplateFailure", 1, 1.0)
+		m.stats.Inc("Errors.SendingNag.TemplateFailure", 1)
 		return err
 	}
 	startSending := m.clk.Now()
-	err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
+	err = m.mailer.SendMail(emails, subject, msgBuf.String())
 	if err != nil {
 		return err
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)
-	m.stats.TimingDuration("Mailer.Expiration.SendLatency", elapsed, 1.0)
+	m.stats.TimingDuration("SendLatency", elapsed)
 	return nil
 }
 
@@ -156,11 +172,20 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		regIDToCerts[cert.RegistrationID] = cs
 	}
 
+	err := m.mailer.Connect()
+	if err != nil {
+		m.log.AuditErr(fmt.Sprintf("Error connecting to send nag emails: %s", err))
+		return
+	}
+	defer func() {
+		_ = m.mailer.Close()
+	}()
+
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
-			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
+			m.stats.Inc("Errors.GetRegistration", 1)
 			continue
 		}
 
@@ -170,7 +195,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			if err != nil {
 				// TODO(#1420): tell registration about this error
 				m.log.AuditErr(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
-				m.stats.Inc("Mailer.Expiration.Errors.ParseCertificate", 1, 1.0)
+				m.stats.Inc("Errors.ParseCertificate", 1)
 				continue
 			}
 
@@ -179,10 +204,10 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				m.log.AuditErr(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
 				// assume not renewed
 			} else if renewed {
-				m.stats.Inc("Mailer.Expiration.Renewed", 1, 1.0)
+				m.stats.Inc("Renewed", 1)
 				if err := m.updateCertStatus(cert.Serial); err != nil {
 					m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
-					m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
+					m.stats.Inc("Errors.UpdateCertificateStatus", 1)
 				}
 				continue
 			}
@@ -209,7 +234,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			err = m.updateCertStatus(serial)
 			if err != nil {
 				m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
-				m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
+				m.stats.Inc("Errors.UpdateCertificateStatus", 1)
 				continue
 			}
 		}
@@ -229,18 +254,23 @@ func (m *mailer) findExpiringCertificates() error {
 
 		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn))
-		var certs []core.Certificate
+
+		// First we do a query on the certificateStatus table to find certificates
+		// nearing expiry meeting our criteria for email notification. We later
+		// sequentially fetch the certificate details. This avoids an expensive
+		// JOIN.
+		var serials []string
 		_, err := m.dbMap.Select(
-			&certs,
-			`SELECT cert.* FROM certificates AS cert
-			 JOIN certificateStatus AS cs
-			 ON cs.serial = cert.serial
-			 AND cert.expires > :cutoffA
-			 AND cert.expires <= :cutoffB
-			 AND cs.status != "revoked"
-			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-			 ORDER BY cert.expires ASC
-			 LIMIT :limit`,
+			&serials,
+			`SELECT
+				cs.serial
+				FROM certificateStatus AS cs
+				WHERE cs.notAfter > :cutoffA
+				AND cs.notAfter <= :cutoffB
+				AND cs.status != "revoked"
+				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				ORDER BY cs.notAfter ASC
+				LIMIT :limit`,
 			map[string]interface{}{
 				"cutoffA":   left,
 				"cutoffB":   right,
@@ -249,9 +279,31 @@ func (m *mailer) findExpiringCertificates() error {
 			},
 		)
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
-			return err // fatal
+			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
+			return err
 		}
+
+		// Now we can sequentially retrieve the certificate details for each of the
+		// certificate status rows
+		var certs []core.Certificate
+		for _, serial := range serials {
+			var cert core.Certificate
+			err := m.dbMap.SelectOne(&cert,
+				`SELECT
+				cert.*
+				FROM certificates AS cert
+				WHERE serial = :serial`,
+				map[string]interface{}{
+					"serial": serial,
+				},
+			)
+			if err != nil {
+				m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err))
+				return err
+			}
+			certs = append(certs, cert)
+		}
+
 		m.log.Info(fmt.Sprintf("Found %d certificates expiring between %s and %s", len(certs),
 			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04")))
 
@@ -271,15 +323,15 @@ func (m *mailer) findExpiringCertificates() error {
 				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
-			statName := fmt.Sprintf("Mailer.Expiration.Errors.Nag-%s.AtCapacity", expiresIn.String())
-			m.stats.Inc(statName, 1, 1.0)
+			statName := fmt.Sprintf("Errors.Nag-%s.AtCapacity", expiresIn.String())
+			m.stats.Inc(statName, 1)
 		}
 
 		processingStarted := m.clk.Now()
 		m.processCerts(certs)
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
-		m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", elapsed, 1.0)
+		m.stats.TimingDuration("ProcessingCertificatesLatency", elapsed)
 	}
 
 	return nil
@@ -318,6 +370,11 @@ type config struct {
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
+
+		TLS       cmd.TLSConfig
+		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -339,14 +396,15 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
-	go cmd.DebugServer(c.Mailer.DebugAddr)
+	err = features.Set(c.Mailer.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "Expiration")
 	defer logger.AuditPanic()
-	logger.Info(clientName)
+	logger.Info(cmd.VersionString(clientName))
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
@@ -362,11 +420,23 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 	sa.SetSQLDebug(dbMap, logger)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
+	go sa.ReportDbConnCount(dbMap, scope)
 
-	amqpConf := c.Mailer.AMQP
-	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Failed to create SA client")
+	var tls *tls.Config
+	if c.Mailer.TLS.CertFile != nil {
+		tls, err = c.Mailer.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
+	var sac core.StorageAuthority
+	if c.Mailer.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient(clientName, c.Mailer.AMQP, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
 
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
@@ -379,21 +449,16 @@ func main() {
 
 	smtpPassword, err := c.Mailer.PasswordConfig.Pass()
 	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(
+	mailClient := bmail.New(
 		c.Mailer.Server,
 		c.Mailer.Port,
 		c.Mailer.Username,
 		smtpPassword,
 		*fromAddress,
 		logger,
-		stats,
+		scope,
 		*reconnBase,
 		*reconnMax)
-	err = mailClient.Connect()
-	cmd.FailOnError(err, "Couldn't connect to mail server.")
-	defer func() {
-		_ = mailClient.Close()
-	}()
 
 	nagCheckInterval := defaultNagCheckInterval
 	if s := c.Mailer.NagCheckInterval; s != "" {
@@ -416,13 +481,9 @@ func main() {
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
 
-	subject := "Certificate expiration notice"
-	if c.Mailer.Subject != "" {
-		subject = c.Mailer.Subject
-	}
 	m := mailer{
-		stats:         stats,
-		subject:       subject,
+		stats:         scope,
+		subject:       c.Mailer.Subject,
 		log:           logger,
 		dbMap:         dbMap,
 		rs:            sac,
@@ -432,6 +493,8 @@ func main() {
 		limit:         c.Mailer.CertLimit,
 		clk:           cmd.Clock(),
 	}
+
+	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	err = m.findExpiringCertificates()
 	cmd.FailOnError(err, "expiration-mailer has failed")

@@ -32,6 +32,10 @@ func (mock *MockDNSResolver) LookupTXT(_ context.Context, hostname string) ([]st
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil, nil
 	}
+	// empty-txts.com always returns zero TXT records
+	if hostname == "_acme-challenge.empty-txts.com" {
+		return []string{}, nil, nil
+	}
 	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
@@ -150,6 +154,11 @@ func (mock *MockDNSResolver) LookupMX(_ context.Context, domain string) ([]strin
 		fallthrough
 	case "email.com":
 		return []string{"mail.email.com"}, nil
+	case "always.error":
+		return []string{}, &DNSError{dns.TypeA, "always.error",
+			&net.OpError{Err: errors.New("always.error always errors")}, -1}
+	case "always.timeout":
+		return []string{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
 	}
 	return nil, nil
 }

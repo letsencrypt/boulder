@@ -1,6 +1,7 @@
 package creds
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -12,10 +13,75 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestTransportCredentials(t *testing.T) {
+func TestServerTransportCredentials(t *testing.T) {
+	acceptedSANs := map[string]struct{}{
+		"boulder-client": {},
+	}
+	certFile := "testdata/boulder-client/cert.pem"
+	badCertFile := "testdata/example.com/cert.pem"
+	goodCert, err := core.LoadCert(certFile)
+	test.AssertNotError(t, err, "core.LoadCert failed on "+certFile)
+	badCert, err := core.LoadCert(badCertFile)
+	test.AssertNotError(t, err, "core.LoadCert failed on "+badCertFile)
+	servTLSConfig := &tls.Config{}
+
+	// NewServerCredentials with a nil serverTLSConfig should return an error
+	_, err = NewServerCredentials(nil, acceptedSANs)
+	test.AssertEquals(t, err, NilServerConfigErr)
+
+	// A creds with a empty acceptedSANs list should consider any peer valid
+	wrappedCreds, err := NewServerCredentials(servTLSConfig, nil)
+	test.AssertNotError(t, err, "NewServerCredentials failed with nil acceptedSANs")
+	bcreds := wrappedCreds.(*serverTransportCredentials)
+	emptyState := tls.ConnectionState{}
+	err = bcreds.validateClient(emptyState)
+	test.AssertNotError(t, err, "validateClient() errored for emptyState")
+	wrappedCreds, err = NewServerCredentials(servTLSConfig, map[string]struct{}{})
+	test.AssertNotError(t, err, "NewServerCredentials failed with empty acceptedSANs")
+	bcreds = wrappedCreds.(*serverTransportCredentials)
+	err = bcreds.validateClient(emptyState)
+	test.AssertNotError(t, err, "validateClient() errored for emptyState")
+
+	// A creds given an empty TLS ConnectionState to verify should return an error
+	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
+	err = bcreds.validateClient(emptyState)
+	test.AssertEquals(t, err, EmptyPeerCertsErr)
+
+	// A creds should reject peers that don't have a leaf certificate with
+	// a SAN on the accepted list.
+	wrongState := tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{badCert},
+	}
+	err = bcreds.validateClient(wrongState)
+	_, ok := err.(SANNotAcceptedErr)
+	if !ok {
+		t.Errorf("Expected error of type SANNotAcceptedErr, got %T: %s", err, err)
+	}
+
+	// A creds should accept peers that have a leaf certificate with a SAN
+	// that is on the accepted list
+	rightState := tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{goodCert},
+	}
+	err = bcreds.validateClient(rightState)
+	test.AssertNotError(t, err, "validateClient(rightState) failed")
+
+	// A creds configured with an IP SAN in the accepted list should accept a peer
+	// that has a leaf certificate containing an IP address SAN present in the
+	// accepted list.
+	acceptedIPSans := map[string]struct{}{
+		"127.0.0.1": {},
+	}
+	bcreds = &serverTransportCredentials{servTLSConfig, acceptedIPSans}
+	err = bcreds.validateClient(rightState)
+	test.AssertNotError(t, err, "validateClient(rightState) failed with an IP accepted SAN list")
+}
+
+func TestClientTransportCredentials(t *testing.T) {
 	priv, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey failed")
 
@@ -47,7 +113,7 @@ func TestTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	tc := New(roots, nil)
+	tc := NewClientCredentials(roots, []tls.Certificate{})
 
 	serverA.StartTLS()
 	defer serverA.Close()
@@ -58,7 +124,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnA.Close()
 	}()
 
-	conn, _, err := tc.ClientHandshake("A:2020", rawConnA, time.Second)
+	conn, _, err := tc.ClientHandshake(context.Background(), "A:2020", rawConnA)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
@@ -71,7 +137,7 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	conn, _, err = tc.ClientHandshake("B:3030", rawConnB, time.Second)
+	conn, _, err = tc.ClientHandshake(context.Background(), "B:3030", rawConnB)
 	test.AssertNotError(t, err, "tc.ClientHandshake failed")
 	test.Assert(t, conn != nil, "tc.ClientHandshake returned a nil net.Conn")
 
@@ -82,11 +148,16 @@ func TestTransportCredentials(t *testing.T) {
 		_ = ln.Close()
 	}()
 	addrC := ln.Addr().String()
+	stop := make(chan struct{}, 1)
 	go func() {
 		for {
-			_, err := ln.Accept()
-			test.AssertNotError(t, err, "ln.Accept failed")
-			time.Sleep(time.Second)
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = ln.Accept()
+				time.Sleep(2 * time.Millisecond)
+			}
 		}
 	}()
 
@@ -96,8 +167,39 @@ func TestTransportCredentials(t *testing.T) {
 		_ = rawConnB.Close()
 	}()
 
-	conn, _, err = tc.ClientHandshake("A:2020", rawConnC, time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	conn, _, err = tc.ClientHandshake(ctx, "A:2020", rawConnC)
 	test.AssertError(t, err, "tc.ClientHandshake didn't timeout")
-	test.AssertEquals(t, err.Error(), "boulder/grpc/creds: TLS handshake timed out")
+	test.AssertEquals(t, err.Error(), "context deadline exceeded")
 	test.Assert(t, conn == nil, "tc.ClientHandshake returned a non-nil net.Conn on failure")
+
+	stop <- struct{}{}
+}
+
+type brokenConn struct{}
+
+func (bc *brokenConn) Read([]byte) (int, error) {
+	return 0, &net.OpError{}
+}
+
+func (bc *brokenConn) Write([]byte) (int, error) {
+	return 0, &net.OpError{}
+}
+
+func (bc *brokenConn) LocalAddr() net.Addr              { return nil }
+func (bc *brokenConn) RemoteAddr() net.Addr             { return nil }
+func (bc *brokenConn) Close() error                     { return nil }
+func (bc *brokenConn) SetDeadline(time.Time) error      { return nil }
+func (bc *brokenConn) SetReadDeadline(time.Time) error  { return nil }
+func (bc *brokenConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestClientReset(t *testing.T) {
+	tc := NewClientCredentials(nil, []tls.Certificate{})
+	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
+	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
+	_, ok := err.(interface {
+		Temporary() bool
+	})
+	test.Assert(t, ok, "returned error doesn't have a Temporary method")
 }

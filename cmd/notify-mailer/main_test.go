@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -303,27 +304,27 @@ type mockEmailResolver struct{}
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "db" is just a list in memory
 	db := []contactJSON{
-		contactJSON{
+		{
 			ID:      1,
 			Contact: []byte(`["mailto:example@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      2,
 			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      3,
 			Contact: []byte(`["mailto:test-test-test@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      4,
 			Contact: []byte(`["mailto:example-example-example@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      5,
 			Contact: []byte(`["mailto:youve.got.mail@example.com"]`),
 		},
-		contactJSON{
+		{
 			ID:      6,
 			Contact: []byte(`["mailto:mail@example.com"]`),
 		},
@@ -350,9 +351,12 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	}
 
 	// If the ID (shifted by 1 to account for zero indexing) is within the range
-	// of the DB list, return the DB entry
-	if (id-1) > 0 || int(id-1) < len(db) {
+	// of the DB list, return the DB entry by assigning to the `outputPtr`.
+	// Otherwise, return that no rows were found
+	if (id-1) >= 0 && int(id-1) < len(db) {
 		*outputPtr = db[id-1]
+	} else {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -363,14 +367,19 @@ func TestResolveEmails(t *testing.T) {
 	// more test cases here you must also add the corresponding DB result in the
 	// mock.
 	regs := []regID{
-		regID{
+		{
 			ID: 1,
 		},
-		regID{
+		{
 			ID: 2,
 		},
-		regID{
+		{
 			ID: 3,
+		},
+		// This registration ID deliberately doesn't exist in the mock data to make
+		// sure this case is handled gracefully
+		{
+			ID: 999,
 		},
 	}
 	contactsJSON, err := json.Marshal(regs)

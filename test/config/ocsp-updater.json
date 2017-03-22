@@ -4,17 +4,25 @@
     "maxDBConns": 10,
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
-    "missingSCTWindow": "1m",
+    "missingSCTWindow": "1s",
     "revokedCertificateWindow": "1s",
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
     "missingSCTBatchSize": 5000,
+    "parallelGenerateOCSPRequests": 10,
     "revokedCertificateBatchSize": 1000,
     "ocspMinTimeToExpiry": "72h",
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
-    "debugAddr": "localhost:8006",
+    "debugAddr": ":8006",
+    "publisher": {
+      "serverAddresses": ["publisher.boulder:9091"],
+      "serverIssuerPath": "test/grpc-creds/minica.pem",
+      "clientCertificatePath": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
+      "clientKeyPath": "test/grpc-creds/ocsp-updater.boulder/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -24,10 +32,6 @@
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -39,8 +43,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 
@@ -49,7 +51,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500",
+          "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ]

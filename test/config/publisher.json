@@ -1,8 +1,18 @@
 {
   "publisher": {
-    "maxConcurrentRPCServerRequests": 16,
+    "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
-    "debugAddr": "localhost:8009",
+    "debugAddr": ":8009",
+    "grpc": {
+      "address": ":9091",
+      "clientIssuerPath": "test/grpc-creds/minica.pem",
+      "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
+      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
+      "clientNames": [
+        "ca.boulder",
+        "ocsp-updater.boulder"
+      ]
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -20,8 +30,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   },
 
@@ -29,7 +37,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://127.0.0.1:4500/",
+          "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],

@@ -1,8 +1,9 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,12 +15,14 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 var usageString = `
@@ -36,9 +39,12 @@ command descriptions:
 `
 
 type config struct {
-	AMQP   cmd.AMQPConfig
-	Statsd cmd.StatsdConfig
-	Syslog cmd.SyslogConfig
+	AMQP      cmd.AMQPConfig
+	Statsd    cmd.StatsdConfig
+	TLS       cmd.TLSConfig
+	SAService *cmd.GRPCClientConfig
+	Syslog    cmd.SyslogConfig
+	Features  map[string]bool
 }
 
 type certificateStorage interface {
@@ -47,7 +53,7 @@ type certificateStorage interface {
 }
 
 var (
-	b64derOrphan     = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/=]+)\]`)
+	derOrphan        = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
 	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
@@ -70,17 +76,17 @@ func checkDER(sai certificateStorage, der []byte) error {
 
 func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
 	ctx := context.Background()
-	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
+	if !strings.Contains(line, "cert=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
-	derStr := b64derOrphan.FindStringSubmatch(line)
+	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.AuditErr(fmt.Sprintf("Didn't match regex for b64der: %s", line))
+		logger.AuditErr(fmt.Sprintf("Didn't match regex for cert: %s", line))
 		return true, false
 	}
-	der, err := base64.StdEncoding.DecodeString(derStr[1])
+	der, err := hex.DecodeString(derStr[1])
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Couldn't decode b64: %s, [%s]", err, line))
+		logger.AuditErr(fmt.Sprintf("Couldn't decode hex: %s, [%s]", err, line))
 		return true, false
 	}
 	err = checkDER(sa, der)
@@ -111,16 +117,33 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (statsd.Statter, blog.Logger, *rpc.StorageAuthorityClient) {
+func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
 	err = json.Unmarshal(configJSON, &conf)
 	cmd.FailOnError(err, "Failed to parse config file")
+	err = features.Set(conf.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
-	sa, err := rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, stats)
-	cmd.FailOnError(err, "Failed to create SA client")
-	return stats, logger, sa
+	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
+
+	var tls *tls.Config
+	if conf.TLS.CertFile != nil {
+		tls, err = conf.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
+
+	var sac core.StorageAuthority
+	if conf.SAService != nil {
+		conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	} else {
+		sac, err = rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
+	return scope, logger, sac
 }
 
 func main() {
@@ -170,9 +193,9 @@ func main() {
 			}
 		}
 		logger.Info(fmt.Sprintf("Found %d orphans and added %d to the database\n", orphansFound, orphansAdded))
-		stats.Inc("orphaned-certificates.found", orphansFound, 1.0)
-		stats.Inc("orphaned-certificates.added", orphansAdded, 1.0)
-		stats.Inc("orphaned-certificates.adding-failed", orphansFound-orphansAdded, 1.0)
+		stats.Inc("Found", orphansFound)
+		stats.Inc("Added", orphansAdded)
+		stats.Inc("AddingFailed", orphansFound-orphansAdded)
 
 	case "parse-der":
 		ctx := context.Background()

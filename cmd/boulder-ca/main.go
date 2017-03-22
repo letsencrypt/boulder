@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"flag"
@@ -12,15 +13,19 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/ca"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const clientName = "CA"
@@ -113,7 +118,11 @@ func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
 		pkcs11Config.PrivateKeyLabel == "" {
 		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 	}
-	return pkcs11key.New(pkcs11Config.Module,
+	numSessions := issuerConfig.NumSessions
+	if numSessions <= 0 {
+		numSessions = 1
+	}
+	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
 }
 
@@ -126,12 +135,14 @@ func main() {
 	}
 
 	var c config
-	err := cmd.ReadJSONFile(*configFile, &c)
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	go cmd.DebugServer(c.CA.DebugAddr)
+	err = features.Set(c.CA.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	scope := metrics.NewStatsdScope(stats, "CA")
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -152,32 +163,77 @@ func main() {
 	cai, err := ca.NewCertificateAuthorityImpl(
 		c.CA,
 		clock.Default(),
-		stats,
+		scope,
 		issuers,
 		goodkey.NewKeyPolicy(),
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
 
-	go cmd.ProfileCmd("CA", stats)
+	var tls *tls.Config
+	if c.CA.TLS.CertFile != nil {
+		tls, err = c.CA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+	}
 
 	amqpConf := c.CA.AMQP
-	cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Failed to create SA client")
-
-	if c.CA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
-		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+	if c.CA.SAService != nil {
+		conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	} else {
-		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
+		cmd.FailOnError(err, "Failed to create SA client")
+	}
+
+	if amqpConf.Publisher != nil {
+		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, scope)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 	}
 
-	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
+	var caSrv *grpc.Server
+	if c.CA.GRPCCA != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, scope)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "CA gRPC service failed")
+		}()
+		caSrv = s
+	}
+	var ocspSrv *grpc.Server
+	if c.CA.GRPCOCSPGenerator != nil {
+		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, scope)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
+		go func() {
+			err = s.Serve(l)
+			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
+		}()
+		ocspSrv = s
+	}
+
+	cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, scope, logger)
 	cmd.FailOnError(err, "Unable to create CA RPC server")
+
+	go cmd.CatchSignals(logger, func() {
+		cas.Stop()
+		if caSrv != nil {
+			caSrv.GracefulStop()
+		}
+		if ocspSrv != nil {
+			ocspSrv.GracefulStop()
+		}
+	})
+
 	err = rpc.NewCertificateAuthorityServer(cas, cai)
 	cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
+
+	go cmd.DebugServer(c.CA.DebugAddr)
+	go cmd.ProfileCmd(scope)
 
 	err = cas.Start(amqpConf)
 	cmd.FailOnError(err, "Unable to run CA RPC server")

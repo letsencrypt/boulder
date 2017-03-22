@@ -23,8 +23,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
-	"github.com/square/go-jose"
 	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -209,8 +209,15 @@ func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
 
+	// NOTE: We do not attempt to shut down the server. The problem is that the
+	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
+	// than that. So if we try to call hs.Close() at the end of the test, we'll be
+	// closing the test server while a request is still pending. Unfortunately,
+	// there appears to be an issue in httptest that trips Go's race detector when
+	// that happens, failing the test. So instead, we live with leaving the server
+	// around till the process exits.
+	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 
 	goodPort, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
@@ -436,7 +443,7 @@ func TestTLSSNI(t *testing.T) {
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
-		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
+		t.Fatalf("Unexpected failure in validateTLSSNI01: %s", prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
@@ -485,6 +492,20 @@ func TestTLSSNI(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
+	httpOnly := httpSrv(t, "")
+	defer httpOnly.Close()
+	port, err = getPort(httpOnly)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va.tlsPort = port
+
+	log.Clear()
+	_, err = va.validateTLSSNI01(ctx, ident, chall)
+	test.AssertError(t, err, "TLS SNI validation passed when talking to a HTTP-only server")
+	test.Assert(t, strings.HasSuffix(
+		err.Error(),
+		"Server only speaks HTTP, not TLS",
+	), "validateTLSSNI01 didn't return useful error")
 }
 
 func brokenTLSSrv() *httptest.Server {
@@ -514,16 +535,108 @@ func TestTLSError(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.TLSProblem)
 }
 
+// misconfiguredTLSSrv is a TLS HTTP test server that returns a certificate
+// chain with more than one cert, none of which will solve a TLS SNI challenge
+func misconfiguredTLSSrv() *httptest.Server {
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		Subject: pkix.Name{
+			CommonName: "hello.world",
+		},
+		DNSNames: []string{"goodbye.world", "hello.world"},
+	}
+
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert := &tls.Certificate{
+		Certificate: [][]byte{certBytes, certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+	server.TLS = &tls.Config{
+		Certificates: []tls.Certificate{*cert},
+	}
+	server.StartTLS()
+	return server
+}
+
+func TestCertNames(t *testing.T) {
+	// We duplicate names inside the SAN set
+	names := []string{
+		"hello.world", "goodbye.world",
+		"hello.world", "goodbye.world",
+		"bonjour.le.monde", "au.revoir.le.monde",
+		"bonjour.le.monde", "au.revoir.le.monde",
+	}
+	// We expect only unique names, in sorted order
+	expected := []string{
+		"au.revoir.le.monde", "bonjour.le.monde",
+		"goodbye.world", "hello.world",
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		Subject: pkix.Name{
+			// We also duplicate a name from the SANs as the CN
+			CommonName: names[0],
+		},
+		DNSNames: names,
+	}
+
+	// Create the certificate, check that certNames provides the expected result
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert, _ := x509.ParseCertificate(certBytes)
+	actual := certNames(cert)
+	test.AssertDeepEquals(t, actual, expected)
+}
+
+// TestSNIErrInvalidChain sets up a TLS server with two certificates, neither of
+// which validate the SNI challenge.
+func TestSNIErrInvalidChain(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := misconfiguredTLSSrv()
+
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va, _, _ := setup()
+	va.tlsPort = port
+
+	// Validate the SNI challenge with the test server, expecting it to fail
+	_, prob := va.validateTLSSNI01(ctx, ident, chall)
+	if prob == nil {
+		t.Fatalf("TLS validation should have failed")
+	}
+
+	// We expect that the error message will say 2 certificates were received, and
+	// we expect the error to contain a deduplicated list of domain names from the
+	// subject CN and SANs of the leaf cert
+	expected := "Received 2 certificate(s), first certificate had names \"goodbye.world, hello.world\""
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.AssertContains(t, prob.Detail, expected)
+}
+
 func TestValidateHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -660,6 +773,18 @@ func TestPerformValidationInvalid(t *testing.T) {
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
+}
+
+func TestDNSValidationEmpty(t *testing.T) {
+	va, stats, _ := setup()
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"empty-txts.com",
+		chalDNS,
+		core.Authorization{})
+	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
@@ -820,11 +945,12 @@ func TestLimitedReader(t *testing.T) {
 
 	ident.Value = "localhost"
 	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
-	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	va, _, _ := setup()
 	va.httpPort = port
+
+	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 
@@ -835,16 +961,16 @@ func TestLimitedReader(t *testing.T) {
 
 func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
 		nil,
-		nil,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 	return va, stats, logger
@@ -855,6 +981,7 @@ func TestCheckCAAFallback(t *testing.T) {
 	defer testSrv.Close()
 
 	stats := mocks.NewStatter()
+	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
@@ -863,12 +990,11 @@ func TestCheckCAAFallback(t *testing.T) {
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
-		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"ca.com",
-		stats,
+		scope,
 		clock.Default(),
 		logger)
 
@@ -888,12 +1014,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
-	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
 	s, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")

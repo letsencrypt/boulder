@@ -20,7 +20,8 @@ For details about when we send these emails, please visit
 https://letsencrypt.org/docs/expiration-emails/.
 
 If you want to stop receiving all email from this address, click
-|UNSUB:https://mandrillapp.com/unsub|
+*|UNSUB:https://mandrillapp.com/unsub|*
+(Warning: this is a one-click action that cannot be undone)
 
 Regards,
 The Let's Encrypt Team

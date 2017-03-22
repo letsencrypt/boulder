@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	ct "github.com/google/certificate-transparency/go"
+	ctTLS "github.com/google/certificate-transparency/go/tls"
 )
 
 func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
@@ -47,9 +48,11 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
 	sig, _ := asn1.Marshal(ecdsaSig)
 
 	ds := ct.DigitallySigned{
-		HashAlgorithm:      ct.SHA256,
-		SignatureAlgorithm: ct.ECDSA,
-		Signature:          sig,
+		Algorithm: ctTLS.SignatureAndHashAlgorithm{
+			Hash:      ctTLS.SHA256,
+			Signature: ctTLS.ECDSA,
+		},
+		Signature: sig,
 	}
 
 	var jsonSCTObj struct {
@@ -126,19 +129,35 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	signingKey := "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
-	decodedKey, _ := base64.StdEncoding.DecodeString(signingKey)
+	signingKeyA := "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
+	decodedKeyA, _ := base64.StdEncoding.DecodeString(signingKeyA)
 
-	key, err := x509.ParseECPrivateKey(decodedKey)
+	keyA, err := x509.ParseECPrivateKey(decodedKeyA)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse signing key: %s\n", err)
+		return
+	}
+	signingKeyB := "MHcCAQEEIJSCFDYXt2xCIxv+G8BCzGdUsFIQDWEjxfJDfnn9JB5loAoGCCqGSM49AwEHoUQDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA=="
+	decodedKeyB, _ := base64.StdEncoding.DecodeString(signingKeyB)
+
+	keyB, err := x509.ParseECPrivateKey(decodedKeyB)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse signing key: %s\n", err)
 		return
 	}
 
-	is := integrationSrv{key: key}
-	s := &http.Server{
+	isA := integrationSrv{key: keyA}
+	isB := integrationSrv{key: keyB}
+	sA := &http.Server{
 		Addr:    "0.0.0.0:4500",
-		Handler: http.HandlerFunc(is.handler),
+		Handler: http.HandlerFunc(isA.handler),
 	}
-	log.Fatal(s.ListenAndServe())
+	sB := &http.Server{
+		Addr:    "0.0.0.0:4501",
+		Handler: http.HandlerFunc(isB.handler),
+	}
+	go func() { log.Fatal(sA.ListenAndServe()) }()
+	go func() { log.Fatal(sB.ListenAndServe()) }()
+
+	select {}
 }

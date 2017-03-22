@@ -60,26 +60,35 @@ type AuthRemote struct {
 	AuthKeyName string `json:"auth_key"`
 }
 
+// CAConstraint specifies various CA constraints on the signed certificate.
+// CAConstraint would verify against (and override) the CA
+// extensions in the given CSR.
+type CAConstraint struct {
+	IsCA           bool `json:"is_ca"`
+	MaxPathLen     int  `json:"max_path_len"`
+	MaxPathLenZero bool `json:"max_path_len_zero"`
+}
+
 // A SigningProfile stores information that the CA needs to store
 // signature policy.
 type SigningProfile struct {
-	Usage               []string   `json:"usages"`
-	IssuerURL           []string   `json:"issuer_urls"`
-	OCSP                string     `json:"ocsp_url"`
-	CRL                 string     `json:"crl_url"`
-	CA                  bool       `json:"is_ca"`
-	OCSPNoCheck         bool       `json:"ocsp_no_check"`
-	ExpiryString        string     `json:"expiry"`
-	BackdateString      string     `json:"backdate"`
-	AuthKeyName         string     `json:"auth_key"`
-	RemoteName          string     `json:"remote"`
-	NotBefore           time.Time  `json:"not_before"`
-	NotAfter            time.Time  `json:"not_after"`
-	NameWhitelistString string     `json:"name_whitelist"`
-	AuthRemote          AuthRemote `json:"auth_remote"`
-	CTLogServers        []string   `json:"ct_log_servers"`
-	AllowedExtensions   []OID      `json:"allowed_extensions"`
-	CertStore           string     `json:"cert_store"`
+	Usage               []string     `json:"usages"`
+	IssuerURL           []string     `json:"issuer_urls"`
+	OCSP                string       `json:"ocsp_url"`
+	CRL                 string       `json:"crl_url"`
+	CAConstraint        CAConstraint `json:"ca_constraint"`
+	OCSPNoCheck         bool         `json:"ocsp_no_check"`
+	ExpiryString        string       `json:"expiry"`
+	BackdateString      string       `json:"backdate"`
+	AuthKeyName         string       `json:"auth_key"`
+	RemoteName          string       `json:"remote"`
+	NotBefore           time.Time    `json:"not_before"`
+	NotAfter            time.Time    `json:"not_after"`
+	NameWhitelistString string       `json:"name_whitelist"`
+	AuthRemote          AuthRemote   `json:"auth_remote"`
+	CTLogServers        []string     `json:"ct_log_servers"`
+	AllowedExtensions   []OID        `json:"allowed_extensions"`
+	CertStore           string       `json:"cert_store"`
 
 	Policies                    []CertificatePolicy
 	Expiry                      time.Duration
@@ -401,6 +410,11 @@ func (p *SigningProfile) validProfile(isDefault bool) bool {
 		return false
 	}
 
+	if p.AuthRemote.RemoteName == "" && p.AuthRemote.AuthKeyName != "" {
+		log.Debugf("invalid auth remote profile: no remote signer specified")
+		return false
+	}
+
 	if p.RemoteName != "" {
 		log.Debugf("validate remote profile")
 
@@ -416,6 +430,7 @@ func (p *SigningProfile) validProfile(isDefault bool) bool {
 
 		if p.AuthRemote.RemoteName != "" {
 			log.Debugf("invalid remote profile: auth remote is also specified")
+			return false
 		}
 	} else if p.AuthRemote.RemoteName != "" {
 		log.Debugf("validate auth remote profile")
@@ -448,6 +463,43 @@ func (p *SigningProfile) validProfile(isDefault bool) bool {
 
 	log.Debugf("profile is valid")
 	return true
+}
+
+// This checks if the SigningProfile object contains configurations that are only effective with a local signer
+// which has access to CA private key.
+func (p *SigningProfile) hasLocalConfig() bool {
+	if p.Usage != nil ||
+		p.IssuerURL != nil ||
+		p.OCSP != "" ||
+		p.ExpiryString != "" ||
+		p.BackdateString != "" ||
+		p.CAConstraint.IsCA != false ||
+		!p.NotBefore.IsZero() ||
+		!p.NotAfter.IsZero() ||
+		p.NameWhitelistString != "" ||
+		len(p.CTLogServers) != 0 {
+		return true
+	}
+	return false
+}
+
+// warnSkippedSettings prints a log warning message about skipped settings
+// in a SigningProfile, usually due to remote signer.
+func (p *Signing) warnSkippedSettings() {
+	const warningMessage = `The configuration value by "usages", "issuer_urls", "ocsp_url", "crl_url", "ca_constraint", "expiry", "backdate", "not_before", "not_after", "cert_store" and "ct_log_servers" are skipped`
+	if p == nil {
+		return
+	}
+
+	if (p.Default.RemoteName != "" || p.Default.AuthRemote.RemoteName != "") && p.Default.hasLocalConfig() {
+		log.Warning("default profile points to a remote signer: ", warningMessage)
+	}
+
+	for name, profile := range p.Profiles {
+		if (profile.RemoteName != "" || profile.AuthRemote.RemoteName != "") && profile.hasLocalConfig() {
+			log.Warningf("Profiles[%s] points to a remote signer: %s", name, warningMessage)
+		}
+	}
 }
 
 // Signing codifies the signature configuration policy for a CA.
@@ -491,6 +543,9 @@ func (p *Signing) Valid() bool {
 			return false
 		}
 	}
+
+	p.warnSkippedSettings()
+
 	return true
 }
 

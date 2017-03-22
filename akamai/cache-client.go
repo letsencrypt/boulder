@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 const (
@@ -52,7 +52,7 @@ type CachePurgeClient struct {
 	retries      int
 	retryBackoff time.Duration
 	log          blog.Logger
-	stats        statsd.Statter
+	stats        metrics.Scope
 	clk          clock.Clock
 }
 
@@ -77,8 +77,9 @@ func NewCachePurgeClient(
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger,
-	stats statsd.Statter,
+	stats metrics.Scope,
 ) (*CachePurgeClient, error) {
+	stats = stats.NewScope("CCU")
 	if strings.HasSuffix(endpoint, "/") {
 		endpoint = endpoint[:len(endpoint)-1]
 	}
@@ -181,7 +182,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	rS := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
-	cpc.stats.TimingDuration("CCU.PurgeRequestLatency", time.Since(rS), 1.0)
+	cpc.stats.TimingDuration("PurgeRequestLatency", time.Since(rS))
 	if err != nil {
 		return err
 	}
@@ -204,8 +205,11 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if err != nil {
 		return err
 	}
-	if purgeInfo.HTTPStatus != 201 || resp.StatusCode != 201 {
-		return fmt.Errorf("Incorrect HTTP status code: %s", string(body))
+	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
+		if purgeInfo.HTTPStatus == http.StatusForbidden {
+			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
+		}
+		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
 	cpc.log.Info(fmt.Sprintf(
@@ -223,16 +227,16 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 func (cpc *CachePurgeClient) Purge(urls []string) error {
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
-		core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3)
+		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
 
 		err := cpc.purge(urls)
 		if err != nil {
 			if _, ok := err.(errFatal); ok {
-				cpc.log.AuditErr(err.Error())
-				cpc.stats.Inc("CCU.FatalFailures", 1, 1.0)
+				cpc.stats.Inc("FatalFailures", 1)
 				return err
 			}
-			cpc.stats.Inc("CCU.RetryableFailures", 1, 1.0)
+			cpc.log.AuditErr(fmt.Sprintf("Akamai cache purge failed, retrying: %s", err.Error()))
+			cpc.stats.Inc("RetryableFailures", 1)
 			continue
 		}
 		successful = true
@@ -240,10 +244,10 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 	}
 
 	if !successful {
-		cpc.stats.Inc("CCU.FatalFailures", 1, 1.0)
+		cpc.stats.Inc("FatalFailures", 1)
 		return ErrAllRetriesFailed
 	}
 
-	cpc.stats.Inc("CCU.SuccessfulPurges", 1, 1.0)
+	cpc.stats.Inc("SuccessfulPurges", 1)
 	return nil
 }

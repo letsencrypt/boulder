@@ -17,11 +17,10 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"github.com/square/go-jose"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
+	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -101,7 +100,7 @@ var (
 )
 
 func TestSendNags(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
@@ -111,9 +110,10 @@ func TestSendNags(t *testing.T) {
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
-		subject:       testEmailSubject,
-		rs:            rs,
-		clk:           fc,
+		// Explicitly override the default subject to use testEmailSubject
+		subject: testEmailSubject,
+		rs:      rs,
+		clk:     fc,
 	}
 
 	cert := &x509.Certificate{
@@ -219,14 +219,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
 
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailARaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)`),
+		To: emailARaw,
+		// A certificate with only one domain should have only one domain listed in
+		// the subject
+		Subject: "Certificate expiration notice for domain \"example-a.com\"",
+		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
 	}, testCtx.mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      emailBRaw,
-		Subject: "",
-		Body:    fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)`),
+		To: emailBRaw,
+		// A certificate with two domains should have only one domain listed and an
+		// additional count included
+		Subject: "Certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
+		Body:    "hi, cert for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)",
 	}, testCtx.mc.Messages[1])
 
 	// Check that regC's only certificate being renewed does not cause a log
@@ -256,7 +260,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regB := core.Registration{
@@ -264,7 +268,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyB,
+		Key:       &keyB,
 		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regC := core.Registration{
@@ -272,7 +276,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Contact: &[]string{
 			emailB,
 		},
-		Key:       keyC,
+		Key:       &keyC,
 		InitialIP: net.ParseIP("210.3.2.3"),
 	}
 	bg := context.Background()
@@ -309,6 +313,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial1String,
 		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	// Expires in 3d, already sent 4d nag at 4.5d
@@ -331,6 +336,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial2String,
 		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	// Expires in 7d and change, no nag sent at all yet
@@ -339,7 +345,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 			CommonName: "happy C",
 		},
 		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
-		DNSNames:     []string{"example-c.com"},
+		DNSNames:     []string{"example-c.com", "another.example-c.com"},
 		SerialNumber: serial3,
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
@@ -350,8 +356,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{
-		Serial: serial3String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial3String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertC.NotAfter,
 	}
 
 	// Expires in 3d, renewed
@@ -371,8 +378,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerD,
 	}
 	certStatusD := &core.CertificateStatus{
-		Serial: serial4String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial4String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertD.NotAfter,
 	}
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
@@ -422,7 +430,8 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
-	testCtx.m.stats = statter
+	stats := metrics.NewStatsdScope(statter, "Expiration")
+	testCtx.m.stats = stats
 
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
@@ -431,14 +440,14 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
 	// * 24 to setup() for the nag duration. This is because all of the nags are
 	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Mailer.Expiration.Errors.Nag-48h0m0s.AtCapacity",
+	statter.EXPECT().Inc("Expiration.Errors.Nag-48h0m0s.AtCapacity",
 		int64(1), float32(1.0))
 
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("Mailer.Expiration.SendLatency", time.Duration(0), float32(1.0))
-	// Similarly, findExpiringCerticates() sends its latency as well
-	statter.EXPECT().TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
+	// Similarly, findExpiringCertificates() sends its latency as well
+	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
@@ -598,7 +607,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("1.2.2.1"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
@@ -623,8 +632,9 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 
 	certStatusA := &core.CertificateStatus{
-		Serial: serial1String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial1String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertA.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -703,7 +713,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
@@ -759,7 +769,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Contact: &[]string{
 			emailA,
 		},
-		Key:       keyA,
+		Key:       &keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
@@ -783,6 +793,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial1String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	rawCertB := newX509Cert("happy B",
@@ -801,6 +812,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial2String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -823,8 +835,10 @@ func TestDedupOnRegistration(t *testing.T) {
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
 	expected := mocks.MailerMessage{
-		To:      emailARaw,
-		Subject: "",
+		To: emailARaw,
+		// A certificate with three domain names should have one in the subject and
+		// a count of '2 more' at the end
+		Subject: "Certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
@@ -855,7 +869,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats, _ := statsd.NewNoopClient(nil)
+	stats := metrics.NewNoopScope()
 	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))

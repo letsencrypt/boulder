@@ -1,9 +1,11 @@
 package va
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -17,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -26,11 +27,9 @@ import (
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const (
@@ -54,9 +53,8 @@ type ValidationAuthorityImpl struct {
 	httpsPort    int
 	tlsPort      int
 	userAgent    string
-	stats        statsd.Statter
+	stats        metrics.Scope
 	clk          clock.Clock
-	caaClient    caaPB.CAACheckerClient
 	caaDR        *cdr.CAADistributedResolver
 }
 
@@ -64,12 +62,11 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
 	sbc SafeBrowsing,
-	caaClient caaPB.CAACheckerClient,
 	cdrClient *cdr.CAADistributedResolver,
 	resolver bdns.DNSResolver,
 	userAgent string,
 	issuerDomain string,
-	stats statsd.Statter,
+	stats metrics.Scope,
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
@@ -84,7 +81,6 @@ func NewValidationAuthorityImpl(
 		userAgent:    userAgent,
 		stats:        stats,
 		clk:          clk,
-		caaClient:    caaClient,
 		caaDR:        cdrClient,
 	}
 }
@@ -93,6 +89,7 @@ func NewValidationAuthorityImpl(
 type verificationRequestEvent struct {
 	ID                string                  `json:",omitempty"`
 	Requester         int64                   `json:",omitempty"`
+	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
 	RequestTime       time.Time               `json:",omitempty"`
@@ -100,11 +97,10 @@ type verificationRequestEvent struct {
 	Error             string                  `json:",omitempty"`
 }
 
-// getAddr will query for all A records associated with hostname and return the
-// preferred address, the first net.IP in the addrs slice, and all addresses resolved.
-// This is the same choice made by the Go internal resolution library used by
-// net/http, except we only send A queries and accept IPv4 addresses.
-// TODO(#593): Add IPv6 support
+// getAddr will query for all A/AAAA records associated with hostname and return
+// the preferred address, the first net.IP in the addrs slice, and all addresses
+// resolved. This is the same choice made by the Go internal resolution library
+// used by net/http.
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
 	if err != nil {
@@ -294,6 +290,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	return body, validationRecords, nil
 }
 
+// certNames collects up all of a certificate's subject names (Subject CN and
+// Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
+// error message
+func certNames(cert *x509.Certificate) []string {
+	var names []string
+	if cert.Subject.CommonName != "" {
+		names = append(names, cert.Subject.CommonName)
+	}
+	names = append(names, cert.DNSNames...)
+	names = core.UniqueLowerNames(names)
+	return names
+}
+
 func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
@@ -337,17 +346,21 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.AuditInfo(fmt.Sprintf("TLS-SNI-01 challenge for %s received certificate (%d of %d): cert=[%s]",
 			identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
-	for _, name := range certs[0].DNSNames {
+	leafCert := certs[0]
+	for _, name := range leafCert.DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			return validationRecords, nil
 		}
 	}
 
+	names := certNames(leafCert)
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for TLS-SNI-01 challenge. "+
+			"Requested %s from %s. Received %d certificate(s), "+
+			"first certificate had names %q",
+		zName, hostPort, len(certs), strings.Join(names, ", "))
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
-	return validationRecords, probs.Unauthorized(
-		fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
-			"Requested %s from %s. Received certificate containing '%s'",
-			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")))
+	return validationRecords, probs.Unauthorized(errText)
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -390,6 +403,10 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	return va.validateTLSWithZName(ctx, identifier, challenge, ZName)
 }
 
+// badTLSHeader contains the string 'HTTP /' which is returned when
+// we try to talk TLS to a server that only talks HTTP
+var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
+
 // parseHTTPConnError returns a ProblemDetails corresponding to an error
 // that occurred during domain validation.
 func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
@@ -397,8 +414,12 @@ func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 		err = urlErr.Err
 	}
 
+	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
+		return probs.Malformed(fmt.Sprintf("%s: Server only speaks HTTP, not TLS", detail))
+	}
+
 	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
-	// no differentation between a DNSSEC failure and an unknown host. If we
+	// no differentiation between a DNSSEC failure and an unknown host. If we
 	// do not verify DNSSEC ourselves, this function should be modified.
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
@@ -433,6 +454,13 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		return nil, bdns.ProblemDetailsFromDNSError(err)
 	}
 
+	// If there weren't any TXT records return a distinct error message to allow
+	// troubleshooters to differentiate between no TXT records and
+	// invalid/incorrect TXT records.
+	if len(txts) == 0 {
+		return nil, probs.Unauthorized("No TXT records found for DNS challenge")
+	}
+
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
@@ -447,12 +475,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 }
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	var prob *probs.ProblemDetails
-	if va.caaClient != nil {
-		prob = va.checkCAAService(ctx, identifier)
-	} else {
-		prob = va.checkCAAInternal(ctx, identifier)
-	}
+	prob := va.checkCAAInternal(ctx, identifier)
 	if va.caaDR != nil && prob != nil && prob.Type == probs.ConnectionProblem {
 		return va.checkGPDNS(ctx, identifier)
 	}
@@ -471,31 +494,6 @@ func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident c
 		valid,
 	))
 	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
-	}
-	return nil
-}
-
-func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.issuerDomain})
-	if err != nil {
-		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
-		return bgrpc.ErrorToProb(err)
-	}
-	if r.Present == nil || r.Valid == nil {
-		va.log.AuditErr("gRPC: communication failure: response is missing fields")
-		return &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Internal communication failure",
-		}
-	}
-	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-		ident.Value,
-		*r.Present,
-		*r.Valid,
-	))
-	if !*r.Valid {
 		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
 	}
 	return nil
@@ -565,6 +563,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
+		Hostname:    authz.Identifier.Value,
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
@@ -589,7 +588,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
+	va.stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart))
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
@@ -599,9 +598,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		// interface value. See, e.g.
 		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
 		return records, nil
-	} else {
-		return records, prob
 	}
+
+	return records, prob
 }
 
 // CAASet consists of filtered CAA records
@@ -715,23 +714,23 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
-		va.stats.Inc("VA.CAA.None", 1, 1.0)
+		va.stats.Inc("CAA.None", 1)
 		return false, true
 	}
 
 	// Record stats on directives not currently processed.
 	if len(caaSet.Iodef) > 0 {
-		va.stats.Inc("VA.CAA.WithIodef", 1, 1.0)
+		va.stats.Inc("CAA.WithIodef", 1)
 	}
 
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
-		va.stats.Inc("VA.CAA.UnknownCritical", 1, 1.0)
+		va.stats.Inc("CAA.UnknownCritical", 1)
 		return true, false
 	}
 
 	if len(caaSet.Unknown) > 0 {
-		va.stats.Inc("VA.CAA.WithUnknownNoncritical", 1, 1.0)
+		va.stats.Inc("CAA.WithUnknownNoncritical", 1)
 	}
 
 	if len(caaSet.Issue) == 0 {
@@ -739,7 +738,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
-		va.stats.Inc("VA.CAA.NoneRelevant", 1, 1.0)
+		va.stats.Inc("CAA.NoneRelevant", 1)
 		return true, true
 	}
 
@@ -750,13 +749,13 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.issuerDomain {
-			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
+			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
-	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
+	va.stats.Inc("CAA.Unauthorized", 1)
 	return true, false
 }
 

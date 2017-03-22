@@ -2,8 +2,8 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
-    "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8003",
+    "maxConcurrentRPCServerRequests": 100000,
+    "debugAddr": ":8003",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -17,8 +17,6 @@
   },
 
   "syslog": {
-    "network": "",
-    "server": "",
     "stdoutlevel": 6
   }
 }

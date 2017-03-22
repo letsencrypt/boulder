@@ -3,6 +3,7 @@ boulder:
     dockerfile: Dockerfile
     environment:
         FAKE_DNS: 127.0.0.1
+        PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
     volumes:
       - $GOPATH:/go/
       - /tmp:/tmp
@@ -14,12 +15,19 @@ boulder:
       - 4000:4000 # ACME
       - 4002:4002 # OCSP
       - 4003:4003 # OCSP
+      - 4430:4430 # ACME via HTTPS
       - 4500:4500 # ct-test-srv
+      - 6000:6000 # gsb-test-srv
       - 8000:8000 # debug ports
       - 8001:8001
       - 8002:8002
       - 8003:8003
       - 8004:8004
+      - 8005:8005
+      - 8006:8006
+      - 8008:8008
+      - 8009:8009
+      - 8010:8010
       - 8055:8055 # dns-test-srv updates
       - 9380:9380 # mail-test-srv
       - 9381:9381 # mail-test-srv
@@ -30,7 +38,7 @@ boulder:
 bhsm:
     # To minimize the fetching of various layers this should match
     # the FROM image and tag in boulder/Dockerfile
-    image: letsencrypt/boulder-tools:2016-08-03
+    image: letsencrypt/boulder-tools:2017-02-20
     environment:
         PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
     command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so
@@ -49,3 +57,13 @@ brabbitmq:
     environment:
         RABBITMQ_NODE_IP_ADDRESS: "0.0.0.0"
     log_driver: none
+prom:
+    image: prom/prometheus
+    net: bridge
+    ports:
+      - 9090:9090
+    volumes:
+      - $PWD/test/prometheus/:/promconf/
+    command: -config.file /promconf/prometheus.yml
+    links:
+      - boulder
