@@ -385,7 +385,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		regID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
-		return emptyCert, err
+		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
 	requestedExtensions, err := ca.extensionsFromCSR(&csr)
