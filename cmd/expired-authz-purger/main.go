@@ -50,9 +50,16 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 	var ids []string
 	for {
 		var idBatch []string
+		var query string
+		switch table {
+		case "pendingAuthorizations":
+			query = "SELECT id FROM pendingAuthorizations WHERE expires <= ? LIMIT ? OFFSET ?"
+		case "authz":
+			query = "SELECT id FROM authz WHERE expires <= ? LIMIT ? OFFSET ?"
+		}
 		_, err := p.db.Select(
 			&idBatch,
-			fmt.Sprintf("SELECT id FROM %s WHERE expires <= ? LIMIT ? OFFSET ?", table),
+			query,
 			purgeBefore,
 			p.batchSize,
 			len(ids),
@@ -92,12 +99,21 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 	}
 
 	for _, id := range ids {
-		// Delete challenges + authorization
+		// Delete challenges + authorization. We delete challenges first and fail out
+		// if that doesn't succeed so that we don't ever orphan challenges which would
+		// require a relatively expensive join to then find.
 		_, err := p.db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
 		if err != nil {
 			return err
 		}
-		_, err = p.db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", table), id)
+		var query string
+		switch table {
+		case "pendingAuthorizations":
+			query = "DELETE FROM pendingAuthorizations WHERE id = ?"
+		case "authz":
+			query = "DELETE FROM authz WHERE id = ?"
+		}
+		_, err = p.db.Exec(query, id)
 		if err != nil {
 			return err
 		}
