@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -200,6 +202,9 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = string(terr.Type)
 			wrapped.Value = terr.Detail
 			wrapped.HTTPStatus = terr.HTTPStatus
+		case *berrors.BoulderError:
+			wrapped.Type = fmt.Sprintf("berr:%d", terr.Type)
+			wrapped.Value = terr.Detail
 		}
 		return wrapped
 	}
@@ -235,6 +240,17 @@ func unwrapError(rpcError *rpcError) error {
 					Detail:     rpcError.Value,
 					HTTPStatus: rpcError.HTTPStatus,
 				}
+			}
+			if strings.HasPrefix(rpcError.Type, "berr:") {
+				errType, decErr := strconv.Atoi(rpcError.Type[5:])
+				if decErr != nil {
+					return berrors.InternalServerError(
+						"failed to decode error type, decoding error %q, wrapped error %q",
+						decErr,
+						rpcError.Value,
+					)
+				}
+				return berrors.New(berrors.ErrorType(errType), rpcError.Value)
 			}
 			return errors.New(rpcError.Value)
 		}
@@ -388,7 +404,7 @@ func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
 // remaining messages are processed.
 func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 	tooManyGoroutines := rpcResponse{
-		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
+		Error: wrapError(berrors.TooManyRequestsError("RPC server has spawned too many Goroutines")),
 	}
 	tooManyRequestsResponse, err := json.Marshal(tooManyGoroutines)
 	if err != nil {

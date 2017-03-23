@@ -16,16 +16,15 @@ import (
 	"io/ioutil"
 	"math/big"
 	mrand "math/rand"
-	"net/http"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 	"unicode"
 
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/probs"
 	jose "gopkg.in/square/go-jose.v1"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // Package Variables Variables
@@ -99,47 +98,6 @@ func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e BadNonceError) Error() string            { return string(e) }
-
-// statusTooManyRequests is the HTTP status code meant for rate limiting
-// errors. It's not currently in the net/http library so we add it here.
-const statusTooManyRequests = 429
-
-// ProblemDetailsForError turns an error into a ProblemDetails with the special
-// case of returning the same error back if its already a ProblemDetails. If the
-// error is of an type unknown to ProblemDetailsForError, it will return a
-// ServerInternal ProblemDetails.
-func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	switch e := err.(type) {
-	case *probs.ProblemDetails:
-		return e
-	case MalformedRequestError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case NotSupportedError:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
-	case UnauthorizedError:
-		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
-	case NotFoundError:
-		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
-	case LengthRequiredError:
-		prob := probs.Malformed("missing Content-Length header")
-		prob.HTTPStatus = http.StatusLengthRequired
-		return prob
-	case SignatureValidationError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case RateLimitedError:
-		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case BadNonceError:
-		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
-	default:
-		// Internal server error messages may include sensitive data, so we do
-		// not include it.
-		return probs.ServerInternal(msg)
-	}
-}
 
 // Random stuff
 

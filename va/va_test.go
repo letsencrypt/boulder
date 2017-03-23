@@ -1097,7 +1097,7 @@ func TestCheckCAAFallback(t *testing.T) {
 	prob = va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
 	test.Assert(t, prob != nil, "returned ProblemDetails was nil")
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, prob.Detail, "server failure at resolver")
+	test.AssertEquals(t, prob.Detail, "DNS problem: query timed out looking up CAA for bad-local-resolver.com")
 }
 
 func TestParseResults(t *testing.T) {

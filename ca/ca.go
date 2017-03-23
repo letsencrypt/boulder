@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -295,12 +296,10 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					ca.stats.Inc(metricCSRExtensionTLSFeature, 1)
 					value, ok := ext.Value.([]byte)
 					if !ok {
-						msg := fmt.Sprintf("Malformed extension with OID %v", ext.Type)
-						return nil, core.MalformedRequestError(msg)
+						return nil, berrors.MalformedError("malformed extension with OID %v", ext.Type)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
-						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
 						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1)
-						return nil, core.MalformedRequestError(msg)
+						return nil, berrors.MalformedError("unsupported value for extension with OID %v", ext.Type)
 					}
 
 					if ca.enableMustStaple {
@@ -386,7 +385,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		regID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
-		return emptyCert, core.MalformedRequestError(err.Error())
+		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
 	requestedExtensions, err := ca.extensionsFromCSR(&csr)
@@ -398,7 +397,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	if issuer.cert.NotAfter.Before(notAfter) {
-		err = core.InternalServerError("Cannot issue a certificate that expires after the issuer certificate.")
+		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -415,7 +414,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	serialBytes[0] = byte(ca.prefix)
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
@@ -430,7 +429,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	case *ecdsa.PublicKey:
 		profile = ca.ecdsaProfile
 	default:
-		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", csr.PublicKey))
+		err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -456,21 +455,21 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError("failed to sign certificate: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 	ca.stats.Inc("Signatures.Certificate", 1)
 
 	if len(certPEM) == 0 {
-		err = core.InternalServerError("No certificate returned by server")
+		err = berrors.InternalServerError("no certificate returned by server")
 		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err = core.InternalServerError("Invalid certificate value returned")
+		err = berrors.InternalServerError("invalid certificate value returned")
 		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
 			serialHex, certPEM, err))
 		return emptyCert, err
@@ -487,7 +486,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 
 	// This is one last check for uncaught errors
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError(err.Error())
 		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
 			serialHex, hex.EncodeToString(certDER), err))
 		return emptyCert, err
@@ -496,7 +495,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	// Store the cert with the certificate authority, if provided
 	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(

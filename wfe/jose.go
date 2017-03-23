@@ -3,10 +3,10 @@ package wfe
 import (
 	"crypto/ecdsa"
 	"crypto/rsa"
-	"fmt"
 
-	"github.com/letsencrypt/boulder/core"
 	"gopkg.in/square/go-jose.v1"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 func algorithmForKey(key *jose.JsonWebKey) (string, error) {
@@ -23,7 +23,7 @@ func algorithmForKey(key *jose.JsonWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", core.SignatureValidationError("no signature algorithms suitable for given key type")
+	return "", berrors.SignatureValidationError("no signature algorithms suitable for given key type")
 }
 
 const (
@@ -44,15 +44,16 @@ func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (str
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return invalidJWSAlgorithm,
-			core.SignatureValidationError(fmt.Sprintf(
-				"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-				jwsAlgorithm))
+		return invalidJWSAlgorithm, berrors.SignatureValidationError(
+			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
+			jwsAlgorithm,
+		)
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return invalidAlgorithmOnKey,
-			core.SignatureValidationError(fmt.Sprintf(
-				"algorithm '%s' on JWK is unacceptable", key.Algorithm))
+		return invalidAlgorithmOnKey, berrors.SignatureValidationError(
+			"algorithm '%s' on JWK is unacceptable",
+			key.Algorithm,
+		)
 	}
 	return "", nil
 }
