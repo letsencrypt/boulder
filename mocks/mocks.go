@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -202,9 +203,11 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		authz.Expires = &exp
 		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/expired/23"
 		return authz, nil
+	} else if id == "error_result" {
+		return core.Authorization{}, fmt.Errorf("Unspecified database error")
 	}
 
-	return core.Authorization{}, fmt.Errorf("authz not found")
+	return core.Authorization{}, sql.ErrNoRows
 }
 
 // RevokeAuthorizationsByDomain is a mock

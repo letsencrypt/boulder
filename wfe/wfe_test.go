@@ -942,6 +942,27 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
+
+	// Challenge Not found
+	challengeURL = ""
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath(challengeURL,
+			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	assertJSONEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`)
+
+	// Unspecified database error
+	errorURL := "error_result/24"
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath(errorURL,
+			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
+	assertJSONEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`)
+
 }
 
 func TestBadNonce(t *testing.T) {
