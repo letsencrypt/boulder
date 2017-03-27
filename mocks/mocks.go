@@ -19,6 +19,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/revocation"
 )
 
@@ -145,12 +146,12 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 2}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, test4KeyPublic) {
 		// No key found
-		return core.Registration{ID: 5}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
@@ -158,7 +159,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 	}
 
 	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
-		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 4}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, test3KeyPublic) {

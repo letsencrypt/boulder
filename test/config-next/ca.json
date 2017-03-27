@@ -134,7 +134,8 @@
       "serviceQueue": "CA.server"
     },
     "features": {
-        "IDNASupport": true
+        "IDNASupport": true,
+        "AllowTLS02Challenges": true
     }
   },
 

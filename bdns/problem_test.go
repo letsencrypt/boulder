@@ -7,11 +7,9 @@ import (
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-
-	"github.com/letsencrypt/boulder/probs"
 )
 
-func TestProblemDetailsFromDNSError(t *testing.T) {
+func TestDNSError(t *testing.T) {
 	testCases := []struct {
 		err      error
 		expected string
@@ -19,9 +17,6 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 		{
 			&DNSError{dns.TypeA, "hostname", MockTimeoutError(), -1},
 			"DNS problem: query timed out looking up A for hostname",
-		}, {
-			errors.New("other failure"),
-			detailServerFailure,
 		}, {
 			&DNSError{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1},
 			"DNS problem: networking error looking up MX for hostname",
@@ -37,12 +32,8 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		err := ProblemDetailsFromDNSError(tc.err)
-		if err.Type != probs.ConnectionProblem {
-			t.Errorf("ProblemDetailsFromDNSError(%q).Type = %q, expected %q", tc.err, err.Type, probs.ConnectionProblem)
-		}
-		if err.Detail != tc.expected {
-			t.Errorf("ProblemDetailsFromDNSError(%q).Detail = %q, expected %q", tc.err, err.Detail, tc.expected)
+		if tc.err.Error() != tc.expected {
+			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
 		}
 	}
 }
