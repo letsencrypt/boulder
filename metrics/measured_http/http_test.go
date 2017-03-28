@@ -67,7 +67,7 @@ func TestMeasuring(t *testing.T) {
 	stat.Collect(ch)
 	m := <-ch
 	var iom io_prometheus_client.Metric
-	m.Write(&iom)
+	_ = m.Write(&iom)
 
 	hist := iom.Histogram
 	if *hist.SampleCount != 1 {
