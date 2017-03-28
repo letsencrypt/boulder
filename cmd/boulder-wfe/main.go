@@ -167,7 +167,6 @@ func main() {
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
-		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
 	hdSrv, err := hd.ListenAndServe(srv)
 	cmd.FailOnError(err, "Error starting HTTP server")

@@ -6,57 +6,7 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/jmhodges/clock"
 )
-
-// FBAdapter provides a facebookgo/stats client interface that sends metrics via
-// a StatsD client
-type FBAdapter struct {
-	stats Scope
-	clk   clock.Clock
-}
-
-// NewFBAdapter returns a new adapter
-func NewFBAdapter(stats Scope, clock clock.Clock) FBAdapter {
-	return FBAdapter{stats: stats, clk: clock}
-}
-
-// BumpAvg is essentially statsd.Statter.Gauge
-func (fba FBAdapter) BumpAvg(key string, val float64) {
-	fba.stats.Gauge(key, int64(val))
-}
-
-// BumpSum is essentially statsd.Statter.Inc (httpdown only ever uses positive
-// deltas)
-func (fba FBAdapter) BumpSum(key string, val float64) {
-	fba.stats.Inc(key, int64(val))
-}
-
-type btHolder struct {
-	key     string
-	stats   Scope
-	started time.Time
-}
-
-func (bth btHolder) End() {
-	bth.stats.TimingDuration(bth.key, time.Since(bth.started))
-}
-
-// BumpTime is essentially a (much better) statsd.Statter.TimingDuration
-func (fba FBAdapter) BumpTime(key string) interface {
-	End()
-} {
-	return btHolder{
-		key:     key,
-		started: fba.clk.Now(),
-		stats:   fba.stats,
-	}
-}
-
-// BumpHistogram isn't used by facebookgo/httpdown
-func (fba FBAdapter) BumpHistogram(_ string, _ float64) {
-	return
-}
 
 // Statter implements the statsd.Statter interface but
 // appends the name of the host the process is running on
