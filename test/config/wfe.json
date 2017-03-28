@@ -16,20 +16,20 @@
     "checkMalformedCSR": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8000",
-    "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
-      "insecure": true,
-      "RA": {
-        "server": "RA.server",
-        "rpcTimeout": "15s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+    },
+    "raService": {
+      "serverAddresses": ["ra.boulder:9094"],
+      "timeout": "15s"
+    },
+    "saService": {
+      "serverAddresses": ["sa.boulder:9095"],
+      "timeout": "15s"
     }
   },
-
   "allowedSigningAlgos": {
     "rsa": true,
     "ecdsanistp256": true,
