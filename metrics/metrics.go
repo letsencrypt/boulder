@@ -2,41 +2,12 @@ package metrics
 
 import (
 	"fmt"
-	"net/http"
 	"os"
-	"sync/atomic"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 )
-
-// HTTPMonitor stores some server state
-type HTTPMonitor struct {
-	stats               Scope
-	handler             http.Handler
-	connectionsInFlight int64
-}
-
-// NewHTTPMonitor returns a new initialized HTTPMonitor
-func NewHTTPMonitor(stats Scope, handler http.Handler) *HTTPMonitor {
-	return &HTTPMonitor{
-		stats:               stats,
-		handler:             handler,
-		connectionsInFlight: 0,
-	}
-}
-
-func (h *HTTPMonitor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.stats.Inc("HTTP.Rate", 1)
-	inFlight := atomic.AddInt64(&h.connectionsInFlight, 1)
-	h.stats.Gauge("HTTP.OpenConnections", inFlight)
-
-	h.handler.ServeHTTP(w, r)
-
-	inFlight = atomic.AddInt64(&h.connectionsInFlight, -1)
-	h.stats.Gauge("HTTP.ConnectionsInFlight", inFlight)
-}
 
 // FBAdapter provides a facebookgo/stats client interface that sends metrics via
 // a StatsD client

@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -244,5 +245,5 @@ func mux(scope metrics.Scope, responderPath string, source cfocsp.Source) http.H
 		}
 		m.ServeHTTP(w, r)
 	})
-	return metrics.NewHTTPMonitor(scope, h)
+	return measured_http.New(h, clock.Default())
 }
