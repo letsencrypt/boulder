@@ -18,6 +18,7 @@ const (
 	ResubmitMissingSCTsOnly
 	GoogleSafeBrowsingV4
 	UseAIAIssuerURL
+	AllowTLS02Challenges
 )
 
 // List of features and their default value, protected by fMu
@@ -29,6 +30,7 @@ var features = map[FeatureFlag]bool{
 	ResubmitMissingSCTsOnly:  false,
 	GoogleSafeBrowsingV4:     false,
 	UseAIAIssuerURL:          false,
+	AllowTLS02Challenges:     false,
 }
 
 var fMu = new(sync.RWMutex)

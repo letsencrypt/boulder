@@ -83,13 +83,9 @@ We recommend setting git's [fsckObjects
 setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
 for better integrity guarantees when getting updates.
 
-Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
-MariaDB 10.1 to work correctly. On Ubuntu and CentOS, you may have to
-install RabbitMQ from https://rabbitmq.com/download.html to get a
-recent version. If you want to save some trouble installing MariaDB and RabbitMQ
-you can run them using Docker:
+Boulder requires an installation of libtool-ltdl, goose, SoftHSM, and MariaDB 10.1 to work correctly. If you want to save some trouble installing MariaDB and SoftHSM you can run them using Docker:
 
-    docker-compose up -d bmysql brabbitmq bhsm
+    docker-compose up -d bmysql bhsm
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
 available in OS repositories, so you will have to install from https://golang.org/dl/.
@@ -121,7 +117,7 @@ Edit /etc/hosts to add this line:
 
     127.0.0.1 boulder boulder-rabbitmq boulder-mysql
 
-Resolve Go-dependencies, set up a database and RabbitMQ:
+Resolve Go-dependencies, set up a database:
 
     ./test/setup.sh
 
@@ -198,7 +194,7 @@ Requests from ACME clients result in new objects and changes to objects.  The St
 
 Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forwards the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
 
-Boulder uses AMQP as a message bus.  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
+Boulder uses gRPC for inter-component communication.  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component. More details on this communication model can be found in the [gRPC documentation](http://www.grpc.io/docs/).
 
 The full details of how the various ACME operations happen in Boulder are laid out in [DESIGN.md](https://github.com/letsencrypt/boulder/blob/master/DESIGN.md)
 
@@ -208,9 +204,7 @@ Dependencies
 All Go dependencies are vendored under the vendor directory,
 to [make dependency management easier](https://golang.org/cmd/go/#hdr-Vendor_Directories).
 
-Local development also requires a RabbitMQ installation and MariaDB
-10 installation (see above). MariaDB should be run on port 3306 for the
-default integration tests.
+Local development also requires a MariaDB 10 installation. MariaDB should be run on port 3306 for the default integration tests.
 
 To update the Go dependencies:
 
@@ -253,7 +247,6 @@ you will get conflicting types between our vendored version and the cfssl vendor
 Adding RPCs
 -----------
 
-Boulder is moving towards using gRPC for all RPCs. To add a new RPC method, add
-it to the relevant .proto file, then run:
+Boulder uses gRPC for all RPCs. To add a new RPC method, add it to the relevant .proto file, then run:
 
     docker-compose run boulder go generate ./path/to/pkg/...

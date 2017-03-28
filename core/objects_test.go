@@ -57,7 +57,7 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01}
+	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeTLSSNI02, ChallengeTypeDNS01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:   challengeType,

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 )

@@ -22,6 +22,7 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -464,7 +465,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
-	if _, ok := err.(core.NoSuchRegistrationError); ok && !regCheck {
+	// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
+	// code is deployed
+	if _, ok := err.(core.NoSuchRegistrationError); (ok || berrors.Is(err, berrors.NotFound)) && !regCheck {
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
@@ -478,7 +481,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// For all other errors, or if regCheck is true, return error immediately.
 		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
-		if _, ok := err.(core.NoSuchRegistrationError); ok {
+		// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
+		// code is deployed
+		if _, ok := err.(core.NoSuchRegistrationError); ok || berrors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 
@@ -630,7 +635,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
 		logEvent.AddError("unable to create new registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new registration"), err)
 		return
 	}
 	logEvent.Requester = reg.ID
@@ -686,7 +691,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new authz: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new authz"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
 	logEvent.Extra["AuthzID"] = authz.ID
@@ -816,7 +821,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
 		logEvent.AddError("failed to revoke certificate: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Failed to revoke certificate"), err)
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
 		response.WriteHeader(http.StatusOK)
@@ -911,7 +916,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new cert: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new cert"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new cert"), err)
 		return
 	}
 
@@ -1103,7 +1108,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
 		logEvent.AddError("unable to update challenge: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update challenge"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update challenge"), err)
 		return
 	}
 
@@ -1205,7 +1210,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
 		return
 	}
 
@@ -1251,7 +1256,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
 	if err != nil {
 		logEvent.AddError("unable to deactivate authorization", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating authorization"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
 	// Since the authorization passed to DeactivateAuthorization isn't
@@ -1501,7 +1506,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
 		return
 	}
 
@@ -1520,7 +1525,7 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 	err := wfe.RA.DeactivateRegistration(ctx, reg)
 	if err != nil {
 		logEvent.AddError("unable to deactivate registration", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating registration"), err)
 		return
 	}
 	reg.Status = core.StatusDeactivated

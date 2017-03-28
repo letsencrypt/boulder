@@ -12,11 +12,11 @@ import (
 	"strconv"
 
 	"golang.org/x/net/context"
-
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -99,7 +99,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 
 	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+		return berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return err

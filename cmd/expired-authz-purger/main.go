@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -45,19 +46,45 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64, error) {
-	if !yes {
-		var count int
-		err := p.db.SelectOne(&count, `SELECT COUNT(1) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
-		if err != nil {
-			return 0, err
+func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time) error {
+	var ids []string
+	for {
+		var idBatch []string
+		var query string
+		switch table {
+		case "pendingAuthorizations":
+			query = "SELECT id FROM pendingAuthorizations WHERE expires <= ? LIMIT ? OFFSET ?"
+		case "authz":
+			query = "SELECT id FROM authz WHERE expires <= ? LIMIT ? OFFSET ?"
 		}
+		_, err := p.db.Select(
+			&idBatch,
+			query,
+			purgeBefore,
+			p.batchSize,
+			len(ids),
+		)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if len(idBatch) == 0 {
+			break
+		}
+		ids = append(ids, idBatch...)
+	}
+
+	if !yes {
 		reader := bufio.NewReader(os.Stdin)
 		for {
-			fmt.Fprintf(os.Stdout, "\nAbout to purge %d pending authorizations, proceed? [y/N]: ", count)
+			fmt.Fprintf(
+				os.Stdout,
+				"\nAbout to purge %d authorizations from %s and all associated challenges, proceed? [y/N]: ",
+				len(ids),
+				table,
+			)
 			text, err := reader.ReadString('\n')
 			if err != nil {
-				return 0, err
+				return err
 			}
 			text = strings.ToLower(text)
 			if text != "y\n" && text != "n\n" && text != "\n" {
@@ -71,33 +98,39 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 		}
 	}
 
-	rowsAffected := int64(0)
-	for {
-		result, err := p.db.Exec(`
-			DELETE FROM pendingAuthorizations
-			WHERE expires <= ?
-			LIMIT ?
-			`,
-			purgeBefore,
-			p.batchSize,
-		)
+	for _, id := range ids {
+		// Delete challenges + authorization. We delete challenges first and fail out
+		// if that doesn't succeed so that we don't ever orphan challenges which would
+		// require a relatively expensive join to then find.
+		_, err := p.db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
 		if err != nil {
-			return rowsAffected, err
+			return err
 		}
-		rows, err := result.RowsAffected()
+		var query string
+		switch table {
+		case "pendingAuthorizations":
+			query = "DELETE FROM pendingAuthorizations WHERE id = ?"
+		case "authz":
+			query = "DELETE FROM authz WHERE id = ?"
+		}
+		_, err = p.db.Exec(query, id)
 		if err != nil {
-			return rowsAffected, err
-		}
-
-		p.stats.Inc("PendingAuthzDeleted", rows)
-		rowsAffected += rows
-		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d total) expired pending authorizations", rows, rowsAffected))
-
-		if rows < p.batchSize {
-			p.log.Info(fmt.Sprintf("Deleted a total of %d expired pending authorizations", rowsAffected))
-			return rowsAffected, nil
+			return err
 		}
 	}
+
+	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
+	return nil
+}
+
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) error {
+	for _, table := range []string{"pendingAuthorizations", "authz"} {
+		err := p.purge(table, yes, purgeBefore)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -144,6 +177,6 @@ func main() {
 		os.Exit(1)
 	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-	_, err = purger.purgeAuthzs(purgeBefore, *yes)
+	err = purger.purgeAuthzs(purgeBefore, *yes)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
