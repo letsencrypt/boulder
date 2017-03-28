@@ -17,7 +17,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 			Detail:     fmt.Sprintf("%s :: %s", msg, err),
 			HTTPStatus: http.StatusNotImplemented,
 		}
-	case berrors.Malformed, berrors.SignatureValidation:
+	case berrors.Malformed, berrors.SignatureValidation, berrors.InvalidEmail:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
 		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
