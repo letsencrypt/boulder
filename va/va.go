@@ -21,6 +21,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -40,6 +41,19 @@ const (
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
 )
+
+var (
+	validationTime = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "valiation_time",
+			Help: "Time taken to validate a challenge",
+		},
+		[]string{"type", "result"})
+)
+
+func init() {
+	prometheus.MustRegister(validationTime)
+}
 
 var validationTimeout = time.Second * 5
 
@@ -589,6 +603,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
+	validationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": string(challenge.Status),
+	}).Observe(time.Since(vStart).Seconds())
 	va.stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart))
 
 	va.log.AuditObject("Validation result", logEvent)
