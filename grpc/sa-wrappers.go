@@ -364,10 +364,11 @@ func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Cont
 	return nil
 }
 
-func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64) (string, error) {
+func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64, ocspResponse []byte) (string, error) {
 	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:   der,
 		RegID: &regID,
+		Ocsp:  ocspResponse,
 	})
 	if err != nil {
 		return "", err
@@ -758,7 +759,7 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 		return nil, errIncompleteRequest
 	}
 
-	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID)
+	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID, request.Ocsp)
 	if err != nil {
 		return nil, err
 	}

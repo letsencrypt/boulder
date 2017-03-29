@@ -875,7 +875,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		id, err := impl.AddCertificate(ctx, acReq.Bytes, acReq.RegID)
+		id, err := impl.AddCertificate(ctx, acReq.Bytes, acReq.RegID, nil)
 		if err != nil {
 			return
 		}
@@ -1362,7 +1362,7 @@ func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ctx context.Conte
 }
 
 // AddCertificate sends a request to record the issuance of a certificate
-func (cac StorageAuthorityClient) AddCertificate(ctx context.Context, cert []byte, regID int64) (id string, err error) {
+func (cac StorageAuthorityClient) AddCertificate(ctx context.Context, cert []byte, regID int64, _ []byte) (id string, err error) {
 	var acReq addCertificateRequest
 	acReq.Bytes = cert
 	acReq.RegID = regID

@@ -87,12 +87,12 @@ func newUpdater(
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
-	if config.NewCertificateBatchSize == 0 ||
+	if (config.NewCertificateBatchSize == 0 || features.Enabled(features.GenerateOCSPEarly)) ||
 		config.OldOCSPBatchSize == 0 ||
 		config.MissingSCTBatchSize == 0 {
 		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
 	}
-	if config.NewCertificateWindow.Duration == 0 ||
+	if (config.NewCertificateWindow.Duration == 0 || features.Enabled(features.GenerateOCSPEarly)) ||
 		config.OldOCSPWindow.Duration == 0 ||
 		config.MissingSCTWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
@@ -134,16 +134,6 @@ func newUpdater(
 	updater.loops = []*looper{
 		{
 			clk:                  clk,
-			stats:                stats.NewScope("NewCertificates"),
-			batchSize:            config.NewCertificateBatchSize,
-			tickDur:              config.NewCertificateWindow.Duration,
-			tickFunc:             updater.newCertificateTick,
-			name:                 "NewCertificates",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		},
-		{
-			clk:                  clk,
 			stats:                stats.NewScope("OldOCSPResponses"),
 			batchSize:            config.OldOCSPBatchSize,
 			tickDur:              config.OldOCSPWindow.Duration,
@@ -162,6 +152,19 @@ func newUpdater(
 			tickFunc:  updater.missingReceiptsTick,
 			name:      "MissingSCTReceipts",
 		},
+	}
+	if !features.Enabled(features.GenerateOCSPEarly) {
+		updater.loops = append(
+			&looper{
+				clk:                  clk,
+				stats:                stats.NewScope("NewCertificates"),
+				batchSize:            config.NewCertificateBatchSize,
+				tickDur:              config.NewCertificateWindow.Duration,
+				tickFunc:             updater.newCertificateTick,
+				name:                 "NewCertificates",
+				failureBackoffFactor: config.SignFailureBackoffFactor,
+				failureBackoffMax:    config.SignFailureBackoffMax.Duration,
+			})
 	}
 	if config.RevokedCertificateBatchSize != 0 &&
 		config.RevokedCertificateWindow.Duration != 0 {

@@ -49,7 +49,7 @@ type config struct {
 }
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
 }
 
@@ -112,7 +112,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		logger.AuditErr(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
-	_, err = sa.AddCertificate(ctx, der, int64(regID))
+	_, err = sa.AddCertificate(ctx, der, int64(regID), nil) // XXX: probably should do OCSP here too...?
 	if err != nil {
 		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
@@ -210,7 +210,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to read DER file")
 		err = checkDER(sa, der)
 		cmd.FailOnError(err, "Pre-AddCertificate checks failed")
-		_, err = sa.AddCertificate(ctx, der, int64(*regID))
+		_, err = sa.AddCertificate(ctx, der, int64(*regID), nil)
 		cmd.FailOnError(err, "Failed to add certificate to database")
 
 	default:
