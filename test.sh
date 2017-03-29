@@ -96,7 +96,7 @@ function run_unit_tests() {
     # We don't use the run function here because sometimes goveralls fails to
     # contact the server and exits with non-zero status, but we don't want to
     # treat that as a failure.
-    goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+    time goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
