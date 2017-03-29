@@ -519,7 +519,7 @@ func main() {
 			os.Exit(1)
 		}
 		t := time.NewTicker(c.Mailer.RunPeriod)
-		for range t.c {
+		for range t.C {
 			err = m.findExpiringCertificates()
 			cmd.FailOnError(err, "expiration-mailer has failed")
 		}
