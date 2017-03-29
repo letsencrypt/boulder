@@ -504,7 +504,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] pem=[%s] err=[%s]",
 				serialHex, certPEM, err))
 			// If OCSP generation fails don't return an error and orphan the
-			// certificate, ocsp-updater will find it and do the initial response
+			// certificate. OCSP-Updater will find it and do the initial response
 			// generation itself
 		}
 	}

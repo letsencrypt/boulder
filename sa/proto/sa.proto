@@ -140,6 +140,8 @@ message MarkCertificateRevokedRequest {
 message AddCertificateRequest {
         optional bytes der = 1;
         optional int64 regID = 2;
+        // A signed OCSP response for the certificate contained in "der".
+        // Note: The certificate status in the OCSP response is assumed to be 0 (good).
         optional bytes ocsp = 3;
 }
 

@@ -112,7 +112,9 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		logger.AuditErr(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
-	_, err = sa.AddCertificate(ctx, der, int64(regID), nil) // XXX: probably should do OCSP here too...?
+	// OCSP-Updater will do the first response generation for this cert so pass an
+	// empty OCSP response
+	_, err = sa.AddCertificate(ctx, der, int64(regID), nil)
 	if err != nil {
 		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
