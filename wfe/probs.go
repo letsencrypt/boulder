@@ -17,7 +17,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 			Detail:     fmt.Sprintf("%s :: %s", msg, err),
 			HTTPStatus: http.StatusNotImplemented,
 		}
-	case berrors.Malformed, berrors.SignatureValidation, berrors.InvalidEmail:
+	case berrors.Malformed, berrors.SignatureValidation:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
 		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
@@ -33,6 +33,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.RejectedIdentifier(msg)
 	case berrors.UnsupportedIdentifier:
 		return probs.UnsupportedIdentifier(msg)
+	case berrors.InvalidEmail:
+		return probs.InvalidEmail(msg)
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

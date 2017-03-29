@@ -34,7 +34,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.NotFoundError("foo"), 404, probs.MalformedProblem},
 		{berrors.SignatureValidationError("foo"), 400, probs.MalformedProblem},
 		{berrors.RateLimitError("foo"), 429, probs.RateLimitedProblem},
-		{berrors.InvalidEmailError("foo"), 400, probs.MalformedProblem},
+		{berrors.InvalidEmailError("foo"), 400, probs.InvalidEmailProblem},
 	}
 	for _, c := range testCases {
 		p := problemDetailsForError(c.err, "k")
