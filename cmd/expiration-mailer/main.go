@@ -377,7 +377,7 @@ type config struct {
 		// Path to a text/template email template
 		EmailTemplate string
 
-		RunPeriod time.Duration
+		RunPeriod cmd.ConfigDuration
 
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
@@ -514,11 +514,11 @@ func main() {
 	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	if *daemon {
-		if c.Mailer.RunPeriod == 0 {
+		if c.Mailer.RunPeriod.Duration == 0 {
 			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
 			os.Exit(1)
 		}
-		t := time.NewTicker(c.Mailer.RunPeriod)
+		t := time.NewTicker(c.Mailer.RunPeriod.Duration)
 		for range t.C {
 			err = m.findExpiringCertificates()
 			cmd.FailOnError(err, "expiration-mailer has failed")
