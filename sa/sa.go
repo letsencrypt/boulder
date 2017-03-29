@@ -777,7 +777,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		LockCol:            0,
 		NotAfter:           parsedCertificate.NotAfter,
 	}
-	if len(ocspResponse) != 0 && features.Enabled(features.GenerateOCSPEarly) {
+	if len(ocspResponse) != 0 {
 		certStatusOb.OCSPResponse = ocspResponse
 		certStatusOb.OCSPLastUpdated = ssa.clk.Now()
 	}
