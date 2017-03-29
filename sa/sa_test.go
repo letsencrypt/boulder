@@ -475,9 +475,9 @@ func TestAddCertificate(t *testing.T) {
 	features.Set(map[string]bool{"GenerateOCSPEarly": true})
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial := "ffa0160630d618b2eb5c0510824b14274856"
+	serial = "ffa0160630d618b2eb5c0510824b14274856"
 	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, certDER3, ocspResp)
+	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
 	certificateStatus3, err := sa.GetCertificateStatus(ctx, serial)
