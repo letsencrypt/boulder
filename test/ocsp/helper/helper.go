@@ -21,6 +21,7 @@ var method = flag.String("method", "GET", "Method to use for fetching OCSP")
 var urlOverride = flag.String("url", "", "URL of OCSP responder to override")
 var tooSoon = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
 var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
+var expectStatus = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=good, 1=revoked)")
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	if len(cert.IssuingCertificateURL) == 0 {
@@ -164,9 +165,12 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
 	}
+	if resp.Status != *expectStatus {
+		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, *expectStatus)
+	}
 	fmt.Printf("\n")
 	fmt.Printf("Good response:\n")
-	fmt.Printf("  Status %d\n", resp.Status)
+	fmt.Printf("  CertStatus %d\n", resp.Status)
 	fmt.Printf("  SerialNumber %036x\n", resp.SerialNumber)
 	fmt.Printf("  ProducedAt %s\n", resp.ProducedAt)
 	fmt.Printf("  ThisUpdate %s\n", resp.ThisUpdate)
