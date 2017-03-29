@@ -21,7 +21,7 @@
       "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
-    "runPeriod": "1h",
+    "runPeriod": "1h"
   },
 
   "statsd": {
