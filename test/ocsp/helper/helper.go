@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -29,16 +28,16 @@ func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	}
 	issuerURL := cert.IssuingCertificateURL[0]
 	resp, err := http.Get(issuerURL)
+	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 	var issuer *x509.Certificate
-	if strings.Join(resp.Header["Content-Type"], "") == "application/x-pkcs7-mime" {
+	if resp.Header.Get("Content-Type") == "application/x-pkcs7-mime" {
 		issuer, err = parseCMS(body)
 	} else {
 		issuer, err = parse(body)
@@ -111,18 +110,19 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
-	if len(cert.OCSPServer) == 0 {
+	var ocspServer string
+	if *urlOverride != "" {
+		ocspServer = *urlOverride
+	} else if len(cert.OCSPServer) > 0 {
+		ocspServer = cert.OCSPServer[0]
+	} else {
 		return nil, fmt.Errorf("no ocsp servers in cert")
 	}
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpResp *http.Response
-	ocspServer := cert.OCSPServer[0]
 	ocspURL, err := url.Parse(ocspServer)
 	if err != nil {
 		return nil, fmt.Errorf("parsing URL: %s", err)
-	}
-	if *urlOverride != "" {
-		ocspServer = *urlOverride
 	}
 	http.DefaultClient.Timeout = 5 * time.Second
 	if *method == "GET" {
