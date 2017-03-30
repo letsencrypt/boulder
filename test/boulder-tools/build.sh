@@ -42,7 +42,7 @@ wait
 # Since we currently have version 3 of the grpc package vendored, we have to
 # build a specific version of protoc-gen-go.
 cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
-git checkout a66a4fa9a8dd2304462f7aad7161e8bf53eee461
+git checkout 78b168c14fc28c8c711844d210f7ab845083e3b1
 go install ./
 
 git clone https://github.com/certbot/certbot /certbot
