@@ -377,6 +377,8 @@ type config struct {
 		// Path to a text/template email template
 		EmailTemplate string
 
+		Frequency cmd.ConfigDuration
+
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
 
@@ -393,6 +395,7 @@ func main() {
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
+	daemon := flag.Bool("daemon", false, "Run in daemon mode")
 
 	flag.Parse()
 
@@ -510,6 +513,18 @@ func main() {
 
 	go cmd.DebugServer(c.Mailer.DebugAddr)
 
-	err = m.findExpiringCertificates()
-	cmd.FailOnError(err, "expiration-mailer has failed")
+	if *daemon {
+		if c.Mailer.Frequency.Duration == 0 {
+			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
+			os.Exit(1)
+		}
+		t := time.NewTicker(c.Mailer.Frequency.Duration)
+		for range t.C {
+			err = m.findExpiringCertificates()
+			cmd.FailOnError(err, "expiration-mailer has failed")
+		}
+	} else {
+		err = m.findExpiringCertificates()
+		cmd.FailOnError(err, "expiration-mailer has failed")
+	}
 }
