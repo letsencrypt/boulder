@@ -39,10 +39,10 @@ wait
 # protoc-gen-go outputs a line that says:
 # const _ = grpc.SupportPackageIsVersion4
 # so it will fail to compile with a different version of the grpc package.
-# Since we currently have version 3 of the grpc package vendored, we have to
+# Since we currently have version 4 of the grpc package vendored, we have to
 # build a specific version of protoc-gen-go.
 cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
-git checkout 78b168c14fc28c8c711844d210f7ab845083e3b1
+git checkout c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
 go install ./
 
 git clone https://github.com/certbot/certbot /certbot
