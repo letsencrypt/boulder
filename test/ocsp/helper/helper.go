@@ -118,11 +118,11 @@ func Req(fileName string) (*ocsp.Response, error) {
 	var httpResp *http.Response
 	ocspServer := cert.OCSPServer[0]
 	ocspURL, err := url.Parse(ocspServer)
-	if *urlOverride != "" {
-		ocspServer = *urlOverride
-	}
 	if err != nil {
 		return nil, fmt.Errorf("parsing URL: %s", err)
+	}
+	if *urlOverride != "" {
+		ocspServer = *urlOverride
 	}
 	http.DefaultClient.Timeout = 5 * time.Second
 	if *method == "GET" {
@@ -154,6 +154,7 @@ func Req(fileName string) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("http status code %d", httpResp.StatusCode)
 	}
 	respBytes, err := ioutil.ReadAll(httpResp.Body)
+	defer httpResp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +169,10 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if resp.Status != *expectStatus {
 		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, *expectStatus)
 	}
+	timeTilExpiry := time.Until(resp.NextUpdate)
+	if timeTilExpiry < tooSoonDuration {
+		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
+	}
 	fmt.Printf("\n")
 	fmt.Printf("Good response:\n")
 	fmt.Printf("  CertStatus %d\n", resp.Status)
@@ -179,9 +184,5 @@ func Req(fileName string) (*ocsp.Response, error) {
 	fmt.Printf("  RevocationReason %d\n", resp.RevocationReason)
 	fmt.Printf("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
 	fmt.Printf("  Extensions %#v\n", resp.Extensions)
-	timeTilExpiry := resp.NextUpdate.Sub(time.Now())
-	if timeTilExpiry < tooSoonDuration {
-		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
-	}
 	return resp, nil
 }

@@ -58,11 +58,11 @@ func init() {
 func do(f string) {
 	start := time.Now()
 	resp, err := helper.Req(f)
+	latency := time.Since(start)
 	if err != nil {
 		errors_count.With(prom.Labels{}).Inc()
 		fmt.Fprintf(os.Stderr, "error for %s: %s\n", f, err)
 	}
-	latency := time.Since(start)
 	request_time_seconds_hist.Observe(latency.Seconds())
 	response_count.With(prom.Labels{}).Inc()
 	request_time_seconds_summary.Observe(latency.Seconds())
@@ -82,10 +82,15 @@ func main() {
 	go http.ListenAndServe(*listenAddress, nil)
 	for {
 		for _, pattern := range flag.Args() {
+			// Note: re-glob this pattern on each run, in case new certificates have
+			// been added. This makes it easy to keep the list of certificates to be
+			// checked fresh.
 			files, err := filepath.Glob(pattern)
 			if err != nil {
 				log.Fatal(err)
 			}
+			// Loop through the available files (potentially hundreds or thousands),
+			// requesting one response per `sleepTime`
 			for _, f := range files {
 				do(f)
 				time.Sleep(sleepTime)
