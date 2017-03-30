@@ -136,7 +136,7 @@
     "features": {
         "IDNASupport": true,
         "AllowTLS02Challenges": true,
-        "GenerateOCSPEarly": true,
+        "GenerateOCSPEarly": true
     }
   },
 
