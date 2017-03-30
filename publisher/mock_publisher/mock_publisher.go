@@ -5,7 +5,7 @@ package mock_publisher
 
 import (
 	gomock "github.com/golang/mock/gomock"
-	context "golang.org/x/net/context"
+	context "github.com/letsencrypt/boulder/vendor/golang.org/x/net/context"
 )
 
 // Mock of Publisher interface
