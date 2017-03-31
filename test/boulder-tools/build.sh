@@ -38,9 +38,10 @@ wait
 
 # grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
 # where N is the minor release version of the protoc-gen-go version used to
-# generate the protobuf mappings that are used. So that we don't have to worry
-# about what is the current master version of protoc-gen-go we just checkout
-# the specific version we used to generate the current mappings.
+# generate the protobuf mappings that are used. Checkout the specific version
+# we used to generate the checked in protobuf mappings so that we get the
+# same mappings + version number even if protoc-gen-go bumps the minor version
+# number
 cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
 git checkout c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
 go install ./
