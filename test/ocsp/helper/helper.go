@@ -28,10 +28,10 @@ func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	}
 	issuerURL := cert.IssuingCertificateURL[0]
 	resp, err := http.Get(issuerURL)
-	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
