@@ -36,11 +36,11 @@ go get \
 
 wait
 
-# protoc-gen-go outputs a line that says:
-# const _ = grpc.SupportPackageIsVersion4
-# so it will fail to compile with a different version of the grpc package.
-# Since we currently have version 4 of the grpc package vendored, we have to
-# build a specific version of protoc-gen-go.
+# grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
+# where N is the minor release version of the protoc-gen-go version used to
+# generate the protobuf mappings that are used. So that we don't have to worry
+# about what is the current master version of protoc-gen-go we just checkout
+# the specific version we used to generate the current mappings.
 cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
 git checkout c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
 go install ./
