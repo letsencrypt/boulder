@@ -22,11 +22,6 @@
         "ra.boulder"
       ]
     },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "VA.server"
-    },
     "GoogleSafeBrowsing": {
       "APIKey": "my-voice-is-my-passport",
       "DataDir": "/tmp",

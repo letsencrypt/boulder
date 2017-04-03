@@ -27,7 +27,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -730,8 +729,6 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.Publisher,
 	core.StorageAuthority,
 ) {
-	amqpConf := c.AMQP
-
 	// TODO(jsha): Publisher is currently configured in production using old-style
 	// GRPC config fields. Remove this once production is switched over.
 	if c.Publisher != nil && c.TLS.CertFile == nil {
@@ -748,33 +745,20 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 		tls, err = c.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
-	var cac core.CertificateAuthority
-	if c.OCSPGeneratorService != nil {
-		conn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		// Make a CA client that is only capable of signing OCSP.
-		// TODO(jsha): Once we've fully moved to gRPC, replace this
-		// with a plain caPB.NewOCSPGeneratorClient.
-		cac = bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(conn))
-	} else {
-		var err error
-		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create CA client")
-	}
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+	// Make a CA client that is only capable of signing OCSP.
+	// TODO(jsha): Once we've fully moved to gRPC, replace this
+	// with a plain caPB.NewOCSPGeneratorClient.
+	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	conn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
+	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
 
-	var sac core.StorageAuthority
-	if c.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	return cac, pubc, sac
 }

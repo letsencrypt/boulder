@@ -29,7 +29,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -437,15 +436,9 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	var sac core.StorageAuthority
-	if c.Mailer.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, c.Mailer.AMQP, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
