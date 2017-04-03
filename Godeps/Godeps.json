@@ -250,8 +250,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.2-3-gc12e7e9",
-			"Rev": "c12e7e9661316d45fdcc942bdafe63242b087cfc"
+			"Comment": "v0.3.2-5-gfb1fc94",
+			"Rev": "fb1fc944c9808ebf8f4d9950ee32345f41538b4c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
