@@ -131,7 +131,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion3
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for CertificateAuthority service
 
@@ -194,7 +194,7 @@ var _CertificateAuthority_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: fileDescriptor0,
+	Metadata: "ca/proto/ca.proto",
 }
 
 // Client API for OCSPGenerator service
@@ -258,7 +258,7 @@ var _OCSPGenerator_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: fileDescriptor0,
+	Metadata: "ca/proto/ca.proto",
 }
 
 func init() { proto1.RegisterFile("ca/proto/ca.proto", fileDescriptor0) }
