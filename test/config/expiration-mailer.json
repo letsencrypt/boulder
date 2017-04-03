@@ -12,13 +12,14 @@
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      }
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/expiration-mailer.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
+    },
+    "saService": {
+      "serverAddresses": ["sa.boulder:9095"],
+      "timeout": "15s"
     }
   },
 

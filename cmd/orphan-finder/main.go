@@ -22,7 +22,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -40,7 +39,6 @@ command descriptions:
 `
 
 type config struct {
-	AMQP      cmd.AMQPConfig
 	Statsd    cmd.StatsdConfig
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
@@ -137,15 +135,9 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	var sac core.StorageAuthority
-	if conf.SAService != nil {
-		conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	return scope, logger, sac
 }
 

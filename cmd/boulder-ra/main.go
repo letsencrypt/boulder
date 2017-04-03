@@ -23,7 +23,6 @@ import (
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -35,8 +34,6 @@ type config struct {
 		cmd.HostnamePolicyConfig
 
 		RateLimitPoliciesFilename string
-
-		MaxConcurrentRPCServerRequests int64
 
 		MaxContactsPerRegistration int
 
@@ -128,29 +125,16 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.RA.AMQP
-	var vac core.ValidationAuthority
-	if c.RA.VAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.VAService, tls, scope)
-		cmd.FailOnError(err, "Unable to create VA client")
-		vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
-	} else {
-		vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create VA client")
-	}
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, scope)
+	cmd.FailOnError(err, "Unable to create VA client")
+	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
-	var cac core.CertificateAuthority
-	if c.RA.CAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.CAService, tls, scope)
-		cmd.FailOnError(err, "Unable to create CA client")
-		// Build a CA client that is only capable of issuing certificates, not
-		// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
-		// with a plain caPB.NewCertificateAuthorityClient.
-		cac = bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(conn), nil)
-	} else {
-		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create CA client")
-	}
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, scope)
+	cmd.FailOnError(err, "Unable to create CA client")
+	// Build a CA client that is only capable of issuing certificates, not
+	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
+	// with a plain caPB.NewCertificateAuthorityClient.
+	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
 	var pubc core.Publisher
 	if c.RA.PublisherService != nil {
@@ -159,15 +143,9 @@ func main() {
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 	}
 
-	var sac core.StorageAuthority
-	if c.RA.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
 	authorizationLifetime := 300 * 24 * time.Hour
@@ -241,22 +219,14 @@ func main() {
 		}()
 	}
 
-	ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, scope, logger)
-	cmd.FailOnError(err, "Unable to create RA RPC server")
-
 	go cmd.CatchSignals(logger, func() {
-		ras.Stop()
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}
 	})
 
-	err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
-	cmd.FailOnError(err, "Unable to setup RA RPC server")
-
 	go cmd.DebugServer(c.RA.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	err = ras.Start(amqpConf)
-	cmd.FailOnError(err, "Unable to run RA RPC server")
+	select {}
 }
