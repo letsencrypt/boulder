@@ -472,7 +472,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
 	// Test adding OCSP response with cert
-	features.Set(map[string]bool{"GenerateOCSPEarly": true})
+	_ = features.Set(map[string]bool{"GenerateOCSPEarly": true})
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial = "ffa0160630d618b2eb5c0510824b14274856"
