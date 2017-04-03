@@ -23,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -50,10 +49,6 @@ args:
 type config struct {
 	Revoker struct {
 		cmd.DBConfig
-		// The revoker isn't a long running service, so doesn't get a full
-		// ServiceConfig, just an AMQPConfig.
-		AMQP *cmd.AMQPConfig
-
 		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
 		// but doesn't get the TLS field from ServiceConfig, so declares its own.
 		TLS cmd.TLSConfig
@@ -80,17 +75,9 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.Revoker.AMQP
-	var rac core.RegistrationAuthority
-	if c.Revoker.RAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
-	} else {
-		var err error
-		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create RA AMQP client")
-	}
+	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
@@ -98,15 +85,9 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	cmd.FailOnError(err, "Couldn't setup database connection")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	var sac core.StorageAuthority
-	if c.Revoker.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	return rac, logger, dbMap, sac, scope
 }

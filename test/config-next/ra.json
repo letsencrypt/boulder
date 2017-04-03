@@ -39,11 +39,6 @@
         "admin-revoker.boulder"
       ]
     },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "RA.server"
-    },
     "features": {
       "IDNASupport": true,
       "AllowKeyRollover": true,

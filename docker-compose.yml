@@ -4,6 +4,7 @@ boulder:
     environment:
         FAKE_DNS: 127.0.0.1
         PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
+        BOULDER_CONFIG_DIR: test/config-next
     volumes:
       - $GOPATH:/go/
       - /tmp:/tmp
@@ -38,7 +39,7 @@ boulder:
 bhsm:
     # To minimize the fetching of various layers this should match
     # the FROM image and tag in boulder/Dockerfile
-    image: letsencrypt/boulder-tools:2017-02-20
+    image: letsencrypt/boulder-tools:2017-03-30
     environment:
         PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
     command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so

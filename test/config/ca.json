@@ -4,6 +4,27 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ca.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ca.boulder/key.pem"
+    },
+    "saService": {
+      "serverAddresses": ["sa.boulder:9095"],
+      "timeout": "15s"
+    },
+    "grpcCA": {
+      "address": ":9093",
+      "clientNames": [
+        "ra.boulder"
+      ]
+    },
+    "grpcOCSPGenerator": {
+      "address": ":9096",
+      "clientNames": [
+        "ocsp-updater.boulder"
+      ]
+    },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca2.pem",

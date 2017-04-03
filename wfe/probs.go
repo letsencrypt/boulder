@@ -33,6 +33,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.RejectedIdentifier(msg)
 	case berrors.UnsupportedIdentifier:
 		return probs.UnsupportedIdentifier(msg)
+	case berrors.InvalidEmail:
+		return probs.InvalidEmail(msg)
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
