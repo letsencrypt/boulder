@@ -32,7 +32,10 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
-// Paths are the ACME-spec identified URL path-segments for various methods
+// Paths are the ACME-spec identified URL path-segments for various methods.
+// NOTE: In metrics/measured_http we make the assumption that these are all
+// lowercase plus hyphens. If you violate that assumption you should update
+// measured_http.
 const (
 	directoryPath  = "/directory"
 	newRegPath     = "/acme/new-reg"

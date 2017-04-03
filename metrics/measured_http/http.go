@@ -52,6 +52,8 @@ func New(h http.Handler, clk clock.Clock) *MeasuredHandler {
 	}
 }
 
+var endpointShortNameRegexp = regexp.MustCompile("^[a-z-]*$")
+
 // endpointFromPath turns a request path into a value suitable for a Prometheus
 // label value, by eliminating path components that vary widely (like user ids
 // and authorization ids). It uses a simple heuristic: Remove everything after
@@ -64,8 +66,8 @@ func endpointFromPath(path string) string {
 	var i int
 	var v string
 	for i, v = range components {
-		matched, err := regexp.MatchString("^[a-z-]*$", v)
-		if !matched || err != nil {
+		matched := endpointShortNameRegexp.MatchString(v)
+		if !matched {
 			return strings.Join(components[:i], "/")
 		}
 	}
@@ -75,7 +77,7 @@ func endpointFromPath(path string) string {
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := h.clk.Now()
 	rwws := &responseWriterWithStatus{w, 0}
-	// opy in case handlers down the chain use StripPrefix, which modifies
+	// Copy in case handlers down the chain use StripPrefix, which modifies
 	// URL path.
 	endpoint := endpointFromPath(r.URL.Path)
 
