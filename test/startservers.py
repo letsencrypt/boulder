@@ -46,7 +46,6 @@ def start(race_detection):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    global listenProcesses
     for srv in [
             [":19091", "publisher.boulder:9091"],
             [":19092", "va.boulder:9092"],
