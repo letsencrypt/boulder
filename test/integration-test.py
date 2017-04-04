@@ -295,7 +295,7 @@ def test_expired_authz_purger():
     now = datetime.datetime.utcnow()
 
     # Run the purger once to clear out any backlog so we have a clean slate.
-    expect(now, None, "")
+    expect(now+datetime.timedelta(days=+365), None, "")
 
     # Make an authz, but don't attempt its challenges.
     chisel.make_client().request_domain_challenges("eap-test.com")
