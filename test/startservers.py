@@ -46,7 +46,16 @@ def start(race_detection):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    forward()
+    global listenProcesses
+    for srv in [
+            [":19091", "publisher.boulder:9091"],
+            [":19092", "va.boulder:9092"],
+            [":19093", "ca.boulder:9093"],
+            [":19094", "ra.boulder:9094"],
+            [":19095", "sa.boulder:9095"],
+            [":19096", "ca.boulder:9096"],
+    ]:
+        forward(srv[0], srv[1])
     progs = [
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
@@ -101,19 +110,20 @@ def start(race_detection):
     print "All servers running. Hit ^C to kill."
     return True
 
-def forward():
-    """Add a TCP forwarder between Boulder and RabbitMQ to simulate failures."""
-    cmd = """exec listenbuddy -listen :5673 -speak boulder-rabbitmq:5672"""
+def forward(listen, spreak):
+    """Add a TCP forwarder between gRPC client and server to simulate failures."""
+    cmd = """exec listenbuddy -listen %s -speak %s""" % (listen, speak)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
-    global processes
-    processes.insert(0, p)
+    global listenProcesses
+    listenProcesses.push(p)
 
-def bounce_forward():
+def bounce_forward(p):
     """Kill all forwarded TCP connections."""
-    global processes
-    processes[0].send_signal(signal.SIGUSR1)
+    global listenProcesses
+    for p in listenProcesses:
+        p.send_signal(signal.SIGUSR1)
 
 def check():
     """Return true if all started processes are still alive.
