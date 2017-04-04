@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -160,6 +161,7 @@ type dummyRateLimitConfig struct {
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
+	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 }
 
@@ -177,6 +179,10 @@ func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
 
 func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
 	return r.PendingAuthorizationsPerAccountPolicy
+}
+
+func (r *dummyRateLimitConfig) InvalidAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
+	return r.InvalidAuthorizationsPerAccountPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
@@ -319,9 +325,9 @@ func TestValidateEmail(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"an email`", unparseableEmailDetail},
-		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@email.com, b@email.com", multipleAddressDetail},
+		{"an email`", unparseableEmailError.Error()},
+		{"a@always.invalid", emptyDNSResponseError.Error()},
+		{"a@email.com, b@email.com", multipleAddressError.Error()},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
@@ -334,20 +340,21 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, tc := range testFailures {
-		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
-		if problem.Type != probs.InvalidEmailProblem {
-			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		if !berrors.Is(err, berrors.InvalidEmail) {
+			t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
 		}
-		if problem.Detail != tc.expected {
+
+		if err.Error() != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, problem.Detail, tc.expected)
+				tc.input, err.Error(), tc.expected)
 		}
 	}
 
 	for _, addr := range testSuccesses {
-		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
-			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
-				addr, prob)
+		if err := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); err != nil {
+			t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
+				addr, err)
 		}
 	}
 }
@@ -675,11 +682,8 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
-	if _, ok := err.(*probs.ProblemDetails); !ok {
-		t.Errorf("Wrong type for NewAuthorization error: expected *probs.ProblemDetails, got %T", err)
-	}
-	if err.(*probs.ProblemDetails).Type != probs.MalformedProblem {
-		t.Errorf("Incorrect problem type. Expected %s got %s", probs.MalformedProblem, err.(*probs.ProblemDetails).Type)
+	if !berrors.Is(err, berrors.Malformed) {
+		t.Errorf("expected berrors.BoulderError with internal type berrors.Malformed, got %T", err)
 	}
 }
 
@@ -801,7 +805,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	// Registration has key == AccountKeyA
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
-	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
+	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 
 	t.Log("DONE TestCertificateKeyNotEqualAccountKey")
 }
@@ -920,7 +924,7 @@ func TestTotalCertRateLimit(t *testing.T) {
 	// should mock out the SA and have it return the cert count that we want.
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID)
+	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID, nil)
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
@@ -1103,7 +1107,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["example.com"] = 10
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
@@ -1122,7 +1126,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["bigissuer.com"] = 100
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type")
 	}
 
@@ -1130,7 +1134,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
-	if _, ok := err.(core.RateLimitedError); !ok {
+	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 }
@@ -1282,7 +1286,7 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 }
 
 // Return a map of domain -> certificate count. Note: This naive implementation
-// ignores names, earliest and latest paremeters and always returns the same
+// ignores names, earliest and latest parameters and always returns the same
 // nameCount map.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
 	return m.nameCounts, nil

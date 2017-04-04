@@ -22,16 +22,21 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
 
-// Paths are the ACME-spec identified URL path-segments for various methods
+// Paths are the ACME-spec identified URL path-segments for various methods.
+// NOTE: In metrics/measured_http we make the assumption that these are all
+// lowercase plus hyphens. If you violate that assumption you should update
+// measured_http.
 const (
 	directoryPath  = "/directory"
 	newRegPath     = "/acme/new-reg"
@@ -298,7 +303,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(wfe.Index),
 	})
-	return m
+	return measured_http.New(m, wfe.clk)
 }
 
 // Method implementations
@@ -464,7 +469,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
-	if _, ok := err.(core.NoSuchRegistrationError); ok && !regCheck {
+	// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
+	// code is deployed
+	if _, ok := err.(core.NoSuchRegistrationError); (ok || berrors.Is(err, berrors.NotFound)) && !regCheck {
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
@@ -478,7 +485,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// For all other errors, or if regCheck is true, return error immediately.
 		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
-		if _, ok := err.(core.NoSuchRegistrationError); ok {
+		// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
+		// code is deployed
+		if _, ok := err.(core.NoSuchRegistrationError); ok || berrors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 
@@ -530,7 +539,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnparsableJWSPayload", 1)
+		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
 		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
 	}
@@ -574,7 +583,6 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.stats.Inc(fmt.Sprintf("HTTP.ErrorCodes.%d", code), 1)
 	problemSegments := strings.Split(string(prob.Type), ":")
 	if len(problemSegments) > 0 {
 		wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1)
@@ -630,7 +638,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
 		logEvent.AddError("unable to create new registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new registration"), err)
 		return
 	}
 	logEvent.Requester = reg.ID
@@ -686,7 +694,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new authz: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new authz"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
 	logEvent.Extra["AuthzID"] = authz.ID
@@ -816,7 +824,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
 		logEvent.AddError("failed to revoke certificate: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Failed to revoke certificate"), err)
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
 		response.WriteHeader(http.StatusOK)
@@ -883,8 +891,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
 		logEvent.AddError("unable to parse certificate request: %s", err)
-		// TODO(jsha): Revert once #565 is closed by upgrading to Go 1.6, i.e. #1514
-		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
 		return
 	}
 	wfe.logCsr(request, certificateRequest, reg)
@@ -912,7 +919,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new cert: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new cert"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new cert"), err)
 		return
 	}
 
@@ -923,17 +930,24 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		logEvent.AddError("unable to parse certificate: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 		return
 	}
 	serial := parsedCertificate.SerialNumber
 	certURL := wfe.relativeEndpoint(request, certPath+core.SerialToString(serial))
 
-	relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
-
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	if features.Enabled(features.UseAIAIssuerURL) {
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+			return
+		}
+	} else {
+		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	}
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -1088,7 +1102,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	var challengeUpdate core.Challenge
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		logEvent.AddError("error JSON unmarshalling challenge response: %s", err)
+		logEvent.AddError("error JSON unmarshaling challenge response: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
 	}
@@ -1097,7 +1111,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
 		logEvent.AddError("unable to update challenge: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update challenge"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update challenge"), err)
 		return
 	}
 
@@ -1199,7 +1213,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
 		return
 	}
 
@@ -1245,7 +1259,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
 	if err != nil {
 		logEvent.AddError("unable to deactivate authorization", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating authorization"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
 	// Since the authorization passed to DeactivateAuthorization isn't
@@ -1333,7 +1347,22 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.Header().Add("Link", link(issuerPath, "up"))
+	if features.Enabled(features.UseAIAIssuerURL) {
+		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+		if err != nil {
+			logEvent.AddError("unable to parse certificate: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
+			return
+		}
+		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+			return
+		}
+	} else {
+		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	}
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
 		logEvent.AddError(err.Error())
@@ -1480,7 +1509,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
 		return
 	}
 
@@ -1499,7 +1528,7 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 	err := wfe.RA.DeactivateRegistration(ctx, reg)
 	if err != nil {
 		logEvent.AddError("unable to deactivate registration", err)
-		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error deactivating registration"), err)
+		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating registration"), err)
 		return
 	}
 	reg.Status = core.StatusDeactivated
@@ -1511,4 +1540,19 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
+}
+
+// addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
+// X.509 certificate to the HTTP response. If the IssuingCertificateURL
+// in a certificate is not https://, it will be upgraded to https://
+func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
+	for _, rawURL := range issuingCertificateURL {
+		parsedURI, err := url.ParseRequestURI(rawURL)
+		if err != nil {
+			return err
+		}
+		parsedURI.Scheme = "https"
+		response.Header().Add("Link", link(parsedURI.String(), "up"))
+	}
+	return nil
 }

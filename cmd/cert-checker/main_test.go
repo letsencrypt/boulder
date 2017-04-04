@@ -206,7 +206,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID)
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID, nil)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
@@ -236,7 +236,7 @@ func (db mismatchedCountDB) SelectOne(output interface{}, _ string, _ ...interfa
 }
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
-// a dasterdly switch-a-roo here and return an empty set
+// a dastardly switch-a-roo here and return an empty set
 func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
 	// But actually return nothing
 	outputPtr, _ := output.(*[]core.Certificate)

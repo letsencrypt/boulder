@@ -12,17 +12,17 @@ import (
 	"strconv"
 
 	"golang.org/x/net/context"
-
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -49,16 +49,14 @@ args:
 type config struct {
 	Revoker struct {
 		cmd.DBConfig
-		// The revoker isn't a long running service, so doesn't get a full
-		// ServiceConfig, just an AMQPConfig.
-		AMQP *cmd.AMQPConfig
-
 		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
 		// but doesn't get the TLS field from ServiceConfig, so declares its own.
 		TLS cmd.TLSConfig
 
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -77,17 +75,9 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.Revoker.AMQP
-	var rac core.RegistrationAuthority
-	if c.Revoker.RAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
-	} else {
-		var err error
-		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create RA AMQP client")
-	}
+	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
@@ -95,15 +85,9 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	cmd.FailOnError(err, "Couldn't setup database connection")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	var sac core.StorageAuthority
-	if c.Revoker.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	return rac, logger, dbMap, sac, scope
 }
@@ -115,7 +99,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 
 	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+		return berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return err
@@ -181,6 +165,8 @@ func main() {
 	var c config
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Revoker.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	ctx := context.Background()
 	args := flagSet.Args()

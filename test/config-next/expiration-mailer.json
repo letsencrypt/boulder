@@ -21,9 +21,7 @@
       "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
-    "features": {
-      "CertStatusOptimizationsMigrated": true
-    }
+    "frequency": "1h"
   },
 
   "statsd": {

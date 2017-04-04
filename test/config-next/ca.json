@@ -51,9 +51,9 @@
               "client auth"
             ],
             "backdate": "1h",
-            "is_ca": false,
+            "ca_constraint": { "is_ca": false },
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://boulder:4430/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
@@ -128,13 +128,10 @@
       }
     },
     "maxConcurrentRPCServerRequests": 100000,
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "CA.server"
-    },
     "features": {
-        "IDNASupport": true
+        "IDNASupport": true,
+        "AllowTLS02Challenges": true,
+        "GenerateOCSPEarly": true
     }
   },
 

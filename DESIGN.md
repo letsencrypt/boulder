@@ -125,7 +125,7 @@ Notes:
   * Parse the challenge object (i.e., the response)
 
 * 2-3: RA does the following:
-  * Merge the response with the challenge in the authorzation object
+  * Merge the response with the challenge in the authorization object
   * Store the updated authorization object
 
 * 3-4: VA does the following:
@@ -183,7 +183,7 @@ Notes:
   * Verify that the CSR has a non-zero number of domain names
   * Verify that the public key in the CSR is different from the account key
   * For each authorization referenced in the certificate request
-    * Retreive the authorization from the database
+    * Retrieve the authorization from the database
     * Verify that the authorization corresponds to the account key
     * Verify that the authorization is valid
     * Verify that the authorization is still valid

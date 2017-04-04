@@ -7,8 +7,9 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
 
+	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -19,7 +20,7 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64) (string, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte) (string, error) {
 	m.certificate.DER = der
 	return "", nil
 }
@@ -28,7 +29,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate
 	if m.certificate.DER != nil {
 		return m.certificate, nil
 	}
-	return core.Certificate{}, core.NotFoundError("no cert stored")
+	return core.Certificate{}, berrors.NotFoundError("no cert stored")
 }
 
 func checkNoErrors(t *testing.T) {

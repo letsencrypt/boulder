@@ -20,7 +20,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -29,34 +29,30 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const defaultNagCheckInterval = 24 * time.Hour
-
-type emailContent struct {
-	ExpirationDate   string
-	DaysToExpiration int
-	DNSNames         string
-}
+const (
+	defaultNagCheckInterval  = 24 * time.Hour
+	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+)
 
 type regStore interface {
 	GetRegistration(context.Context, int64) (core.Registration, error)
 }
 
 type mailer struct {
-	stats         metrics.Scope
-	log           blog.Logger
-	dbMap         *gorp.DbMap
-	rs            regStore
-	mailer        bmail.Mailer
-	emailTemplate *template.Template
-	subject       string
-	nagTimes      []time.Duration
-	limit         int
-	clk           clock.Clock
+	stats           metrics.Scope
+	log             blog.Logger
+	dbMap           *gorp.DbMap
+	rs              regStore
+	mailer          bmail.Mailer
+	emailTemplate   *template.Template
+	subjectTemplate *template.Template
+	nagTimes        []time.Duration
+	limit           int
+	clk             clock.Clock
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
@@ -101,33 +97,42 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	sort.Strings(domains)
 	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
 
-	var subject string
-	if m.subject != "" {
-		// If there is a subject from the configuration file, we should use it as-is
-		// to preserve the "classic" behaviour before we added a domain name.
-		subject = m.subject
-	} else {
-		// Otherwise, when no subject is configured we should make one using the
-		// domain names in the expiring certificate
-		subject = fmt.Sprintf("Certificate expiration notice for domain %q", domains[0])
-		if len(domains) > 1 {
-			subject += fmt.Sprintf(" (and %d more)", len(domains)-1)
-		}
+	// Construct the information about the expiring certificates for use in the
+	// subject template
+	expiringSubject := fmt.Sprintf("%q", domains[0])
+	if len(domains) > 1 {
+		expiringSubject += fmt.Sprintf(" (and %d more)", len(domains)-1)
 	}
 
-	email := emailContent{
+	// Execute the subjectTemplate by filling in the ExpirationSubject
+	subjBuf := new(bytes.Buffer)
+	err := m.subjectTemplate.Execute(subjBuf, struct {
+		ExpirationSubject string
+	}{
+		ExpirationSubject: expiringSubject,
+	})
+	if err != nil {
+		m.stats.Inc("Errors.SendingNag.SubjectTemplateFailure", 1)
+		return err
+	}
+
+	email := struct {
+		ExpirationDate   string
+		DaysToExpiration int
+		DNSNames         string
+	}{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
 		DaysToExpiration: int(expiresIn.Hours() / 24),
 		DNSNames:         strings.Join(domains, "\n"),
 	}
 	msgBuf := new(bytes.Buffer)
-	err := m.emailTemplate.Execute(msgBuf, email)
+	err = m.emailTemplate.Execute(msgBuf, email)
 	if err != nil {
 		m.stats.Inc("Errors.SendingNag.TemplateFailure", 1)
 		return err
 	}
 	startSending := m.clk.Now()
-	err = m.mailer.SendMail(emails, subject, msgBuf.String())
+	err = m.mailer.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
 		return err
 	}
@@ -260,11 +265,9 @@ func (m *mailer) findExpiringCertificates() error {
 		// sequentially fetch the certificate details. This avoids an expensive
 		// JOIN.
 		var serials []string
-		var err error
-		if features.Enabled(features.CertStatusOptimizationsMigrated) {
-			_, err = m.dbMap.Select(
-				&serials,
-				`SELECT
+		_, err := m.dbMap.Select(
+			&serials,
+			`SELECT
 				cs.serial
 				FROM certificateStatus AS cs
 				WHERE cs.notAfter > :cutoffA
@@ -273,35 +276,13 @@ func (m *mailer) findExpiringCertificates() error {
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
 				LIMIT :limit`,
-				map[string]interface{}{
-					"cutoffA":   left,
-					"cutoffB":   right,
-					"nagCutoff": expiresIn.Seconds(),
-					"limit":     m.limit,
-				},
-			)
-		} else {
-			_, err = m.dbMap.Select(
-				&serials,
-				`SELECT
-					cert.serial
-					FROM certificates AS cert
-					JOIN certificateStatus AS cs
-					ON cs.serial = cert.serial
-					AND cert.expires > :cutoffA
-					AND cert.expires <= :cutoffB
-					AND cs.status != "revoked"
-					AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
-					ORDER BY cert.expires ASC
-					LIMIT :limit`,
-				map[string]interface{}{
-					"cutoffA":   left,
-					"cutoffB":   right,
-					"nagCutoff": expiresIn.Seconds(),
-					"limit":     m.limit,
-				},
-			)
-		}
+			map[string]interface{}{
+				"cutoffA":   left,
+				"cutoffB":   right,
+				"nagCutoff": expiresIn.Seconds(),
+				"limit":     m.limit,
+			},
+		)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
 			return err
@@ -395,8 +376,12 @@ type config struct {
 		// Path to a text/template email template
 		EmailTemplate string
 
+		Frequency cmd.ConfigDuration
+
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
+
+		Features map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -409,6 +394,7 @@ func main() {
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
+	daemon := flag.Bool("daemon", false, "Run in daemon mode")
 
 	flag.Parse()
 
@@ -420,6 +406,8 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Mailer.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Expiration")
@@ -448,21 +436,23 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	var sac core.StorageAuthority
-	if c.Mailer.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, c.Mailer.AMQP, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
 	cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
 	tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
 	cmd.FailOnError(err, "Could not parse email template")
+
+	// If there is no configured subject template, use a default
+	if c.Mailer.Subject == "" {
+		c.Mailer.Subject = defaultExpirationSubject
+	}
+	// Load subject template
+	subjTmpl, err := template.New("expiry-email-subject").Parse(c.Mailer.Subject)
+	cmd.FailOnError(err, fmt.Sprintf("Could not parse email subject template"))
 
 	fromAddress, err := netmail.ParseAddress(c.Mailer.From)
 	cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
@@ -502,20 +492,32 @@ func main() {
 	sort.Sort(nags)
 
 	m := mailer{
-		stats:         scope,
-		subject:       c.Mailer.Subject,
-		log:           logger,
-		dbMap:         dbMap,
-		rs:            sac,
-		mailer:        mailClient,
-		emailTemplate: tmpl,
-		nagTimes:      nags,
-		limit:         c.Mailer.CertLimit,
-		clk:           cmd.Clock(),
+		stats:           scope,
+		log:             logger,
+		dbMap:           dbMap,
+		rs:              sac,
+		mailer:          mailClient,
+		subjectTemplate: subjTmpl,
+		emailTemplate:   tmpl,
+		nagTimes:        nags,
+		limit:           c.Mailer.CertLimit,
+		clk:             cmd.Clock(),
 	}
 
 	go cmd.DebugServer(c.Mailer.DebugAddr)
 
-	err = m.findExpiringCertificates()
-	cmd.FailOnError(err, "expiration-mailer has failed")
+	if *daemon {
+		if c.Mailer.Frequency.Duration == 0 {
+			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
+			os.Exit(1)
+		}
+		t := time.NewTicker(c.Mailer.Frequency.Duration)
+		for range t.C {
+			err = m.findExpiringCertificates()
+			cmd.FailOnError(err, "expiration-mailer has failed")
+		}
+	} else {
+		err = m.findExpiringCertificates()
+		cmd.FailOnError(err, "expiration-mailer has failed")
+	}
 }

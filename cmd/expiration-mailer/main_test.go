@@ -19,10 +19,11 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -50,8 +51,7 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	r, ok := f.RegByID[id]
 	if !ok {
-		msg := fmt.Sprintf("no such registration %d", id)
-		return r, core.NoSuchRegistrationError(msg)
+		return r, berrors.NotFoundError("no registration found for %q", id)
 	}
 	return r, nil
 }
@@ -94,9 +94,10 @@ var (
   "n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
   "e":"AQAB"
 }`)
-	log  = blog.UseMock()
-	tmpl = template.Must(template.New("expiry-email").Parse(testTmpl))
-	ctx  = context.Background()
+	log      = blog.UseMock()
+	tmpl     = template.Must(template.New("expiry-email").Parse(testTmpl))
+	subjTmpl = template.Must(template.New("expiry-email-subject").Parse("Testing: " + defaultExpirationSubject))
+	ctx      = context.Background()
 )
 
 func TestSendNags(t *testing.T) {
@@ -105,15 +106,17 @@ func TestSendNags(t *testing.T) {
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
 
+	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
+
 	m := mailer{
 		stats:         stats,
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		// Explicitly override the default subject to use testEmailSubject
-		subject: testEmailSubject,
-		rs:      rs,
-		clk:     fc,
+		subjectTemplate: staticTmpl,
+		rs:              rs,
+		clk:             fc,
 	}
 
 	cert := &x509.Certificate{
@@ -220,16 +223,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailARaw,
-		// A certificte with only one domain should have only one domain listed in
+		// A certificate with only one domain should have only one domain listed in
 		// the subject
-		Subject: "Certificate expiration notice for domain \"example-a.com\"",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\"",
 		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
 	}, testCtx.mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailBRaw,
 		// A certificate with two domains should have only one domain listed and an
 		// additional count included
-		Subject: "Certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
 		Body:    "hi, cert for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)",
 	}, testCtx.mc.Messages[1])
 
@@ -313,6 +316,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial1String,
 		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	// Expires in 3d, already sent 4d nag at 4.5d
@@ -335,6 +339,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:                serial2String,
 		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	// Expires in 7d and change, no nag sent at all yet
@@ -354,8 +359,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{
-		Serial: serial3String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial3String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertC.NotAfter,
 	}
 
 	// Expires in 3d, renewed
@@ -375,8 +381,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerD,
 	}
 	certStatusD := &core.CertificateStatus{
-		Serial: serial4String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial4String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertD.NotAfter,
 	}
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
@@ -442,7 +449,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
 	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
-	// Similarly, findExpiringCerticates() sends its latency as well
+	// Similarly, findExpiringCertificates() sends its latency as well
 	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
 
 	err := testCtx.m.findExpiringCertificates()
@@ -628,8 +635,9 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 
 	certStatusA := &core.CertificateStatus{
-		Serial: serial1String,
-		Status: core.OCSPStatusGood,
+		Serial:   serial1String,
+		Status:   core.OCSPStatusGood,
+		NotAfter: rawCertA.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -788,6 +796,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial1String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertA.NotAfter,
 	}
 
 	rawCertB := newX509Cert("happy B",
@@ -806,6 +815,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Serial:                serial2String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
+		NotAfter:              rawCertB.NotAfter,
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
@@ -831,7 +841,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		To: emailARaw,
 		// A certificate with three domain names should have one in the subject and
 		// a count of '2 more' at the end
-		Subject: "Certificate expiration notice for domain \"example-a.com\" (and 2 more)",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
@@ -871,15 +881,16 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 
 	m := &mailer{
-		log:           log,
-		stats:         stats,
-		mailer:        mc,
-		emailTemplate: tmpl,
-		dbMap:         dbMap,
-		rs:            ssa,
-		nagTimes:      offsetNags,
-		limit:         100,
-		clk:           fc,
+		log:             log,
+		stats:           stats,
+		mailer:          mc,
+		emailTemplate:   tmpl,
+		subjectTemplate: subjTmpl,
+		dbMap:           dbMap,
+		rs:              ssa,
+		nagTimes:        offsetNags,
+		limit:           100,
+		clk:             fc,
 	}
 	return &testCtx{
 		dbMap:   dbMap,

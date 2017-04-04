@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -14,13 +13,15 @@ import (
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // SQLStorageAuthority defines a Storage Authority
@@ -121,9 +122,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 		model, err = selectRegistration(ssa.dbMap, query, id)
 	}
 	if err == sql.ErrNoRows {
-		return core.Registration{}, core.NoSuchRegistrationError(
-			fmt.Sprintf("No registrations with ID %d", id),
-		)
+		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -149,8 +148,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		model, err = selectRegistration(ssa.dbMap, query, sha)
 	}
 	if err == sql.ErrNoRows {
-		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
-		return core.Registration{}, core.NoSuchRegistrationError(msg)
+		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -217,7 +215,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
-		return nil, errors.New("GetValidAuthorizations: no names received")
+		return nil, berrors.InternalServerError("no names received")
 	}
 
 	params := make([]interface{}, len(names))
@@ -420,7 +418,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 
 	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
-		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
+		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
 		return core.Certificate{}, err
@@ -438,48 +436,26 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var status core.CertificateStatus
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err := ssa.dbMap.Get(certStatusModelv2{}, serial)
-		if err != nil {
-			return status, err
-		}
-		if statusObj == nil {
-			return status, nil
-		}
-		statusModel := statusObj.(*certStatusModelv2)
-		status = core.CertificateStatus{
-			Serial:                statusModel.Serial,
-			SubscriberApproved:    statusModel.SubscriberApproved,
-			Status:                statusModel.Status,
-			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-			RevokedDate:           statusModel.RevokedDate,
-			RevokedReason:         statusModel.RevokedReason,
-			LastExpirationNagSent: statusModel.LastExpirationNagSent,
-			OCSPResponse:          statusModel.OCSPResponse,
-			NotAfter:              statusModel.NotAfter,
-			IsExpired:             statusModel.IsExpired,
-			LockCol:               statusModel.LockCol,
-		}
-	} else {
-		statusObj, err := ssa.dbMap.Get(certStatusModelv1{}, serial)
-		if err != nil {
-			return status, err
-		}
-		if statusObj == nil {
-			return status, nil
-		}
-		statusModel := statusObj.(*certStatusModelv1)
-		status = core.CertificateStatus{
-			Serial:                statusModel.Serial,
-			SubscriberApproved:    statusModel.SubscriberApproved,
-			Status:                statusModel.Status,
-			OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-			RevokedDate:           statusModel.RevokedDate,
-			RevokedReason:         statusModel.RevokedReason,
-			LastExpirationNagSent: statusModel.LastExpirationNagSent,
-			OCSPResponse:          statusModel.OCSPResponse,
-			LockCol:               statusModel.LockCol,
-		}
+	statusObj, err := ssa.dbMap.Get(certStatusModel{}, serial)
+	if err != nil {
+		return status, err
+	}
+	if statusObj == nil {
+		return status, nil
+	}
+	statusModel := statusObj.(*certStatusModel)
+	status = core.CertificateStatus{
+		Serial:                statusModel.Serial,
+		SubscriberApproved:    statusModel.SubscriberApproved,
+		Status:                statusModel.Status,
+		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
+		RevokedDate:           statusModel.RevokedDate,
+		RevokedReason:         statusModel.RevokedReason,
+		LastExpirationNagSent: statusModel.LastExpirationNagSent,
+		OCSPResponse:          statusModel.OCSPResponse,
+		NotAfter:              statusModel.NotAfter,
+		IsExpired:             statusModel.IsExpired,
+		LockCol:               statusModel.LockCol,
 	}
 
 	return status, nil
@@ -519,13 +495,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	}
 
 	const statusQuery = "WHERE serial = ?"
-	var statusObj interface{}
-
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statusObj, err = SelectCertificateStatusv2(tx, statusQuery, serial)
-	} else {
-		statusObj, err = SelectCertificateStatus(tx, statusQuery, serial)
-	}
+	statusObj, err := SelectCertificateStatus(tx, statusQuery, serial)
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
@@ -538,25 +508,16 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 
 	var n int64
 	now := ssa.clk.Now()
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		status := statusObj.(certStatusModelv2)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedDate = now
-		status.RevokedReason = reasonCode
-		n, err = tx.Update(&status)
-	} else {
-		status := statusObj.(certStatusModelv1)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedDate = now
-		status.RevokedReason = reasonCode
-		n, err = tx.Update(&status)
-	}
+	statusObj.Status = core.OCSPStatusRevoked
+	statusObj.RevokedDate = now
+	statusObj.RevokedReason = reasonCode
+	n, err = tx.Update(&statusObj)
 	if err != nil {
 		err = Rollback(tx, err)
 		return err
 	}
 	if n == 0 {
-		err = errors.New("No certificate updated. Maybe the lock column was off?")
+		err = berrors.InternalServerError("no certificate updated")
 		err = Rollback(tx, err)
 		return err
 	}
@@ -575,8 +536,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
 	}
 	if err == sql.ErrNoRows {
-		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
-		return core.NoSuchRegistrationError(msg)
+		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
 
 	updatedRegModel, err := registrationToModel(&reg)
@@ -605,8 +565,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		return err
 	}
 	if n == 0 {
-		msg := fmt.Sprintf("Requested registration not found %d", reg.ID)
-		return core.NoSuchRegistrationError(msg)
+		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
 
 	return nil
@@ -672,23 +631,24 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !statusIsPending(authz.Status) {
-		err = errors.New("Use FinalizeAuthorization() to update to a final status")
+		err = berrors.InternalServerError("authorization is not pending")
 		return Rollback(tx, err)
 	}
 
 	if existingFinal(tx, authz.ID) {
-		err = errors.New("Cannot update a final authorization")
+		err = berrors.InternalServerError("cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 
 	if !existingPending(tx, authz.ID) {
-		err = errors.New("Requested authorization not found " + authz.ID)
+		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
+		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
+		return Rollback(tx, err)
 	}
 	if err != nil {
 		return Rollback(tx, err)
@@ -716,18 +676,18 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = errors.New("Cannot finalize an authorization that is not pending")
+		err = berrors.InternalServerError("authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
-		err = errors.New("Cannot finalize to a non-final status")
+		err = berrors.InternalServerError("authorization with ID %q is not pending", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	auth := &authzModel{authz}
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, fmt.Errorf("No pending authorization with ID %s", authz.ID))
+		return Rollback(tx, berrors.InternalServerError("authorization with ID %q not found", authz.ID))
 	}
 	if err != nil {
 		return Rollback(tx, err)
@@ -789,7 +749,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (string, error) {
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64, ocspResponse []byte) (string, error) {
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err
@@ -806,32 +766,20 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	var certStatusOb interface{}
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		certStatusOb = &certStatusModelv2{
-			certStatusModelv1: certStatusModelv1{
-				SubscriberApproved: false,
-				Status:             core.OCSPStatus("good"),
-				OCSPLastUpdated:    time.Time{},
-				OCSPResponse:       []byte{},
-				Serial:             serial,
-				RevokedDate:        time.Time{},
-				RevokedReason:      0,
-				LockCol:            0,
-			},
-			NotAfter: parsedCertificate.NotAfter,
-		}
-	} else {
-		certStatusOb = &certStatusModelv1{
-			SubscriberApproved: false,
-			Status:             core.OCSPStatus("good"),
-			OCSPLastUpdated:    time.Time{},
-			OCSPResponse:       []byte{},
-			Serial:             serial,
-			RevokedDate:        time.Time{},
-			RevokedReason:      0,
-			LockCol:            0,
-		}
+	certStatusOb := &certStatusModel{
+		SubscriberApproved: false,
+		Status:             core.OCSPStatus("good"),
+		OCSPLastUpdated:    time.Time{},
+		OCSPResponse:       []byte{},
+		Serial:             serial,
+		RevokedDate:        time.Time{},
+		RevokedReason:      0,
+		LockCol:            0,
+		NotAfter:           parsedCertificate.NotAfter,
+	}
+	if len(ocspResponse) != 0 {
+		certStatusOb.OCSPResponse = ocspResponse
+		certStatusOb.OCSPLastUpdated = ssa.clk.Now()
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -900,6 +848,43 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 			"regID":   regID,
 			"now":     ssa.clk.Now(),
 			"pending": string(core.StatusPending),
+		})
+	return
+}
+
+// CountInvalidAuthorizations counts invalid authorizations for a user expiring
+// in a given time range.
+// authorizations for the give registration.
+func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
+	ctx context.Context,
+	req *sapb.CountInvalidAuthorizationsRequest,
+) (count *sapb.Count, err error) {
+	identifier := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: *req.Hostname,
+	}
+
+	idJSON, err := json.Marshal(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	count = &sapb.Count{
+		Count: new(int64),
+	}
+	err = ssa.dbMap.SelectOne(count.Count,
+		`SELECT COUNT(1) FROM authz
+		WHERE registrationID = :regID AND
+		identifier = :identifier AND
+		expires > :earliest AND
+		expires <= :latest AND
+		status = :invalid`,
+		map[string]interface{}{
+			"regID":      *req.RegistrationID,
+			"identifier": idJSON,
+			"earliest":   time.Unix(0, *req.Range.Earliest),
+			"latest":     time.Unix(0, *req.Range.Latest),
+			"invalid":    string(core.StatusInvalid),
 		})
 	return
 }

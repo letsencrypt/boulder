@@ -19,7 +19,7 @@ const (
 	// Version identifies the current library version.
 	// This is a pro-forma convention given that Go dependencies
 	// tends to be fetched directly from the repo.
-	Version = "0.3.1"
+	Version = "0.3.2"
 
 	NormalType    = 1
 	WildcardType  = 2
@@ -29,7 +29,7 @@ const (
 	listTokenComment        = "//"
 )
 
-// defaultList is the default List and it is used by Parse and Domain.
+// DefaultList is the default List and it is used by Parse and Domain.
 var DefaultList = NewList()
 
 // DefaultRule is the default Rule that represents "*".
@@ -103,18 +103,18 @@ func NewListFromFile(path string, options *ParserOption) (*List, error) {
 	return l, err
 }
 
-// experimental
+// Load parses and loads a set of rules from an io.Reader into the current list.
 func (l *List) Load(r io.Reader, options *ParserOption) ([]Rule, error) {
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadString parses and loads a set of rules from a String into the current list.
 func (l *List) LoadString(src string, options *ParserOption) ([]Rule, error) {
 	r := strings.NewReader(src)
 	return l.parse(r, options)
 }
 
-// experimental
+// LoadFile parses and loads a set of rules from a File into the current list.
 func (l *List) LoadFile(path string, options *ParserOption) ([]Rule, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -262,7 +262,7 @@ func NewRule(content string) (*Rule, error) {
 func NewRuleUnicode(content string) (*Rule, error) {
 	var err error
 
-	content, err = idna.ToASCII(content)
+	content, err = ToASCII(content)
 	if err != nil {
 		return nil, err
 	}
@@ -492,6 +492,42 @@ func decompose(r *Rule, name string) (tld, sld, trd string) {
 	}
 
 	return
+}
+
+// ToASCII is a wrapper for idna.ToASCII.
+//
+// This wrapper exists because idna.ToASCII backward-compatibility was broken twice in few months
+// and I can't call this package directly anymore. The wrapper performs some terrible-but-necessary
+// before-after replacements to make sure an already ASCII input always results in the same output
+// even if passed through ToASCII.
+//
+// See golang/net@67957fd0b1, golang/net@f2499483f9, golang/net@78ebe5c8b6,
+// and weppos/publicsuffix-go#66.
+func ToASCII(s string) (string, error) {
+	// .example.com should be .example.com
+	// ..example.com should be ..example.com
+	if strings.HasPrefix(s, ".") {
+		dotIndex := 0
+		for i := 0; i < len(s); i++ {
+			if s[i] == '.' {
+				dotIndex = i
+			} else {
+				break
+			}
+		}
+		out, err := idna.ToASCII(s[dotIndex+1:])
+		out = s[:dotIndex+1] + out
+		return out, err
+	}
+
+	return idna.ToASCII(s)
+}
+
+// ToUnicode is a wrapper for idna.ToUnicode.
+//
+// See ToASCII for more details about why this wrapper exists.
+func ToUnicode(s string) (string, error) {
+	return idna.ToUnicode(s)
 }
 
 // CookieJarList implements the cookiejar.PublicSuffixList interface.

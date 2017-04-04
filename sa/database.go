@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	gorp "gopkg.in/gorp.v1"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -219,11 +219,5 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
-
-	// TODO(@cpu): Delete these table maps when the `CertStatusOptimizationsMigrated` feature flag is removed
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		dbMap.AddTableWithName(certStatusModelv2{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	} else {
-		dbMap.AddTableWithName(certStatusModelv1{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	}
+	dbMap.AddTableWithName(certStatusModel{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 }

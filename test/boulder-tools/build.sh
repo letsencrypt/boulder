@@ -2,21 +2,10 @@
 
 # Boulder deps
 apt-get update
-apt-get install -y --no-install-recommends apt-transport-https ca-certificates
-
-curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
-cat >/etc/apt/sources.list.d/bouldertools.list <<EOAPT
-deb https://deb.nodesource.com/node_4.x trusty main
-deb-src https://deb.nodesource.com/node_4.x trusty main
-deb http://ftp.debian.org/debian jessie-backports main
-EOAPT
-apt-get update
-apt-get install -y --no-install-recommends  -t jessie-backports certbot python-certbot python-certbot-apache python-cffi
 
 apt-get install -y --no-install-recommends \
   libltdl-dev \
   mariadb-client-core-10.0 \
-  nodejs \
   rpm \
   ruby \
   ruby-dev \
@@ -30,7 +19,8 @@ apt-get install -y --no-install-recommends \
   opensc &
 
 # Install port forwarder, database migration tool, and testing tools.
-GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
+export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
+go get \
   github.com/jsha/listenbuddy \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/lint/golint \
@@ -46,13 +36,29 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
 
 wait
 
+# grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
+# where N is the generated code version shared between protoc-gen-go and grpc-go
+# and is used to keep their mappings in sync. Check out the specific version
+# we used to generate the checked-in protobuf mappings so that we get the
+# same mappings + version number even if protoc-gen-go bumps the generated code
+# version
+cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
+git checkout c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
+go install ./
+
+git clone https://github.com/certbot/certbot /certbot
+cd /certbot
+./letsencrypt-auto --os-packages-only
+./tools/venv.sh
+cd -
+
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
 # of writing
-git clone https://github.com/SUNET/pkcs11-proxy && \
-  cd pkcs11-proxy && \
+git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
+  cd /tmp/pkcs11-proxy && \
   git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
   cmake . && make && make install && \
-  cd -
+  cd - && rm -r /tmp/pkcs11-proxy
 
 # Setup SoftHSM
 echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
@@ -64,7 +70,7 @@ gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y build-essential cmake libssl-dev
+apt-get autoremove -y build-essential cmake libssl-dev ruby-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

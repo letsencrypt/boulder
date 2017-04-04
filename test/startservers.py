@@ -43,9 +43,14 @@ def start(race_detection):
     startup. Anything that did start before this point can be cleaned
     up explicitly by calling stop(), or automatically atexit.
     """
+    signal.signal(signal.SIGTERM, lambda _, __: stop())
+    signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
     forward()
     progs = [
+        # The gsb-test-srv needs to be started before the VA or its intial DB
+        # update will fail and all subsequent lookups will be invalid
+        'gsb-test-srv -apikey my-voice-is-my-passport',
         'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
         'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
@@ -78,7 +83,7 @@ def start(race_detection):
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
-            ports = range(8000, 8005) + [4000]
+            ports = range(8000, 8005) + [4000, 4430]
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))
@@ -133,6 +138,14 @@ def check():
 
 @atexit.register
 def stop():
+    # When we are about to exit, send SIGKILL to each subprocess and wait for
+    # them to nicely die. This reflects the restart process in prod and allows
+    # us to exercise the graceful shutdown code paths.
+    # TODO(jsha): Switch to SIGTERM once we fix
+    # https://github.com/letsencrypt/boulder/issues/2410 and remove AMQP, to
+    # make shutdown less noisy.
     for p in processes:
         if p.poll() is None:
-            p.kill()
+            p.send_signal(signal.SIGKILL)
+    for p in processes:
+        p.wait()

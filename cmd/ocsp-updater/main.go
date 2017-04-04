@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -26,7 +27,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -56,7 +56,7 @@ type OCSPUpdater struct {
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	// Used to caculate how far back in time the findStaleOCSPResponse will look
+	// Used to calculate how far back in time the findStaleOCSPResponse will look
 	ocspStaleMaxAge time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
 	oldestIssuedSCT time.Duration
@@ -199,6 +199,37 @@ func newUpdater(
 	return &updater, nil
 }
 
+func reverseBytes(b []byte) []byte {
+	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+		b[i], b[j] = b[j], b[i]
+	}
+	return b
+}
+
+func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
+	hash := md5.Sum(req)
+	encReq := base64.StdEncoding.EncodeToString(req)
+	return []string{
+		// Generate POST key, format is the URL that was POST'd to with a query string with
+		// the parameter 'body-md5' and the value of the first two uint32s in little endian
+		// order in hex of the MD5 hash of the OCSP request body.
+		//
+		// There is no public documentation of this feature that has been published by Akamai
+		// as far as we are aware.
+		fmt.Sprintf("%s?body-md5=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8])),
+		// RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST properly url-encode the base64
+		// encoded' request but a large enough portion of tools do not properly do this
+		// (~10% of GET requests we receive) such that we must purge both the encoded
+		// and un-encoded URLs.
+		//
+		// Due to Akamai proxy/cache behavior which collapses '//' -> '/' we also
+		// collapse double slashes in the un-encoded URL so that we properly purge
+		// what is stored in the cache.
+		fmt.Sprintf("%s%s", ocspServer, strings.Replace(encReq, "//", "/", -1)),
+		fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
+	}
+}
+
 // sendPurge should only be called as a Goroutine as it will block until the purge
 // request is successful
 func (updater *OCSPUpdater) sendPurge(der []byte) {
@@ -214,18 +245,14 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 		return
 	}
 
-	// Create a GET style OCSP url for each endpoint in cert.OCSPServer (still waiting
-	// on word from Akamai on how to properly purge cached POST requests, for now just
-	// do GET)
+	// Create a GET and special Akamai POST style OCSP url for each endpoint in cert.OCSPServer
 	urls := []string{}
 	for _, ocspServer := range cert.OCSPServer {
 		if !strings.HasSuffix(ocspServer, "/") {
 			ocspServer += "/"
 		}
-		urls = append(
-			urls,
-			fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
-		)
+		// Generate GET url
+		urls = append(generateOCSPCacheKeys(req, ocspServer))
 	}
 
 	err = updater.ccu.Purge(urls)
@@ -241,14 +268,9 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	// If CertStatusOptimizationsMigrated is enabled then we can do this query
-	// using only the `certificateStatus` table, saving an expensive JOIN and
-	// improving performance substantially
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT
 				cs.serial,
 				cs.status,
 				cs.revokedDate,
@@ -259,37 +281,12 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
 				LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-		// If the migration hasn't been applied we don't have the `isExpired` or
-		// `notAfter` fields on the certificate status table to use and must do the
-		// expensive JOIN on `certificates`
-	} else {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
-				 cs.serial,
-				 cs.status,
-				 cs.revokedDate
-				 FROM certificateStatus AS cs
-				 JOIN certificates AS cert
-				 ON cs.serial = cert.serial
-				 WHERE cs.ocspLastUpdated > :maxAge
-				 AND cs.ocspLastUpdated < :lastUpdate
-				 AND cert.expires > now()
-				 ORDER BY cs.ocspLastUpdated ASC
-				 LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-	}
+		map[string]interface{}{
+			"lastUpdate": oldestLastUpdatedTime,
+			"maxAge":     maxAgeCutoff,
+			"limit":      batchSize,
+		},
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -298,21 +295,11 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		batchSize,
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -348,11 +335,6 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 
 	status.OCSPLastUpdated = updater.clk.Now()
 	status.OCSPResponse = ocspResponse
-
-	// Purge OCSP response from CDN, gated on client having been initialized
-	if updater.ccu != nil {
-		go updater.sendPurge(cert.DER)
-	}
 
 	return &status, nil
 }
@@ -433,23 +415,12 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		string(core.OCSPStatusRevoked),
+		batchSize,
+	)
 	return statuses, err
 }
 
@@ -536,16 +507,11 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	tickEnd := updater.clk.Now()
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
 
-	// If the CertStatusOptimizationsMigrated flag is set then we need to
-	// opportunistically update the certificateStatus `isExpired` column for expired
-	// certificates we come across
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		for _, s := range statuses {
-			if !s.IsExpired && tickStart.After(s.NotAfter) {
-				err := updater.markExpired(s)
-				if err != nil {
-					return err
-				}
+	for _, s := range statuses {
+		if !s.IsExpired && tickStart.After(s.NotAfter) {
+			err := updater.markExpired(s)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -763,41 +729,26 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.Publisher,
 	core.StorageAuthority,
 ) {
-	amqpConf := c.AMQP
-
 	var tls *tls.Config
 	var err error
 	if c.TLS.CertFile != nil {
 		tls, err = c.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
-	var cac core.CertificateAuthority
-	if c.OCSPGeneratorService != nil {
-		conn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		// Make a CA client that is only capable of signing OCSP.
-		// TODO(jsha): Once we've fully moved to gRPC, replace this
-		// with a plain caPB.NewOCSPGeneratorClient.
-		cac = bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(conn))
-	} else {
-		var err error
-		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create CA client")
-	}
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+	// Make a CA client that is only capable of signing OCSP.
+	// TODO(jsha): Once we've fully moved to gRPC, replace this
+	// with a plain caPB.NewOCSPGeneratorClient.
+	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	conn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
+	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
 
-	var sac core.StorageAuthority
-	if c.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	return cac, pubc, sac
 }
@@ -815,6 +766,8 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	conf := c.OCSPUpdater
+	err = features.Set(conf.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")

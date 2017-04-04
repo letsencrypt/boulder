@@ -41,7 +41,7 @@ func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, 
 			LogURL:       &logURL,
 			LogPublicKey: &logPublicKey,
 			Der:          der})
-	return unwrapError(err)
+	return err
 }
 
 // PublisherServerWrapper is a wrapper required to bridge the differences between the
@@ -68,6 +68,6 @@ func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request
 	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
 		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
 	}
-	err := wrapError(pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der))
+	err := pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der)
 	return &pubPB.Empty{}, err
 }

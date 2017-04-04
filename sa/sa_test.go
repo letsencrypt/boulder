@@ -21,9 +21,11 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -121,19 +123,19 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(ctx, 100)
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistration: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	jwk := satest.GoodJWK()
 	_, err = sa.GetRegistrationByKey(ctx, jwk)
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistrationByKey: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
 	}
 }
 
@@ -272,6 +274,63 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 	test.AssertEquals(t, result.RegistrationID, reg.ID)
 }
 
+func TestCountInvalidAuthorizations(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	key2 := new(jose.JsonWebKey)
+	key2.Key = &rsa.PublicKey{N: big.NewInt(1), E: 3}
+	reg2, err := sa.NewRegistration(context.Background(), core.Registration{
+		Key:       key2,
+		InitialIP: net.ParseIP("88.77.66.11"),
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
+		Status:    core.StatusValid,
+	})
+	test.AssertNotError(t, err, "making registration")
+
+	baseTime := time.Date(2017, 3, 4, 5, 0, 0, 0, time.UTC)
+	latest := baseTime.Add(3 * time.Hour)
+
+	makeInvalidAuthz := func(regID int64, domain string, offset time.Duration) {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, regID)
+		exp := baseTime.Add(offset)
+		authz.Expires = &exp
+		authz.Status = "invalid"
+		err := sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	}
+
+	// We're going to count authzs for reg.ID and example.net, expiring between
+	// baseTime and baseTime + 3 hours, so add two examples that should be counted
+	// (1 hour from now and 2 hours from now), plus three that shouldn't be
+	// counted (too far future, wrong domain name, and wrong ID).
+	hostname := "example.net"
+	makeInvalidAuthz(reg.ID, hostname, time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 2*time.Hour)
+	makeInvalidAuthz(reg.ID, hostname, 24*time.Hour)
+	makeInvalidAuthz(reg.ID, "example.com", time.Hour)
+	makeInvalidAuthz(reg2.ID, hostname, time.Hour)
+
+	earliestNanos := baseTime.UnixNano()
+	latestNanos := latest.UnixNano()
+
+	count, err := sa.CountInvalidAuthorizations(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Hostname:       &hostname,
+		Range: &sapb.Range{
+			Earliest: &earliestNanos,
+			Latest:   &latestNanos,
+		},
+	})
+	test.AssertNotError(t, err, "counting invalid authorizations")
+
+	if *count.Count != 2 {
+		t.Errorf("expected to count 2 invalid authorizations, counted %d instead", *count.Count)
+	}
+}
+
 // Ensure we get the latest valid authorization for an ident
 func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
@@ -368,16 +427,7 @@ func TestGetValidAuthorizationsMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	// Enable the feature for the `CertStatusOptimizationsMigrated` flag so that
-	// adding a new certificate will populate the `certificateStatus.NotAfter`
-	// field correctly. This will let the unit test assertion for `NotAfter`
-	// pass provided everything is working as intended. Note: this must be done
-	// **before** the DbMap is created in `initSA()` or the feature flag won't be
-	// set correctly at the time the table maps are set up.
-	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
-	defer features.Reset()
-
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -386,7 +436,7 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(ctx, certDER, reg.ID)
+	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
@@ -407,7 +457,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
-	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID)
+	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
@@ -420,6 +470,28 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
+
+	// Test adding OCSP response with cert
+	_ = features.Set(map[string]bool{"GenerateOCSPEarly": true})
+	certDER3, err := ioutil.ReadFile("test-cert2.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	serial = "ffa0160630d618b2eb5c0510824b14274856"
+	ocspResp := []byte{0, 0, 1}
+	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp)
+	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
+
+	certificateStatus3, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, "Couldn't get status for test-cert2.der")
+	test.Assert(
+		t,
+		bytes.Compare(certificateStatus3.OCSPResponse, ocspResp) == 0,
+		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certificateStatus3.OCSPResponse, ocspResp),
+	)
+	test.Assert(
+		t,
+		clk.Now().Equal(certificateStatus3.OCSPLastUpdated),
+		fmt.Sprintf("OCSPLastUpdated doesn't match, expected %s, got %s", clk.Now(), certificateStatus3.OCSPLastUpdated),
+	)
 }
 
 func TestCountCertificatesByNames(t *testing.T) {
@@ -448,7 +520,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -472,7 +544,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(ctx, certDER2, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
@@ -541,7 +613,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -579,7 +651,7 @@ func TestCountCertificates(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	fc.Add(2 * time.Hour)

@@ -4,7 +4,10 @@ set -e -u
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# start rsyslog
+# Start rsyslog. Note: Sometimes for unknown reasons /var/run/rsyslogd.pid is
+# already present, which prevents the whole container from starting. We remove
+# it just in case it's there.
+rm -f /var/run/rsyslogd.pid
 service rsyslog start
 
 wait_tcp_port() {

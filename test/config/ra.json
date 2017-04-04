@@ -11,22 +11,33 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 60,
     "pendingAuthorizationLifetimeDays": 7,
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "RA.server",
-      "VA": {
-        "server": "VA.server",
-        "rpcTimeout": "60s"
-      },
-      "SA": {
-        "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "CA": {
-        "server": "CA.server",
-        "rpcTimeout": "15s"
-      }
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ra.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ra.boulder/key.pem"
+    },
+    "vaService": {
+      "serverAddresses": ["va.boulder:9092"],
+      "timeout": "15s"
+    },
+    "caService": {
+      "serverAddresses": ["ca.boulder:9093"],
+      "timeout": "15s"
+    },
+    "publisherService": {
+      "serverAddresses": ["publisher.boulder:9091"],
+      "timeout": "15s"
+    },
+    "saService": {
+      "serverAddresses": ["sa.boulder:9095"],
+      "timeout": "15s"
+    },
+    "grpc": {
+      "address": ":9094",
+      "clientNames": [
+        "wfe.boulder",
+        "admin-revoker.boulder"
+      ]
     }
   },
 

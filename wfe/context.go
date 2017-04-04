@@ -28,6 +28,7 @@ type requestEvent struct {
 	ResponseNonce string                 `json:",omitempty"`
 	UserAgent     string                 `json:",omitempty"`
 	Extra         map[string]interface{} `json:",omitempty"`
+	Code          int
 }
 
 func (e *requestEvent) AddError(msg string, args ...interface{}) {

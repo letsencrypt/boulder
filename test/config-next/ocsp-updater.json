@@ -4,7 +4,7 @@
     "maxDBConns": 10,
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
-    "missingSCTWindow": "1m",
+    "missingSCTWindow": "1s",
     "revokedCertificateWindow": "1s",
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
@@ -35,8 +35,7 @@
       "timeout": "15s"
     },
     "features": {
-      "ResubmitMissingSCTsOnly": true,
-      "CertStatusOptimizationsMigrated": true
+      "ResubmitMissingSCTsOnly": true
     }
   },
 
@@ -57,6 +56,10 @@
         {
           "uri": "http://boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
+        },
+        {
+          "uri": "http://boulder:4501",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA=="
         }
       ]
     }

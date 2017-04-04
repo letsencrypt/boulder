@@ -10,11 +10,11 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -23,9 +23,9 @@ const clientName = "Publisher"
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		SubmissionTimeout              cmd.ConfigDuration
-		MaxConcurrentRPCServerRequests int64
-		SAService                      *cmd.GRPCClientConfig
+		SubmissionTimeout cmd.ConfigDuration
+		SAService         *cmd.GRPCClientConfig
+		Features          map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -51,6 +51,8 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = features.Set(c.Publisher.Features)
+	cmd.FailOnError(err, "Failed to set feature flags")
 
 	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 	scope := metrics.NewStatsdScope(stats, "Publisher")
@@ -59,7 +61,7 @@ func main() {
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key)
+		logs[i], err = publisher.NewLog(ld.URI, ld.Key, logger)
 		cmd.FailOnError(err, "Unable to parse CT log description")
 	}
 
@@ -80,16 +82,9 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.Publisher.AMQP
-	var sac core.StorageAuthority
-	if c.Publisher.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	pubi := publisher.New(
 		bundle,
@@ -112,22 +107,14 @@ func main() {
 		grpcSrv = s
 	}
 
-	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, scope, logger)
-	cmd.FailOnError(err, "Unable to create Publisher RPC server")
-
 	go cmd.CatchSignals(logger, func() {
-		pubs.Stop()
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}
 	})
 
-	err = rpc.NewPublisherServer(pubs, pubi)
-	cmd.FailOnError(err, "Unable to setup Publisher RPC server")
-
 	go cmd.DebugServer(c.Publisher.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	err = pubs.Start(amqpConf)
-	cmd.FailOnError(err, "Unable to run Publisher RPC server")
+	select {}
 }

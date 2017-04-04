@@ -25,6 +25,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -689,6 +690,8 @@ func TestRelativeDirectory(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
+	defer features.Reset()
 	wfe, fc := setupWFE(t)
 	mux := wfe.Handler()
 	mockLog := wfe.log.(*blog.Mock)
@@ -779,7 +782,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -807,7 +810,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com","status":403}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -838,6 +841,18 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `INFO: `)
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
+
+	mockLog.Clear()
+	responseWriter.HeaderMap = http.Header{}
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, wfe.nonceService)))
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
 	mockLog.Clear()
 	responseWriter.Body.Reset()
@@ -1195,16 +1210,16 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
-// An SA mock that always returns NoSuchRegistrationError. This is necessary
+// An SA mock that always returns a berrors.NotFound type error. This is necessary
 // because the standard mock in our mocks package always returns a given test
 // registration when GetRegistrationByKey is called, and we want to get a
-// NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
+// berrors.NotFound type error for tests that pass regCheck = false to verifyPOST.
 type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
 func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
-	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
+	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert
@@ -1648,6 +1663,8 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
+	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1670,6 +1687,20 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<http://localhost/acme/issuer-cert>;rel="up"`)
+
+	// Valid serial, UseAIAIssuerURL: true
+	mockLog.Clear()
+	responseWriter = httptest.NewRecorder()
+	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
+	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
+	req.RemoteAddr = "192.168.0.1"
+	mux.ServeHTTP(responseWriter, req)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
 	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
@@ -1795,7 +1826,7 @@ func TestBadKeyCSR(t *testing.T) {
 
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
@@ -1811,7 +1842,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 
 	mux := wfe.Handler()
 	s := httptest.NewServer(mux)
-	// TODO(#1989): Close s
+	defer s.Close()
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
