@@ -167,6 +167,7 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     try:
         cert_resource = issue(client, authzs, cert_output)
+        client.fetch_chain(cert_resource)
         return cert_resource
     finally:
         cleanup()

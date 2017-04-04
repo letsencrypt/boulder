@@ -4,7 +4,7 @@ boulder:
     environment:
         FAKE_DNS: 127.0.0.1
         PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
-        BOULDER_CONFIG_DIR: test/config-next
+        BOULDER_CONFIG_DIR: test/config
     volumes:
       - $GOPATH:/go/
       - /tmp:/tmp
