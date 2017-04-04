@@ -16,6 +16,7 @@ if default_config_dir == '':
     default_config_dir = 'test/config'
 
 processes = []
+listenProcesses = []
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -116,9 +117,9 @@ def forward(listen, speak):
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
     global listenProcesses
-    listenProcesses.push(p)
+    listenProcesses.append(p)
 
-def bounce_forward(p):
+def bounce_forward():
     """Kill all forwarded TCP connections."""
     global listenProcesses
     for p in listenProcesses:
