@@ -109,7 +109,7 @@ def start(race_detection):
     print "All servers running. Hit ^C to kill."
     return True
 
-def forward(listen, spreak):
+def forward(listen, speak):
     """Add a TCP forwarder between gRPC client and server to simulate failures."""
     cmd = """exec listenbuddy -listen %s -speak %s""" % (listen, speak)
     p = subprocess.Popen(cmd, shell=True)
