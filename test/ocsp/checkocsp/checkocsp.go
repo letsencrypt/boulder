@@ -12,7 +12,7 @@ import (
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `
-OCSP-checking tool. Provide a list of certificate filenames in PEM format, and
+OCSP-checking tool. Provide a list of filenames for certificates in PEM format, and
 this tool will check OCSP for each certificate based on the AIA field in the
 certificates. It will return an error if the OCSP server fails to respond for
 any request, if any response is invalid or has a bad signature, or if any

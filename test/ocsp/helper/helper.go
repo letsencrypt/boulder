@@ -23,6 +23,9 @@ var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is 
 var expectStatus = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=good, 1=revoked)")
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
+	if cert == nil {
+		return nil, fmt.Errorf("nil certificate")
+	}
 	if len(cert.IssuingCertificateURL) == 0 {
 		return nil, fmt.Errorf("No AIA information available, can't get issuer")
 	}
@@ -85,7 +88,6 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 }
 
 func Req(fileName string) (*ocsp.Response, error) {
-	tooSoonDuration := time.Duration(*tooSoon) * time.Hour
 	contents, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
@@ -102,6 +104,7 @@ func Req(fileName string) (*ocsp.Response, error) {
 				time.Now().Sub(cert.NotAfter), cert.NotAfter)
 		}
 	}
+
 	issuer, err := getIssuer(cert)
 	if err != nil {
 		return nil, fmt.Errorf("getting issuer: %s", err)
@@ -110,40 +113,15 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
-	var ocspServer string
-	if *urlOverride != "" {
-		ocspServer = *urlOverride
-	} else if len(cert.OCSPServer) > 0 {
-		ocspServer = cert.OCSPServer[0]
-	} else {
-		return nil, fmt.Errorf("no ocsp servers in cert")
-	}
-	encodedReq := base64.StdEncoding.EncodeToString(req)
-	var httpResp *http.Response
-	ocspURL, err := url.Parse(ocspServer)
+
+	ocspURL, err := getOCSPURL(cert)
 	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %s", err)
+		return nil, err
 	}
+
 	http.DefaultClient.Timeout = 5 * time.Second
-	if *method == "GET" {
-		ocspURL.Path = encodedReq
-		fmt.Printf("Fetching %s\n", ocspURL.String())
-		var err error
-		httpResp, err = http.Get(ocspURL.String())
-		if err != nil {
-			return nil, fmt.Errorf("fetching: %s", err)
-		}
-	} else if *method == "POST" {
-		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
-			ocspServer, encodedReq)
-		var err error
-		httpResp, err = http.Post(ocspServer, "application/ocsp-request", bytes.NewBuffer(req))
-		if err != nil {
-			return nil, fmt.Errorf("fetching: %s", err)
-		}
-	} else {
-		return nil, fmt.Errorf("invalid method %s, expected GET or POST", *method)
-	}
+
+	httpResp, err := sendHTTPRequest(req, ocspURL)
 	fmt.Printf("HTTP %d\n", httpResp.StatusCode)
 	for k, v := range httpResp.Header {
 		for _, vv := range v {
@@ -161,6 +139,41 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if len(respBytes) == 0 {
 		return nil, fmt.Errorf("empty reponse body")
 	}
+	return parseAndPrint(respBytes, cert, issuer)
+}
+
+func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
+	encodedReq := base64.StdEncoding.EncodeToString(req)
+	if *method == "GET" {
+		ocspURL.Path = encodedReq
+		fmt.Printf("Fetching %s\n", ocspURL.String())
+		return http.Get(ocspURL.String())
+	} else if *method == "POST" {
+		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
+			ocspURL, encodedReq)
+		return http.Post(ocspURL.String(), "application/ocsp-request", bytes.NewBuffer(req))
+	} else {
+		return nil, fmt.Errorf("invalid method %s, expected GET or POST", *method)
+	}
+}
+
+func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
+	var ocspServer string
+	if *urlOverride != "" {
+		ocspServer = *urlOverride
+	} else if len(cert.OCSPServer) > 0 {
+		ocspServer = cert.OCSPServer[0]
+	} else {
+		return nil, fmt.Errorf("no ocsp servers in cert")
+	}
+	ocspURL, err := url.Parse(ocspServer)
+	if err != nil {
+		return nil, fmt.Errorf("parsing URL: %s", err)
+	}
+	return ocspURL, nil
+}
+
+func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate) (*ocsp.Response, error) {
 	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
 	if err != nil {
@@ -170,6 +183,7 @@ func Req(fileName string) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, *expectStatus)
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
+	tooSoonDuration := time.Duration(*tooSoon) * time.Hour
 	if timeTilExpiry < tooSoonDuration {
 		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
 	}
