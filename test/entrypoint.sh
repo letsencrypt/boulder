@@ -27,14 +27,8 @@ EOF
 # make sure we can reach the mysqldb
 wait_tcp_port boulder-mysql 3306
 
-# make sure we can reach the rabbitmq
-wait_tcp_port boulder-rabbitmq 5672
-
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
-
-# Set up rabbitmq exchange
-rabbitmq-setup -server amqp://boulder-rabbitmq
 
 # Delaying loading private key into SoftHSM container until now so that switching
 # out the signing key doesn't require rebuilding the boulder-tools image. Only
