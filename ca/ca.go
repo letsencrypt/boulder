@@ -485,14 +485,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
 		hex.EncodeToString(certDER)))
 
-	// This is one last check for uncaught errors
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
-			serialHex, hex.EncodeToString(certDER), err))
-		return emptyCert, err
-	}
-
 	var ocspResp []byte
 	if features.Enabled(features.GenerateOCSPEarly) {
 		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
@@ -534,7 +526,5 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		}()
 	}
 
-	// Do not return an err at this point; caller must know that the Certificate
-	// was issued. (Also, it should be impossible for err to be non-nil here)
 	return cert, nil
 }
