@@ -20,7 +20,8 @@
     "saService": {
       "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
-    }
+    },
+    "frequency": "1h"
   },
 
   "statsd": {

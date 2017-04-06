@@ -12,10 +12,16 @@
     "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "VA.server"
+    "tls": {
+      "caCertfile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/va.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/va.boulder/key.pem"
+    },
+    "grpc": {
+      "address": ":9092",
+      "clientNames": [
+        "ra.boulder"
+      ]
     }
   },
 

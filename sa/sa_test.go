@@ -21,6 +21,7 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -122,19 +123,19 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(ctx, 100)
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistration: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	jwk := satest.GoodJWK()
 	_, err = sa.GetRegistrationByKey(ctx, jwk)
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("GetRegistrationByKey: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
 	}
 
 	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
-	if _, ok := err.(core.NoSuchRegistrationError); !ok {
-		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
+	if !berrors.Is(err, berrors.NotFound) {
+		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
 	}
 }
 

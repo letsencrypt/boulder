@@ -18,7 +18,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe"
 )
@@ -71,9 +70,6 @@ type config struct {
 }
 
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
-	amqpConf := c.WFE.AMQP
-	var rac core.RegistrationAuthority
-
 	var tls *tls.Config
 	var err error
 	if c.WFE.TLS.CertFile != nil {
@@ -81,26 +77,13 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	if c.WFE.RAService != nil {
-		conn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-		rac = bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(conn))
-	} else {
-		var err error
-		rac, err = rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create RA AMQP client")
-	}
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
-	var sac core.StorageAuthority
-	if c.WFE.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		var err error
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	return rac, sac
 }

@@ -281,14 +281,13 @@ def get_future_output(cmd, date):
     return run(cmd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")})
 
 def test_expired_authz_purger():
-    def expect(target_time, num):
-        expected_output = ''
-        if num is not None:
-            expected_output = 'Deleted a total of %d expired pending authorizations' % num
-
+    def expect(target_time, num, table):
         out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
         if 'via FAKECLOCK' not in out:
             raise Exception("expired-authz-purger was not built with `integration` build tag")
+        if num is None:
+            return
+        expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
         if expected_output not in out:
             raise Exception("expired-authz-purger did not print '%s'.  Output:\n%s" % (
                   expected_output, out))
@@ -296,7 +295,7 @@ def test_expired_authz_purger():
     now = datetime.datetime.utcnow()
 
     # Run the purger once to clear out any backlog so we have a clean slate.
-    expect(now, None)
+    expect(now, None, "")
 
     # Make an authz, but don't attempt its challenges.
     chisel.make_client().request_domain_challenges("eap-test.com")
@@ -304,8 +303,13 @@ def test_expired_authz_purger():
     # Run the authz twice: Once immediate, expecting nothing to be purged, and
     # once as if it were the future, expecting one purged authz.
     after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
-    expect(now, 0)
-    expect(after_grace_period, 1)
+    expect(now, 0, "pendingAuthorizations")
+    expect(after_grace_period, 1, "pendingAuthorizations")
+
+    auth_and_issue([random_domain()])
+    after_grace_period = now + datetime.timedelta(days=+67, minutes=+3)
+    expect(now, 0, "authz")
+    expect(after_grace_period, 1, "authz")
 
 def test_certificates_per_name():
     chisel.expect_problem("urn:acme:error:rateLimited",
@@ -394,9 +398,9 @@ def main():
 def run_chisel():
     # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add TLS-SNI test.
 
+    test_expired_authz_purger()
     test_ct_submission()
     test_gsb_lookups()
-    test_expired_authz_purger()
     test_multidomain()
     test_expiration_mailer()
     test_caa()

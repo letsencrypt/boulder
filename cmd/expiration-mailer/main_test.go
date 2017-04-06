@@ -23,6 +23,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -50,8 +51,7 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	r, ok := f.RegByID[id]
 	if !ok {
-		msg := fmt.Sprintf("no such registration %d", id)
-		return r, core.NoSuchRegistrationError(msg)
+		return r, berrors.NotFoundError("no registration found for %q", id)
 	}
 	return r, nil
 }
@@ -94,9 +94,10 @@ var (
   "n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
   "e":"AQAB"
 }`)
-	log  = blog.UseMock()
-	tmpl = template.Must(template.New("expiry-email").Parse(testTmpl))
-	ctx  = context.Background()
+	log      = blog.UseMock()
+	tmpl     = template.Must(template.New("expiry-email").Parse(testTmpl))
+	subjTmpl = template.Must(template.New("expiry-email-subject").Parse("Testing: " + defaultExpirationSubject))
+	ctx      = context.Background()
 )
 
 func TestSendNags(t *testing.T) {
@@ -105,15 +106,17 @@ func TestSendNags(t *testing.T) {
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
 
+	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
+
 	m := mailer{
 		stats:         stats,
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		// Explicitly override the default subject to use testEmailSubject
-		subject: testEmailSubject,
-		rs:      rs,
-		clk:     fc,
+		subjectTemplate: staticTmpl,
+		rs:              rs,
+		clk:             fc,
 	}
 
 	cert := &x509.Certificate{
@@ -222,14 +225,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 		To: emailARaw,
 		// A certificate with only one domain should have only one domain listed in
 		// the subject
-		Subject: "Certificate expiration notice for domain \"example-a.com\"",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\"",
 		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
 	}, testCtx.mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailBRaw,
 		// A certificate with two domains should have only one domain listed and an
 		// additional count included
-		Subject: "Certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
 		Body:    "hi, cert for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)",
 	}, testCtx.mc.Messages[1])
 
@@ -838,7 +841,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		To: emailARaw,
 		// A certificate with three domain names should have one in the subject and
 		// a count of '2 more' at the end
-		Subject: "Certificate expiration notice for domain \"example-a.com\" (and 2 more)",
+		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
@@ -878,15 +881,16 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 
 	m := &mailer{
-		log:           log,
-		stats:         stats,
-		mailer:        mc,
-		emailTemplate: tmpl,
-		dbMap:         dbMap,
-		rs:            ssa,
-		nagTimes:      offsetNags,
-		limit:         100,
-		clk:           fc,
+		log:             log,
+		stats:           stats,
+		mailer:          mc,
+		emailTemplate:   tmpl,
+		subjectTemplate: subjTmpl,
+		dbMap:           dbMap,
+		rs:              ssa,
+		nagTimes:        offsetNags,
+		limit:           100,
+		clk:             fc,
 	}
 	return &testCtx{
 		dbMap:   dbMap,
