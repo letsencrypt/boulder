@@ -1061,7 +1061,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			ra.log.AuditErr(fmt.Sprintf(
+				"Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
+				err, authz.RegistrationID, authz.ID))
 		}
 	}()
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
