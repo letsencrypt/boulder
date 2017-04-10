@@ -19,6 +19,7 @@ const (
 	GoogleSafeBrowsingV4
 	UseAIAIssuerURL
 	AllowTLS02Challenges
+	GenerateOCSPEarly
 )
 
 // List of features and their default value, protected by fMu
@@ -31,6 +32,7 @@ var features = map[FeatureFlag]bool{
 	GoogleSafeBrowsingV4:     false,
 	UseAIAIssuerURL:          false,
 	AllowTLS02Challenges:     false,
+	GenerateOCSPEarly:        false,
 }
 
 var fMu = new(sync.RWMutex)

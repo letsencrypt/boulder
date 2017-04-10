@@ -516,12 +516,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		return
-	}
-
+func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certificate, csr *x509.CertificateRequest) (err error) {
 	// Check issued certificate matches what was expected from the CSR
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
@@ -703,17 +698,17 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		}()
 	}
 
-	err = ra.MatchesCSR(cert, csr)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
 		err = berrors.InternalServerError("failed to parse certificate: %s", err.Error())
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
+	err = ra.MatchesCSR(parsedCertificate, csr)
+	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -1061,7 +1056,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			ra.log.AuditErr(fmt.Sprintf(
+				"Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
+				err, authz.RegistrationID, authz.ID))
 		}
 	}()
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)

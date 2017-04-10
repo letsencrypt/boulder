@@ -31,3 +31,7 @@ _testmain.go
 *.coverprofile
 
 tags
+
+# IDE support files
+.idea
+

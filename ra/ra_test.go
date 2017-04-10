@@ -924,7 +924,7 @@ func TestTotalCertRateLimit(t *testing.T) {
 	// should mock out the SA and have it return the cert count that we want.
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID)
+	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID, nil)
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)

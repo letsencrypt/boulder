@@ -137,14 +137,11 @@ func main() {
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
-	h := wfe.Handler()
-
-	httpMonitor := metrics.NewHTTPMonitor(scope, h)
 
 	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,
-		Handler: httpMonitor,
+		Handler: wfe.Handler(),
 	}
 
 	go cmd.DebugServer(c.WFE.DebugAddr)
@@ -153,7 +150,6 @@ func main() {
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
-		Stats:       metrics.NewFBAdapter(scope, clock.Default()),
 	}
 	hdSrv, err := hd.ListenAndServe(srv)
 	cmd.FailOnError(err, "Error starting HTTP server")
@@ -167,7 +163,7 @@ func main() {
 		logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
 		TLSSrv := &http.Server{
 			Addr:      c.WFE.TLSListenAddress,
-			Handler:   httpMonitor,
+			Handler:   wfe.Handler(),
 			TLSConfig: tlsConfig,
 		}
 		hdTLSSrv, err = hd.ListenAndServe(TLSSrv)

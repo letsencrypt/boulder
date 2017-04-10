@@ -1,6 +1,6 @@
 # To minimize the fetching of various layers this image and tag should
 # be used as the base of the bhsm container in boulder/docker-compose.yml
-FROM letsencrypt/boulder-tools:2017-02-20
+FROM letsencrypt/boulder-tools:2017-03-30
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 4430 8053 8055
@@ -17,7 +17,6 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 # Copy in the Boulder sources
 COPY . .
 RUN mkdir bin
-RUN GOBIN=/usr/local/bin go install ./cmd/rabbitmq-setup
 
 RUN chown -R buser /go/
 
