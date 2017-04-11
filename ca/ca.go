@@ -444,6 +444,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	return cert, nil
 }
 
+func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	return nil, berrors.InternalServerError("IssuePrecertificate is not implemented")
+}
+
 func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, error) {
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 

@@ -38,6 +38,10 @@ func (ca *mockCA) IssueCertificate(_ context.Context, _ *caPB.IssueCertificateRe
 	return core.Certificate{}, nil
 }
 
+func (ca *mockCA) IssuePrecertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	return nil, errors.New("IssuePrecertificate is not implemented by mockCA")
+}
+
 func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	ocsp = []byte{1, 2, 3}
 	time.Sleep(ca.sleepTime)
