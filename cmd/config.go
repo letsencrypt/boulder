@@ -324,10 +324,6 @@ type LogDescription struct {
 type GRPCClientConfig struct {
 	ServerAddresses []string
 	Timeout         ConfigDuration
-	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
-	ServerIssuerPath      string
-	ClientCertificatePath string
-	ClientKeyPath         string
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
@@ -337,10 +333,6 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	ClientNames []string `json:"clientNames"`
-	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
-	ServerCertificatePath string `json:"serverCertificatePath"`
-	ServerKeyPath         string `json:"serverKeyPath"`
-	ClientIssuerPath      string `json:"clientIssuerPath"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

@@ -117,7 +117,7 @@ type StorageAdder interface {
 	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
-	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
+	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error

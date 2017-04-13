@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 03089bf (Fri Mar  3 16:01:32 2017)"
+const defaultListVersion = "PSL version 6efe629 (Fri Mar 31 19:05:40 2017)"
 
 func init() {
-	r := [8107]Rule{
+	r := [8108]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -7726,14 +7726,15 @@ func init() {
 		{1, "vladikavkaz.su", 2, true},
 		{1, "vladimir.su", 2, true},
 		{1, "vologda.su", 2, true},
+		{1, "fastlylb.net", 2, true},
+		{1, "map.fastlylb.net", 3, true},
+		{1, "freetls.fastly.net", 3, true},
 		{1, "map.fastly.net", 3, true},
 		{1, "a.prod.fastly.net", 4, true},
 		{1, "global.prod.fastly.net", 4, true},
 		{1, "a.ssl.fastly.net", 4, true},
 		{1, "b.ssl.fastly.net", 4, true},
 		{1, "global.ssl.fastly.net", 4, true},
-		{1, "fastlylb.net", 2, true},
-		{1, "map.fastlylb.net", 3, true},
 		{1, "fhapp.xyz", 2, true},
 		{1, "firebaseapp.com", 2, true},
 		{1, "flynnhub.com", 2, true},

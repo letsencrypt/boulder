@@ -27,12 +27,16 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
 
-// Paths are the ACME-spec identified URL path-segments for various methods
+// Paths are the ACME-spec identified URL path-segments for various methods.
+// NOTE: In metrics/measured_http we make the assumption that these are all
+// lowercase plus hyphens. If you violate that assumption you should update
+// measured_http.
 const (
 	directoryPath  = "/directory"
 	newRegPath     = "/acme/new-reg"
@@ -299,7 +303,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(wfe.Index),
 	})
-	return m
+	return measured_http.New(m, wfe.clk)
 }
 
 // Method implementations
@@ -579,7 +583,6 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.stats.Inc(fmt.Sprintf("HTTP.ErrorCodes.%d", code), 1)
 	problemSegments := strings.Split(string(prob.Type), ":")
 	if len(problemSegments) > 0 {
 		wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1)

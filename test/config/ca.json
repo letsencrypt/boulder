@@ -10,7 +10,7 @@
       "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
     "grpcCA": {

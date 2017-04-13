@@ -169,7 +169,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion3
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for VA service
 
@@ -265,7 +265,7 @@ var _VA_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: fileDescriptor0,
+	Metadata: "va/proto/va.proto",
 }
 
 func init() { proto1.RegisterFile("va/proto/va.proto", fileDescriptor0) }
