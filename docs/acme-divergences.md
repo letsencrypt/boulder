@@ -38,6 +38,12 @@ Boulder also doesn't implement the `new-nonce` endpoint.
 
 Boulder implements the `new-account` ressource only under the `new-reg` key.
 
+Boulder implements Link: rel="next" headers from new-reg to new-authz, and
+new-authz to new-cert, as spectified in
+[draft-02](https://tools.ietf.org/html/draft-ietf-acme-acme-02#page-15), but
+these links are not provided in the latest draft, and clients should use URLs
+from the directory instead.
+
 ## [Section 6.1.1.](https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-6.1.1)
 
 Boulder does not implement the `meta` field returned by the `directory` endpoint.
