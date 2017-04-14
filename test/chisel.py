@@ -28,6 +28,7 @@ from acme import messages
 from acme import standalone
 
 logger = logging.getLogger()
+logging.basicConfig()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
