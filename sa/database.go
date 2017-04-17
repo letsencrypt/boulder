@@ -59,8 +59,8 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	adjustMySQLConfig(config)
 
 	// We always want strict mode. Rather than leaving this up to DB config, we
-	// prefix each statement with it.
-	prefix := "SET STATEMENT sql_mode='STRICT_ALL_TABLES' FOR "
+	// prefix each session with it.
+	prefix := "SET SESSION sql_mode='STRICT_ALL_TABLES'"
 
 	// If a read timeout is set, we set max_statement_time to 95% of that, and
 	// long_query_time to 80% of that. That way we get logs of queries that are
@@ -72,7 +72,7 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
 		readTimeout := config.ReadTimeout.Seconds()
 		prefix = fmt.Sprintf(
-			"SET STATEMENT max_statement_time=%g, long_query_time=%g, sql_mode='STRICT_ALL_TABLES' FOR ",
+			"SET SESSION max_statement_time=%g, long_query_time=%g, sql_mode='STRICT_ALL_TABLES'",
 			readTimeout*0.95, readTimeout*0.80)
 	}
 
