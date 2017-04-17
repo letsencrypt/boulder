@@ -252,7 +252,7 @@ func (ch Challenge) ExpectedKeyAuthorization(key *jose.JsonWebKey) (string, erro
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
+	if ch.Type != ChallengeTypeDNS && (ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0) {
 		return false
 	}
 
