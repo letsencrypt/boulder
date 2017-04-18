@@ -3,6 +3,7 @@ package wfe
 import (
 	"bytes"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -986,8 +987,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
-		// TODO(#1198): handle db errors etc
-		notFound()
+		if err == sql.ErrNoRows {
+			notFound()
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		}
 		return
 	}
 
