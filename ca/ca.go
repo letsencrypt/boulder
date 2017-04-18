@@ -379,7 +379,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
 	ca.noteSignError(err)
 	if err == nil {
-		ca.stats.Inc("Signatures.OCSP", 1)
+		signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
 	return ocspResponse, err
 }
