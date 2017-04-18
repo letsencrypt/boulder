@@ -396,117 +396,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	}
 	regID := *issueReq.RegistrationID
 
-	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
-	if err != nil {
-		return emptyCert, err
-	}
-	if err := csrlib.VerifyCSR(
-		csr,
-		ca.maxNames,
-		&ca.keyPolicy,
-		ca.pa,
-		ca.forceCNFromSAN,
-		regID,
-	); err != nil {
-		ca.log.AuditErr(err.Error())
-		return emptyCert, berrors.MalformedError(err.Error())
-	}
-
-	requestedExtensions, err := ca.extensionsFromCSR(csr)
+	notAfter, serialBigInt, serialHex, err := ca.generateNotAfterAndSerialNumber()
 	if err != nil {
 		return emptyCert, err
 	}
 
-	issuer := ca.defaultIssuer
-	notAfter := ca.clk.Now().Add(ca.validityPeriod)
-
-	if issuer.cert.NotAfter.Before(notAfter) {
-		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
-		ca.log.AuditErr(err.Error())
-		return emptyCert, err
-	}
-
-	// Convert the CSR to PEM
-	csrPEM := string(pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE REQUEST",
-		Bytes: csr.Raw,
-	}))
-
-	// We want 136 bits of random number, plus an 8-bit instance id prefix.
-	const randBits = 136
-	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.prefix)
-	_, err = rand.Read(serialBytes[1:])
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert")
 	if err != nil {
-		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-	serialBigInt := big.NewInt(0)
-	serialBigInt = serialBigInt.SetBytes(serialBytes)
-	serialHex := core.SerialToString(serialBigInt)
-
-	var profile string
-	switch csr.PublicKey.(type) {
-	case *rsa.PublicKey:
-		profile = ca.rsaProfile
-	case *ecdsa.PublicKey:
-		profile = ca.ecdsaProfile
-	default:
-		err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
-		ca.log.AuditErr(err.Error())
-		return emptyCert, err
-	}
-
-	// Send the cert off for signing
-	req := signer.SignRequest{
-		Request: csrPEM,
-		Profile: profile,
-		Hosts:   csr.DNSNames,
-		Subject: &signer.Subject{
-			CN: csr.Subject.CommonName,
-		},
-		Serial:     serialBigInt,
-		Extensions: requestedExtensions,
-	}
-	if !ca.forceCNFromSAN {
-		req.Subject.SerialNumber = serialHex
-	}
-
-	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
-
-	certPEM, err := issuer.eeSigner.Sign(req)
-	ca.noteSignError(err)
-	if err != nil {
-		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
-		return emptyCert, err
-	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
-
-	if len(certPEM) == 0 {
-		err = berrors.InternalServerError("no certificate returned by server")
-		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
-		return emptyCert, err
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
-		return emptyCert, err
-	}
-	certDER := block.Bytes
 
 	cert := core.Certificate{
 		DER: certDER,
 	}
-
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
-		hex.EncodeToString(certDER)))
 
 	var ocspResp []byte
 	if features.Enabled(features.GenerateOCSPEarly) {
@@ -540,4 +442,125 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	}
 
 	return cert, nil
+}
+
+func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, string, error) {
+	notAfter := ca.clk.Now().Add(ca.validityPeriod)
+
+	// We want 136 bits of random number, plus an 8-bit instance id prefix.
+	const randBits = 136
+	serialBytes := make([]byte, randBits/8+1)
+	serialBytes[0] = byte(ca.prefix)
+	_, err := rand.Read(serialBytes[1:])
+	if err != nil {
+		err = berrors.InternalServerError("failed to generate serial: %s", err)
+		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
+		return time.Time{}, nil, "", err
+	}
+	serialBigInt := big.NewInt(0)
+	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	serialHex := core.SerialToString(serialBigInt)
+
+	return notAfter, serialBigInt, serialHex, nil
+}
+
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, notAfter time.Time, serialBigInt *big.Int, certType string) ([]byte, error) {
+	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := csrlib.VerifyCSR(
+		csr,
+		ca.maxNames,
+		&ca.keyPolicy,
+		ca.pa,
+		ca.forceCNFromSAN,
+		*issueReq.RegistrationID,
+	); err != nil {
+		ca.log.AuditErr(err.Error())
+		return nil, berrors.MalformedError(err.Error())
+	}
+
+	requestedExtensions, err := ca.extensionsFromCSR(csr)
+	if err != nil {
+		return nil, err
+	}
+
+	issuer := ca.defaultIssuer
+
+	if issuer.cert.NotAfter.Before(notAfter) {
+		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
+		ca.log.AuditErr(err.Error())
+		return nil, err
+	}
+
+	// Convert the CSR to PEM
+	csrPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE REQUEST",
+		Bytes: csr.Raw,
+	}))
+
+	var profile string
+	switch csr.PublicKey.(type) {
+	case *rsa.PublicKey:
+		profile = ca.rsaProfile
+	case *ecdsa.PublicKey:
+		profile = ca.ecdsaProfile
+	default:
+		err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
+		ca.log.AuditErr(err.Error())
+		return nil, err
+	}
+
+	// Send the cert off for signing
+	req := signer.SignRequest{
+		Request: csrPEM,
+		Profile: profile,
+		Hosts:   csr.DNSNames,
+		Subject: &signer.Subject{
+			CN: csr.Subject.CommonName,
+		},
+		Serial:     serialBigInt,
+		Extensions: requestedExtensions,
+	}
+
+	serialHex := core.SerialToString(serialBigInt)
+
+	if !ca.forceCNFromSAN {
+		req.Subject.SerialNumber = serialHex
+	}
+
+	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
+
+	certPEM, err := issuer.eeSigner.Sign(req)
+	ca.noteSignError(err)
+	if err != nil {
+		err = berrors.InternalServerError("failed to sign certificate: %s", err)
+		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
+		return nil, err
+	}
+	ca.signatureCount.With(prometheus.Labels{"purpose": certType}).Inc()
+
+	if len(certPEM) == 0 {
+		err = berrors.InternalServerError("no certificate returned by server")
+		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
+		return nil, err
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = berrors.InternalServerError("invalid certificate value returned")
+		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
+		return nil, err
+	}
+	certDER := block.Bytes
+
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw), certType,
+		hex.EncodeToString(certDER)))
+
+	return certDER, nil
 }
