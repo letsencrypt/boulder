@@ -364,12 +364,11 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	// To implement this limit, we need to use an RPC that is defined only in
-	// gRPC, not in AMQP-RPC. So we check the underlying type of our SA client. If
-	// it corresponds to the gRPC client, we know we can use the gRPC-only method.
-	// Otherwise, we don't bother checking this limit.
-	saGRPC, usingGRPC := ra.SA.(*grpc.StorageAuthorityClientWrapper)
-	if !limit.Enabled() || !usingGRPC {
+	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
+	// interface, because we want to move towards using gRPC interfaces more
+	// directly. So we type-assert the wrapper to a gRPC-specific type.
+	saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+	if !limit.Enabled() || !ok {
 		return nil
 	}
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)

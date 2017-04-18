@@ -44,8 +44,7 @@ func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, 
 	return err
 }
 
-// PublisherServerWrapper is a wrapper required to bridge the differences between the
-// gRPC and previous AMQP interfaces
+// PublisherServerWrapper is the gRPC version of a core.Publisher
 type PublisherServerWrapper struct {
 	inner *publisher.Impl
 }
