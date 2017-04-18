@@ -491,8 +491,8 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
 	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
 	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
-	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
-	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
+	test.AssertNotError(t, authz.Challenges[0].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
+	test.AssertNotError(t, authz.Challenges[1].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 1 returned an error")
 
 	t.Log("DONE TestNewAuthorization")
 }
