@@ -34,6 +34,8 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -96,6 +98,19 @@ const (
 	// listed above
 	metricCSRExtensionOther = "CSRExtensions.Other"
 )
+
+var (
+	signatureCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose"})
+)
+
+func init() {
+	prometheus.MustRegister(signatureCount)
+}
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
@@ -250,6 +265,19 @@ func NewCertificateAuthorityImpl(
 	ca.maxNames = config.MaxNames
 
 	return ca, nil
+}
+
+func ResetSignatureCountForTesting() {
+	signatureCount.Reset()
+}
+
+func SignatureCountForTesting(certType string) int {
+	ch := make(chan prometheus.Metric, 10)
+	signatureCount.With(prometheus.Labels{"purpose": certType}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
 }
 
 // noteSignError is called after operations that may cause a CFSSL
@@ -460,7 +488,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-	ca.stats.Inc("Signatures.Certificate", 1)
+	signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")

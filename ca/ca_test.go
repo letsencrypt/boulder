@@ -709,6 +709,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
 	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
+		ResetSignatureCountForTesting()
 		coreCert, err := ca.IssueCertificate(ctx, *csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
 		cert, err := x509.ParseCertificate(coreCert.DER)
@@ -719,35 +720,37 @@ func TestExtensions(t *testing.T) {
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, SignatureCountForTesting("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
 	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	singleStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, SignatureCountForTesting("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
+	test.AssertEquals(t, SignatureCountForTesting("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
 
 	// ... but if it doesn't ask for stapling, there should be an error
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeatureInvalid, int64(1)).Return(nil)
+	ResetSignatureCountForTesting()
 	_, err = ca.IssueCertificate(ctx, *tlsFeatureUnknownCSR, 1001)
+	test.AssertEquals(t, SignatureCountForTesting("cert"), 0)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
 	test.Assert(t, berrors.Is(err, berrors.Malformed), "Wrong error type when rejecting a CSR with empty TLS feature extension")
 
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	stats.EXPECT().Inc(metricCSRExtensionOther, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
+	test.AssertEquals(t, SignatureCountForTesting("cert"), 1)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
 }
