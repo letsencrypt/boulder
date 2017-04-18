@@ -35,7 +35,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_model/go"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -265,19 +264,6 @@ func NewCertificateAuthorityImpl(
 	ca.maxNames = config.MaxNames
 
 	return ca, nil
-}
-
-func ResetSignatureCountForTesting() {
-	signatureCount.Reset()
-}
-
-func SignatureCountForTesting(certType string) int {
-	ch := make(chan prometheus.Metric, 10)
-	signatureCount.With(prometheus.Labels{"purpose": certType}).Collect(ch)
-	m := <-ch
-	var iom io_prometheus_client.Metric
-	_ = m.Write(&iom)
-	return int(iom.Counter.GetValue())
 }
 
 // noteSignError is called after operations that may cause a CFSSL
