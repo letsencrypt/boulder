@@ -252,14 +252,16 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// noteSignError is called after operations that may cause a CFSSL
-// or PKCS11 signing error.
-func (ca *CertificateAuthorityImpl) noteSignError(err error) {
+// noteSignError is called after operations that may cause a CFSSL or PKCS11
+// signing error. It intentionally does not take a pointer to a
+// CertificateAuthorityImpl for the reasons described in signCertificate's
+// documentation.
+func noteSignError(stats metrics.Scope, err error) {
 	if err != nil {
 		if _, ok := err.(*pkcs11.Error); ok {
-			ca.stats.Inc(metricHSMError, 1)
+			stats.Inc(metricHSMError, 1)
 		} else if cfErr, ok := err.(*cferr.Error); ok {
-			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1)
+			stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1)
 		}
 	}
 	return
@@ -363,7 +365,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	}
 
 	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
-	ca.noteSignError(err)
+	noteSignError(ca.stats, err)
 	if err == nil {
 		ca.stats.Inc("Signatures.OCSP", 1)
 	}
@@ -450,40 +452,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
-
-	certPEM, err := issuer.eeSigner.Sign(req)
-	ca.noteSignError(err)
+	certDER, err := signCertificate(issuer, csr, regID, req, ca.log, ca.stats)
 	if err != nil {
-		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-	ca.stats.Inc("Signatures.Certificate", 1)
-
-	if len(certPEM) == 0 {
-		err = berrors.InternalServerError("no certificate returned by server")
-		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
-		return emptyCert, err
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
-		return emptyCert, err
-	}
-	certDER := block.Bytes
 
 	cert := core.Certificate{
 		DER: certDER,
 	}
-
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
-		hex.EncodeToString(certDER)))
 
 	var ocspResp []byte
 	if features.Enabled(features.GenerateOCSPEarly) {
@@ -526,4 +502,59 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	return cert, nil
+}
+
+// signCertificate signs a certificate. Given the same inputs, it must return
+// the same output, except that the signature value may differ (often
+// signatures have random nonces). In particular, any timestamps, serial
+// numbers, and any other certificate contents must already be fixed in csr and
+// req, and csr and req must not be modified by signCertificate. For example,
+// this means that CFSSL's ClientProvidesSerialNumbers setting must be set to
+// true. signCertificate intentionally avoids taking a pointer to the
+// CertificateAuthorityImpl to make it clearer what inputs it relies on, and to
+// make it clearer that it is a pure(-ish) deterministic(-ish) function of its
+// inputs. Critically, this assumes that CFSSL, Go's x509 library, and all other
+// things underlying this work in the deterministic way described here with
+// respect the the output being a deterministic(-ish) function of these inputs.
+//
+// signCertificate's secondary job is to ensure that the signed certificate is
+// added to the audit log ASAP after being signed so that there is a record of
+// everything signed by the CA's private key.
+func signCertificate(issuer *internalIssuer, csr x509.CertificateRequest, regID int64, req signer.SignRequest, log blog.Logger, stats metrics.Scope) ([]byte, error) {
+	emptyCertDER := []byte{}
+
+	serialHex := core.SerialToString(req.Serial)
+
+	log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
+
+	certPEM, err := issuer.eeSigner.Sign(req)
+	noteSignError(stats, err)
+	if err != nil {
+		err = berrors.InternalServerError("failed to sign certificate: %s", err)
+		log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
+		return emptyCertDER, err
+	}
+	stats.Inc("Signatures.Certificate", 1)
+
+	if len(certPEM) == 0 {
+		err = berrors.InternalServerError("no certificate returned by server")
+		log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
+		return emptyCertDER, err
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = berrors.InternalServerError("invalid certificate value returned")
+		log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
+		return emptyCertDER, err
+	}
+	certDER := block.Bytes
+
+	log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] cert=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
+		hex.EncodeToString(certDER)))
+
+	return certDER, nil
 }
