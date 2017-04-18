@@ -433,6 +433,10 @@ type Precertificate struct {
 	DER []byte `db:"der"`
 }
 
+type SCT struct {
+	Bytes []byte `db:"bytes"`
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
