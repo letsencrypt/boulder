@@ -37,8 +37,7 @@ func TestServerInterceptor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
-	stats := metrics.NewStatsdScope(statter, "fake", "gRPCServer")
-	si := serverInterceptor{stats, fc}
+	si := serverInterceptor{}
 
 	statter.EXPECT().Inc("fake.gRPCServer.NoInfo", int64(1), float32(1.0)).Return(nil)
 	_, err := si.intercept(context.Background(), nil, nil, testHandler)
@@ -64,8 +63,7 @@ func TestClientInterceptor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	statter := metrics.NewMockStatter(ctrl)
-	stats := metrics.NewStatsdScope(statter, "fake", "gRPCClient")
-	ci := clientInterceptor{stats, fc, time.Second}
+	ci := clientInterceptor{time.Second}
 
 	statter.EXPECT().Inc("fake.gRPCClient.service_test.Calls", int64(1), float32(1.0)).Return(nil)
 	statter.EXPECT().GaugeDelta("fake.gRPCClient.service_test.InProgress", int64(1), float32(1.0)).Return(nil)
@@ -99,7 +97,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 // timeout is reached, i.e. that FailFast is set to false.
 // https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
-	ci := &clientInterceptor{metrics.NewNoopScope(), clock.Default(), 100 * time.Millisecond}
+	ci := &clientInterceptor{100 * time.Millisecond}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),
@@ -119,24 +117,4 @@ func TestFailFastFalse(t *testing.T) {
 		t.Errorf("Chill failed fast, when FailFast should be disabled.")
 	}
 	_ = conn.Close()
-}
-
-func TestCleanMethod(t *testing.T) {
-	tests := []struct {
-		in           string
-		out          string
-		stripService bool
-	}{
-		{"-ServiceName-MethodName", "ServiceName_MethodName", false},
-		{"-ServiceName-MethodName", "MethodName", true},
-		{"--MethodName", "MethodName", true},
-		{"--MethodName", "MethodName", true},
-		{"MethodName", "MethodName", false},
-	}
-	for _, tc := range tests {
-		out := cleanMethod(tc.in, tc.stripService)
-		if out != tc.out {
-			t.Fatalf("cleanMethod didn't return the expected name: expected: %q, got: %q", tc.out, out)
-		}
-	}
 }
