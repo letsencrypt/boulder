@@ -496,7 +496,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
-		if !challenge.IsSaneForClientOffer() {
+		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
@@ -1011,8 +1011,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	// Double check before sending to VA
-	if !ch.IsSaneForValidation() {
-		err = berrors.MalformedError("response does not complete challenge")
+	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
+		err = berrors.MalformedError(cErr.Error())
 		return
 	}
 

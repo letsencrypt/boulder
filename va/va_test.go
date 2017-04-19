@@ -942,7 +942,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 			t.Errorf("Got wrong error type for %d: expected %s, got %s",
 				i, prob.Type, probs.MalformedProblem)
 		}
-		if !strings.Contains(prob.Error(), "Challenge failed sanity check.") {
+		if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
 			t.Errorf("Got wrong error: %s", prob.Error())
 		}
 	}
