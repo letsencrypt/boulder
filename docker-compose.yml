@@ -6,7 +6,7 @@ boulder:
         PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
         BOULDER_CONFIG_DIR: test/config
     volumes:
-      - $GOPATH:/go/
+      - .:/go/src/github.com/letsencrypt/boulder
       - /tmp:/tmp
     net: bridge
     extra_hosts:
