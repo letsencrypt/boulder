@@ -45,7 +45,7 @@ const (
 var (
 	validationTime = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "valiation_time",
+			Name: "validation_time",
 			Help: "Time taken to validate a challenge",
 		},
 		[]string{"type", "result"})
