@@ -972,39 +972,45 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
-	domains, err := domainsForRateLimiting([]string{})
+	domains, pslMatches, err := domainsForRateLimiting([]string{})
 	test.AssertNotError(t, err, "failed on empty")
 	test.AssertEquals(t, len(domains), 0)
+	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
+	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
 	test.AssertNotError(t, err, "failed on example.com")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
+	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
 	test.AssertNotError(t, err, "failed on example.co.uk")
 	test.AssertEquals(t, len(domains), 2)
 	test.AssertEquals(t, domains[0], "example.com")
 	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
+	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertNotError(t, err, "should not fail on public suffix")
-	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, len(domains), 2)
 	test.AssertEquals(t, domains[0], "example.com")
 	test.AssertEquals(t, domains[1], "example.co.uk")
-	test.AssertEquals(t, domains[2], "co.uk")
+	test.AssertEquals(t, len(pslMatches), 1)
+	test.AssertEquals(t, pslMatches[0], "co.uk")
 
-	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
+	domains, pslMatches, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
+	domains, pslMatches, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertNotError(t, err, "failed on public suffix private domain")
-	test.AssertEquals(t, len(domains), 3)
-	test.AssertEquals(t, domains[0], "github.io")
-	test.AssertEquals(t, domains[1], "foo.github.io")
-	test.AssertEquals(t, domains[2], "bar.github.io")
+	test.AssertEquals(t, len(domains), 2)
+	test.AssertEquals(t, domains[0], "foo.github.io")
+	test.AssertEquals(t, domains[1], "bar.github.io")
+	test.AssertEquals(t, len(pslMatches), 1)
+	test.AssertEquals(t, pslMatches[0], "github.io")
 }
 
 func TestRateLimitLiveReload(t *testing.T) {
@@ -1061,19 +1067,35 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 type mockSAWithNameCounts struct {
 	mocks.StorageAuthority
-	nameCounts map[string]int
-	t          *testing.T
-	clk        clock.FakeClock
+	nameCounts  map[string]int
+	exactCounts map[string]int
+	t           *testing.T
+	clk         clock.FakeClock
 }
 
 func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
 	if latest != m.clk.Now() {
-		m.t.Error("incorrect latest")
+		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
 	}
-	if earliest != m.clk.Now().Add(-23*time.Hour) {
-		m.t.Errorf("incorrect earliest")
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
+	if earliest != expectedEarliest {
+		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
 	}
 	return m.nameCounts, nil
+}
+
+func (m mockSAWithNameCounts) CountCertificatesByExactNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+	if latest != m.clk.Now() {
+		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
+	}
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
+	if earliest != expectedEarliest {
+		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
+	}
+	if m.exactCounts == nil {
+		m.exactCounts = make(map[string]int)
+	}
+	return m.exactCounts, nil
 }
 
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
@@ -1334,6 +1356,64 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	// comes into effect.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
 	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
+}
+
+// TestExactPublicSuffixCertLimit tests the behaviour of issue #2681 with and
+// without the feature flag for the fix enabled.
+// See https://github.com/letsencrypt/boulder/issues/2681
+func TestExactPublicSuffixCertLimit(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 2 certificates per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 2,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+	}
+
+	// Back the mock SA with counts as if so far we have issued the following
+	// certificates:
+	//   - test.dedyn.io (once)
+	//   - test2.dedyn.io (once)
+	//   - dynv6.net (twice)
+	mockSA := &mockSAWithNameCounts{
+		nameCounts: map[string]int{
+			"dedyn.io":       2,
+			"test.dedyn.io":  1,
+			"test2.dedyn.io": 1,
+			"test3.dedyn.io": 0,
+		},
+		exactCounts: map[string]int{
+			"dedyn.io":  0,
+			"dynv6.net": 2,
+		},
+		clk: fc,
+		t:   t,
+	}
+	ra.SA = mockSA
+
+	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should fail because the
+	// CountCertificatesExact feature flag isn't enabled and there have been two
+	// certificates issued for subdomains of dedyn.io
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Enable the CountCertificatesExact feature flag to allow the correct rate
+	// limiting for exact PSL entry domains
+	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
+	defer features.Reset()
+
+	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should succeed because
+	// test3.dedyn.io has no certificates and "dedyn.io" is an exact public suffix
+	// match with no certificates issued for it.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
+	// "dynv6.net" is an exact public suffic match with 2 certificates issued for
+	// it.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
 }
 
 func TestDeactivateAuthorization(t *testing.T) {
