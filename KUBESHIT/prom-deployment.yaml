@@ -1,0 +1,33 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: prom
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: prom
+    spec:
+      containers:
+      - args:
+        - -config.file
+        - /promconf/prometheus.yml
+        image: prom/prometheus
+        name: prom
+        ports:
+        - containerPort: 9090
+        resources: {}
+        volumeMounts:
+        - mountPath: /promconf/
+          name: prom-claim0
+      restartPolicy: Always
+      volumes:
+      - name: prom-claim0
+        persistentVolumeClaim:
+          claimName: prom-claim0
+status: {}

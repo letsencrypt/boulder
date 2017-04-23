@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: brabbitmq
+spec:
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: brabbitmq
+    spec:
+      containers:
+      - env:
+        - name: RABBITMQ_NODE_IP_ADDRESS
+          value: 0.0.0.0
+        image: rabbitmq:3
+        name: brabbitmq
+        resources: {}
+      restartPolicy: Always
+status: {}

@@ -1,0 +1,26 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: bmysql
+spec:
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: bmysql
+    spec:
+      containers:
+      - args:
+        - mysqld
+        - --bind-address=0.0.0.0
+        env:
+        - name: MYSQL_ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        image: mariadb:10.1
+        name: bmysql
+        resources: {}
+      restartPolicy: Always
+status: {}

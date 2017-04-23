@@ -1,0 +1,26 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: bhsm
+spec:
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: bhsm
+    spec:
+      containers:
+      - args:
+        - /usr/local/bin/pkcs11-daemon
+        - /usr/lib/softhsm/libsofthsm.so
+        env:
+        - name: PKCS11_DAEMON_SOCKET
+          value: tcp://0.0.0.0:5657
+        image: letsencrypt/boulder-tools:2017-02-20
+        name: bhsm
+        resources: {}
+      restartPolicy: Always
+status: {}
