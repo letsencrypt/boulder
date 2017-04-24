@@ -292,45 +292,42 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// IsSaneForClientOffer checks the fields of a challenge object before it is
+// CheckConsistencyForClientOffer checks the fields of a challenge object before it is
 // given to the client.
-//
-// This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSaneForClientOffer() bool {
-	return ch.IsSane(false)
+func (ch Challenge) CheckConsistencyForClientOffer() error {
+	if err := ch.checkConsistency(); err != nil {
+		return err
+	}
+
+	// Before completion, the key authorization field should be empty
+	if ch.ProvidedKeyAuthorization != "" {
+		return fmt.Errorf("A response to this challenge was already submitted.")
+	}
+	return nil
 }
 
-// IsSaneForValidation checks the fields of a challenge object before it is
+// CheckConsistencyForValidation checks the fields of a challenge object before it is
 // given to the VA.
-//
-// This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSaneForValidation() bool {
-	return ch.IsSane(true)
+func (ch Challenge) CheckConsistencyForValidation() error {
+	if err := ch.checkConsistency(); err != nil {
+		return err
+	}
+
+	// If the challenge is completed, then there should be a key authorization
+	return looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization)
 }
 
-// IsSane checks the sanity of a challenge object before issued to the client
-// (completed = false) and before validation (completed = true).
-func (ch Challenge) IsSane(completed bool) bool {
+// checkConsistency checks the sanity of a challenge object before issued to the client.
+func (ch Challenge) checkConsistency() error {
 	if ch.Status != StatusPending {
-		return false
+		return fmt.Errorf("The challenge is not pending.")
 	}
 
 	// There always needs to be a token
 	if !LooksLikeAToken(ch.Token) {
-		return false
+		return fmt.Errorf("The token is missing.")
 	}
-
-	// Before completion, the key authorization field should be empty
-	if !completed && ch.ProvidedKeyAuthorization != "" {
-		return false
-	}
-
-	// If the challenge is completed, then there should be a key authorization
-	if completed && looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization) != nil {
-		return false
-	}
-
-	return true
+	return nil
 }
 
 // Authorization represents the authorization of an account key holder

@@ -172,13 +172,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	if err == sql.ErrNoRows {
 		var fa authzModel
 		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
-		if err == sql.ErrNoRows {
-			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
-			err = Rollback(tx, err)
-			return
-		}
 		if err != nil {
-			err = Rollback(tx, err)
 			return
 		}
 		authz = fa.Authorization

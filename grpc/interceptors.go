@@ -54,12 +54,11 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 }
 
 // clientInterceptor is a gRPC interceptor that adds statsd and Prometheus
-// metrics to sent requests, and disables FailFast. We disable FailFast because
-// non-FailFast mode is most similar to the old AMQP RPC layer: If a client
-// makes a request while all backends are briefly down (e.g. for a restart), the
-// request doesn't necessarily fail. A backend can service the request if it
-// comes back up within the timeout. Under gRPC the same effect is achieved by
-// retries up to the Context deadline.
+// metrics to sent requests, and disables FailFast. We disable FailFast to
+// minimize disruption during restarts: if a client makes a request while
+// all backends are briefly down, the request doesn't necessarily fail. A
+// backend can service the request if it comes back up within the Context
+// deadline.
 type clientInterceptor struct {
 	stats   metrics.Scope
 	clk     clock.Clock
