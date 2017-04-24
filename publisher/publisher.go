@@ -215,7 +215,7 @@ func (pub *Impl) SubmitToSingleCT(
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs (AMQP RPC method).
+// logs configured in pub.CT.Logs.
 func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	for _, ctLog := range pub.ctLogs {
 		err := pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)

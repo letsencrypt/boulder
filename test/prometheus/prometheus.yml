@@ -5,6 +5,7 @@ scrape_configs:
   - job_name: 'boulder'
     static_configs:
       - targets:
+        - boulder:8000
         - boulder:8001
         - boulder:8002
         - boulder:8003

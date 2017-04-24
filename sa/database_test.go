@@ -75,14 +75,14 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=100ms", 1)
+	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", 1)
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
 	// SLEEP is defined to return 1 if it was interrupted, but we want to actually
 	// get an error to simulate what would happen with a slow query. So we wrap
 	// the SLEEP in a subselect.
-	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(1)) as subselect;`)
+	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
 	if err == nil {
 		t.Fatal("Expected error when running slow query, got none.")
 	}

@@ -45,7 +45,7 @@ const (
 var (
 	validationTime = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "valiation_time",
+			Name: "validation_time",
 			Help: "Time taken to validate a challenge",
 		},
 		[]string{"type", "result"})
@@ -642,8 +642,8 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, 
 }
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if !challenge.IsSaneForValidation() {
-		return nil, probs.Malformed("Challenge failed sanity check.")
+	if err := challenge.CheckConsistencyForValidation(); err != nil {
+		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
 	}
 	switch challenge.Type {
 	case core.ChallengeTypeHTTP01:
