@@ -6,14 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -27,10 +25,8 @@ func (s *errorServer) Chill(_ context.Context, _ *testproto.Time) (*testproto.Ti
 }
 
 func TestErrorWrapping(t *testing.T) {
-	fc := clock.NewFake()
-	stats := metrics.NewNoopScope()
-	si := serverInterceptor{stats, fc}
-	ci := clientInterceptor{stats, fc, time.Second}
+	si := serverInterceptor{}
+	ci := clientInterceptor{time.Second}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	es := &errorServer{}
 	testproto.RegisterChillerServer(srv, es)
