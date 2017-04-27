@@ -12,27 +12,6 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-func TestEndpointFromPath(t *testing.T) {
-	tc := []struct {
-		input, expected string
-	}{
-		{"/", "/"},
-		{"/acme", "/acme"},
-		{"/acme/new-authz", "/acme/new-authz"},
-		{"/acme/new-authz/", "/acme/new-authz/"},
-		{"/acme/authz/1234", "/acme/authz"},
-		{"/acme/authz/aGVsbG8K/1234", "/acme/authz"},
-		{"/directory?foo=bar", "/directory"},
-	}
-	for _, c := range tc {
-		output := endpointFromPath(c.input)
-		if output != c.expected {
-			t.Errorf("endpointFromPath(%q) = %q (expected %q)",
-				c.input, output, c.expected)
-		}
-	}
-}
-
 type sleepyHandler struct {
 	clk clock.FakeClock
 }
@@ -54,10 +33,12 @@ func TestMeasuring(t *testing.T) {
 		},
 		[]string{"endpoint", "method", "code"})
 
+	mux := http.NewServeMux()
+	mux.Handle("/foo", sleepyHandler{clk})
 	mh := MeasuredHandler{
-		Handler: sleepyHandler{clk},
-		clk:     clk,
-		stat:    stat,
+		ServeMux: mux,
+		clk:      clk,
+		stat:     stat,
 	}
 	mh.ServeHTTP(httptest.NewRecorder(), &http.Request{
 		URL:    &url.URL{Path: "/foo"},

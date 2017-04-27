@@ -26,24 +26,16 @@ func TestChallenges(t *testing.T) {
 	}
 
 	http01 := HTTPChallenge01()
-	if !http01.IsSane(false) {
-		t.Errorf("New http-01 challenge is not sane: %v", http01)
-	}
+	test.AssertNotError(t, http01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 	tlssni01 := TLSSNIChallenge01()
-	if !tlssni01.IsSane(false) {
-		t.Errorf("New tls-sni-01 challenge is not sane: %v", tlssni01)
-	}
+	test.AssertNotError(t, tlssni01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 	tlssni02 := TLSSNIChallenge02()
-	if !tlssni02.IsSane(false) {
-		t.Errorf("New tls-sni-02 challenge is not sane: %v", tlssni02)
-	}
+	test.AssertNotError(t, tlssni02.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 	dns01 := DNSChallenge01()
-	if !dns01.IsSane(false) {
-		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
-	}
+	test.AssertNotError(t, dns01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")

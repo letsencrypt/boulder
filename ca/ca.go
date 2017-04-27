@@ -34,6 +34,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -96,6 +97,19 @@ const (
 	// listed above
 	metricCSRExtensionOther = "CSRExtensions.Other"
 )
+
+var (
+	signatureCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose"})
+)
+
+func init() {
+	prometheus.MustRegister(signatureCount)
+}
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
@@ -365,7 +379,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
 	ca.noteSignError(err)
 	if err == nil {
-		ca.stats.Inc("Signatures.OCSP", 1)
+		signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
 	return ocspResponse, err
 }
@@ -460,7 +474,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-	ca.stats.Inc("Signatures.Certificate", 1)
+	signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")

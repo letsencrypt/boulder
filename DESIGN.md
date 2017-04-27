@@ -17,7 +17,7 @@ A couple of notes:
   (certificates), and read by WFE, RA, and CA.
 
 * The interactions shown in the diagrams are the calls that go between
-  components.  These calls are done via the AMQP-based RPC code in `./rpc/`.
+  components.  These calls are done via gRPC.
 
 * In various places the Boulder implementation of ACME diverges from the current
   RFC draft. These divergences are documented in [docs/acme-divergences.md](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md).

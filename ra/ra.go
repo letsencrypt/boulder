@@ -364,12 +364,11 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	// To implement this limit, we need to use an RPC that is defined only in
-	// gRPC, not in AMQP-RPC. So we check the underlying type of our SA client. If
-	// it corresponds to the gRPC client, we know we can use the gRPC-only method.
-	// Otherwise, we don't bother checking this limit.
-	saGRPC, usingGRPC := ra.SA.(*grpc.StorageAuthorityClientWrapper)
-	if !limit.Enabled() || !usingGRPC {
+	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
+	// interface, because we want to move towards using gRPC interfaces more
+	// directly. So we type-assert the wrapper to a gRPC-specific type.
+	saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+	if !limit.Enabled() || !ok {
 		return nil
 	}
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
@@ -496,7 +495,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
-		if !challenge.IsSaneForClientOffer() {
+		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
@@ -1011,8 +1010,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	// Double check before sending to VA
-	if !ch.IsSaneForValidation() {
-		err = berrors.MalformedError("response does not complete challenge")
+	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
+		err = berrors.MalformedError(cErr.Error())
 		return
 	}
 
