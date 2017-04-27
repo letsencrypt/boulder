@@ -82,21 +82,21 @@ function run_unit_tests() {
     all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' ${TESTPATHS} | sort | uniq)
     deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
     echo "go installing race detector enabled dependencies"
-    go install -race $deps
+    time go install -race $deps
 
     # Run each test by itself for Travis, so we can get coverage
     for path in ${TESTPATHS}; do
       dir=$(basename $path)
-      go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
+      time go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
     done
 
     # Gather all the coverprofiles
-    run gover
+    time run gover
 
     # We don't use the run function here because sometimes goveralls fails to
     # contact the server and exits with non-zero status, but we don't want to
     # treat that as a failure.
-    goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+    time goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
