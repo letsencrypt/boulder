@@ -728,22 +728,18 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 }
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
-// and a list of exact public suffic matches for the purpose of rate limiting.
-// It also de-duplicates the output domains.
-func domainsForRateLimiting(names []string) ([]string, []string, error) {
+// for the purpose of rate limiting. It also de-duplicates the output
+// domains. Exact public suffix matches are not included.
+func domainsForRateLimiting(names []string) ([]string, error) {
 	domainsMap := make(map[string]struct{}, len(names))
 	var domains []string
-	var exactPublicSuffixes []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
 		if err != nil {
 			// The only possible errors are:
 			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
-			//
-			// Assume (2) and add the domain to the `exactPublicSuffixes` result
-			exactPublicSuffixes = append(exactPublicSuffixes, name)
-			domainsMap[name] = struct{}{}
+			// We assume 2 and do not include it in the result.
 			continue
 		}
 		if _, ok := domainsMap[domain]; !ok {
@@ -751,7 +747,30 @@ func domainsForRateLimiting(names []string) ([]string, []string, error) {
 			domains = append(domains, domain)
 		}
 	}
-	return domains, exactPublicSuffixes, nil
+	return domains, nil
+}
+
+// suffixesForRateLimiting transforms a list of FQDNs into a list of exact
+// public suffix matches for the purpose of rate limiting. It also
+// de-duplicates the output domains. Domains that are not an exact match for a
+// public suffix are not included.
+func suffixesForRateLimiting(names []string) ([]string, error) {
+	domainsMap := make(map[string]struct{}, len(names))
+	var suffixMatches []string
+	for _, name := range names {
+		_, err := publicsuffix.Domain(name)
+		if err != nil {
+			// Like `domainsForRateLimiting`, the only possible errors here are:
+			// (1) publicsuffix.Domain is giving garbage values
+			// (2) the public suffix is the domain itself
+			// We assume 2 and collect it into the result
+			if _, ok := domainsMap[name]; !ok {
+				domainsMap[name] = struct{}{}
+				suffixMatches = append(suffixMatches, name)
+			}
+		}
+	}
+	return suffixMatches, nil
 }
 
 // certCountRPC abstracts the choice of the SA.CountCertificatesByExactNames or
@@ -790,7 +809,11 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	tldNames, exactPublicSuffixes, err := domainsForRateLimiting(names)
+	tldNames, err := domainsForRateLimiting(names)
+	if err != nil {
+		return err
+	}
+	exactPublicSuffixes, err := suffixesForRateLimiting(names)
 	if err != nil {
 		return err
 	}

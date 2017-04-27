@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 	jose "gopkg.in/square/go-jose.v1"
 
@@ -972,45 +973,63 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
-	domains, pslMatches, err := domainsForRateLimiting([]string{})
+	domains, err := domainsForRateLimiting([]string{})
 	test.AssertNotError(t, err, "failed on empty")
 	test.AssertEquals(t, len(domains), 0)
-	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
 	test.AssertNotError(t, err, "failed on example.com")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
-	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
 	test.AssertNotError(t, err, "failed on example.co.uk")
 	test.AssertEquals(t, len(domains), 2)
 	test.AssertEquals(t, domains[0], "example.com")
 	test.AssertEquals(t, domains[1], "example.co.uk")
-	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, pslMatches, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertNotError(t, err, "should not fail on public suffix")
 	test.AssertEquals(t, len(domains), 2)
 	test.AssertEquals(t, domains[0], "example.com")
 	test.AssertEquals(t, domains[1], "example.co.uk")
-	test.AssertEquals(t, len(pslMatches), 1)
-	test.AssertEquals(t, pslMatches[0], "co.uk")
 
-	domains, pslMatches, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
+	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
-	test.AssertEquals(t, len(pslMatches), 0)
 
-	domains, pslMatches, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
+	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertNotError(t, err, "failed on public suffix private domain")
 	test.AssertEquals(t, len(domains), 2)
 	test.AssertEquals(t, domains[0], "foo.github.io")
 	test.AssertEquals(t, domains[1], "bar.github.io")
-	test.AssertEquals(t, len(pslMatches), 1)
-	test.AssertEquals(t, pslMatches[0], "github.io")
+}
+
+func TestSuffixesForRateLimiting(t *testing.T) {
+	suffixes, err := suffixesForRateLimiting([]string{})
+	test.AssertNotError(t, err, "suffixiesForRateLimiting should not error with empty domains arg")
+	test.AssertEquals(t, len(suffixes), 0)
+
+	suffixes, err = suffixesForRateLimiting([]string{"www.example.com", "example.com"})
+	test.AssertNotError(t, err, "should not fail on no public suffixes")
+	test.AssertEquals(t, len(suffixes), 0)
+
+	suffixes, err = suffixesForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
+	test.AssertNotError(t, err, "should not fail on public suffix")
+	test.AssertEquals(t, len(suffixes), 1)
+	test.AssertEquals(t, suffixes[0], "co.uk")
+
+	suffixes, err = suffixesForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
+	test.AssertNotError(t, err, "failed on public suffix private domain")
+	test.AssertEquals(t, len(suffixes), 1)
+	test.AssertEquals(t, suffixes[0], "github.io")
+
+	suffixes, err = suffixesForRateLimiting([]string{"github.io", "foo.github.io", "www.example.com", "www.example.co.uk", "co.uk"})
+	test.AssertNotError(t, err, "failed on mix of public suffix private domain and public suffix")
+	test.AssertEquals(t, len(suffixes), 2)
+	test.AssertEquals(t, suffixes[0], "github.io")
+	test.AssertEquals(t, suffixes[1], "co.uk")
 }
 
 func TestRateLimitLiveReload(t *testing.T) {
@@ -1371,8 +1390,14 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
 	}
 
+	// We use "dedyn.io" domains for the test on the implicit assumption that
+	// this domain is present on the public suffix list. Quickly verify that this
+	// is true before continuing with the rest of the test.
+	_, err := publicsuffix.Domain("dedyn.io")
+	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
+
 	// Back the mock SA with counts as if so far we have issued the following
-	// certificates:
+	// certificates for the following domains:
 	//   - test.dedyn.io (once)
 	//   - test2.dedyn.io (once)
 	//   - dynv6.net (twice)
@@ -1395,7 +1420,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should fail because the
 	// CountCertificatesExact feature flag isn't enabled and there have been two
 	// certificates issued for subdomains of dedyn.io
-	err := ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
 
 	// Enable the CountCertificatesExact feature flag to allow the correct rate
