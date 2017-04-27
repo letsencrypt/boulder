@@ -416,7 +416,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
-// the countCertificatesByNames function subdomains are NOT considered.
+// countCertificatesByNames subdomains are NOT considered.
 //
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
