@@ -2,7 +2,6 @@ package ra
 
 import (
 	"crypto/x509"
-	"errors"
 	"expvar"
 	"fmt"
 	"net"
@@ -775,7 +774,7 @@ func suffixesForRateLimiting(names []string) ([]string, error) {
 
 // certCountRPC abstracts the choice of the SA.CountCertificatesByExactNames or
 // the SA.CountCertificatesByNames RPC.
-type certCountRPC func(ctx context.Context, names []string, earliest, lastest time.Time) (map[string]int, error)
+type certCountRPC func(ctx context.Context, names []string, earliest, lastest time.Time) ([]*sapb.CountByNames_MapElement, error)
 
 // enforceNameCounts uses the provided count RPC to find a count of certificates
 // for each of the names. If the count for any of the names exceeds the limit
@@ -796,13 +795,9 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 	}
 
 	var badNames []string
-	for _, name := range names {
-		count, ok := counts[name]
-		if !ok {
-			return nil, errors.New(fmt.Sprintf("missing count for %q", name))
-		}
-		if count >= limit.GetThreshold(name, regID) {
-			badNames = append(badNames, name)
+	for _, entry := range counts {
+		if int(*entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
+			badNames = append(badNames, *entry.Name)
 		}
 	}
 	return badNames, nil

@@ -34,6 +34,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
@@ -1086,13 +1087,13 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 type mockSAWithNameCounts struct {
 	mocks.StorageAuthority
-	nameCounts  map[string]int
-	exactCounts map[string]int
+	nameCounts  map[string]*sapb.CountByNames_MapElement
+	exactCounts map[string]*sapb.CountByNames_MapElement
 	t           *testing.T
 	clk         clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	if latest != m.clk.Now() {
 		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
 	}
@@ -1100,10 +1101,16 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, name
 	if earliest != expectedEarliest {
 		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
 	}
-	return m.nameCounts, nil
+	var results []*sapb.CountByNames_MapElement
+	for _, name := range names {
+		if entry, ok := m.nameCounts[name]; ok {
+			results = append(results, entry)
+		}
+	}
+	return results, nil
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByExactNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+func (m mockSAWithNameCounts) CountCertificatesByExactNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	if latest != m.clk.Now() {
 		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
 	}
@@ -1111,10 +1118,21 @@ func (m mockSAWithNameCounts) CountCertificatesByExactNames(ctx context.Context,
 	if earliest != expectedEarliest {
 		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
 	}
-	if m.exactCounts == nil {
-		m.exactCounts = make(map[string]int)
+	var results []*sapb.CountByNames_MapElement
+	for _, name := range names {
+		if entry, ok := m.exactCounts[name]; ok {
+			results = append(results, entry)
+		}
 	}
-	return m.exactCounts, nil
+	return results, nil
+}
+
+func nameCount(domain string, count int) *sapb.CountByNames_MapElement {
+	pbInt := int64(count)
+	return &sapb.CountByNames_MapElement{
+		Name:  &domain,
+		Count: &pbInt,
+	}
 }
 
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
@@ -1131,8 +1149,8 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 
 	mockSA := &mockSAWithNameCounts{
-		nameCounts: map[string]int{
-			"example.com": 1,
+		nameCounts: map[string]*sapb.CountByNames_MapElement{
+			"example.com": nameCount("example.com", 1),
 		},
 		clk: fc,
 		t:   t,
@@ -1145,7 +1163,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
 	// One base domain, above threshold
-	mockSA.nameCounts["example.com"] = 10
+	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	if !berrors.Is(err, berrors.RateLimit) {
@@ -1157,14 +1175,14 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
 
 	// Two base domains, one above threshold but with an override.
-	mockSA.nameCounts["example.com"] = 0
-	mockSA.nameCounts["bigissuer.com"] = 50
+	mockSA.nameCounts["example.com"] = nameCount("example.com", 0)
+	mockSA.nameCounts["bigissuer.com"] = nameCount("bigissuer.com", 50)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
 
 	// Two base domains, one above its override
-	mockSA.nameCounts["example.com"] = 0
-	mockSA.nameCounts["bigissuer.com"] = 100
+	mockSA.nameCounts["example.com"] = nameCount("example.com", 0)
+	mockSA.nameCounts["bigissuer.com"] = nameCount("bigissuer.com", 100)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	if !berrors.Is(err, berrors.RateLimit) {
@@ -1172,7 +1190,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 
 	// One base domain, above its override (which is below threshold)
-	mockSA.nameCounts["smallissuer.co.uk"] = 1
+	mockSA.nameCounts["smallissuer.co.uk"] = nameCount("smallissuer.co.uk", 1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	if !berrors.Is(err, berrors.RateLimit) {
@@ -1299,7 +1317,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
 	fqdnSet    map[string]bool
-	nameCounts map[string]int
+	nameCounts map[string]*sapb.CountByNames_MapElement
 	t          *testing.T
 }
 
@@ -1326,11 +1344,15 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 	return false, nil
 }
 
-// Return a map of domain -> certificate count. Note: This naive implementation
-// ignores names, earliest and latest parameters and always returns the same
-// nameCount map.
-func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
-	return m.nameCounts, nil
+// Return a map of domain -> certificate count.
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
+	var results []*sapb.CountByNames_MapElement
+	for _, name := range names {
+		if entry, ok := m.nameCounts[name]; ok {
+			results = append(results, entry)
+		}
+	}
+	return results, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
@@ -1352,9 +1374,9 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 
 	// Create a mock SA that has both name counts and an FQDN set
 	mockSA := &mockSAWithFQDNSet{
-		nameCounts: map[string]int{
-			"example.com": 100,
-			"zombo.com":   100,
+		nameCounts: map[string]*sapb.CountByNames_MapElement{
+			"example.com": nameCount("example.com", 100),
+			"zombo.com":   nameCount("zombo.com", 100),
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,
@@ -1390,11 +1412,13 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
 	}
 
-	// We use "dedyn.io" domains for the test on the implicit assumption that
-	// this domain is present on the public suffix list. Quickly verify that this
-	// is true before continuing with the rest of the test.
+	// We use "dedyn.io" and "dynv6.net" domains for the test on the implicit
+	// assumption that both domains are present on the public suffix list.
+	// Quickly verify that this is true before continuing with the rest of the test.
 	_, err := publicsuffix.Domain("dedyn.io")
 	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
+	_, err = publicsuffix.Domain("dynv6.net")
+	test.AssertError(t, err, "dynv6.net was not on the public suffix list, invaliding the test")
 
 	// Back the mock SA with counts as if so far we have issued the following
 	// certificates for the following domains:
@@ -1402,15 +1426,15 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	//   - test2.dedyn.io (once)
 	//   - dynv6.net (twice)
 	mockSA := &mockSAWithNameCounts{
-		nameCounts: map[string]int{
-			"dedyn.io":       2,
-			"test.dedyn.io":  1,
-			"test2.dedyn.io": 1,
-			"test3.dedyn.io": 0,
+		nameCounts: map[string]*sapb.CountByNames_MapElement{
+			"dedyn.io":       nameCount("dedyn.io", 2),
+			"test.dedyn.io":  nameCount("test.dedyn.io", 1),
+			"test2.dedyn.io": nameCount("test2.dedyn.io", 1),
+			"test3.dedyn.io": nameCount("test3.dedyn.io", 0),
 		},
-		exactCounts: map[string]int{
-			"dedyn.io":  0,
-			"dynv6.net": 2,
+		exactCounts: map[string]*sapb.CountByNames_MapElement{
+			"dedyn.io":  nameCount("dedyn.io", 0),
+			"dynv6.net": nameCount("dynv6.net", 2),
 		},
 		clk: fc,
 		t:   t,
