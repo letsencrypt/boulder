@@ -596,10 +596,7 @@ func (sas StorageAuthorityServerWrapper) CountCertificatesByExactNames(ctx conte
 		return nil, err
 	}
 
-	resp := &sapb.CountByNames{
-		CountByNames: byNames,
-	}
-	return resp, nil
+	return &sapb.CountByNames{CountByNames: byNames}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
