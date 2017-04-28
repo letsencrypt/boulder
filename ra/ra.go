@@ -796,6 +796,10 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 
 	var badNames []string
 	for _, entry := range counts {
+		// Should not happen, but be defensive.
+		if entry.Count == nil || entry.Name == nil {
+			return nil, fmt.Errorf("CountByNames_MapElement had nil Count or Name")
+		}
 		if int(*entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
 			badNames = append(badNames, *entry.Name)
 		}
