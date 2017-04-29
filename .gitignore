@@ -35,3 +35,4 @@ tags
 # IDE support files
 .idea
 
+protobuf-2.6.1/
