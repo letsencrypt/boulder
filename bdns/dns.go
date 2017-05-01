@@ -219,14 +219,12 @@ func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats m
 
 // exchangeOne performs a single DNS exchange with a randomly chosen server
 // out of the server list, returning the response, time, and error (if any).
-// This method sets the DNSSEC OK bit on the message to true before sending
-// it to the resolver in case validation isn't the resolvers default behaviour.
+// We assume that the upstream resolver requests and validates DNSSEC records
+// itself.
 func (dnsResolver *DNSResolverImpl) exchangeOne(ctx context.Context, hostname string, qtype uint16, msgStats metrics.Scope) (*dns.Msg, error) {
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
-	// Set DNSSEC OK bit for resolver
-	m.SetEdns0(4096, true)
 
 	if len(dnsResolver.servers) < 1 {
 		return nil, fmt.Errorf("Not configured with at least one DNS Server")
