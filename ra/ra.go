@@ -749,10 +749,8 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-// suffixesForRateLimiting transforms a list of FQDNs into a list of exact
-// public suffix matches for the purpose of rate limiting. It also
-// de-duplicates the output domains. Domains that are not an exact match for a
-// public suffix are not included.
+// suffixesForRateLimiting returns the unique subset of input names that are
+// exactly equal to a public suffix.
 func suffixesForRateLimiting(names []string) ([]string, error) {
 	domainsMap := make(map[string]struct{}, len(names))
 	var suffixMatches []string
