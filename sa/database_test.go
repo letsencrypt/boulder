@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -62,7 +63,28 @@ func TestNewDbMap(t *testing.T) {
 }
 
 func TestStrictness(t *testing.T) {
+
+	// Without the UsePrefixDB feature enabled the STRICT_ALL_TABLES option will
+	// not be speficied, and so we expect to see an error about the registration
+	// ID provided violating a foreign key constraint
 	dbMap, err := NewDbMap(vars.DBConnSA, 1)
+	_, err = dbMap.Exec(`insert into authz set
+		id="hi", identifier="foo", status="pending", combinations="combos",
+		registrationID=999999999999999999999999999;`)
+	if err == nil {
+		t.Fatal("Expected error when providing unsatisfied foreign key, got none.")
+	}
+	if !strings.Contains(err.Error(), "Cannot add or update a child row: a foreign key constraint fails") {
+		t.Fatalf("Got wrong type of error: %s", err)
+	}
+
+	// With the UsePrefixDB feature enabled the STRICT_ALL_TABLES option should be
+	// specified, and so we expect to see an error about the very large
+	// registration ID value instead of a foreign key error.
+	_ = features.Set(map[string]bool{"UsePrefixDB": true})
+	defer features.Reset()
+
+	dbMap, err = NewDbMap(vars.DBConnSA, 1)
 	_, err = dbMap.Exec(`insert into authz set
 		id="hi", identifier="foo", status="pending", combinations="combos",
 		registrationID=999999999999999999999999999;`)
@@ -75,6 +97,8 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
+	// First test without the UsePrefixDB feature enabled. The readTimeout
+	// provided will not be prefixed onto the DB connection.
 	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", 1)
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
@@ -87,10 +111,29 @@ func TestTimeouts(t *testing.T) {
 		t.Fatal("Expected error when running slow query, got none.")
 	}
 
+	// Without the timeout being respected a bad connection error occurs
+	if !strings.Contains(err.Error(), "driver: bad connection") {
+		t.Fatalf("Got wrong type of error when not using prefix DB: %s", err)
+	}
+
+	_ = features.Set(map[string]bool{"UsePrefixDB": true})
+	defer features.Reset()
+
+	// Now test with the UsePrefixDB feature enabled. The readTimeout
+	// provided should affect the created DB connection as intended.
+	dbMap, err = NewDbMap(vars.DBConnSA+"?readTimeout=1s", 1)
+	if err != nil {
+		t.Fatal("Error setting up DB:", err)
+	}
+	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
+	if err == nil {
+		t.Fatal("Expected error when running slow query, got none.")
+	}
+
 	// We expect to get:
 	// Error 1969: Query execution was interrupted (max_statement_time exceeded)
 	// https://mariadb.com/kb/en/mariadb/mariadb-error-codes/
 	if !strings.Contains(err.Error(), "Error 1969") {
-		t.Fatalf("Got wrong type of error: %s", err)
+		t.Fatalf("Got wrong type of error using prefix DB: %s", err)
 	}
 }
