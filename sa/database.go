@@ -88,7 +88,12 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		return nil, err
 	}
 	driverName := fmt.Sprintf("mysql-%d", driverNum)
-	sql.Register(driverName, prefixdb.New(prefix, mysql.MySQLDriver{}))
+
+	if features.Enabled(features.UsePrefixDB) {
+		sql.Register(driverName, prefixdb.New(prefix, mysql.MySQLDriver{}))
+	} else {
+		sql.Register(driverName, mysql.MySQLDriver{})
+	}
 
 	db, err := sqlOpen(driverName, config.FormatDSN())
 	if err != nil {
