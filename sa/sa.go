@@ -354,6 +354,18 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	return ret, nil
 }
 
+func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
+	ret := make(map[string]int, len(domains))
+	for _, domain := range domains {
+		currentCount, err := ssa.countCertificatesByExactName(domain, earliest, latest)
+		if err != nil {
+			return ret, err
+		}
+		ret[domain] = currentCount
+	}
+	return ret, nil
+}
+
 func reverseName(domain string) string {
 	labels := strings.Split(domain, ".")
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
@@ -379,6 +391,46 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 		`SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND notBefore > :earliest AND notBefore <= :latest
+		 LIMIT :limit;`,
+		map[string]interface{}{
+			"reversedDomain": reverseName(domain),
+			"earliest":       earliest,
+			"latest":         latest,
+			"limit":          max + 1,
+		})
+	if err == sql.ErrNoRows {
+		return 0, nil
+	} else if err != nil {
+		return -1, err
+	} else if count > max {
+		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
+	}
+	serialMap := make(map[string]struct{}, len(serials))
+	for _, s := range serials {
+		serialMap[s.Serial] = struct{}{}
+	}
+
+	return len(serialMap), nil
+}
+
+// countCertificatesByExactNames returns, for a single domain, the count of
+// certificates issued in the given time range for that domain. In contrast to
+// the countCertificatesByNames function subdomains are NOT considered.
+//
+// The highest count this function can return is 10,000. If there are more
+// certificates than that matching one of the provided domain names, it will return
+// TooManyCertificatesError.
+func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earliest, latest time.Time) (int, error) {
+	var count int64
+	const max = 10000
+	var serials []struct {
+		Serial string
+	}
+	_, err := ssa.dbMap.Select(
+		&serials,
+		`SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain)
 		 AND notBefore > :earliest AND notBefore <= :latest
 		 LIMIT :limit;`,
 		map[string]interface{}{

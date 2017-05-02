@@ -189,6 +189,36 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Co
 	return names, nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountCertificatesByExactNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		Names: domains,
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if response == nil || response.CountByNames == nil {
+		return nil, errIncompleteResponse
+	}
+
+	names := make(map[string]int, len(response.CountByNames))
+	for _, element := range response.CountByNames {
+		if element == nil || element.Name == nil || element.Count == nil {
+			return nil, errIncompleteResponse
+		}
+		names[*element.Name] = int(*element.Count)
+	}
+
+	return names, nil
+}
+
 func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()

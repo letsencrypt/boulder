@@ -102,6 +102,7 @@ type StorageGetter interface {
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
 	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
+	CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
