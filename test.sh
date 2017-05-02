@@ -10,7 +10,7 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet fmt migrations unit integration errcheck}
+RUN=${RUN:-vet fmt migrations unit coverage integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.
@@ -74,29 +74,10 @@ function die() {
 
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
-
-    # The deps variable is the imports of the packages under test that
-    # are not stdlib packages. We can then install them with the race
-    # detector enabled to prevent our individual `go test` calls from
-    # building them multiple times.
-    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' ${TESTPATHS} | sort | uniq)
-    deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
-    echo "go installing race detector enabled dependencies"
-    go install -race $deps
-
-    # Run each test by itself for Travis, so we can get coverage
-    for path in ${TESTPATHS}; do
-      dir=$(basename $path)
-      go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
-    done
-
-    # Gather all the coverprofiles
-    run gover
-
-    # We don't use the run function here because sometimes goveralls fails to
-    # contact the server and exits with non-zero status, but we don't want to
-    # treat that as a failure.
-    goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+    # Run the full suite of tests once with the -race flag. Since this isn't
+    # running tests individually we can't collect coverage information.
+    echo "running test suite with race detection"
+    go test -race -p 1 ${TESTPATHS}
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -107,6 +88,26 @@ function run_unit_tests() {
     # https://github.com/letsencrypt/boulder/issues/1499
     run go test -p 1 $GOTESTFLAGS ${TESTPATHS}
   fi
+}
+
+function run_test_coverage() {
+  # Run each test by itself for Travis, so we can get coverage. We skip using
+  # the -race flag here because we have already done a full test run with
+  # -race in `run_unit_tests` and it adds substantial overhead to run every
+  # test with -race independently
+  echo "running test suite with coverage enabled and without race detection"
+  for path in ${TESTPATHS}; do
+    dir=$(basename $path)
+    go test -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
+  done
+
+  # Gather all the coverprofiles
+  run gover
+
+  # We don't use the run function here because sometimes goveralls fails to
+  # contact the server and exits with non-zero status, but we don't want to
+  # treat that as a failure.
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
 }
 
 #
@@ -165,6 +166,13 @@ if [[ "$RUN" =~ "unit" ]] ; then
     echo "--------------------------------------------------"
     exit ${FAILURE}
   fi
+fi
+
+#
+# Unit Test Coverage.
+#
+if [[ "$RUN" =~ "coverage" ]] ; then
+  run_test_coverage
 fi
 
 #
