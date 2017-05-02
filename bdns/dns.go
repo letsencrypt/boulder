@@ -271,6 +271,9 @@ func (dnsResolver *DNSResolverImpl) exchangeOne(ctx context.Context, hostname st
 				}
 			} else {
 				msgStats.Inc("Successes", 1)
+				if r.m.AuthenticatedData {
+					msgStats.Inc("Authenticated", 1)
+				}
 			}
 			return r.m, r.err
 		}
