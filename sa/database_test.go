@@ -81,7 +81,7 @@ func TestStrictness(t *testing.T) {
 	// With the UsePrefixDB feature enabled the STRICT_ALL_TABLES option should be
 	// specified, and so we expect to see an error about the very large
 	// registration ID value instead of a foreign key error.
-	features.Set(map[string]bool{"UsePrefixDB": true})
+	_ = features.Set(map[string]bool{"UsePrefixDB": true})
 	defer features.Reset()
 
 	dbMap, err = NewDbMap(vars.DBConnSA, 1)
@@ -116,7 +116,7 @@ func TestTimeouts(t *testing.T) {
 		t.Fatalf("Got wrong type of error when not using prefix DB: %s", err)
 	}
 
-	features.Set(map[string]bool{"UsePrefixDB": true})
+	_ = features.Set(map[string]bool{"UsePrefixDB": true})
 	defer features.Reset()
 
 	// Now test with the UsePrefixDB feature enabled. The readTimeout
