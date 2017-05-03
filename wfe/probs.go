@@ -25,7 +25,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.RateLimit:
 		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case berrors.InternalServer, berrors.TooManyRequests:
+	case berrors.InternalServer:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
 		return probs.ServerInternal(msg)

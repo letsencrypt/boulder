@@ -13,7 +13,6 @@ const (
 	NotFound
 	SignatureValidation
 	RateLimit
-	TooManyRequests
 	RejectedIdentifier
 	UnsupportedIdentifier
 	InvalidEmail
@@ -73,10 +72,6 @@ func SignatureValidationError(msg string, args ...interface{}) error {
 
 func RateLimitError(msg string, args ...interface{}) error {
 	return New(RateLimit, msg, args...)
-}
-
-func TooManyRequestsError(msg string, args ...interface{}) error {
-	return New(TooManyRequests, msg, args...)
 }
 
 func RejectedIdentifierError(msg string, args ...interface{}) error {
