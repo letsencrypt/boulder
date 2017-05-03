@@ -31,8 +31,6 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.ServerInternal(msg)
 	case berrors.RejectedIdentifier:
 		return probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
-	case berrors.UnsupportedIdentifier:
-		return probs.UnsupportedIdentifier(msg)
 	case berrors.InvalidEmail:
 		return probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
 	default:

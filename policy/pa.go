@@ -141,8 +141,9 @@ var (
 	errTooFewLabels        = berrors.MalformedError("DNS name does not have enough labels")
 	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
 	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
-	errIDNNotSupported     = berrors.UnsupportedIdentifierError("Internationalized domain names (starting with xn--) not yet supported")
-	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
+	// TODO(@cpu): Delete `errIDNNotSupported` when IDNASupport feature flag is removed.
+	errIDNNotSupported = berrors.MalformedError("Internationalized domain names (starting with xn--) not yet supported")
+	errMalformedIDN    = berrors.MalformedError("DNS label contains malformed punycode")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided

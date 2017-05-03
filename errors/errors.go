@@ -13,7 +13,6 @@ const (
 	NotFound
 	RateLimit
 	RejectedIdentifier
-	UnsupportedIdentifier
 	InvalidEmail
 	ConnectionFailure
 )
@@ -71,10 +70,6 @@ func RateLimitError(msg string, args ...interface{}) error {
 
 func RejectedIdentifierError(msg string, args ...interface{}) error {
 	return New(RejectedIdentifier, msg, args...)
-}
-
-func UnsupportedIdentifierError(msg string, args ...interface{}) error {
-	return New(UnsupportedIdentifier, msg, args...)
 }
 
 func InvalidEmailError(msg string, args ...interface{}) error {
