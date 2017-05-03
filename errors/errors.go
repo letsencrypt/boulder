@@ -11,7 +11,6 @@ const (
 	Malformed
 	Unauthorized
 	NotFound
-	SignatureValidation
 	RateLimit
 	RejectedIdentifier
 	UnsupportedIdentifier
@@ -64,10 +63,6 @@ func UnauthorizedError(msg string, args ...interface{}) error {
 
 func NotFoundError(msg string, args ...interface{}) error {
 	return New(NotFound, msg, args...)
-}
-
-func SignatureValidationError(msg string, args ...interface{}) error {
-	return New(SignatureValidation, msg, args...)
 }
 
 func RateLimitError(msg string, args ...interface{}) error {

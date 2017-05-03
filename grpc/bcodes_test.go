@@ -21,7 +21,6 @@ func TestErrors(t *testing.T) {
 		{core.UnauthorizedError("test 3"), UnauthorizedError},
 		{core.NotFoundError("test 4"), NotFoundError},
 		{core.LengthRequiredError("test 5"), LengthRequiredError},
-		{core.SignatureValidationError("test 6"), SignatureValidationError},
 		{core.RateLimitedError("test 7"), RateLimitedError},
 		{core.BadNonceError("test 8"), BadNonceError},
 		{core.NoSuchRegistrationError("test 9"), NoSuchRegistrationError},

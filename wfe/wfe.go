@@ -96,6 +96,13 @@ type WebFrontEndImpl struct {
 	AllowAuthzDeactivation bool
 }
 
+// signatureValidationError indicates that the user's signature could not
+// be verified, either through adversarial activity, or misconfiguration of
+// the user client.
+type signatureValidationError string
+
+func (e signatureValidationError) Error() string { return string(e) }
+
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
 	stats metrics.Scope,
