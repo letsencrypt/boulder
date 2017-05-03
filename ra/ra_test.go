@@ -986,14 +986,14 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
 	test.AssertNotError(t, err, "failed on example.co.uk")
 	test.AssertEquals(t, len(domains), 2)
-	test.AssertEquals(t, domains[0], "example.com")
-	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, domains[0], "example.co.uk")
+	test.AssertEquals(t, domains[1], "example.com")
 
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertNotError(t, err, "should not fail on public suffix")
 	test.AssertEquals(t, len(domains), 2)
-	test.AssertEquals(t, domains[0], "example.com")
-	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, domains[0], "example.co.uk")
+	test.AssertEquals(t, domains[1], "example.com")
 
 	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
@@ -1003,8 +1003,8 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertNotError(t, err, "failed on public suffix private domain")
 	test.AssertEquals(t, len(domains), 2)
-	test.AssertEquals(t, domains[0], "foo.github.io")
-	test.AssertEquals(t, domains[1], "bar.github.io")
+	test.AssertEquals(t, domains[0], "bar.github.io")
+	test.AssertEquals(t, domains[1], "foo.github.io")
 }
 
 func TestSuffixesForRateLimiting(t *testing.T) {
@@ -1029,8 +1029,8 @@ func TestSuffixesForRateLimiting(t *testing.T) {
 	suffixes, err = suffixesForRateLimiting([]string{"github.io", "foo.github.io", "www.example.com", "www.example.co.uk", "co.uk"})
 	test.AssertNotError(t, err, "failed on mix of public suffix private domain and public suffix")
 	test.AssertEquals(t, len(suffixes), 2)
-	test.AssertEquals(t, suffixes[0], "github.io")
-	test.AssertEquals(t, suffixes[1], "co.uk")
+	test.AssertEquals(t, suffixes[0], "co.uk")
+	test.AssertEquals(t, suffixes[1], "github.io")
 }
 
 func TestRateLimitLiveReload(t *testing.T) {
