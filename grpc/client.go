@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -30,7 +29,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, stats metrics.Scope) 
 
 	grpc_prometheus.EnableClientHandlingTimeHistogram()
 
-	ci := clientInterceptor{stats.NewScope("gRPCClient"), clock.Default(), c.Timeout.Duration}
+	ci := clientInterceptor{c.Timeout.Duration}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
