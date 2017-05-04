@@ -729,7 +729,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 // for the purpose of rate limiting. It also de-duplicates the output
 // domains. Exact public suffix matches are not included.
 func domainsForRateLimiting(names []string) ([]string, error) {
-	domainsMap := make(map[string]struct{}, len(names))
 	var domains []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
@@ -740,18 +739,14 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 			// We assume 2 and do not include it in the result.
 			continue
 		}
-		if _, ok := domainsMap[domain]; !ok {
-			domainsMap[domain] = struct{}{}
-			domains = append(domains, domain)
-		}
+		domains = append(domains, domain)
 	}
-	return domains, nil
+	return core.UniqueLowerNames(domains), nil
 }
 
 // suffixesForRateLimiting returns the unique subset of input names that are
 // exactly equal to a public suffix.
 func suffixesForRateLimiting(names []string) ([]string, error) {
-	domainsMap := make(map[string]struct{}, len(names))
 	var suffixMatches []string
 	for _, name := range names {
 		_, err := publicsuffix.Domain(name)
@@ -760,13 +755,10 @@ func suffixesForRateLimiting(names []string) ([]string, error) {
 			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
 			// We assume 2 and collect it into the result
-			if _, ok := domainsMap[name]; !ok {
-				domainsMap[name] = struct{}{}
-				suffixMatches = append(suffixMatches, name)
-			}
+			suffixMatches = append(suffixMatches, name)
 		}
 	}
-	return suffixMatches, nil
+	return core.UniqueLowerNames(suffixMatches), nil
 }
 
 // certCountRPC abstracts the choice of the SA.CountCertificatesByExactNames or
