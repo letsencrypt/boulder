@@ -20,6 +20,9 @@ const (
 	UseAIAIssuerURL
 	AllowTLS02Challenges
 	GenerateOCSPEarly
+	// For new-authz requests, if there is no valid authz, but there is a pending
+	// authz, return that instead of creating a new one.
+	ReusePendingAuthz
 )
 
 // List of features and their default value, protected by fMu
@@ -33,6 +36,7 @@ var features = map[FeatureFlag]bool{
 	UseAIAIssuerURL:          false,
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
+	ReusePendingAuthz:        false,
 }
 
 var fMu = new(sync.RWMutex)
