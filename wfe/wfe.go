@@ -272,6 +272,9 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
+		if features.Enabled(features.GreaseDirectory) && v == "grease" {
+			continue
+		}
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 
@@ -372,6 +375,9 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		// encounter a directory containing elements they don't expect so we gate adding the key-change
 		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
 		directoryEndpoints["key-change"] = rolloverPath
+	}
+	if features.Enabled(features.GreaseDirectory) {
+		directoryEndpoints[core.RandomString(8)] = "grease"
 	}
 
 	response.Header().Set("Content-Type", "application/json")
