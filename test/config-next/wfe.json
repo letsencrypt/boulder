@@ -32,7 +32,8 @@
     "features": {
       "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
-      "UseAIAIssuerURL": true
+      "UseAIAIssuerURL": true,
+      "GreaseDirectory": true
     }
   },
 
