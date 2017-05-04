@@ -21,7 +21,7 @@ const (
 	AllowTLS02Challenges
 	GenerateOCSPEarly
 	CountCertificatesExact
-	GreaseDirectory
+	RandomDirectoryEntry
 )
 
 // List of features and their default value, protected by fMu
@@ -36,7 +36,7 @@ var features = map[FeatureFlag]bool{
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
 	CountCertificatesExact:   false,
-	GreaseDirectory:          false,
+	RandomDirectoryEntry:     false,
 }
 
 var fMu = new(sync.RWMutex)
