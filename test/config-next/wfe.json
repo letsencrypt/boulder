@@ -33,7 +33,7 @@
       "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,
-      "GreaseDirectory": true
+      "RandomDirectoryEntry": true
     }
   },
 
