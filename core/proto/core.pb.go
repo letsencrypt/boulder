@@ -114,8 +114,11 @@ type ValidationRecord struct {
 	AddressUsed       []byte   `protobuf:"bytes,4,opt,name=addressUsed" json:"addressUsed,omitempty"`
 	Authorities       []string `protobuf:"bytes,5,rep,name=authorities" json:"authorities,omitempty"`
 	Url               *string  `protobuf:"bytes,6,opt,name=url" json:"url,omitempty"`
-	AddressesTried    [][]byte `protobuf:"bytes,7,rep,name=addressesTried" json:"addressesTried,omitempty"`
-	XXX_unrecognized  []byte   `json:"-"`
+	// A list of addresses tried before the address used (see
+	// core/objects.go and the comment on the ValidationRecord structure
+	// definition for more information.
+	AddressesTried   [][]byte `protobuf:"bytes,7,rep,name=addressesTried" json:"addressesTried,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
 }
 
 func (m *ValidationRecord) Reset()                    { *m = ValidationRecord{} }
