@@ -21,6 +21,7 @@ const (
 	AllowTLS02Challenges
 	GenerateOCSPEarly
 	CountCertificatesExact
+	RandomDirectoryEntry
 	IPv6First
 )
 
@@ -36,6 +37,7 @@ var features = map[FeatureFlag]bool{
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
 	CountCertificatesExact:   false,
+	RandomDirectoryEntry:     false,
 	IPv6First:                false,
 }
 
