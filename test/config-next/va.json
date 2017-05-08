@@ -28,7 +28,8 @@
       "ServerURL": "http://boulder:6000"
     },
     "features": {
-      "GoogleSafeBrowsingV4": true
+      "GoogleSafeBrowsingV4": true,
+      "IPv6First": true
     }
   },
 

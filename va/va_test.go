@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -30,8 +31,10 @@ import (
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -86,15 +89,13 @@ const rejectUserAgent = "rejectMe"
 
 func httpSrv(t *testing.T, token string) *httptest.Server {
 	m := http.NewServeMux()
+
 	server := httptest.NewUnstartedServer(m)
 
 	defaultToken := token
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
-			t.Errorf("Bad Host header: " + r.Host)
-		}
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("HTTPSRV: Got a 404 req\n")
 			http.NotFound(w, r)
@@ -1116,4 +1117,207 @@ func TestParseResults(t *testing.T) {
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
 	test.AssertNotError(t, err, "no error should be returned")
+}
+
+func TestAvailableAddresses(t *testing.T) {
+	v6a := net.ParseIP("::1")
+	v6b := net.ParseIP("2001:db8::2:1") // 2001:DB8 is reserved for docs (RFC 3849)
+	v4a := net.ParseIP("127.0.0.1")
+	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
+
+	testcases := []struct {
+		input core.ValidationRecord
+		v4    []net.IP
+		v6    []net.IP
+	}{
+		// An empty validation record
+		{
+			core.ValidationRecord{},
+			[]net.IP{},
+			[]net.IP{},
+		},
+		// A validation record with one IPv4 address
+		{
+			core.ValidationRecord{
+				AddressesResolved: []net.IP{v4a},
+			},
+			[]net.IP{v4a},
+			[]net.IP{},
+		},
+		// A dual homed record with an IPv4 and IPv6 address
+		{
+			core.ValidationRecord{
+				AddressesResolved: []net.IP{v4a, v6a},
+			},
+			[]net.IP{v4a},
+			[]net.IP{v6a},
+		},
+		// The same as above but with the v4/v6 order flipped
+		{
+			core.ValidationRecord{
+				AddressesResolved: []net.IP{v6a, v4a},
+			},
+			[]net.IP{v4a},
+			[]net.IP{v6a},
+		},
+		// A validation record with just IPv6 addresses
+		{
+			core.ValidationRecord{
+				AddressesResolved: []net.IP{v6a, v6b},
+			},
+			[]net.IP{},
+			[]net.IP{v6a, v6b},
+		},
+		// A validation record with interleaved IPv4/IPv6 records
+		{
+			core.ValidationRecord{
+				AddressesResolved: []net.IP{v6a, v4a, v6b, v4b},
+			},
+			[]net.IP{v4a, v4b},
+			[]net.IP{v6a, v6b},
+		},
+	}
+
+	for _, tc := range testcases {
+		// Split the input record into v4/v6 addresses
+		v4result, v6result := availableAddresses(tc.input)
+
+		// Test that we got the right number of v4 results
+		test.Assert(t, len(tc.v4) == len(v4result),
+			fmt.Sprintf("Wrong # of IPv4 results: expected %d, got %d", len(tc.v4), len(v4result)))
+
+		// Check that all of the v4 results match expected values
+		for i, v4addr := range tc.v4 {
+			test.Assert(t, v4addr.String() == v4result[i].String(),
+				fmt.Sprintf("Wrong v4 result index %d: expected %q got %q", i, v4addr.String(), v4result[i].String()))
+		}
+
+		// Test that we got the right number of v6 results
+		test.Assert(t, len(tc.v6) == len(v6result),
+			fmt.Sprintf("Wrong # of IPv6 results: expected %d, got %d", len(tc.v6), len(v6result)))
+
+		// Check that all of the v6 results match expected values
+		for i, v6addr := range tc.v6 {
+			test.Assert(t, v6addr.String() == v6result[i].String(),
+				fmt.Sprintf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String()))
+		}
+	}
+}
+
+func TestFallbackDialer(t *testing.T) {
+	// Create a test VA
+	va, _, _ := setup()
+
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	// Figure out what port the test server is on, and configure the VA to use
+	// that for HTTP challenges
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va.httpPort = port
+
+	// Create an identifier for a host that has an IPv6 and an IPv4 address.
+	// Since the IPv6First feature flag is not enabled we expect that the IPv4
+	// address will be used and validation will succeed using the httpSrv we
+	// created earlier.
+	host := "ipv4.and.ipv6.localhost"
+	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
+	records, prob := va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob == nil, "validation failed for an dual homed host with IPv6First disabled")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address used was the IPv4 address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
+	// We expect that zero addresses were tried before the address used
+	test.AssertEquals(t, len(records[0].AddressesTried), 0)
+
+	// Enable the IPv6 First feature
+	_ = features.Set(map[string]bool{"IPv6First": true})
+	defer features.Reset()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	scope := mock_metrics.NewMockScope(ctrl)
+	va.stats = scope
+
+	// We expect the IPV4 Fallback stat to be incremented
+	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+
+	// The validation is expected to succeed with IPv6First enabled even though
+	// the V6 server doesn't exist because we fallback to the IPv4 address.
+	records, prob = va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address used was the IPv4 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
+	// We expect that one address was tried before the address used
+	test.AssertEquals(t, len(records[0].AddressesTried), 1)
+	// We expect that IPv6 address was tried before the address used
+	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
+}
+
+func TestFallbackTLS(t *testing.T) {
+	// Create a test VA
+	va, _, _ := setup()
+
+	// Create a new challenge to use for the httpSrv
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+
+	// Create a TLS SNI 01 test server, this will be bound on 127.0.0.1 (e.g. IPv4
+	// only!)
+	hs := tlssni01Srv(t, chall)
+	defer hs.Close()
+
+	// Figure out what port the test server is on, and configure the VA to use
+	// that for TLS challenges
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	va.tlsPort = port
+
+	// Create an identifier for a host that has an IPv6 and an IPv4 address.
+	// Since the IPv6First feature flag is not enabled we expect that the IPv4
+	// address will be used and validation will succeed using the httpSrv we
+	// created earlier.
+	host := "ipv4.and.ipv6.localhost"
+	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
+	records, prob := va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob == nil, "validation failed for a dual-homed address with an IPv4 server")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address used was the IPv4 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
+	// We expect that no addresses were tried before the address used
+	test.AssertEquals(t, len(records[0].AddressesTried), 0)
+
+	// Enable the IPv6 First feature
+	_ = features.Set(map[string]bool{"IPv6First": true})
+	defer features.Reset()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	scope := mock_metrics.NewMockScope(ctrl)
+	va.stats = scope
+
+	// We expect the IPV4 Fallback stat to be incremented
+	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+
+	// The validation is expected to succeed now that IPv6First is enabled by the
+	// fallback to the IPv4 address that has a test server waiting
+	records, prob = va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address eventually used was the IPv4 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
+	// We expect that one address was tried before the address used
+	test.AssertEquals(t, len(records[0].AddressesTried), 1)
+	// We expect that IPv6 localhost address was tried before the address used
+	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
 }
