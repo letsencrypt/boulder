@@ -411,6 +411,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addr,
+			Port:              strconv.Itoa(va.tlsPort),
 		},
 	}
 	if problem != nil {
@@ -418,27 +419,52 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	}
 	thisRecord := &validationRecords[0]
 
-	// Make a connection with SNI = nonceName
-	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(addr.String(), portString)
-	thisRecord.Port = portString
+	// Split the available addresses into v4 and v6 addresses
+	v4, v6 := availableAddresses(*thisRecord)
 
-	certs, problem := va.getTLSSNICerts(hostPort, identifier, challenge, zName)
-
-	// If there was a problem getting the certificates and the IPv6 first feature
-	// is enabled, then try to fetch the certificates again using a fallback
-	// address
-	if problem != nil && features.Enabled(features.IPv6First) {
-		if fallback := fallbackAddress(*thisRecord); fallback != nil {
-			thisRecord.AddressesTried = append(thisRecord.AddressesTried, thisRecord.AddressUsed)
-			hostPort = net.JoinHostPort(fallback.String(), portString)
-			thisRecord.AddressUsed = fallback
-			va.stats.Inc("IPv4Fallback", 1)
-			certs, problem = va.getTLSSNICerts(hostPort, identifier, challenge, zName)
+	// If the IPv6 first feature isn't enabled then combine available IPv4 and
+	// IPv6 addresses and connect to the first IP in the combined list
+	if !features.Enabled(features.IPv6First) {
+		addresses := append(v4, v6...)
+		// This shouldn't happen, but be defensive about it anyway
+		if len(addresses) < 1 {
+			return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
 		}
+		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
+		thisRecord.AddressUsed = addresses[0]
+		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+		return certs, validationRecords, err
 	}
 
-	return certs, validationRecords, problem
+	// If the IPv6 first feature is enabled and there is at least one IPv6 address
+	// then try it first
+	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
+		thisRecord.AddressUsed = v6[0]
+
+		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+
+		// If there is no error, return immediately
+		if err == nil {
+			return certs, validationRecords, err
+		}
+
+		// Otherwise, we note that we tried an address and fall back to trying IPv4
+		thisRecord.AddressesTried = append(thisRecord.AddressesTried, thisRecord.AddressUsed)
+		va.stats.Inc("IPv4Fallback", 1)
+	}
+
+	// This shouldn't happen, but be defensive about it anyway
+	if len(v4) < 1 {
+		return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
+	}
+
+	// Otherwise if there are no IPv6 addresses, or there was an error
+	// talking to the first IPv6 address, try the first IPv4 address
+	address := net.JoinHostPort(v4[0].String(), thisRecord.Port)
+	thisRecord.AddressUsed = v4[0]
+	certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+	return certs, validationRecords, err
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {

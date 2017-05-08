@@ -1336,19 +1336,18 @@ func TestFallbackTLS(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	va.tlsPort = port
 
-	// Create an identifier for a host that has an IPv6 and an IPv4 address. Since
-	// there's no server listening on the IPv6 host we expect that the initial
-	// request will fail. Without the IPv6First feature enabled this will mean the
-	// validation is expected to fail.
+	// Create an identifier for a host that has an IPv6 and an IPv4 address.
+	// Since the IPv6First feature flag is not enabled we expect that the IPv4
+	// address will be used and validation will succeed using the httpSrv we
+	// created earlier.
 	host := "ipv4.and.ipv6.localhost"
 	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
 	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob != nil, "validation succeeded for an IPv6 address without a server")
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.Assert(t, prob == nil, "validation failed for a dual-homed address with an IPv4 server")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv6 localhost address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "::1")
+	// We expect that the address used was the IPv4 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
 	// We expect that no addresses were tried before the address used
 	test.AssertEquals(t, len(records[0].AddressesTried), 0)
 
