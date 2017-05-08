@@ -22,6 +22,7 @@ const (
 	GenerateOCSPEarly
 	CountCertificatesExact
 	RandomDirectoryEntry
+	IPv6First
 )
 
 // List of features and their default value, protected by fMu
@@ -37,6 +38,7 @@ var features = map[FeatureFlag]bool{
 	GenerateOCSPEarly:        false,
 	CountCertificatesExact:   false,
 	RandomDirectoryEntry:     false,
+	IPv6First:                false,
 }
 
 var fMu = new(sync.RWMutex)
