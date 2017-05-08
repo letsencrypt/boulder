@@ -96,6 +96,13 @@ type WebFrontEndImpl struct {
 	AllowAuthzDeactivation bool
 }
 
+// signatureValidationError indicates that the user's signature could not
+// be verified, either through adversarial activity, or misconfiguration of
+// the user client.
+type signatureValidationError string
+
+func (e signatureValidationError) Error() string { return string(e) }
+
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
 	stats metrics.Scope,
@@ -255,6 +262,8 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 	return result
 }
 
+const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
+
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
@@ -265,6 +274,9 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
+		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
+			continue
+		}
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 
@@ -365,6 +377,13 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		// encounter a directory containing elements they don't expect so we gate adding the key-change
 		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
 		directoryEndpoints["key-change"] = rolloverPath
+	}
+	if features.Enabled(features.RandomDirectoryEntry) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
+		// Add a random key to the directory in order to make sure that clients don't hardcode an
+		// expected set of keys. This ensures that we can properly extend the directory when we
+		// need to add a new endpoint or meta element. Gate on UA not being one of the pre-0.6.0
+		// Certbot clients that we know will be broken by this change.
+		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -470,9 +489,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
-	// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
-	// code is deployed
-	if _, ok := err.(core.NoSuchRegistrationError); (ok || berrors.Is(err, berrors.NotFound)) && !regCheck {
+	if berrors.Is(err, berrors.NotFound) && !regCheck {
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
@@ -486,9 +503,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// For all other errors, or if regCheck is true, return error immediately.
 		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
-		// TODO(#2600): Remove core.NoSuchRegistrationError check once boulder/errors
-		// code is deployed
-		if _, ok := err.(core.NoSuchRegistrationError); ok || berrors.Is(err, berrors.NotFound) {
+		if berrors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 

@@ -2,7 +2,6 @@ package ra
 
 import (
 	"crypto/x509"
-	"errors"
 	"expvar"
 	"fmt"
 	"net"
@@ -728,9 +727,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
 // for the purpose of rate limiting. It also de-duplicates the output
-// domains.
+// domains. Exact public suffix matches are not included.
 func domainsForRateLimiting(names []string) ([]string, error) {
-	domainsMap := make(map[string]struct{}, len(names))
 	var domains []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
@@ -738,16 +736,64 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 			// The only possible errors are:
 			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
-			//
-			// Assume (2).
-			domain = name
+			// We assume 2 and do not include it in the result.
+			continue
 		}
-		if _, ok := domainsMap[domain]; !ok {
-			domainsMap[domain] = struct{}{}
-			domains = append(domains, domain)
+		domains = append(domains, domain)
+	}
+	return core.UniqueLowerNames(domains), nil
+}
+
+// suffixesForRateLimiting returns the unique subset of input names that are
+// exactly equal to a public suffix.
+func suffixesForRateLimiting(names []string) ([]string, error) {
+	var suffixMatches []string
+	for _, name := range names {
+		_, err := publicsuffix.Domain(name)
+		if err != nil {
+			// Like `domainsForRateLimiting`, the only possible errors here are:
+			// (1) publicsuffix.Domain is giving garbage values
+			// (2) the public suffix is the domain itself
+			// We assume 2 and collect it into the result
+			suffixMatches = append(suffixMatches, name)
 		}
 	}
-	return domains, nil
+	return core.UniqueLowerNames(suffixMatches), nil
+}
+
+// certCountRPC abstracts the choice of the SA.CountCertificatesByExactNames or
+// the SA.CountCertificatesByNames RPC.
+type certCountRPC func(ctx context.Context, names []string, earliest, lastest time.Time) ([]*sapb.CountByNames_MapElement, error)
+
+// enforceNameCounts uses the provided count RPC to find a count of certificates
+// for each of the names. If the count for any of the names exceeds the limit
+// for the given registration then the names out of policy are returned to be
+// used for a rate limit error.
+func (ra *RegistrationAuthorityImpl) enforceNameCounts(
+	ctx context.Context,
+	names []string,
+	limit ratelimit.RateLimitPolicy,
+	regID int64,
+	countFunc certCountRPC) ([]string, error) {
+
+	now := ra.clk.Now()
+	windowBegin := limit.WindowBegin(now)
+	counts, err := countFunc(ctx, names, windowBegin, now)
+	if err != nil {
+		return nil, err
+	}
+
+	var badNames []string
+	for _, entry := range counts {
+		// Should not happen, but be defensive.
+		if entry.Count == nil || entry.Name == nil {
+			return nil, fmt.Errorf("CountByNames_MapElement had nil Count or Name")
+		}
+		if int(*entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
+			badNames = append(badNames, *entry.Name)
+		}
+	}
+	return badNames, nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
@@ -755,23 +801,37 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	if err != nil {
 		return err
 	}
-	now := ra.clk.Now()
-	windowBegin := limit.WindowBegin(now)
-	counts, err := ra.SA.CountCertificatesByNames(ctx, tldNames, windowBegin, now)
+	exactPublicSuffixes, err := suffixesForRateLimiting(names)
 	if err != nil {
 		return err
 	}
+
 	var badNames []string
-	for _, name := range tldNames {
-		count, ok := counts[name]
-		if !ok {
-			// Shouldn't happen, but let's be careful anyhow.
-			return errors.New("CountCertificatesByNames failed to return a count for every name")
+	// If the CountCertificatesExact feature is enabled then treat exact public
+	// suffic domains differently by enforcing the limit against only exact
+	// matches to the names, not matches to subdomains as well.
+	if features.Enabled(features.CountCertificatesExact) && len(exactPublicSuffixes) > 0 {
+		psNamesOutOfLimit, err := ra.enforceNameCounts(ctx, exactPublicSuffixes, limit, regID, ra.SA.CountCertificatesByExactNames)
+		if err != nil {
+			return err
 		}
-		if count >= limit.GetThreshold(name, regID) {
-			badNames = append(badNames, name)
-		}
+		badNames = append(badNames, psNamesOutOfLimit...)
+	} else {
+		// When the CountCertificatesExact feature is *not* enabled we maintain the
+		// historic behaviour of treating exact public suffix matches the same as
+		// any other domain for rate limiting by combining the exactPublicSuffixes
+		// with the tldNames.
+		tldNames = append(tldNames, exactPublicSuffixes...)
 	}
+
+	// Enforce the certificate count rate limit against the tldNames as well as
+	// any subdomains.
+	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID, ra.SA.CountCertificatesByNames)
+	if err != nil {
+		return err
+	}
+	badNames = append(badNames, namesOutOfLimit...)
+
 	if len(badNames) > 0 {
 		// check if there is already a existing certificate for
 		// the exact name set we are issuing for. If so bypass the
@@ -791,7 +851,6 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			"too many certificates already issued for: %s",
 			domains,
 		)
-
 	}
 	ra.certsForDomainStats.Inc("Pass", 1)
 

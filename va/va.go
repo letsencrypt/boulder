@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -136,11 +137,68 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 
 type dialer struct {
 	record core.ValidationRecord
+	stats  metrics.Scope
 }
 
 func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 	realDialer := net.Dialer{Timeout: validationTimeout}
-	return realDialer.Dial("tcp", net.JoinHostPort(d.record.AddressUsed.String(), d.record.Port))
+
+	// Split the available addresses into v4 and v6 addresses
+	v4, v6 := availableAddresses(d.record)
+
+	// If the IPv6 first feature isn't enabled then combine available IPv4 and
+	// IPv6 addresses and connect to the first IP in the combined list
+	if !features.Enabled(features.IPv6First) {
+		addresses := append(v4, v6...)
+		// This shouldn't happen, but be defensive about it anyway
+		if len(addresses) < 1 {
+			return nil, fmt.Errorf("No available addresses for dialer to dial")
+		}
+		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
+		d.record.AddressUsed = addresses[0]
+		return realDialer.Dial("tcp", address)
+	}
+
+	// If the IPv6 first feature is enabled and there is at least one IPv6 address
+	// then try it first
+	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+		address := net.JoinHostPort(v6[0].String(), d.record.Port)
+		d.record.AddressUsed = v6[0]
+		conn, err := realDialer.Dial("tcp", address)
+
+		// If there is no error, return immediately
+		if err == nil {
+			return conn, err
+		}
+
+		// Otherwise, we note that we tried an address and fall back to trying IPv4
+		d.record.AddressesTried = append(d.record.AddressesTried, d.record.AddressUsed)
+		d.stats.Inc("IPv4Fallback", 1)
+	}
+
+	// This shouldn't happen, but be defensive about it anyway
+	if len(v4) < 1 {
+		return nil, fmt.Errorf("No available addresses for dialer to dial")
+	}
+
+	// Otherwise if there are no IPv6 addresses, or there was an error
+	// talking to the first IPv6 address, try the first IPv4 address
+	address := net.JoinHostPort(v4[0].String(), d.record.Port)
+	d.record.AddressUsed = v4[0]
+	return realDialer.Dial("tcp", address)
+}
+
+// availableAddresses takes a ValidationRecord and splits the AddressesResolved
+// into a list of IPv4 and IPv6 addresses.
+func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
+	for _, addr := range rec.AddressesResolved {
+		if addr.To4() != nil {
+			v4 = append(v4, addr)
+		} else {
+			v6 = append(v6, addr)
+		}
+	}
+	return
 }
 
 // resolveAndConstructDialer gets the preferred address using va.getAddr and returns
@@ -151,6 +209,7 @@ func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context
 			Hostname: name,
 			Port:     strconv.Itoa(port),
 		},
+		stats: va.stats,
 	}
 
 	addr, allAddrs, err := va.getAddr(ctx, name)
@@ -200,9 +259,11 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 
 	dialer, prob := va.resolveAndConstructDialer(ctx, host, port)
 	dialer.record.URL = url.String()
-	validationRecords := []core.ValidationRecord{dialer.record}
+	// Start with an empty validation record list - we will add a record after
+	// each dialer.Dial()
+	var validationRecords []core.ValidationRecord
 	if prob != nil {
-		return nil, validationRecords, prob
+		return nil, []core.ValidationRecord{dialer.record}, prob
 	}
 
 	tr := &http.Transport{
@@ -260,6 +321,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 
 		dialer, err := va.resolveAndConstructDialer(ctx, reqHost, reqPort)
 		dialer.record.URL = req.URL.String()
+		// A subsequent dialing from a redirect means adding another validation
+		// record
 		validationRecords = append(validationRecords, dialer.record)
 		if err != nil {
 			return err
@@ -274,6 +337,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		Timeout:       validationTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
+	// Append a validation record now that we have dialed the dialer
+	validationRecords = append(validationRecords, dialer.record)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
 		return nil, validationRecords,
@@ -317,25 +382,71 @@ func certNames(cert *x509.Certificate) []string {
 	return names
 }
 
-func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, []core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addr,
+			Port:              strconv.Itoa(va.tlsPort),
 		},
 	}
 	if problem != nil {
-		return validationRecords, problem
+		return nil, validationRecords, problem
+	}
+	thisRecord := &validationRecords[0]
+
+	// Split the available addresses into v4 and v6 addresses
+	v4, v6 := availableAddresses(*thisRecord)
+
+	// If the IPv6 first feature isn't enabled then combine available IPv4 and
+	// IPv6 addresses and connect to the first IP in the combined list
+	if !features.Enabled(features.IPv6First) {
+		addresses := append(v4, v6...)
+		// This shouldn't happen, but be defensive about it anyway
+		if len(addresses) < 1 {
+			return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
+		}
+		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
+		thisRecord.AddressUsed = addresses[0]
+		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+		return certs, validationRecords, err
 	}
 
-	// Make a connection with SNI = nonceName
-	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(addr.String(), portString)
-	validationRecords[0].Port = portString
+	// If the IPv6 first feature is enabled and there is at least one IPv6 address
+	// then try it first
+	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
+		thisRecord.AddressUsed = v6[0]
 
-	certs, problem := va.getTLSSNICerts(hostPort, identifier, challenge, zName)
+		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+
+		// If there is no error, return immediately
+		if err == nil {
+			return certs, validationRecords, err
+		}
+
+		// Otherwise, we note that we tried an address and fall back to trying IPv4
+		thisRecord.AddressesTried = append(thisRecord.AddressesTried, thisRecord.AddressUsed)
+		va.stats.Inc("IPv4Fallback", 1)
+	}
+
+	// This shouldn't happen, but be defensive about it anyway
+	if len(v4) < 1 {
+		return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
+	}
+
+	// Otherwise if there are no IPv6 addresses, or there was an error
+	// talking to the first IPv6 address, try the first IPv4 address
+	address := net.JoinHostPort(v4[0].String(), thisRecord.Port)
+	thisRecord.AddressUsed = v4[0]
+	certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+	return certs, validationRecords, err
+}
+
+func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	certs, validationRecords, problem := va.tryGetTLSSNICerts(ctx, identifier, challenge, zName)
 	if problem != nil {
 		return validationRecords, problem
 	}
@@ -347,6 +458,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 		}
 	}
 
+	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 	names := certNames(leafCert)
 	errText := fmt.Sprintf(
 		"Incorrect validation certificate for %s challenge. "+
@@ -358,24 +470,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, sanAName, sanBName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
-	validationRecords := []core.ValidationRecord{
-		{
-			Hostname:          identifier.Value,
-			AddressesResolved: allAddrs,
-			AddressUsed:       addr,
-		},
-	}
-	if problem != nil {
-		return validationRecords, problem
-	}
-
-	// Make a connection with SNI = nonceName
-	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(addr.String(), portString)
-	validationRecords[0].Port = portString
-
-	certs, problem := va.getTLSSNICerts(hostPort, identifier, challenge, sanAName)
+	certs, validationRecords, problem := va.tryGetTLSSNICerts(ctx, identifier, challenge, sanAName)
 	if problem != nil {
 		return validationRecords, problem
 	}
@@ -403,6 +498,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 		return validationRecords, nil
 	}
 
+	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 	names := certNames(leafCert)
 	errText := fmt.Sprintf(
 		"Incorrect validation certificate for %s challenge. "+

@@ -69,11 +69,6 @@ type NotFoundError string
 // LengthRequiredError indicates a POST was sent with no Content-Length.
 type LengthRequiredError string
 
-// SignatureValidationError indicates that the user's signature could not
-// be verified, either through adversarial activity, or misconfiguration of
-// the user client.
-type SignatureValidationError string
-
 // NoSuchRegistrationError indicates that a registration could not be found.
 type NoSuchRegistrationError string
 
@@ -87,17 +82,16 @@ type TooManyRPCRequestsError string
 // BadNonceError indicates an empty of invalid nonce was provided
 type BadNonceError string
 
-func (e InternalServerError) Error() string      { return string(e) }
-func (e NotSupportedError) Error() string        { return string(e) }
-func (e MalformedRequestError) Error() string    { return string(e) }
-func (e UnauthorizedError) Error() string        { return string(e) }
-func (e NotFoundError) Error() string            { return string(e) }
-func (e LengthRequiredError) Error() string      { return string(e) }
-func (e SignatureValidationError) Error() string { return string(e) }
-func (e NoSuchRegistrationError) Error() string  { return string(e) }
-func (e RateLimitedError) Error() string         { return string(e) }
-func (e TooManyRPCRequestsError) Error() string  { return string(e) }
-func (e BadNonceError) Error() string            { return string(e) }
+func (e InternalServerError) Error() string     { return string(e) }
+func (e NotSupportedError) Error() string       { return string(e) }
+func (e MalformedRequestError) Error() string   { return string(e) }
+func (e UnauthorizedError) Error() string       { return string(e) }
+func (e NotFoundError) Error() string           { return string(e) }
+func (e LengthRequiredError) Error() string     { return string(e) }
+func (e NoSuchRegistrationError) Error() string { return string(e) }
+func (e RateLimitedError) Error() string        { return string(e) }
+func (e TooManyRPCRequestsError) Error() string { return string(e) }
+func (e BadNonceError) Error() string           { return string(e) }
 
 // Random stuff
 

@@ -96,7 +96,6 @@ func TestErrors(t *testing.T) {
 		MalformedRequestError(testMessage),
 		UnauthorizedError(testMessage),
 		NotFoundError(testMessage),
-		SignatureValidationError(testMessage),
 	}
 
 	for i, err := range errors {
