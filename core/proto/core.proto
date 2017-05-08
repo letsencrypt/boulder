@@ -22,6 +22,7 @@ message ValidationRecord {
 
         repeated string authorities = 5;
         optional string url = 6;
+        repeated bytes addressesTried = 7; // net.IP.MarshalText()
 }
 
 message ProblemDetails {

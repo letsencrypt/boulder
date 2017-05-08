@@ -21,6 +21,7 @@ const (
 	AllowTLS02Challenges
 	GenerateOCSPEarly
 	CountCertificatesExact
+	IPv6First
 )
 
 // List of features and their default value, protected by fMu
@@ -35,6 +36,7 @@ var features = map[FeatureFlag]bool{
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
 	CountCertificatesExact:   false,
+	IPv6First:                false,
 }
 
 var fMu = new(sync.RWMutex)

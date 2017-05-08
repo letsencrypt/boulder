@@ -13,6 +13,7 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -373,6 +374,15 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 
 	var addrs []net.IP
 
+	// First append any IPv6 addresses from the AAAA records since we prefer these
+	for _, answer := range recordsAAAA {
+		if answer.Header().Rrtype == dns.TypeAAAA {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
+				addrs = append(addrs, aaaa.AAAA)
+			}
+		}
+	}
+	// Then append any IPv4 addresses from the A records
 	for _, answer := range recordsA {
 		if answer.Header().Rrtype == dns.TypeA {
 			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
@@ -380,11 +390,12 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 			}
 		}
 	}
-	for _, answer := range recordsAAAA {
-		if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
-				addrs = append(addrs, aaaa.AAAA)
-			}
+	// If the IPv6First feature is not enabled then preserve the historic
+	// behaviour of LookupHost by reversing the `addrs` slice such that the IPv4
+	// addresses are first and the IPv6 addresses are second.
+	if !features.Enabled(features.IPv6First) {
+		for i, j := 0, len(addrs)-1; i < j; i, j = i+1, j-1 {
+			addrs[i], addrs[j] = addrs[j], addrs[i]
 		}
 	}
 

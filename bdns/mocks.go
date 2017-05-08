@@ -73,6 +73,13 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 			Err: errors.New("some net error"),
 		}, -1}
 	}
+	// dual-homed host with an IPv6 and an IPv4 address
+	if hostname == "ipv4.and.ipv6.localhost" {
+		return []net.IP{
+			net.ParseIP("::1"),
+			net.ParseIP("127.0.0.1"),
+		}, nil
+	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, nil
 }

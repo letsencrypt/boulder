@@ -182,6 +182,7 @@ type ValidationRecord struct {
 	Port              string   `json:"port"`
 	AddressesResolved []net.IP `json:"addressesResolved"`
 	AddressUsed       net.IP   `json:"addressUsed"`
+	AddressesTried    []net.IP `json:"addressesTried"`
 }
 
 func looksLikeKeyAuthorization(str string) error {

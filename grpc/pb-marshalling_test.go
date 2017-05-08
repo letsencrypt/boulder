@@ -123,6 +123,7 @@ func TestChallenge(t *testing.T) {
 			AddressUsed:       ip,
 			URL:               "url",
 			Authorities:       []string{"auth"},
+			AddressesTried:    []net.IP{ip},
 		},
 	}
 	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
@@ -151,6 +152,7 @@ func TestValidationRecord(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "url",
 		Authorities:       []string{"auth"},
+		AddressesTried:    []net.IP{ip},
 	}
 
 	pb, err := validationRecordToPB(vr)
@@ -171,6 +173,7 @@ func TestValidationResult(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "urlA",
 		Authorities:       []string{"authA"},
+		AddressesTried:    []net.IP{ip},
 	}
 	vrB := core.ValidationRecord{
 		Hostname:          "hostB",
@@ -179,6 +182,7 @@ func TestValidationResult(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "urlB",
 		Authorities:       []string{"authB"},
+		AddressesTried:    []net.IP{ip},
 	}
 	result := []core.ValidationRecord{vrA, vrB}
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
