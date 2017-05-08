@@ -13,7 +13,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
@@ -322,6 +321,10 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
+	ip, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
+	test.AssertNotError(t, err, "Not an error to exist")
+	test.Assert(t, len(ip) == 1, "Should have IP")
 
 	// Single IPv6 address
 	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
@@ -338,18 +341,6 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
 	expected = net.ParseIP("::1")
 	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
-
-	// Both IPv6 and IPv4 address with the IPv6 feature enabled
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-	ip, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
-	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Not an error to exist")
-	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
-	expected = net.ParseIP("::1")
-	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
-	expected = net.ParseIP("127.0.0.1")
-	test.Assert(t, ip[1].To4().Equal(expected), "wrong ipv4 address")
 
 	// IPv6 error, IPv4 success
 	ip, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
