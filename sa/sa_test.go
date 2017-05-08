@@ -204,6 +204,17 @@ func TestAddAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 }
 
+func TestRecyclePendingAuthorization(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+}
+
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
 	return CreateDomainAuthWithRegID(t, domainName, sa, 42)
 }
