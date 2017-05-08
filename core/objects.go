@@ -182,7 +182,21 @@ type ValidationRecord struct {
 	Port              string   `json:"port"`
 	AddressesResolved []net.IP `json:"addressesResolved"`
 	AddressUsed       net.IP   `json:"addressUsed"`
-	AddressesTried    []net.IP `json:"addressesTried"`
+	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
+	// Presently this will only ever be one IP from `AddressesResolved` since the
+	// only retry is in the case of a v6 failure with one v4 fallback. E.g. if
+	// a record with `AddressesResolved: { 127.0.0.1, ::1 }` were processed for
+	// a challenge validation with the IPv6 first flag on and the ::1 address
+	// failed but the 127.0.0.1 retry succeeded then the record would end up
+	// being:
+	// {
+	//   ...
+	//   AddressesResolved: [ 127.0.0.1, ::1 ],
+	//   AddressUsed: 127.0.0.1
+	//   AddressesTried: [ ::1 ],
+	//   ...
+	// }
+	AddressesTried []net.IP `json:"addressesTried"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
