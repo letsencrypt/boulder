@@ -262,7 +262,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 	return result
 }
 
-var greaseExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
+const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
@@ -274,7 +274,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
-		if features.Enabled(features.RandomDirectoryEntry) && v == greaseExplanationLink {
+		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
 			continue
 		}
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
@@ -378,11 +378,12 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
 		directoryEndpoints["key-change"] = rolloverPath
 	}
-	if features.Enabled(features.RandomDirectoryEntry) {
+	if features.Enabled(features.RandomDirectoryEntry) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
 		// Add a random key to the directory in order to make sure that clients don't hardcode an
 		// expected set of keys. This ensures that we can properly extend the directory when we
-		// need to add a new endpoint or meta element.
-		directoryEndpoints[core.RandomString(8)] = greaseExplanationLink
+		// need to add a new endpoint or meta element. Gate on UA not being one of the pre-0.6.0
+		// Certbot clients that we know will be broken by this change.
+		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
 	}
 
 	response.Header().Set("Content-Type", "application/json")
