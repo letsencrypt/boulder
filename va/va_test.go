@@ -1204,58 +1204,6 @@ func TestAvailableAddresses(t *testing.T) {
 	}
 }
 
-func TestFallbackAddress(t *testing.T) {
-	v6 := net.ParseIP("::1")
-	v4 := net.ParseIP("127.0.0.1")
-
-	testcases := []struct {
-		input  core.ValidationRecord
-		result net.IP
-	}{
-		{
-			// A validationRecord that used a v4 address should have a nil fallback
-			// address
-			core.ValidationRecord{
-				AddressUsed:       v4,
-				AddressesResolved: []net.IP{v4},
-			},
-			nil,
-		},
-		{
-			// A validationRecord that used a v6 address with no v4 addresses resolved
-			// should have a nil fallback address
-			core.ValidationRecord{
-				AddressUsed:       v6,
-				AddressesResolved: []net.IP{v6},
-			},
-			nil,
-		},
-		{
-			// A ValidationRecord that used a v6 address and had v4 addresses resolved
-			// should have a v4 fallback address
-			core.ValidationRecord{
-				AddressUsed:       v6,
-				AddressesResolved: []net.IP{v6, v4},
-			},
-			v4,
-		},
-		{
-			// A ValidationRecord that used a v6 address and has NO addresses resolved
-			// shouldn't happen but lets test that it gets a nil fallback anyway
-			core.ValidationRecord{
-				AddressUsed: v6,
-			},
-			nil,
-		},
-	}
-
-	for _, tc := range testcases {
-		result := fallbackAddress(tc.input)
-		test.Assert(t, result.Equal(tc.result),
-			fmt.Sprintf("wrong fallbackAddress, expected %#v, got %#v", tc.result, result))
-	}
-}
-
 func TestFallbackDialer(t *testing.T) {
 	// Create a test VA
 	va, _, _ := setup()
@@ -1280,7 +1228,6 @@ func TestFallbackDialer(t *testing.T) {
 	// created earlier.
 	host := "ipv4.and.ipv6.localhost"
 	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
-	fmt.Printf("Validating challenge with no IPv6 fallback\n")
 	records, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed for an dual homed host with IPv6First disabled")
 	// We expect one validation record to be present
@@ -1304,7 +1251,6 @@ func TestFallbackDialer(t *testing.T) {
 
 	// The validation is expected to succeed with IPv6First enabled even though
 	// the V6 server doesn't exist because we fallback to the IPv4 address.
-	fmt.Printf("Validating challenge with IPv6 fallback\n")
 	records, prob = va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
@@ -1323,7 +1269,6 @@ func TestFallbackTLS(t *testing.T) {
 
 	// Create a new challenge to use for the httpSrv
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
-	setChallengeToken(&chall, core.NewToken())
 
 	// Create a TLS SNI 01 test server, this will be bound on 127.0.0.1 (e.g. IPv4
 	// only!)

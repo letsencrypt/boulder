@@ -201,28 +201,6 @@ func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-// fallbackAddress takes a ValidationRecord and if the `AddressUsed` was IPv6 it
-// will return the first IPv4 address from `AddressesResolved` or nil if there
-// was not one to return.
-func fallbackAddress(rec core.ValidationRecord) net.IP {
-	// If To4() returns non-nil, then the Address Used is a v4 address, which
-	// means we don't have anything to fallback to. We already tried IPv4.
-	if rec.AddressUsed.To4() != nil {
-		return nil
-	}
-
-	// Otherwise find the first IPv4 address in the resolved addresses and propose
-	// it as the fallback address
-	for _, addr := range rec.AddressesResolved {
-		if addr.To4() != nil {
-			return addr
-		}
-	}
-
-	// If there were no IPv4 addresses to try we can't suggest a fallback
-	return nil
-}
-
 // resolveAndConstructDialer gets the preferred address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
 func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (dialer, *probs.ProblemDetails) {
