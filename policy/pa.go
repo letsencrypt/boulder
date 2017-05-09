@@ -34,8 +34,6 @@ type AuthorityImpl struct {
 }
 
 // New constructs a Policy Authority.
-// TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
-// argument (used to be enforceWhitelist). Update all callers.
 func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
 
 	pa := AuthorityImpl{
@@ -131,7 +129,6 @@ var (
 	errNonPublic           = berrors.MalformedError("Name does not end in a public suffix")
 	errICANNTLD            = berrors.MalformedError("Name is an ICANN TLD")
 	errBlacklisted         = berrors.RejectedIdentifierError("Policy forbids issuing for name")
-	errNotWhitelisted      = berrors.MalformedError("Name is not whitelisted")
 	errInvalidDNSCharacter = berrors.MalformedError("Invalid character in DNS name")
 	errNameTooLong         = berrors.MalformedError("DNS name too long")
 	errIPAddress           = berrors.MalformedError("Issuance for IP addresses not supported")
