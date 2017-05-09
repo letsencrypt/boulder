@@ -33,7 +33,8 @@
       "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,
-      "RandomDirectoryEntry": true
+      "RandomDirectoryEntry": true,
+      "DirectoryMeta": true
     }
   },
 

@@ -264,10 +264,10 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 
 const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 
-func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
+func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]interface{}) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
-	relativeDir := make(map[string]string, len(directory))
+	relativeDir := make(map[string]interface{}, len(directory))
 
 	// Copy each entry of the provided directory into the new relative map. If
 	// `wfe.BaseURL` != "", use the old behaviour and prefix each endpoint with
@@ -277,7 +277,14 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
 			continue
 		}
-		relativeDir[k] = wfe.relativeEndpoint(request, v)
+		switch v.(type) {
+		case string:
+			// Only relative-ize top level string values, e.g. not the "meta" element
+			relativeDir[k] = wfe.relativeEndpoint(request, v.(string))
+		default:
+			// If it isn't a string, put it into the results unmodified
+			relativeDir[k] = v
+		}
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -366,24 +373,33 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	directoryEndpoints := map[string]string{
+	directoryEndpoints := map[string]interface{}{
 		"new-reg":     newRegPath,
 		"new-authz":   newAuthzPath,
 		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
 	}
-	if features.Enabled(features.AllowKeyRollover) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
-		// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
-		// encounter a directory containing elements they don't expect so we gate adding the key-change
-		// field on a User-Agent header that doesn't start with 'LetsEncryptPythonClient'
+
+	// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
+	// encounter a directory containing elements they don't expect so we gate
+	// adding new directory fields for clients matching this UA.
+	clientDirChangeIntolerant := strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient")
+	if features.Enabled(features.AllowKeyRollover) && !clientDirChangeIntolerant {
 		directoryEndpoints["key-change"] = rolloverPath
 	}
-	if features.Enabled(features.RandomDirectoryEntry) && !strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient") {
+	if features.Enabled(features.RandomDirectoryEntry) && !clientDirChangeIntolerant {
 		// Add a random key to the directory in order to make sure that clients don't hardcode an
 		// expected set of keys. This ensures that we can properly extend the directory when we
-		// need to add a new endpoint or meta element. Gate on UA not being one of the pre-0.6.0
-		// Certbot clients that we know will be broken by this change.
+		// need to add a new endpoint or meta element.
 		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
+	}
+	if features.Enabled(features.DirectoryMeta) && !clientDirChangeIntolerant {
+		// ACME since draft-02 describes an optional "meta" directory entry. The
+		// meta entry may optionally contain a "terms-of-service" URI for the
+		// current ToS.
+		directoryEndpoints["meta"] = map[string]string{
+			"terms-of-service": wfe.SubscriberAgreementURL,
+		}
 	}
 
 	response.Header().Set("Content-Type", "application/json")
