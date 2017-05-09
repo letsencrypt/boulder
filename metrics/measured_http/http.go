@@ -34,6 +34,10 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// serveMux is a partial interface wrapper for the method http.ServeMux
+// exposes that we use. This is needed so that we can replace the default
+// http.ServeMux in ocsp-responder where we don't want to use its path
+// canonicalization.
 type serveMux interface {
 	Handler(*http.Request) (http.Handler, string)
 }
