@@ -1053,7 +1053,7 @@ func TestLimitedReader(t *testing.T) {
 
 func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	stats := mocks.NewStatter()
-	scope := metrics.NewStatsdScope(stats, "VA")
+	scope := metrics.NewPromScope(stats, "VA")
 	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
@@ -1073,7 +1073,7 @@ func TestCheckCAAFallback(t *testing.T) {
 	defer testSrv.Close()
 
 	stats := mocks.NewStatter()
-	scope := metrics.NewStatsdScope(stats, "VA")
+	scope := metrics.NewPromScope(stats, "VA")
 	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")

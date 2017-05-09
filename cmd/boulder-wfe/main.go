@@ -57,8 +57,6 @@ type config struct {
 		Features map[string]bool
 	}
 
-	Statsd cmd.StatsdConfig
-
 	SubscriberAgreementURL string
 
 	Syslog cmd.SyslogConfig
@@ -103,8 +101,7 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "WFE")
+	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
