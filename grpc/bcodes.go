@@ -25,7 +25,6 @@ const (
 	UnauthorizedError
 	NotFoundError
 	LengthRequiredError
-	SignatureValidationError
 	RateLimitedError
 	BadNonceError
 	NoSuchRegistrationError
@@ -50,8 +49,6 @@ func errorToCode(err error) codes.Code {
 		return NotFoundError
 	case core.LengthRequiredError:
 		return LengthRequiredError
-	case core.SignatureValidationError:
-		return SignatureValidationError
 	case core.RateLimitedError:
 		return RateLimitedError
 	case core.BadNonceError:
@@ -144,8 +141,6 @@ func unwrapError(err error, md metadata.MD) error {
 		return core.UnauthorizedError(errBody)
 	case NotFoundError:
 		return core.NotFoundError(errBody)
-	case SignatureValidationError:
-		return core.SignatureValidationError(errBody)
 	case NoSuchRegistrationError:
 		return core.NoSuchRegistrationError(errBody)
 	case RateLimitedError:

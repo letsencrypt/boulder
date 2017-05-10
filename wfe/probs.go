@@ -17,7 +17,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 			Detail:     fmt.Sprintf("%s :: %s", msg, err),
 			HTTPStatus: http.StatusNotImplemented,
 		}
-	case berrors.Malformed, berrors.SignatureValidation:
+	case berrors.Malformed:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
 		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
@@ -25,14 +25,12 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.RateLimit:
 		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case berrors.InternalServer, berrors.TooManyRequests:
+	case berrors.InternalServer:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
 		return probs.ServerInternal(msg)
 	case berrors.RejectedIdentifier:
 		return probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
-	case berrors.UnsupportedIdentifier:
-		return probs.UnsupportedIdentifier(msg)
 	case berrors.InvalidEmail:
 		return probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
 	default:
@@ -52,6 +50,8 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return e
 	case *berrors.BoulderError:
 		return problemDetailsForBoulderError(e, msg)
+	case signatureValidationError:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.MalformedRequestError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.NotSupportedError:
@@ -68,8 +68,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		prob := probs.Malformed("missing Content-Length header")
 		prob.HTTPStatus = http.StatusLengthRequired
 		return prob
-	case core.SignatureValidationError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.RateLimitedError:
 		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case core.BadNonceError:

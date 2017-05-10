@@ -159,7 +159,7 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Cont
 	return *response.Count, nil
 }
 
-func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
+func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
 
@@ -178,15 +178,29 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Co
 		return nil, errIncompleteResponse
 	}
 
-	names := make(map[string]int, len(response.CountByNames))
-	for _, element := range response.CountByNames {
-		if element == nil || element.Name == nil || element.Count == nil {
-			return nil, errIncompleteResponse
-		}
-		names[*element.Name] = int(*element.Count)
+	return response.CountByNames, nil
+}
+
+func (sac StorageAuthorityClientWrapper) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountCertificatesByExactNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		Names: domains,
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	return names, nil
+	if response == nil || response.CountByNames == nil {
+		return nil, errIncompleteResponse
+	}
+
+	return response.CountByNames, nil
 }
 
 func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
@@ -566,15 +580,20 @@ func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Co
 		return nil, err
 	}
 
-	resp := &sapb.CountByNames{}
-	for k, v := range byNames {
-		castedV := int64(v)
-		// Make a copy of k because it will be reassigned with each loop.
-		kCopy := k
-		resp.CountByNames = append(resp.CountByNames, &sapb.CountByNames_MapElement{Name: &kCopy, Count: &castedV})
+	return &sapb.CountByNames{CountByNames: byNames}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountCertificatesByExactNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	if request == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil || request.Names == nil {
+		return nil, errIncompleteRequest
 	}
 
-	return resp, nil
+	byNames, err := sas.inner.CountCertificatesByExactNames(ctx, request.Names, time.Unix(0, *request.Range.Earliest), time.Unix(0, *request.Range.Latest))
+	if err != nil {
+		return nil, err
+	}
+
+	return &sapb.CountByNames{CountByNames: byNames}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {

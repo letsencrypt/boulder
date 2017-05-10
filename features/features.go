@@ -23,6 +23,9 @@ const (
 	// For new-authz requests, if there is no valid authz, but there is a pending
 	// authz, return that instead of creating a new one.
 	ReusePendingAuthz
+	CountCertificatesExact
+	RandomDirectoryEntry
+	IPv6First
 )
 
 // List of features and their default value, protected by fMu
@@ -37,6 +40,9 @@ var features = map[FeatureFlag]bool{
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
 	ReusePendingAuthz:        false,
+	CountCertificatesExact:   false,
+	RandomDirectoryEntry:     false,
+	IPv6First:                false,
 }
 
 var fMu = new(sync.RWMutex)

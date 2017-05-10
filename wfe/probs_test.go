@@ -35,7 +35,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{core.MalformedRequestError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{core.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{core.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
-		{core.SignatureValidationError(detailMsg), 400, probs.MalformedProblem, fullDetail},
+		{signatureValidationError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{core.RateLimitedError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
 		{core.BadNonceError(detailMsg), 400, probs.BadNonceProblem, fullDetail},
 		//    The content length error has its own specific detail message
@@ -48,7 +48,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.MalformedError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
-		{berrors.SignatureValidationError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{berrors.RateLimitError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
 		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},

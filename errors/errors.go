@@ -11,11 +11,8 @@ const (
 	Malformed
 	Unauthorized
 	NotFound
-	SignatureValidation
 	RateLimit
-	TooManyRequests
 	RejectedIdentifier
-	UnsupportedIdentifier
 	InvalidEmail
 	ConnectionFailure
 )
@@ -67,24 +64,12 @@ func NotFoundError(msg string, args ...interface{}) error {
 	return New(NotFound, msg, args...)
 }
 
-func SignatureValidationError(msg string, args ...interface{}) error {
-	return New(SignatureValidation, msg, args...)
-}
-
 func RateLimitError(msg string, args ...interface{}) error {
 	return New(RateLimit, msg, args...)
 }
 
-func TooManyRequestsError(msg string, args ...interface{}) error {
-	return New(TooManyRequests, msg, args...)
-}
-
 func RejectedIdentifierError(msg string, args ...interface{}) error {
 	return New(RejectedIdentifier, msg, args...)
-}
-
-func UnsupportedIdentifierError(msg string, args ...interface{}) error {
-	return New(UnsupportedIdentifier, msg, args...)
 }
 
 func InvalidEmailError(msg string, args ...interface{}) error {

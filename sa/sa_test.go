@@ -527,7 +527,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 	counts, err := sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts["example.com"], 0)
+	test.AssertEquals(t, *counts[0].Name, "example.com")
+	test.AssertEquals(t, *counts[0].Count, int64(0))
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -537,20 +538,23 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Time range including now should find the cert
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
 	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts["example.com"], 1)
+	test.AssertEquals(t, *counts[0].Name, "example.com")
+	test.AssertEquals(t, *counts[0].Count, int64(1))
 
 	// Time range between two days ago and yesterday should not.
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, twoDaysAgo, yesterday)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts["example.com"], 0)
+	test.AssertEquals(t, *counts[0].Name, "example.com")
+	test.AssertEquals(t, *counts[0].Count, int64(0))
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, now, tomorrow)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts["example.com"], 0)
+	test.AssertEquals(t, *counts[0].Name, "example.com")
+	test.AssertEquals(t, *counts[0].Count, int64(0))
 
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
@@ -560,9 +564,18 @@ func TestCountCertificatesByNames(t *testing.T) {
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 3)
-	test.AssertEquals(t, counts["foo.com"], 0)
-	test.AssertEquals(t, counts["example.com"], 1)
-	test.AssertEquals(t, counts["example.co.bn"], 1)
+
+	expected := map[string]int{
+		"example.co.bn": 1,
+		"foo.com":       0,
+		"example.com":   1,
+	}
+	for _, entry := range counts {
+		domain := *entry.Name
+		actualCount := *entry.Count
+		expectedCount := int64(expected[domain])
+		test.AssertEquals(t, actualCount, expectedCount)
+	}
 }
 
 const (

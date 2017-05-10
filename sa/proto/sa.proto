@@ -15,6 +15,7 @@ service StorageAuthority {
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
         rpc CountCertificatesRange(Range) returns (Count) {}
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
+        rpc CountCertificatesByExactNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
         // Return a count of authorizations with status "invalid" that belong to
