@@ -1223,7 +1223,7 @@ func TestAvailableAddresses(t *testing.T) {
 
 func TestFallbackDialer(t *testing.T) {
 	// Create a test VA
-	va, _, _ := setup()
+	va, _ := setup()
 
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01()
@@ -1282,7 +1282,7 @@ func TestFallbackDialer(t *testing.T) {
 
 func TestFallbackTLS(t *testing.T) {
 	// Create a test VA
-	va, _, _ := setup()
+	va, _ := setup()
 
 	// Create a new challenge to use for the httpSrv
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
