@@ -9,8 +9,9 @@ fi
 # RUN variable with the ones you want (see .travis.yml for an example).
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
-# GOPATH).
-RUN=${RUN:-vet fmt migrations unit coverage integration errcheck}
+# GOPATH). We also omit coverage by default on local runs because it generates
+# artifacts on disk that aren't needed.
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.
