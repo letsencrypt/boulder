@@ -1,0 +1,16 @@
+{
+  "statistics": {
+    "dbConnectFile": "test/secrets/statistics_dburl",
+    "timeWindow": "2160h",
+    "outputPath": ""
+  },
+
+  "statsd": {
+    "server": "localhost:8125",
+    "prefix": "Boulder"
+  },
+
+  "syslog": {
+    "stdoutlevel": 6
+  }
+}

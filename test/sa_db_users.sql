@@ -26,6 +26,7 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
+CREATE USER IF NOT EXISTS 'statistics'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
@@ -71,6 +72,9 @@ GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON challenges TO 'purger'@'localhost';
+
+-- Statistics
+GRANT SELECT ON * TO 'statistics'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
