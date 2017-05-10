@@ -342,14 +342,36 @@ func (t TooManyCertificatesError) Error() string {
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
-func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
-	ret := make(map[string]int, len(domains))
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	var ret []*sapb.CountByNames_MapElement
 	for _, domain := range domains {
 		currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
 		if err != nil {
 			return ret, err
 		}
-		ret[domain] = currentCount
+		name := string(domain)
+		pbCount := int64(currentCount)
+		ret = append(ret, &sapb.CountByNames_MapElement{
+			Name:  &name,
+			Count: &pbCount,
+		})
+	}
+	return ret, nil
+}
+
+func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	var ret []*sapb.CountByNames_MapElement
+	for _, domain := range domains {
+		currentCount, err := ssa.countCertificatesByExactName(domain, earliest, latest)
+		if err != nil {
+			return ret, err
+		}
+		name := string(domain)
+		pbCount := int64(currentCount)
+		ret = append(ret, &sapb.CountByNames_MapElement{
+			Name:  &name,
+			Count: &pbCount,
+		})
 	}
 	return ret, nil
 }
@@ -362,13 +384,42 @@ func reverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
+const countCertificatesSelect = `
+		 SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain OR
+			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND notBefore > :earliest AND notBefore <= :latest
+		 LIMIT :limit;`
+
+const countCertificatesExactSelect = `
+		 SELECT serial from issuedNames
+		 WHERE reversedName = :reversedDomain
+		 AND notBefore > :earliest AND notBefore <= :latest
+		 LIMIT :limit;`
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
+func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+	return ssa.countCertificates(domain, earliest, latest, countCertificatesSelect)
+}
+
+// countCertificatesByExactNames returns, for a single domain, the count of
+// certificates issued in the given time range for that domain. In contrast to
+// countCertificatesByNames subdomains are NOT considered.
+func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earliest, latest time.Time) (int, error) {
+	return ssa.countCertificates(domain, earliest, latest, countCertificatesExactSelect)
+}
+
+// countCertificates returns, for a single domain, the count of
+// certificates issued in the given time range for that domain using the
+// provided query, assumed to be either `countCertificatesExactSelect` or
+// `countCertificatesSelect`.
+//
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
-func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, latest time.Time, query string) (int, error) {
 	var count int64
 	const max = 10000
 	var serials []struct {
@@ -376,11 +427,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 	}
 	_, err := ssa.dbMap.Select(
 		&serials,
-		`SELECT serial from issuedNames
-		 WHERE (reversedName = :reversedDomain OR
-			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND notBefore > :earliest AND notBefore <= :latest
-		 LIMIT :limit;`,
+		query,
 		map[string]interface{}{
 			"reversedDomain": reverseName(domain),
 			"earliest":       earliest,

@@ -146,9 +146,13 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 
 func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
 	addrs := make([][]byte, len(record.AddressesResolved))
+	addrsTried := make([][]byte, len(record.AddressesTried))
 	var err error
 	for i, v := range record.AddressesResolved {
 		addrs[i] = []byte(v)
+	}
+	for i, v := range record.AddressesTried {
+		addrsTried[i] = []byte(v)
 	}
 	addrUsed, err := record.AddressUsed.MarshalText()
 	if err != nil {
@@ -161,6 +165,7 @@ func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		AddressUsed:       addrUsed,
 		Authorities:       record.Authorities,
 		Url:               &record.URL,
+		AddressesTried:    addrsTried,
 	}, nil
 }
 
@@ -175,6 +180,10 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	for i, v := range in.AddressesResolved {
 		addrs[i] = net.IP(v)
 	}
+	addrsTried := make([]net.IP, len(in.AddressesTried))
+	for i, v := range in.AddressesTried {
+		addrsTried[i] = net.IP(v)
+	}
 	var addrUsed net.IP
 	err = addrUsed.UnmarshalText(in.AddressUsed)
 	if err != nil {
@@ -187,6 +196,7 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		AddressUsed:       addrUsed,
 		Authorities:       in.Authorities,
 		URL:               *in.Url,
+		AddressesTried:    addrsTried,
 	}, nil
 }
 

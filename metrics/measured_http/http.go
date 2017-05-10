@@ -34,17 +34,25 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// serveMux is a partial interface wrapper for the method http.ServeMux
+// exposes that we use. This is needed so that we can replace the default
+// http.ServeMux in ocsp-responder where we don't want to use its path
+// canonicalization.
+type serveMux interface {
+	Handler(*http.Request) (http.Handler, string)
+}
+
 // MeasuredHandler wraps an http.Handler and records prometheus stats
 type MeasuredHandler struct {
-	*http.ServeMux
+	serveMux
 	clk clock.Clock
 	// Normally this is always responseTime, but we override it for testing.
 	stat *prometheus.HistogramVec
 }
 
-func New(m *http.ServeMux, clk clock.Clock) *MeasuredHandler {
+func New(m serveMux, clk clock.Clock) *MeasuredHandler {
 	return &MeasuredHandler{
-		ServeMux: m,
+		serveMux: m,
 		clk:      clk,
 		stat:     responseTime,
 	}

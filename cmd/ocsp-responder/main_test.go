@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -29,8 +30,17 @@ func TestMux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ocsp.ParseRequest: %s", err)
 	}
+	doubleSlashBytes, err := base64.StdEncoding.DecodeString("MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==")
+	if err != nil {
+		t.Fatalf("failed to decode double slash OCSP request")
+	}
+	doubleSlashReq, err := ocsp.ParseRequest(doubleSlashBytes)
+	if err != nil {
+		t.Fatalf("failed to parse double slash OCSP request")
+	}
 	src := make(cfocsp.InMemorySource)
 	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
+	src[doubleSlashReq.SerialNumber.String()] = resp.OCSPResponse
 	h := mux(stats, "/foobar/", src)
 	type muxTest struct {
 		method   string
@@ -38,7 +48,11 @@ func TestMux(t *testing.T) {
 		reqBody  []byte
 		respBody []byte
 	}
-	mts := []muxTest{{"POST", "/foobar/", req, resp.OCSPResponse}, {"GET", "/", nil, nil}}
+	mts := []muxTest{
+		{"POST", "/foobar/", req, resp.OCSPResponse},
+		{"GET", "/", nil, nil},
+		{"GET", "/foobar/MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==", nil, resp.OCSPResponse},
+	}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()
 		r, err := http.NewRequest(mt.method, mt.path, bytes.NewReader(mt.reqBody))

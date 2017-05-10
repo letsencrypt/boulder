@@ -42,7 +42,8 @@
     "features": {
       "IDNASupport": true,
       "AllowKeyRollover": true,
-      "AllowTLS02Challenges": true
+      "AllowTLS02Challenges": true,
+      "CountCertificatesExact": true
     }
   },
 
