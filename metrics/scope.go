@@ -41,7 +41,7 @@ func NewPromScope(registerer prometheus.Registerer, scopes ...string) Scope {
 
 // NewNoopScope returns a Scope that won't collect anything
 func NewNoopScope() Scope {
-	return NewPromScope("noop")
+	return NewPromScope(prometheus.NewRegistry())
 }
 
 // NewScope generates a new Scope prefixed by this Scope's prefix plus the
