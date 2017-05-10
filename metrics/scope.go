@@ -20,8 +20,7 @@ type Scope interface {
 	SetInt(stat string, value int64) error
 }
 
-// promScope is a Scope that sends data to Prometheus, and ignores the first
-// element of its prefix.
+// promScope is a Scope that sends data to Prometheus
 type promScope struct {
 	*autoRegisterer
 	prefix     string
@@ -30,8 +29,7 @@ type promScope struct {
 
 var _ Scope = &promScope{}
 
-// NewPromScope returns a Scope that sends data to Prometheus, ignoring the
-// first element of its scopes argument.
+// NewPromScope returns a Scope that sends data to Prometheus
 func NewPromScope(registerer prometheus.Registerer, scopes ...string) Scope {
 	return &promScope{
 		prefix:         strings.Join(scopes, ".") + ".",
