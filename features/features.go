@@ -20,6 +20,9 @@ const (
 	UseAIAIssuerURL
 	AllowTLS02Challenges
 	GenerateOCSPEarly
+	CountCertificatesExact
+	RandomDirectoryEntry
+	IPv6First
 )
 
 // List of features and their default value, protected by fMu
@@ -33,6 +36,9 @@ var features = map[FeatureFlag]bool{
 	UseAIAIssuerURL:          false,
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,
+	CountCertificatesExact:   false,
+	RandomDirectoryEntry:     false,
+	IPv6First:                false,
 }
 
 var fMu = new(sync.RWMutex)
