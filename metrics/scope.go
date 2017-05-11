@@ -51,7 +51,7 @@ func (s *promScope) NewScope(scopes ...string) Scope {
 
 // Inc increments the given stat and adds the Scope's prefix to the name
 func (s *promScope) Inc(stat string, value int64) error {
-	s.autoCounter(s.prefix + stat).Add(float64(1))
+	s.autoCounter(s.prefix + stat).Add(float64(value))
 	return nil
 }
 
