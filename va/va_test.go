@@ -1320,4 +1320,27 @@ func TestFallbackTLS(t *testing.T) {
 	test.AssertEquals(t, len(records[0].AddressesTried), 1)
 	// We expect that IPv6 localhost address was tried before the address used
 	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
+
+	// Now try a validation for an IPv6 only host. E.g. one without an IPv4
+	// address. The IPv6 will fail without a server and we expect the overall
+	// validation to fail since there is no IPv4 address/listener to fall back to.
+	host = "ipv6.localhost"
+	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
+	va.stats = metrics.NewStatsdScope(mocks.NewStatter(), "VA")
+	records, prob = va.validateChallenge(ctx, ident, chall)
+
+	// The validation is expected to fail since there is no IPv4 to fall back to
+	// and a broken IPv6
+	records, prob = va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob != nil, "validation succeeded with broken IPv6 and no IPv4 fallback")
+	// We expect that the problem has the correct error message about working IPs
+	test.AssertEquals(t, prob.Detail, "no working IP addresses found for \"ipv6.localhost\"")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address eventually used was the IPv6 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "::1")
+	// We expect that one address was tried
+	test.AssertEquals(t, len(records[0].AddressesTried), 1)
+	// We expect that IPv6 localhost address was tried
+	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
 }
