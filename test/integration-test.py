@@ -311,13 +311,6 @@ def test_expired_authz_purger():
     expect(now, 0, "authz")
     expect(after_grace_period, 1, "authz")
 
-def test_psl_issue():
-    # Test that issuing for an exact public suffix domain works without error.
-    # We use "dedyn.io" here because it is a domain in the private portion of
-    # the public suffix list and we don't presently have the ability to mock
-    # test PSL entries easily.
-    auth_and_issue(["dedyn.io"])
-
 def test_certificates_per_name():
     chisel.expect_problem("urn:acme:error:rateLimited",
         lambda: auth_and_issue(["lim.it"]))
@@ -413,7 +406,6 @@ def run_chisel():
     test_caa()
     test_admin_revoker_cert()
     test_admin_revoker_authz()
-    test_psl_issue()
     test_certificates_per_name()
     test_ocsp()
     test_single_ocsp()
