@@ -1465,6 +1465,70 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
 }
 
+// mockSAOnlyExact is a Mock SA that will fail all calls to
+// CountCertifcatesByNames and will return 0 for all
+// CountCertificatesByExactNames calls. It can be used to test that the correct
+// function is called for a PSL matching domain
+type mockSAOnlyExact struct {
+	mocks.StorageAuthority
+}
+
+// CountCertificatesByNames for a mockSAOnlyExact will always fail
+func (m mockSAOnlyExact) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	return nil, fmt.Errorf("mockSAOnlyExact had non-exact CountCertificatesByNames called")
+}
+
+// CountCertificatesByExactNames will always return 0 for every input name
+func (m mockSAOnlyExact) CountCertificatesByExactNames(_ context.Context, names []string, _, _ time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	var results []*sapb.CountByNames_MapElement
+	// For each name in the input, return a count of 0
+	for _, name := range names {
+		results = append(results, nameCount(name, 0))
+	}
+	return results, nil
+}
+
+// TestPSLMatchIssuance tests the conditions from Boulder issue #2758 in which
+// the original CountCertificatesExact implementation would cause an RPC error
+// if *only* an exact PSL matching domain was requested for issuance.
+// https://github.com/letsencrypt/boulder/issues/2758
+func TestPSLMatchIssuance(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 2 certificates per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 2,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+	}
+
+	// We use "dedyn.io" for the test on the implicit assumption that it is
+	// present on the public suffix list. Quickly verify that this is true before
+	// continuing with the rest of the test.
+	_, err := publicsuffix.Domain("dedyn.io")
+	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
+
+	// Use a mock that will fail all calls to CountCertificatesByNames, only
+	// supporting CountCertificatesByExactNames
+	mockSA := &mockSAOnlyExact{}
+	ra.SA = mockSA
+
+	// Without CountCertificatesExact enabled we expect the rate limit check to
+	// fail since it will use the in-exact SA method that the mock always fails
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "exact PSL match certificate per name rate limit used wrong SA RPC")
+
+	// Enable the CountCertificatesExact feature flag
+	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
+	defer features.Reset()
+
+	// With CountCertificatesExact enabled we expect the limit check to pass when
+	// names only includes exact PSL matches and the RA will use the SA's exact
+	// name lookup which the mock provides
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "exact PSL match certificate per name rate limit used wrong SA RPC")
+}
+
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
