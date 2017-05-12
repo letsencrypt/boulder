@@ -277,10 +277,10 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
 			continue
 		}
-		switch v.(type) {
+		switch v := v.(type) {
 		case string:
 			// Only relative-ize top level string values, e.g. not the "meta" element
-			relativeDir[k] = wfe.relativeEndpoint(request, v.(string))
+			relativeDir[k] = wfe.relativeEndpoint(request, v)
 		default:
 			// If it isn't a string, put it into the results unmodified
 			relativeDir[k] = v
