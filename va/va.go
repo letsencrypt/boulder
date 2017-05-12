@@ -152,7 +152,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 		addresses := append(v4, v6...)
 		// This shouldn't happen, but be defensive about it anyway
 		if len(addresses) < 1 {
-			return nil, fmt.Errorf("No available addresses for dialer to dial")
+			return nil, fmt.Errorf("no IP addresses found for %q", d.record.Hostname)
 		}
 		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
 		d.record.AddressUsed = addresses[0]
@@ -399,15 +399,17 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 
 	// Split the available addresses into v4 and v6 addresses
 	v4, v6 := availableAddresses(*thisRecord)
+	addresses := append(v4, v6...)
+
+	// This shouldn't happen, but be defensive about it anyway
+	if len(addresses) < 1 {
+		return nil, validationRecords, probs.Malformed(
+			fmt.Sprintf("no IP addresses found for %q", identifier.Value))
+	}
 
 	// If the IPv6 first feature isn't enabled then combine available IPv4 and
 	// IPv6 addresses and connect to the first IP in the combined list
 	if !features.Enabled(features.IPv6First) {
-		addresses := append(v4, v6...)
-		// This shouldn't happen, but be defensive about it anyway
-		if len(addresses) < 1 {
-			return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
-		}
 		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = addresses[0]
 		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
@@ -432,9 +434,13 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 		va.stats.Inc("IPv4Fallback", 1)
 	}
 
-	// This shouldn't happen, but be defensive about it anyway
+	// If there are no v4 addresses then return an error about there being no
+	// usable addresses found. We don't say "no IP addresses found" here because
+	// we may have tried an IPv6 address before this point, had it fail, and then
+	// found no fallbacks.
 	if len(v4) < 1 {
-		return nil, validationRecords, probs.Malformed("No available addresses for getTLSSNICerts to dial")
+		return nil, validationRecords, probs.Malformed(
+			fmt.Sprintf("no working IP addresses found for %q", identifier.Value))
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
