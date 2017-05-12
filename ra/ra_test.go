@@ -1513,6 +1513,9 @@ func TestPSLMatchIssuance(t *testing.T) {
 	mockSA := &mockSAOnlyExact{}
 	ra.SA = mockSA
 
+	_ = features.Set(map[string]bool{"CountCertificatesExact": false})
+	defer features.Reset()
+
 	// Without CountCertificatesExact enabled we expect the rate limit check to
 	// fail since it will use the in-exact SA method that the mock always fails
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
@@ -1520,7 +1523,6 @@ func TestPSLMatchIssuance(t *testing.T) {
 
 	// Enable the CountCertificatesExact feature flag
 	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
-	defer features.Reset()
 
 	// With CountCertificatesExact enabled we expect the limit check to pass when
 	// names only includes exact PSL matches and the RA will use the SA's exact
