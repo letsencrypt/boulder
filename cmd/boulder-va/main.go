@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/va"
 )
 
@@ -43,8 +42,6 @@ type config struct {
 		Features map[string]bool
 	}
 
-	Statsd cmd.StatsdConfig
-
 	Syslog cmd.SyslogConfig
 
 	Common struct {
@@ -69,8 +66,7 @@ func main() {
 	err = features.Set(c.VA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "VA")
+	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 

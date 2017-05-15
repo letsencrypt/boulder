@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -290,7 +289,6 @@ func main() {
 			cmd.SMTPConfig
 			Features map[string]bool
 		}
-		Statsd cmd.StatsdConfig
 		Syslog cmd.SyslogConfig
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
@@ -315,8 +313,7 @@ func main() {
 	err = features.Set(cfg.NotifyMailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, log := cmd.StatsAndLogging(cfg.Statsd, cfg.Syslog)
-	scope := metrics.NewStatsdScope(stats, "NotificationMailer")
+	scope, log := cmd.StatsAndLogging(cfg.Syslog)
 	defer log.AuditPanic()
 
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()

@@ -30,16 +30,6 @@ func (_m *MockScope) EXPECT() *_MockScopeRecorder {
 	return _m.recorder
 }
 
-func (_m *MockScope) Dec(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "Dec", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-func (_mr *_MockScopeRecorder) Dec(arg0, arg1 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "Dec", arg0, arg1)
-}
-
 func (_m *MockScope) Gauge(_param0 string, _param1 int64) error {
 	ret := _m.ctrl.Call(_m, "Gauge", _param0, _param1)
 	ret0, _ := ret[0].(error)
@@ -82,36 +72,6 @@ func (_m *MockScope) NewScope(_param0 ...string) metrics.Scope {
 
 func (_mr *_MockScopeRecorder) NewScope(arg0 ...interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "NewScope", arg0...)
-}
-
-func (_m *MockScope) Raw(_param0 string, _param1 string) error {
-	ret := _m.ctrl.Call(_m, "Raw", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-func (_mr *_MockScopeRecorder) Raw(arg0, arg1 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "Raw", arg0, arg1)
-}
-
-func (_m *MockScope) Scope() string {
-	ret := _m.ctrl.Call(_m, "Scope")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-func (_mr *_MockScopeRecorder) Scope() *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "Scope")
-}
-
-func (_m *MockScope) Set(_param0 string, _param1 string) error {
-	ret := _m.ctrl.Call(_m, "Set", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-func (_mr *_MockScopeRecorder) Set(arg0, arg1 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "Set", arg0, arg1)
 }
 
 func (_m *MockScope) SetInt(_param0 string, _param1 int64) error {
