@@ -27,7 +27,7 @@ func loadSuffixes(dir string) (*weakKeys, error) {
 			return nil, err
 		}
 		for _, l := range strings.Split(string(f), "\n") {
-			if strings.HasPrefix(l, "#") {
+			if strings.HasPrefix(l, "#") || l == "" {
 				continue
 			}
 			err := wk.addSuffix(l)

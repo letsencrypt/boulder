@@ -41,14 +41,22 @@ type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
+	weakList           *weakKeys
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
-func NewKeyPolicy() KeyPolicy {
-	return KeyPolicy{
+func NewKeyPolicy(weakKeyDir string) (KeyPolicy, error) {
+	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
+	}
+	if weakKeyDir != "" {
+		keyList, err := loadSuffixes(weakKeyDir)
+		if err != nil {
+			return KeyPolicy{}, err
+		}
+		kp.weakList = keyList
 	}
 }
 
@@ -57,6 +65,15 @@ func NewKeyPolicy() KeyPolicy {
 // strength and algorithm checking.
 // TODO: Support JsonWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
+	if policy.weakList != nil {
+		der, err := x509.MarshalPKIXPublicKey(key)
+		if err != nil {
+			return err
+		}
+		if policy.Known(der) {
+			return fmt.Errorf("bad")
+		}
+	}
 	switch t := key.(type) {
 	case rsa.PublicKey:
 		return policy.goodKeyRSA(t)
