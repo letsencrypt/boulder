@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -19,7 +20,9 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // StorageAuthority is a mock
@@ -145,12 +148,12 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 2}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, test4KeyPublic) {
 		// No key found
-		return core.Registration{ID: 5}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
@@ -158,7 +161,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.Js
 	}
 
 	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
-		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
+		return core.Registration{ID: 4}, berrors.NotFoundError("reg not found")
 	}
 
 	if core.KeyDigestEquals(jwk, test3KeyPublic) {
@@ -201,9 +204,11 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		authz.Expires = &exp
 		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/expired/23"
 		return authz, nil
+	} else if id == "error_result" {
+		return core.Authorization{}, fmt.Errorf("Unspecified database error")
 	}
 
-	return core.Authorization{}, fmt.Errorf("authz not found")
+	return core.Authorization{}, sql.ErrNoRows
 }
 
 // RevokeAuthorizationsByDomain is a mock
@@ -250,7 +255,7 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte) (digest string, err error) {
 	return
 }
 
@@ -340,7 +345,12 @@ func (sa *StorageAuthority) CountCertificatesRange(_ context.Context, _, _ time.
 }
 
 // CountCertificatesByNames is a mock
-func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) (ret map[string]int, err error) {
+func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
+	return
+}
+
+// CountCertificatesByExactNames is a mock
+func (sa *StorageAuthority) CountCertificatesByExactNames(_ context.Context, _ []string, _, _ time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	return
 }
 

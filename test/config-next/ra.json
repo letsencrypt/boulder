@@ -17,19 +17,19 @@
       "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
-      "serverAddresses": ["va.boulder:9092"],
+      "serverAddresses": ["va.boulder:19092"],
       "timeout": "15s"
     },
     "caService": {
-      "serverAddresses": ["ca.boulder:9093"],
+      "serverAddresses": ["ca.boulder:19093"],
       "timeout": "15s"
     },
     "publisherService": {
-      "serverAddresses": ["publisher.boulder:9091"],
+      "serverAddresses": ["publisher.boulder:19091"],
       "timeout": "15s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
     "grpc": {
@@ -39,14 +39,11 @@
         "admin-revoker.boulder"
       ]
     },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "RA.server"
-    },
     "features": {
       "IDNASupport": true,
-      "AllowKeyRollover": true
+      "AllowKeyRollover": true,
+      "AllowTLS02Challenges": true,
+      "CountCertificatesExact": true
     }
   },
 

@@ -57,30 +57,30 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01}
+	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeTLSSNI02, ChallengeTypeDNS01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:   challengeType,
 			Status: StatusInvalid,
 		}
-		test.Assert(t, !chall.IsSaneForClientOffer(), "IsSane should be false")
+		test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
 
 		chall.Status = StatusPending
-		test.Assert(t, !chall.IsSaneForClientOffer(), "IsSane should be false")
+		test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
 
 		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-		test.Assert(t, chall.IsSaneForClientOffer(), "IsSane should be true")
+		test.AssertNotError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 		chall.ProvidedKeyAuthorization = chall.Token + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-		test.Assert(t, chall.IsSaneForValidation(), "IsSane should be true")
+		test.AssertNotError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation returned an error")
 
 		chall.ProvidedKeyAuthorization = "aaaa.aaaa"
-		test.Assert(t, !chall.IsSaneForValidation(), "IsSane should be false")
+		test.AssertError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation didn't return an error")
 	}
 
 	chall := Challenge{Type: "bogus", Status: StatusPending}
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
+	test.AssertError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation didn't return an error")
 }
 
 func TestJSONBufferUnmarshal(t *testing.T) {

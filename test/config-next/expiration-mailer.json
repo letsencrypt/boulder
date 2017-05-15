@@ -18,12 +18,10 @@
       "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
-    "features": {
-      "CertStatusOptimizationsMigrated": true
-    }
+    "frequency": "1h"
   },
 
   "statsd": {

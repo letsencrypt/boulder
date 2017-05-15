@@ -13,12 +13,17 @@ func HTTPChallenge01() Challenge {
 	return newChallenge(ChallengeTypeHTTP01)
 }
 
-// TLSSNIChallenge01 constructs a random tls-sni-00 challenge
+// TLSSNIChallenge01 constructs a random tls-sni-01 challenge
 func TLSSNIChallenge01() Challenge {
 	return newChallenge(ChallengeTypeTLSSNI01)
 }
 
-// DNSChallenge01 constructs a random DNS challenge
+// TLSSNIChallenge02 constructs a random tls-sni-02 challenge
+func TLSSNIChallenge02() Challenge {
+	return newChallenge(ChallengeTypeTLSSNI02)
+}
+
+// DNSChallenge01 constructs a random dns-01 challenge
 func DNSChallenge01() Challenge {
 	return newChallenge(ChallengeTypeDNS01)
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"golang.org/x/net/context"
 
@@ -14,13 +13,11 @@ import (
 )
 
 type requestEvent struct {
-	ID            string    `json:",omitempty"`
-	RealIP        string    `json:",omitempty"`
-	ClientAddr    string    `json:",omitempty"`
-	Endpoint      string    `json:",omitempty"`
-	Method        string    `json:",omitempty"`
-	RequestTime   time.Time `json:",omitempty"`
-	ResponseTime  time.Time `json:",omitempty"`
+	ID            string `json:",omitempty"`
+	RealIP        string `json:",omitempty"`
+	ClientAddr    string `json:",omitempty"`
+	Endpoint      string `json:",omitempty"`
+	Method        string `json:",omitempty"`
 	Errors        []string
 	Requester     int64                  `json:",omitempty"`
 	Contacts      *[]string              `json:",omitempty"`
@@ -28,6 +25,7 @@ type requestEvent struct {
 	ResponseNonce string                 `json:",omitempty"`
 	UserAgent     string                 `json:",omitempty"`
 	Extra         map[string]interface{} `json:",omitempty"`
+	Code          int
 }
 
 func (e *requestEvent) AddError(msg string, args ...interface{}) {
@@ -53,13 +51,12 @@ type topHandler struct {
 
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &requestEvent{
-		ID:          core.NewToken(),
-		RealIP:      r.Header.Get("X-Real-IP"),
-		ClientAddr:  getClientAddr(r),
-		Method:      r.Method,
-		RequestTime: time.Now(),
-		UserAgent:   r.Header.Get("User-Agent"),
-		Extra:       make(map[string]interface{}, 0),
+		ID:         core.NewToken(),
+		RealIP:     r.Header.Get("X-Real-IP"),
+		ClientAddr: getClientAddr(r),
+		Method:     r.Method,
+		UserAgent:  r.Header.Get("User-Agent"),
+		Extra:      make(map[string]interface{}, 0),
 	}
 	w.Header().Set("Boulder-Request-ID", logEvent.ID)
 	defer th.logEvent(logEvent)
@@ -68,7 +65,6 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (th *topHandler) logEvent(logEvent *requestEvent) {
-	logEvent.ResponseTime = th.clk.Now()
 	var msg string
 	if len(logEvent.Errors) != 0 {
 		msg = "Terminated request"

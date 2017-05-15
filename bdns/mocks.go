@@ -73,6 +73,13 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 			Err: errors.New("some net error"),
 		}, -1}
 	}
+	// dual-homed host with an IPv6 and an IPv4 address
+	if hostname == "ipv4.and.ipv6.localhost" {
+		return []net.IP{
+			net.ParseIP("::1"),
+			net.ParseIP("127.0.0.1"),
+		}, nil
+	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, nil
 }
@@ -134,7 +141,7 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Value = ";"
 		results = append(results, &record)
 	case "bad-local-resolver.com":
-		return nil, DNSError{underlying: MockTimeoutError()}
+		return nil, &DNSError{dns.TypeCAA, domain, MockTimeoutError(), -1}
 	}
 	return results, nil
 }

@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/square/go-jose.v1"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -69,6 +70,7 @@ const (
 const (
 	ChallengeTypeHTTP01   = "http-01"
 	ChallengeTypeTLSSNI01 = "tls-sni-01"
+	ChallengeTypeTLSSNI02 = "tls-sni-02"
 	ChallengeTypeDNS01    = "dns-01"
 )
 
@@ -81,6 +83,8 @@ func ValidChallenge(name string) bool {
 		fallthrough
 	case ChallengeTypeDNS01:
 		return true
+	case ChallengeTypeTLSSNI02:
+		return features.Enabled(features.AllowTLS02Challenges)
 
 	default:
 		return false
@@ -178,6 +182,21 @@ type ValidationRecord struct {
 	Port              string   `json:"port"`
 	AddressesResolved []net.IP `json:"addressesResolved"`
 	AddressUsed       net.IP   `json:"addressUsed"`
+	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
+	// Presently this will only ever be one IP from `AddressesResolved` since the
+	// only retry is in the case of a v6 failure with one v4 fallback. E.g. if
+	// a record with `AddressesResolved: { 127.0.0.1, ::1 }` were processed for
+	// a challenge validation with the IPv6 first flag on and the ::1 address
+	// failed but the 127.0.0.1 retry succeeded then the record would end up
+	// being:
+	// {
+	//   ...
+	//   AddressesResolved: [ 127.0.0.1, ::1 ],
+	//   AddressUsed: 127.0.0.1
+	//   AddressesTried: [ ::1 ],
+	//   ...
+	// }
+	AddressesTried []net.IP `json:"addressesTried"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -261,6 +280,8 @@ func (ch Challenge) RecordsSane() bool {
 			}
 		}
 	case ChallengeTypeTLSSNI01:
+		fallthrough
+	case ChallengeTypeTLSSNI02:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
@@ -286,45 +307,42 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// IsSaneForClientOffer checks the fields of a challenge object before it is
+// CheckConsistencyForClientOffer checks the fields of a challenge object before it is
 // given to the client.
-//
-// This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSaneForClientOffer() bool {
-	return ch.IsSane(false)
+func (ch Challenge) CheckConsistencyForClientOffer() error {
+	if err := ch.checkConsistency(); err != nil {
+		return err
+	}
+
+	// Before completion, the key authorization field should be empty
+	if ch.ProvidedKeyAuthorization != "" {
+		return fmt.Errorf("A response to this challenge was already submitted.")
+	}
+	return nil
 }
 
-// IsSaneForValidation checks the fields of a challenge object before it is
+// CheckConsistencyForValidation checks the fields of a challenge object before it is
 // given to the VA.
-//
-// This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSaneForValidation() bool {
-	return ch.IsSane(true)
+func (ch Challenge) CheckConsistencyForValidation() error {
+	if err := ch.checkConsistency(); err != nil {
+		return err
+	}
+
+	// If the challenge is completed, then there should be a key authorization
+	return looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization)
 }
 
-// IsSane checks the sanity of a challenge object before issued to the client
-// (completed = false) and before validation (completed = true).
-func (ch Challenge) IsSane(completed bool) bool {
+// checkConsistency checks the sanity of a challenge object before issued to the client.
+func (ch Challenge) checkConsistency() error {
 	if ch.Status != StatusPending {
-		return false
+		return fmt.Errorf("The challenge is not pending.")
 	}
 
 	// There always needs to be a token
 	if !LooksLikeAToken(ch.Token) {
-		return false
+		return fmt.Errorf("The token is missing.")
 	}
-
-	// Before completion, the key authorization field should be empty
-	if !completed && ch.ProvidedKeyAuthorization != "" {
-		return false
-	}
-
-	// If the challenge is completed, then there should be a key authorization
-	if completed && looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization) != nil {
-		return false
-	}
-
-	return true
+	return nil
 }
 
 // Authorization represents the authorization of an account key holder

@@ -27,7 +27,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -269,14 +268,9 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	// If CertStatusOptimizationsMigrated is enabled then we can do this query
-	// using only the `certificateStatus` table, saving an expensive JOIN and
-	// improving performance substantially
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT
 				cs.serial,
 				cs.status,
 				cs.revokedDate,
@@ -287,37 +281,12 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
 				LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-		// If the migration hasn't been applied we don't have the `isExpired` or
-		// `notAfter` fields on the certificate status table to use and must do the
-		// expensive JOIN on `certificates`
-	} else {
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT
-				 cs.serial,
-				 cs.status,
-				 cs.revokedDate
-				 FROM certificateStatus AS cs
-				 JOIN certificates AS cert
-				 ON cs.serial = cert.serial
-				 WHERE cs.ocspLastUpdated > :maxAge
-				 AND cs.ocspLastUpdated < :lastUpdate
-				 AND cert.expires > now()
-				 ORDER BY cs.ocspLastUpdated ASC
-				 LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"maxAge":     maxAgeCutoff,
-				"limit":      batchSize,
-			},
-		)
-	}
+		map[string]interface{}{
+			"lastUpdate": oldestLastUpdatedTime,
+			"maxAge":     maxAgeCutoff,
+			"limit":      batchSize,
+		},
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -326,21 +295,11 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		batchSize,
+	)
 	if err == sql.ErrNoRows {
 		return statuses, nil
 	}
@@ -456,23 +415,12 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
 	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
-	var statuses []core.CertificateStatus
-	var err error
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		statuses, err = sa.SelectCertificateStatusesv2(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	} else {
-		statuses, err = sa.SelectCertificateStatuses(
-			updater.dbMap,
-			query,
-			string(core.OCSPStatusRevoked),
-			batchSize,
-		)
-	}
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		query,
+		string(core.OCSPStatusRevoked),
+		batchSize,
+	)
 	return statuses, err
 }
 
@@ -559,16 +507,11 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	tickEnd := updater.clk.Now()
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
 
-	// If the CertStatusOptimizationsMigrated flag is set then we need to
-	// opportunistically update the certificateStatus `isExpired` column for expired
-	// certificates we come across
-	if features.Enabled(features.CertStatusOptimizationsMigrated) {
-		for _, s := range statuses {
-			if !s.IsExpired && tickStart.After(s.NotAfter) {
-				err := updater.markExpired(s)
-				if err != nil {
-					return err
-				}
+	for _, s := range statuses {
+		if !s.IsExpired && tickStart.After(s.NotAfter) {
+			err := updater.markExpired(s)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -786,51 +729,26 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.Publisher,
 	core.StorageAuthority,
 ) {
-	amqpConf := c.AMQP
-
-	// TODO(jsha): Publisher is currently configured in production using old-style
-	// GRPC config fields. Remove this once production is switched over.
-	if c.Publisher != nil && c.TLS.CertFile == nil {
-		c.TLS = cmd.TLSConfig{
-			CertFile:   &c.Publisher.ClientCertificatePath,
-			KeyFile:    &c.Publisher.ClientKeyPath,
-			CACertFile: &c.Publisher.ServerIssuerPath,
-		}
-	}
-
 	var tls *tls.Config
 	var err error
 	if c.TLS.CertFile != nil {
 		tls, err = c.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
-	var cac core.CertificateAuthority
-	if c.OCSPGeneratorService != nil {
-		conn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-		// Make a CA client that is only capable of signing OCSP.
-		// TODO(jsha): Once we've fully moved to gRPC, replace this
-		// with a plain caPB.NewOCSPGeneratorClient.
-		cac = bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(conn))
-	} else {
-		var err error
-		cac, err = rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create CA client")
-	}
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+	// Make a CA client that is only capable of signing OCSP.
+	// TODO(jsha): Once we've fully moved to gRPC, replace this
+	// with a plain caPB.NewOCSPGeneratorClient.
+	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	conn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
+	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
 
-	var sac core.StorageAuthority
-	if c.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	return cac, pubc, sac
 }

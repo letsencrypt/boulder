@@ -15,7 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -24,10 +23,9 @@ const clientName = "Publisher"
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		SubmissionTimeout              cmd.ConfigDuration
-		MaxConcurrentRPCServerRequests int64
-		SAService                      *cmd.GRPCClientConfig
-		Features                       map[string]bool
+		SubmissionTimeout cmd.ConfigDuration
+		SAService         *cmd.GRPCClientConfig
+		Features          map[string]bool
 	}
 
 	Statsd cmd.StatsdConfig
@@ -78,32 +76,15 @@ func main() {
 		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 	}
 
-	// TODO(jsha): Publisher is currently configured in production using old-style
-	// GRPC config fields. Remove this once production is switched over.
-	if c.Publisher.GRPC != nil && c.Publisher.TLS.CertFile == nil {
-		c.Publisher.TLS = cmd.TLSConfig{
-			CertFile:   &c.Publisher.GRPC.ServerCertificatePath,
-			KeyFile:    &c.Publisher.GRPC.ServerKeyPath,
-			CACertFile: &c.Publisher.GRPC.ClientIssuerPath,
-		}
-	}
-
 	var tls *tls.Config
 	if c.Publisher.TLS.CertFile != nil {
 		tls, err = c.Publisher.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	amqpConf := c.Publisher.AMQP
-	var sac core.StorageAuthority
-	if c.Publisher.SAService != nil {
-		conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, scope)
-		cmd.FailOnError(err, "Unable to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	pubi := publisher.New(
 		bundle,
@@ -126,22 +107,14 @@ func main() {
 		grpcSrv = s
 	}
 
-	pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, scope, logger)
-	cmd.FailOnError(err, "Unable to create Publisher RPC server")
-
 	go cmd.CatchSignals(logger, func() {
-		pubs.Stop()
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}
 	})
 
-	err = rpc.NewPublisherServer(pubs, pubi)
-	cmd.FailOnError(err, "Unable to setup Publisher RPC server")
-
 	go cmd.DebugServer(c.Publisher.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	err = pubs.Start(amqpConf)
-	cmd.FailOnError(err, "Unable to run Publisher RPC server")
+	select {}
 }

@@ -21,12 +21,15 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 )
 
 var (
@@ -144,7 +147,7 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64) (string, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte) (string, error) {
 	m.certificate.DER = der
 	return "", nil
 }
@@ -471,8 +474,7 @@ func TestNoHostnames(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(NoNamesCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1001)
 	test.AssertError(t, err, "Issued certificate with no names")
-	_, ok := err.(core.MalformedRequestError)
-	test.Assert(t, ok, "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 }
 
 func TestRejectTooManyNames(t *testing.T) {
@@ -493,8 +495,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(TooManyNameCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1001)
 	test.AssertError(t, err, "Issued certificate with too many names")
-	_, ok := err.(core.MalformedRequestError)
-	test.Assert(t, ok, "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 }
 
 func TestRejectValidityTooLong(t *testing.T) {
@@ -520,8 +521,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1)
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
-	_, ok := err.(core.InternalServerError)
-	test.Assert(t, ok, "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
 
 func TestShortKey(t *testing.T) {
@@ -541,8 +541,7 @@ func TestShortKey(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(ShortKeyCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1001)
 	test.AssertError(t, err, "Issued a certificate with too short a key.")
-	_, ok := err.(core.MalformedRequestError)
-	test.Assert(t, ok, "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 }
 
 func TestAllowNoCN(t *testing.T) {
@@ -603,8 +602,7 @@ func TestLongCommonName(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(LongCNCSR)
 	_, err = ca.IssueCertificate(ctx, *csr, 1001)
 	test.AssertError(t, err, "Issued a certificate with a CN over 64 bytes.")
-	_, ok := err.(core.MalformedRequestError)
-	test.Assert(t, ok, "Incorrect error type returned")
+	test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 }
 
 func TestWrongSignature(t *testing.T) {
@@ -713,6 +711,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
 	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
+		signatureCount.Reset()
 		coreCert, err := ca.IssueCertificate(ctx, *csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
 		cert, err := x509.ParseCertificate(coreCert.DER)
@@ -723,37 +722,46 @@ func TestExtensions(t *testing.T) {
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
 	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	singleStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
+	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
 
 	// ... but if it doesn't ask for stapling, there should be an error
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeatureInvalid, int64(1)).Return(nil)
+	signatureCount.Reset()
 	_, err = ca.IssueCertificate(ctx, *tlsFeatureUnknownCSR, 1001)
+	test.AssertEquals(t, signatureCountByPurpose("cert"), 0)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
-	if _, ok := err.(core.MalformedRequestError); !ok {
-		t.Errorf("Wrong error type when rejecting a CSR with empty TLS feature extension")
-	}
+	test.Assert(t, berrors.Is(err, berrors.Malformed), "Wrong error type when rejecting a CSR with empty TLS feature extension")
 
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	stats.EXPECT().Inc(metricCSRExtensionOther, int64(1)).Return(nil)
-	stats.EXPECT().Inc("Signatures.Certificate", int64(1)).Return(nil)
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
+	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
+}
+
+func signatureCountByPurpose(signatureType string) int {
+	ch := make(chan prometheus.Metric, 10)
+	signatureCount.With(prometheus.Labels{"purpose": signatureType}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
 }

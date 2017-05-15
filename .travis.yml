@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.7.3
+  - 1.8
 
 addons:
   hosts:
@@ -41,12 +41,12 @@ env:
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
+    - RUN="coverage"
     - RUN="rpm"
 
 install:
   - ./test/travis-before-install.sh
   - docker-compose pull
-  - docker pull letsencrypt/boulder-tools
   - docker-compose build
 
 script:

@@ -5,12 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"fmt"
 	"math/big"
 	"reflect"
 	"sync"
 
-	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 // To generate, run: primes 2 752 | tr '\n' ,
@@ -84,7 +83,7 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(*t)
 	default:
-		return core.MalformedRequestError(fmt.Sprintf("Unknown key type %s", reflect.TypeOf(key)))
+		return berrors.MalformedError("unknown key type %s", reflect.TypeOf(key))
 	}
 }
 
@@ -114,7 +113,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	// This code assumes that the point at infinity is (0,0), which is the
 	// case for all supported curves.
 	if isPointAtInfinityNISTP(key.X, key.Y) {
-		return core.MalformedRequestError("Key x, y must not be the point at infinity")
+		return berrors.MalformedError("key x, y must not be the point at infinity")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 2.
@@ -131,11 +130,11 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	// correct representation of an element in the underlying field by verifying
 	// that x and y are integers in [0, p-1].
 	if key.X.Sign() < 0 || key.Y.Sign() < 0 {
-		return core.MalformedRequestError("Key x, y must not be negative")
+		return berrors.MalformedError("key x, y must not be negative")
 	}
 
 	if key.X.Cmp(params.P) >= 0 || key.Y.Cmp(params.P) >= 0 {
-		return core.MalformedRequestError("Key x, y must not exceed P-1")
+		return berrors.MalformedError("key x, y must not exceed P-1")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 3.
@@ -153,7 +152,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	// This proves that the public key is on the correct elliptic curve.
 	// But in practice, this test is provided by crypto/elliptic, so use that.
 	if !key.Curve.IsOnCurve(key.X, key.Y) {
-		return core.MalformedRequestError("Key point is not on the curve")
+		return berrors.MalformedError("key point is not on the curve")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 4.
@@ -169,7 +168,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	// n*Q = O iff n*Q is the point at infinity (see step 1).
 	ox, oy := key.Curve.ScalarMult(key.X, key.Y, params.N.Bytes())
 	if !isPointAtInfinityNISTP(ox, oy) {
-		return core.MalformedRequestError("Public key does not have correct order")
+		return berrors.MalformedError("public key does not have correct order")
 	}
 
 	// End of SP800-56A § 5.6.2.3.2 Public Key Validation Routine.
@@ -195,14 +194,14 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
 		return nil
 	default:
-		return core.MalformedRequestError(fmt.Sprintf("ECDSA curve %v not allowed", params.Name))
+		return berrors.MalformedError("ECDSA curve %v not allowed", params.Name)
 	}
 }
 
 // GoodKeyRSA determines if a RSA pubkey meets our requirements
 func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	if !policy.AllowRSA {
-		return core.MalformedRequestError("RSA keys are not allowed")
+		return berrors.MalformedError("RSA keys are not allowed")
 	}
 
 	// Baseline Requirements Appendix A
@@ -211,15 +210,15 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	modulusBitLen := modulus.BitLen()
 	const maxKeySize = 4096
 	if modulusBitLen < 2048 {
-		return core.MalformedRequestError(fmt.Sprintf("Key too small: %d", modulusBitLen))
+		return berrors.MalformedError("key too small: %d", modulusBitLen)
 	}
 	if modulusBitLen > maxKeySize {
-		return core.MalformedRequestError(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
+		return berrors.MalformedError("key too large: %d > %d", modulusBitLen, maxKeySize)
 	}
 	// Bit lengths that are not a multiple of 8 may cause problems on some
 	// client implementations.
 	if modulusBitLen%8 != 0 {
-		return core.MalformedRequestError(fmt.Sprintf("Key length wasn't a multiple of 8: %d", modulusBitLen))
+		return berrors.MalformedError("key length wasn't a multiple of 8: %d", modulusBitLen)
 	}
 	// The CA SHALL confirm that the value of the public exponent is an
 	// odd number equal to 3 or more. Additionally, the public exponent
@@ -228,13 +227,13 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	// 2^32 - 1 or 2^64 - 1, because it stores E as an integer. So we
 	// don't need to check the upper bound.
 	if (key.E%2) == 0 || key.E < ((1<<16)+1) {
-		return core.MalformedRequestError(fmt.Sprintf("Key exponent should be odd and >2^16: %d", key.E))
+		return berrors.MalformedError("key exponent should be odd and >2^16: %d", key.E)
 	}
 	// The modulus SHOULD also have the following characteristics: an odd
 	// number, not the power of a prime, and have no factors smaller than 752.
 	// TODO: We don't yet check for "power of a prime."
 	if checkSmallPrimes(modulus) {
-		return core.MalformedRequestError("Key divisible by small prime")
+		return berrors.MalformedError("key divisible by small prime")
 	}
 
 	return nil

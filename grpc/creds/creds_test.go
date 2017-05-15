@@ -171,8 +171,35 @@ func TestClientTransportCredentials(t *testing.T) {
 	defer cancel()
 	conn, _, err = tc.ClientHandshake(ctx, "A:2020", rawConnC)
 	test.AssertError(t, err, "tc.ClientHandshake didn't timeout")
-	test.AssertEquals(t, err.Error(), "boulder/grpc/creds: context deadline exceeded")
+	test.AssertEquals(t, err.Error(), "context deadline exceeded")
 	test.Assert(t, conn == nil, "tc.ClientHandshake returned a non-nil net.Conn on failure")
 
 	stop <- struct{}{}
+}
+
+type brokenConn struct{}
+
+func (bc *brokenConn) Read([]byte) (int, error) {
+	return 0, &net.OpError{}
+}
+
+func (bc *brokenConn) Write([]byte) (int, error) {
+	return 0, &net.OpError{}
+}
+
+func (bc *brokenConn) LocalAddr() net.Addr              { return nil }
+func (bc *brokenConn) RemoteAddr() net.Addr             { return nil }
+func (bc *brokenConn) Close() error                     { return nil }
+func (bc *brokenConn) SetDeadline(time.Time) error      { return nil }
+func (bc *brokenConn) SetReadDeadline(time.Time) error  { return nil }
+func (bc *brokenConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestClientReset(t *testing.T) {
+	tc := NewClientCredentials(nil, []tls.Certificate{})
+	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
+	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
+	_, ok := err.(interface {
+		Temporary() bool
+	})
+	test.Assert(t, ok, "returned error doesn't have a Temporary method")
 }

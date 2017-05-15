@@ -25,6 +25,7 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -781,7 +782,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request. Extensions in the CSR marked critical can cause this error: https://github.com/letsencrypt/boulder/issues/565","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -809,7 +810,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com","status":403}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -941,6 +942,27 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
+
+	// Challenge Not found
+	challengeURL = ""
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath(challengeURL,
+			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	assertJSONEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`)
+
+	// Unspecified database error
+	errorURL := "error_result/24"
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath(errorURL,
+			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
+	assertJSONEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`)
+
 }
 
 func TestBadNonce(t *testing.T) {
@@ -1209,16 +1231,16 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
-// An SA mock that always returns NoSuchRegistrationError. This is necessary
+// An SA mock that always returns a berrors.NotFound type error. This is necessary
 // because the standard mock in our mocks package always returns a given test
 // registration when GetRegistrationByKey is called, and we want to get a
-// NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
+// berrors.NotFound type error for tests that pass regCheck = false to verifyPOST.
 type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
 func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
-	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
+	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert
@@ -1825,7 +1847,7 @@ func TestBadKeyCSR(t *testing.T) {
 
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
@@ -1841,7 +1863,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 
 	mux := wfe.Handler()
 	s := httptest.NewServer(mux)
-	// TODO(#1989): Close s
+	defer s.Close()
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

@@ -21,7 +21,6 @@ func TestErrors(t *testing.T) {
 		{core.UnauthorizedError("test 3"), UnauthorizedError},
 		{core.NotFoundError("test 4"), NotFoundError},
 		{core.LengthRequiredError("test 5"), LengthRequiredError},
-		{core.SignatureValidationError("test 6"), SignatureValidationError},
 		{core.RateLimitedError("test 7"), RateLimitedError},
 		{core.BadNonceError("test 8"), BadNonceError},
 		{core.NoSuchRegistrationError("test 9"), NoSuchRegistrationError},
@@ -30,11 +29,11 @@ func TestErrors(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		wrappedErr := wrapError(tc.err)
+		wrappedErr := wrapError(nil, tc.err)
 		test.AssertEquals(t, grpc.Code(wrappedErr), tc.expectedCode)
-		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr))
+		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))
 	}
 
-	test.AssertEquals(t, wrapError(nil), nil)
-	test.AssertEquals(t, unwrapError(nil), nil)
+	test.AssertEquals(t, wrapError(nil, nil), nil)
+	test.AssertEquals(t, unwrapError(nil, nil), nil)
 }

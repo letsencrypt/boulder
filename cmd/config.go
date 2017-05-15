@@ -41,7 +41,6 @@ func (pc *PasswordConfig) Pass() (string, error) {
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
-	AMQP      *AMQPConfig
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 }
@@ -74,43 +73,6 @@ type SMTPConfig struct {
 	Username string
 }
 
-// AMQPConfig describes how to connect to AMQP, and how to speak to each of the
-// RPC services we offer via AMQP.
-type AMQPConfig struct {
-	// A file from which the AMQP Server URL will be read. This allows secret
-	// values (like the password) to be stored separately from the main config.
-	ServerURLFile string
-	// AMQP server URL, including username and password.
-	Server    string
-	Insecure  bool
-	RA        *RPCServerConfig
-	VA        *RPCServerConfig
-	SA        *RPCServerConfig
-	CA        *RPCServerConfig
-	Publisher *RPCServerConfig
-	TLS       *TLSConfig
-	// Queue name on which to listen, if this is an RPC service (vs acting only as
-	// an RPC client).
-	ServiceQueue      string
-	ReconnectTimeouts struct {
-		Base ConfigDuration
-		Max  ConfigDuration
-	}
-}
-
-// ServerURL returns the appropriate server URL for this object, which may
-// involve reading from a file.
-func (a *AMQPConfig) ServerURL() (string, error) {
-	if a.ServerURLFile != "" {
-		url, err := ioutil.ReadFile(a.ServerURLFile)
-		return strings.TrimRight(string(url), "\n"), err
-	}
-	if a.Server == "" {
-		return "", fmt.Errorf("Missing AMQP server URL")
-	}
-	return a.Server, nil
-}
-
 // CAConfig structs have configuration information for the certificate
 // authority, including database parameters as well as controls for
 // issued certificates.
@@ -140,8 +102,6 @@ type CAConfig struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
-
-	MaxConcurrentRPCServerRequests int64
 
 	// DoNotForceCN is a temporary config setting. It controls whether
 	// to add a certificate's serial to its Subject, and whether to
@@ -364,10 +324,6 @@ type LogDescription struct {
 type GRPCClientConfig struct {
 	ServerAddresses []string
 	Timeout         ConfigDuration
-	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
-	ServerIssuerPath      string
-	ClientCertificatePath string
-	ClientKeyPath         string
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
@@ -377,10 +333,6 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	ClientNames []string `json:"clientNames"`
-	// Deprecated. Use TLSConfig instead. TODO(#2472): Delete these.
-	ServerCertificatePath string `json:"serverCertificatePath"`
-	ServerKeyPath         string `json:"serverKeyPath"`
-	ClientIssuerPath      string `json:"clientIssuerPath"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

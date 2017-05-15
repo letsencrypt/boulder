@@ -17,11 +17,11 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/rpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -39,7 +39,6 @@ command descriptions:
 `
 
 type config struct {
-	AMQP      cmd.AMQPConfig
 	Statsd    cmd.StatsdConfig
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
@@ -48,7 +47,7 @@ type config struct {
 }
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
 }
 
@@ -68,7 +67,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 	if err == nil {
 		return errAlreadyExists
 	}
-	if _, ok := err.(core.NotFoundError); ok {
+	if berrors.Is(err, berrors.NotFound) {
 		return nil
 	}
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)
@@ -109,7 +108,9 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		logger.AuditErr(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
-	_, err = sa.AddCertificate(ctx, der, int64(regID))
+	// OCSP-Updater will do the first response generation for this cert so pass an
+	// empty OCSP response
+	_, err = sa.AddCertificate(ctx, der, int64(regID), nil)
 	if err != nil {
 		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
@@ -134,15 +135,9 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	var sac core.StorageAuthority
-	if conf.SAService != nil {
-		conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-		sac = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	} else {
-		sac, err = rpc.NewStorageAuthorityClient("orphan-finder", &conf.AMQP, scope)
-		cmd.FailOnError(err, "Failed to create SA client")
-	}
+	conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	return scope, logger, sac
 }
 
@@ -207,7 +202,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to read DER file")
 		err = checkDER(sa, der)
 		cmd.FailOnError(err, "Pre-AddCertificate checks failed")
-		_, err = sa.AddCertificate(ctx, der, int64(*regID))
+		_, err = sa.AddCertificate(ctx, der, int64(*regID), nil)
 		cmd.FailOnError(err, "Failed to add certificate to database")
 
 	default:

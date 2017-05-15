@@ -10,6 +10,7 @@ import (
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -101,7 +102,8 @@ type StorageGetter interface {
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
 	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
-	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
+	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
+	CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
@@ -117,7 +119,7 @@ type StorageAdder interface {
 	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
-	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
+	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error

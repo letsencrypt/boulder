@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -23,8 +22,6 @@ type config struct {
 	SA struct {
 		cmd.ServiceConfig
 		cmd.DBConfig
-
-		MaxConcurrentRPCServerRequests int64
 
 		Features map[string]bool
 	}
@@ -82,23 +79,14 @@ func main() {
 		}()
 	}
 
-	amqpConf := saConf.AMQP
-	sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, scope, logger)
-	cmd.FailOnError(err, "Unable to create SA RPC server")
-
 	go cmd.CatchSignals(logger, func() {
-		sas.Stop()
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}
 	})
 
-	err = rpc.NewStorageAuthorityServer(sas, sai)
-	cmd.FailOnError(err, "Unable to setup SA RPC server")
-
 	go cmd.DebugServer(c.SA.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	err = sas.Start(amqpConf)
-	cmd.FailOnError(err, "Unable to run SA RPC server")
+	select {}
 }

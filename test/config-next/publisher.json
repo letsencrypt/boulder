@@ -5,25 +5,19 @@
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
-      "clientIssuerPath": "test/grpc-creds/minica.pem",
-      "serverCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
-      "serverKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
       "clientNames": [
         "ra.boulder",
         "ocsp-updater.boulder"
       ]
     },
-    "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
-      "serverIssuerPath": "test/grpc-creds/minica.pem",
-      "clientCertificatePath": "test/grpc-creds/publisher.boulder/cert.pem",
-      "clientKeyPath": "test/grpc-creds/publisher.boulder/key.pem",
-      "timeout": "15s"
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
-    "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true,
-      "serviceQueue": "Publisher.server"
+    "saService": {
+      "serverAddresses": ["sa.boulder:19095"],
+      "timeout": "15s"
     }
   },
 

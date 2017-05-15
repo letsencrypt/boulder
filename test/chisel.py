@@ -28,6 +28,7 @@ from acme import messages
 from acme import standalone
 
 logger = logging.getLogger()
+logging.basicConfig()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
@@ -44,24 +45,11 @@ def make_client(email=None):
     client.agree_to_tos(account)
     return client
 
-def get_chall(client, domain):
-    """Ask the server for an authz, return the authz and an HTTP-01 challenge."""
-    authz = client.request_domain_challenges(domain)
+def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
-        if isinstance(chall_body.chall, challenges.HTTP01):
-            return authz, chall_body
-    raise "No HTTP-01 challenge found"
-
-def make_authzs(client, domains):
-    """Make authzs for each of the given domains. Return a list of authzs
-       and challenges."""
-    authzs, challenges = [], []
-    for d in domains:
-        authz, chall_body = get_chall(client, d)
-
-        authzs.append(authz)
-        challenges.append(chall_body)
-    return authzs, challenges
+        if isinstance(chall_body.chall, typ):
+            return chall_body
+    raise "No %s challenge found" % typ
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""
@@ -123,15 +111,25 @@ def http_01_answer(client, chall_body):
           chall=chall_body.chall, response=response,
           validation=validation)
 
-def auth_and_issue(domains, email=None, cert_output=None, client=None):
-    """Make authzs for each of the given domains, set up a server to answer the
-       challenges in those authzs, tell the ACME server to validate the challenges,
-       then poll for the authzs to be ready and issue a cert."""
-    if client is None:
-        client = make_client(email)
-    authzs, challenges = make_authzs(client, domains)
+def do_dns_challenges(client, authzs):
+    for a in authzs:
+        c = get_chall(a, challenges.DNS01)
+        name, value = (c.validation_domain_name(a.body.identifier.value),
+            c.validation(client.key))
+        urllib2.urlopen("http://localhost:8055/set-txt",
+            data=json.dumps({
+                "host": name + ".",
+                "value": value,
+            })).read()
+        client.answer_challenge(c, c.response(client.key))
+    def cleanup():
+        pass
+    return cleanup
+
+def do_http_challenges(client, authzs):
     port = 5002
-    answers = set([http_01_answer(client, c) for c in challenges])
+    challs = [get_chall(a, challenges.HTTP01) for a in authzs]
+    answers = set([http_01_answer(client, c) for c in challs])
     server = standalone.HTTP01Server(("", port), answers)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
@@ -144,15 +142,36 @@ def auth_and_issue(domains, email=None, cert_output=None, client=None):
         except urllib2.URLError:
             time.sleep(0.1)
 
-    try:
-        for chall_body in challenges:
-            client.answer_challenge(chall_body, chall_body.response(client.key))
-        cert_resource = issue(client, authzs, cert_output)
-        return cert_resource
-    finally:
+    for chall_body in challs:
+        client.answer_challenge(chall_body, chall_body.response(client.key))
+
+    def cleanup():
         server.shutdown()
         server.server_close()
         thread.join()
+    return cleanup
+
+def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, client=None):
+    """Make authzs for each of the given domains, set up a server to answer the
+       challenges in those authzs, tell the ACME server to validate the challenges,
+       then poll for the authzs to be ready and issue a cert."""
+    if client is None:
+        client = make_client(email)
+    authzs = [client.request_domain_challenges(d) for d in domains]
+
+    if chall_type == "http-01":
+        cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "dns-01":
+        cleanup = do_http_challenges(client, authzs)
+    else:
+        raise Exception("invalid challenge type %s" % chall_type)
+
+    try:
+        cert_resource = issue(client, authzs, cert_output)
+        client.fetch_chain(cert_resource)
+        return cert_resource
+    finally:
+        cleanup()
 
 def expect_problem(problem_type, func):
     """Run a function. If it raises a ValidationError or messages.Error that

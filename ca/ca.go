@@ -29,9 +29,12 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -95,8 +98,21 @@ const (
 	metricCSRExtensionOther = "CSRExtensions.Other"
 )
 
+var (
+	signatureCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose"})
+)
+
+func init() {
+	prometheus.MustRegister(signatureCount)
+}
+
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -295,12 +311,10 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					ca.stats.Inc(metricCSRExtensionTLSFeature, 1)
 					value, ok := ext.Value.([]byte)
 					if !ok {
-						msg := fmt.Sprintf("Malformed extension with OID %v", ext.Type)
-						return nil, core.MalformedRequestError(msg)
+						return nil, berrors.MalformedError("malformed extension with OID %v", ext.Type)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
-						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
 						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1)
-						return nil, core.MalformedRequestError(msg)
+						return nil, berrors.MalformedError("unsupported value for extension with OID %v", ext.Type)
 					}
 
 					if ca.enableMustStaple {
@@ -365,7 +379,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
 	ca.noteSignError(err)
 	if err == nil {
-		ca.stats.Inc("Signatures.OCSP", 1)
+		signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
 	return ocspResponse, err
 }
@@ -386,7 +400,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		regID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
-		return emptyCert, core.MalformedRequestError(err.Error())
+		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
 	requestedExtensions, err := ca.extensionsFromCSR(&csr)
@@ -398,7 +412,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	if issuer.cert.NotAfter.Before(notAfter) {
-		err = core.InternalServerError("Cannot issue a certificate that expires after the issuer certificate.")
+		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -415,7 +429,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	serialBytes[0] = byte(ca.prefix)
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
@@ -430,7 +444,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	case *ecdsa.PublicKey:
 		profile = ca.ecdsaProfile
 	default:
-		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", csr.PublicKey))
+		err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
 	}
@@ -456,21 +470,21 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError("failed to sign certificate: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-	ca.stats.Inc("Signatures.Certificate", 1)
+	signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
 
 	if len(certPEM) == 0 {
-		err = core.InternalServerError("No certificate returned by server")
+		err = berrors.InternalServerError("no certificate returned by server")
 		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err = core.InternalServerError("Invalid certificate value returned")
+		err = berrors.InternalServerError("invalid certificate value returned")
 		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
 			serialHex, certPEM, err))
 		return emptyCert, err
@@ -485,18 +499,25 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
 		hex.EncodeToString(certDER)))
 
-	// This is one last check for uncaught errors
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		ca.log.AuditErr(fmt.Sprintf("Uncaught error, aborting: serial=[%s] cert=[%s] err=[%v]",
-			serialHex, hex.EncodeToString(certDER), err))
-		return emptyCert, err
+	var ocspResp []byte
+	if features.Enabled(features.GenerateOCSPEarly) {
+		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: certDER,
+			Status:  "good",
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err))
+			// Ignore errors here to avoid orphaning the certificate. The
+			// ocsp-updater will look for certs with a zero ocspLastUpdated
+			// and generate the initial response in this case.
+		}
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
+	_, err = ca.SA.AddCertificate(ctx, certDER, regID, ocspResp)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(
@@ -518,7 +539,5 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		}()
 	}
 
-	// Do not return an err at this point; caller must know that the Certificate
-	// was issued. (Also, it should be impossible for err to be non-nil here)
 	return cert, nil
 }
