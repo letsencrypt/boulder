@@ -32,7 +32,7 @@ func main() {
 				continue
 			}
 			if len(l) != 20 {
-				fmt.Fprintf(os.Stderr, "line %d in %d is not expected length (20 characters)\n", i, fp)
+				fmt.Fprintf(os.Stderr, "line %d in %s is not expected length (20 characters)\n", i, fp)
 				os.Exit(1)
 			}
 			flattened[l] = struct{}{}
