@@ -869,7 +869,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
 	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil)
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
@@ -903,7 +903,7 @@ func TestPerformValidationValid(t *testing.T) {
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
 	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil)
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
