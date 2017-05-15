@@ -26,6 +26,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -432,9 +433,8 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Override the mailer `stats` with a mock
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	statter := metrics.NewMockStatter(ctrl)
-	stats := metrics.NewStatsdScope(statter, "Expiration")
-	testCtx.m.stats = stats
+	statter := mock_metrics.NewMockScope(ctrl)
+	testCtx.m.stats = statter
 
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
@@ -443,14 +443,13 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
 	// * 24 to setup() for the nag duration. This is because all of the nags are
 	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Expiration.Errors.Nag-48h0m0s.AtCapacity",
-		int64(1), float32(1.0))
+	statter.EXPECT().Inc("Errors.Nag-48h0m0s.AtCapacity", int64(1))
 
 	// findExpiringCertificates() ends up invoking sendNags which calls
 	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("Expiration.SendLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("SendLatency", time.Duration(0))
 	// Similarly, findExpiringCertificates() sends its latency as well
-	statter.EXPECT().TimingDuration("Expiration.ProcessingCertificatesLatency", time.Duration(0), float32(1.0))
+	statter.EXPECT().TimingDuration("ProcessingCertificatesLatency", time.Duration(0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
