@@ -78,7 +78,7 @@ function run_unit_tests() {
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
     echo "running test suite with race detection"
-    go test -race -p 1 ${TESTPATHS}
+    go test -race -p 1 ${TESTPATHS} || FAILURE=1
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
