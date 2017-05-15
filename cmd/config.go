@@ -112,6 +112,10 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
+	// WeakKeyDirectory is the path to a directory containing truncated RSA modulus
+	// hashes of known easily enumerable keys.
+	WeakKeyDirectory string
+
 	SAService *GRPCClientConfig
 
 	Features map[string]bool

@@ -50,8 +50,8 @@ func (wk *weakKeys) addSuffix(str string) error {
 	return nil
 }
 
-func (wk *weakKeys) Known(der []byte) bool {
-	hash := sha1.Sum(der)
+func (wk *weakKeys) Known(modulus []byte) bool {
+	hash := sha1.Sum(modulus)
 	var suffix [10]byte
 	copy(suffix[:], hash[10:])
 	_, present := wk.suffixes[suffix]

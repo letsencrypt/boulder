@@ -159,12 +159,15 @@ func main() {
 	issuers, err := loadIssuers(c)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyDirectory)
+	cmd.FailOnError(err, "Unable to create key policy")
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		c.CA,
 		clock.Default(),
 		scope,
 		issuers,
-		goodkey.NewKeyPolicy(),
+		kp,
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 	cai.PA = pa
