@@ -49,10 +49,6 @@ type config struct {
 		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
 
-		// WeakKeyDirectory is the path to a directory containing truncated RSA modulus
-		// hashes of known easily enumerable keys.
-		WeakKeyDirectory string
-
 		TLS cmd.TLSConfig
 
 		RAService *cmd.GRPCClientConfig
@@ -112,7 +108,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	kp, err := goodkey.NewKeyPolicy(c.WFE.WeakKeyDirectory)
+	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe.NewWebFrontEndImpl(scope, clock.Default(), kp, logger)
 	cmd.FailOnError(err, "Unable to create WFE")

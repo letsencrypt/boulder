@@ -20,14 +20,12 @@ func TestKnown(t *testing.T) {
 func TestLoadKeys(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "weak-keys")
 	test.AssertNotError(t, err, "Failed to create temporary directory")
-	err = ioutil.WriteFile(filepath.Join(tempDir, "a"), []byte("# asd\n200352313bc059445190"), os.ModePerm)
-	test.AssertNotError(t, err, "Failed to create temporary file")
-	err = ioutil.WriteFile(filepath.Join(tempDir, "b"), []byte("# asd\ndc47cdf6b45d89e8b2a0"), os.ModePerm)
+	tempPath := filepath.Join(tempDir, "a.json")
+	err = ioutil.WriteFile(tempPath, []byte("[\"200352313bc059445190\"]"), os.ModePerm)
 	test.AssertNotError(t, err, "Failed to create temporary file")
 
-	wk, err := loadSuffixes(tempDir)
+	wk, err := loadSuffixes(tempPath)
 	test.AssertNotError(t, err, "Failed to load suffixes from directory")
 
 	test.Assert(t, wk.Known([]byte("asd")), "weakKeys.Known failed to find suffix that has been added")
-	test.Assert(t, wk.Known([]byte("dsa")), "weakKeys.Known failed to find suffix that has been added")
 }

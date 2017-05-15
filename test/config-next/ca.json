@@ -4,6 +4,7 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
+    "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ca.boulder/cert.pem",
