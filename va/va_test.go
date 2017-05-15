@@ -1343,7 +1343,7 @@ func TestFallbackTLS(t *testing.T) {
 	// validation to fail since there is no IPv4 address/listener to fall back to.
 	host = "ipv6.localhost"
 	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
-	va.stats = metrics.NewStatsdScope(mocks.NewStatter(), "VA")
+	va.stats = metrics.NewNoopScope()
 	records, prob = va.validateChallenge(ctx, ident, chall)
 
 	// The validation is expected to fail since there is no IPv4 to fall back to
