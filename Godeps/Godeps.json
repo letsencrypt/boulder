@@ -116,6 +116,34 @@
 			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
 		},
 		{
+			"ImportPath": "github.com/google/certificate-transparency-go",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/client",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/tls",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/x509",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
+			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+		},
+		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
 			"Rev": "32acc4216ea1f20eca97a1cdbc72b73af9e27d20"
 		},
