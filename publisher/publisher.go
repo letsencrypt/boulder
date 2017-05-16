@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	ct "github.com/google/certificate-transparency/go"
-	ctClient "github.com/google/certificate-transparency/go/client"
-	"github.com/google/certificate-transparency/go/jsonclient"
+	ct "github.com/google/certificate-transparency-go"
+	ctClient "github.com/google/certificate-transparency-go/client"
+	"github.com/google/certificate-transparency-go/jsonclient"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"

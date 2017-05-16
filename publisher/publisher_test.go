@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	ct "github.com/google/certificate-transparency/go"
-	ctTLS "github.com/google/certificate-transparency/go/tls"
+	ct "github.com/google/certificate-transparency-go"
+	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 

@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	ct "github.com/google/certificate-transparency/go"
+	ct "github.com/google/certificate-transparency-go"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
