@@ -141,14 +141,14 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) string {
 	pkHash := sha256.Sum256(rawKey)
 	sct := ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
-		LogID:      pkHash,
+		LogID:      ct.LogID{KeyID: pkHash},
 		Timestamp:  1337,
 	}
 	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
 		Leaf: ct.MerkleTreeLeaf{
 			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: ct.TimestampedEntry{
-				X509Entry: ct.ASN1Cert(leaf),
+			TimestampedEntry: &ct.TimestampedEntry{
+				X509Entry: &ct.ASN1Cert{Data: leaf},
 				EntryType: ct.X509LogEntryType,
 			},
 		},
@@ -269,7 +269,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 		log,
 		metrics.NewNoopScope(),
 		mocks.NewStorageAuthority(clock.NewFake()))
-	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
+	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert{Data: intermediatePEM.Bytes})
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
 	leaf, err := x509.ParseCertificate(leafPEM.Bytes)
