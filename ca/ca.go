@@ -29,6 +29,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corePB "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -72,6 +73,13 @@ var (
 		ID:       cfsslConfig.OID(oidTLSFeature),
 		Critical: false,
 		Value:    hex.EncodeToString(mustStapleFeatureValue),
+	}
+
+	// https://tools.ietf.org/html/rfc6962#section-3.1.
+	ctPoisonExtension = signer.Extension{
+		ID:       cfsslConfig.OID(signer.CTPoisonOID),
+		Critical: true,
+		Value:    "0500", // ASN.1 DER NULL, Hex encoded.
 	}
 )
 
@@ -401,7 +409,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert")
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert", nil)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -444,8 +452,25 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	return cert, nil
 }
 
-func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	return nil, berrors.InternalServerError("IssuePrecertificate is not implemented")
+func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	if issueReq.RegistrationID == nil {
+		return nil, berrors.InternalServerError("RegistrationID is nil")
+	}
+
+	notAfter, serialBigInt, err := ca.generateNotAfterAndSerialNumber()
+	if err != nil {
+		return nil, err
+	}
+
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert", &ctPoisonExtension)
+	if err != nil {
+		return nil, err
+	}
+	return &caPB.IssuePrecertificateResponse{
+		Precert:           &corePB.Precertificate{Der: precertDER},
+		SctFetchingConfig: &corePB.SCTFetchingConfig{},
+	}, nil
+
 }
 
 func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, error) {
@@ -467,7 +492,7 @@ func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time
 	return notAfter, serialBigInt, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, notAfter time.Time, serialBigInt *big.Int, certType string) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, notAfter time.Time, serialBigInt *big.Int, certType string, addedExtension *signer.Extension) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -485,9 +510,13 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		return nil, berrors.MalformedError(err.Error())
 	}
 
-	requestedExtensions, err := ca.extensionsFromCSR(csr)
+	extensions, err := ca.extensionsFromCSR(csr)
 	if err != nil {
 		return nil, err
+	}
+
+	if addedExtension != nil {
+		extensions = append(extensions, *addedExtension)
 	}
 
 	issuer := ca.defaultIssuer
@@ -525,7 +554,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 			CN: csr.Subject.CommonName,
 		},
 		Serial:     serialBigInt,
-		Extensions: requestedExtensions,
+		Extensions: extensions,
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
