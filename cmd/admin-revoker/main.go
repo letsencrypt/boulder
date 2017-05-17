@@ -59,14 +59,11 @@ type config struct {
 		Features map[string]bool
 	}
 
-	Statsd cmd.StatsdConfig
-
 	Syslog cmd.SyslogConfig
 }
 
 func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority, metrics.Scope) {
-	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "AdminRevoker")
+	scope, logger := cmd.StatsAndLogging(c.Syslog)
 
 	var tls *tls.Config
 	var err error

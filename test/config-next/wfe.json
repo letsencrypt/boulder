@@ -33,13 +33,9 @@
       "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,
-      "RandomDirectoryEntry": true
+      "RandomDirectoryEntry": true,
+      "DirectoryMeta": true
     }
-  },
-
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
   },
 
   "syslog": {

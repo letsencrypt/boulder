@@ -23,6 +23,7 @@ const (
 	CountCertificatesExact
 	RandomDirectoryEntry
 	IPv6First
+	DirectoryMeta
 )
 
 // List of features and their default value, protected by fMu
@@ -39,6 +40,7 @@ var features = map[FeatureFlag]bool{
 	CountCertificatesExact:   false,
 	RandomDirectoryEntry:     false,
 	IPv6First:                false,
+	DirectoryMeta:            false,
 }
 
 var fMu = new(sync.RWMutex)

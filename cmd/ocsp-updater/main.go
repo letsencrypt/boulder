@@ -769,8 +769,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "OCSPUpdater")
+	scope, auditlogger := cmd.StatsAndLogging(c.Syslog)
 	defer auditlogger.AuditPanic()
 	auditlogger.Info(cmd.VersionString(clientName))
 

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -125,8 +126,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			if currentToken == defaultToken {
 				currentToken = pathReLookup
 			}
-			port, err := getPort(server)
-			test.AssertNotError(t, err, "failed to get server test port")
+			port := getPort(server)
 			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
@@ -221,6 +221,28 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 	return hs
 }
 
+func TestHTTPBadPort(t *testing.T) {
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	va, _ := setup(hs)
+
+	// Pick a random port between 9000 and 10000 - with great certainty we won't
+	// have an HTTP server listening on this port and the test will fail as
+	// intended
+	badPort := 9000 + mrand.Intn(1000)
+	va.httpPort = badPort
+
+	_, prob := va.validateHTTP01(ctx, ident, chall)
+	if prob == nil {
+		t.Fatalf("Server's down; expected refusal. Where did we connect?")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+}
+
 func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, expectedToken)
@@ -235,26 +257,11 @@ func TestHTTP(t *testing.T) {
 	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
 
-	va, goodPort, _, log := setup(t, hs)
+	va, log := setup(hs)
 
-	// Attempt to fail a challenge by telling the VA to connect to a port we are
-	// not listening on.
-	badPort := goodPort + 1
-	if badPort == 65536 {
-		badPort = goodPort - 1
-	}
-	va.httpPort = badPort
-
-	_, prob := va.validateHTTP01(ctx, ident, chall)
-	if prob == nil {
-		t.Fatalf("Server's down; expected refusal. Where did we connect?")
-	}
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-
-	va.httpPort = goodPort
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
-	_, prob = va.validateHTTP01(ctx, ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
 	}
@@ -329,7 +336,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _, _, log := setup(t, hs)
+	va, log := setup(hs)
 
 	setChallengeToken(&chall, pathMoved)
 	_, prob := va.validateHTTP01(ctx, ident, chall)
@@ -390,7 +397,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
@@ -404,7 +411,7 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 	va.userAgent = rejectUserAgent
 
 	setChallengeToken(&chall, pathMoved)
@@ -420,20 +427,20 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	}
 }
 
-func getPort(hs *httptest.Server) (int, error) {
+func getPort(hs *httptest.Server) int {
 	url, err := url.Parse(hs.URL)
 	if err != nil {
-		return 0, err
+		panic(fmt.Sprintf("Failed to parse hs URL: %q - %s", hs.URL, err.Error()))
 	}
 	_, portString, err := net.SplitHostPort(url.Host)
 	if err != nil {
-		return 0, err
+		panic(fmt.Sprintf("Failed to split hs URL host: %q - %s", url.Host, err.Error()))
 	}
 	port, err := strconv.ParseInt(portString, 10, 64)
 	if err != nil {
-		return 0, err
+		panic(fmt.Sprintf("Failed to parse hs URL port: %q - %s", portString, err.Error()))
 	}
-	return int(port), nil
+	return int(port)
 }
 
 func TestTLSSNI01(t *testing.T) {
@@ -441,7 +448,8 @@ func TestTLSSNI01(t *testing.T) {
 
 	hs := tlssni01Srv(t, chall)
 
-	va, port, _, log := setup(t, hs)
+	va, log := setup(hs)
+	port := getPort(hs)
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
@@ -496,9 +504,7 @@ func TestTLSSNI01(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
 	httpOnly := httpSrv(t, "")
-	port, portErr := getPort(httpOnly)
-	test.AssertNotError(t, portErr, "failed to get test server port")
-	va.tlsPort = port
+	va.tlsPort = getPort(httpOnly)
 
 	log.Clear()
 	_, err = va.validateTLSSNI01(ctx, ident, chall)
@@ -514,7 +520,8 @@ func TestTLSSNI02(t *testing.T) {
 
 	hs := tlssni02Srv(t, chall)
 
-	va, port, _, log := setup(t, hs)
+	va, log := setup(hs)
+	port := getPort(hs)
 
 	_, prob := va.validateTLSSNI02(ctx, ident, chall)
 	if prob != nil {
@@ -570,9 +577,7 @@ func TestTLSSNI02(t *testing.T) {
 
 	httpOnly := httpSrv(t, "")
 	defer httpOnly.Close()
-	port, portErr := getPort(httpOnly)
-	test.AssertNotError(t, portErr, "failed to get test server port")
-	va.tlsPort = port
+	va.tlsPort = getPort(httpOnly)
 
 	log.Clear()
 	_, err = va.validateTLSSNI02(ctx, ident, chall)
@@ -598,7 +603,7 @@ func TestTLSError(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := brokenTLSSrv()
 
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob == nil {
@@ -679,7 +684,7 @@ func TestSNIErrInvalidChain(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := misconfiguredTLSSrv()
 
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	// Validate the SNI challenge with the test server, expecting it to fail
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
@@ -702,7 +707,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -733,7 +738,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 	hs := tlssni01Srv(t, chall)
 	defer hs.Close()
 
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
 
@@ -741,7 +746,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 }
 
 func TestValidateTLSSNI01NotSane(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 
@@ -753,7 +758,7 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
@@ -795,7 +800,7 @@ func TestCAAChecking(t *testing.T) {
 		{"unsatisfiable.com", true, false},
 	}
 
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 	for _, caaTest := range tests {
 		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
@@ -831,15 +836,30 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _, stats, _ := setup(t, nil)
+	va, _ := setup(nil)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockScope := mock_metrics.NewMockScope(ctrl)
+	va.stats = mockScope
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
-	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
 func TestDNSValidationEmpty(t *testing.T) {
-	va, _, stats, _ := setup(t, nil)
+	va, _ := setup(nil)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockScope := mock_metrics.NewMockScope(ctrl)
+	va.stats = mockScope
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
 		context.Background(),
@@ -847,22 +867,28 @@ func TestDNSValidationEmpty(t *testing.T) {
 		chalDNS,
 		core.Authorization{})
 	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
-	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, _, stats, _ := setup(t, nil)
+	va, _ := setup(nil)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockScope := mock_metrics.NewMockScope(ctrl)
+	va.stats = mockScope
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any()).Return(nil)
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
-	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -880,7 +906,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	chalDNS := core.DNSChallenge01()
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	_, prob := va.validateChallenge(ctx, notDNS, chalDNS)
 
@@ -888,7 +914,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationNotSane(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	chal0 := core.DNSChallenge01()
 	chal0.Token = ""
@@ -919,7 +945,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 }
 
 func TestDNSValidationServFail(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -933,7 +959,7 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 	va.dnsResolver = bdns.NewTestDNSResolverImpl(
 		time.Second*5,
 		nil,
@@ -949,7 +975,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -967,7 +993,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
-	va, _, _, _ := setup(t, nil)
+	va, _ := setup(nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -990,7 +1016,7 @@ func TestCAAFailure(t *testing.T) {
 	hs := tlssni01Srv(t, chall)
 	defer hs.Close()
 
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	ident.Value = "reserved.com"
 	_, prob := va.validateChallengeAndCAA(ctx, ident, chall)
@@ -1003,8 +1029,7 @@ func TestLimitedReader(t *testing.T) {
 
 	ident.Value = "localhost"
 	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
-	va, _, _, _ := setup(t, hs)
-
+	va, _ := setup(hs)
 	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
@@ -1014,19 +1039,12 @@ func TestLimitedReader(t *testing.T) {
 		"Expected failure due to truncation")
 }
 
-func setup(t *testing.T, srv *httptest.Server) (*ValidationAuthorityImpl, int, *mocks.Statter, *blog.Mock) {
-	stats := mocks.NewStatter()
-	scope := metrics.NewStatsdScope(stats, "VA")
+func setup(srv *httptest.Server) (*ValidationAuthorityImpl, *blog.Mock) {
 	logger := blog.NewMock()
 
 	var portConfig cmd.PortConfig
 	if srv != nil {
-		port, err := getPort(srv)
-		if err != nil {
-			// We never expect to fail to get the port for an http server, so treat it
-			// as a fatal test failure and halt immediately
-			t.Fatalf("Unable to get port for test server: %s\n", err.Error())
-		}
+		port := getPort(srv)
 		portConfig = cmd.PortConfig{
 			HTTPPort: port,
 			TLSPort:  port,
@@ -1040,18 +1058,16 @@ func setup(t *testing.T, srv *httptest.Server) (*ValidationAuthorityImpl, int, *
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"letsencrypt.org",
-		scope,
+		metrics.NewNoopScope(),
 		clock.Default(),
 		logger)
-	return va, portConfig.HTTPPort, stats, logger
+	return va, logger
 }
 
 func TestCheckCAAFallback(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testSrv.Close()
 
-	stats := mocks.NewStatter()
-	scope := metrics.NewStatsdScope(stats, "VA")
 	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
@@ -1064,7 +1080,7 @@ func TestCheckCAAFallback(t *testing.T) {
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
 		"ca.com",
-		scope,
+		metrics.NewNoopScope(),
 		clock.Default(),
 		logger)
 
@@ -1191,7 +1207,7 @@ func TestFallbackDialer(t *testing.T) {
 	defer hs.Close()
 
 	// Create a test VA
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	// Create an identifier for a host that has an IPv6 and an IPv4 address.
 	// Since the IPv6First feature flag is not enabled we expect that the IPv4
@@ -1244,7 +1260,7 @@ func TestFallbackTLS(t *testing.T) {
 	defer hs.Close()
 
 	// Create a test VA
-	va, _, _, _ := setup(t, hs)
+	va, _ := setup(hs)
 
 	// Create an identifier for a host that has an IPv6 and an IPv4 address.
 	// Since the IPv6First feature flag is not enabled we expect that the IPv4
@@ -1284,5 +1300,28 @@ func TestFallbackTLS(t *testing.T) {
 	// We expect that one address was tried before the address used
 	test.AssertEquals(t, len(records[0].AddressesTried), 1)
 	// We expect that IPv6 localhost address was tried before the address used
+	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
+
+	// Now try a validation for an IPv6 only host. E.g. one without an IPv4
+	// address. The IPv6 will fail without a server and we expect the overall
+	// validation to fail since there is no IPv4 address/listener to fall back to.
+	host = "ipv6.localhost"
+	ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: host}
+	va.stats = metrics.NewNoopScope()
+	records, prob = va.validateChallenge(ctx, ident, chall)
+
+	// The validation is expected to fail since there is no IPv4 to fall back to
+	// and a broken IPv6
+	records, prob = va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob != nil, "validation succeeded with broken IPv6 and no IPv4 fallback")
+	// We expect that the problem has the correct error message about working IPs
+	test.AssertEquals(t, prob.Detail, "no working IP addresses found for \"ipv6.localhost\"")
+	// We expect one validation record to be present
+	test.AssertEquals(t, len(records), 1)
+	// We expect that the address eventually used was the IPv6 localhost address
+	test.AssertEquals(t, records[0].AddressUsed.String(), "::1")
+	// We expect that one address was tried
+	test.AssertEquals(t, len(records[0].AddressesTried), 1)
+	// We expect that IPv6 localhost address was tried
 	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
 }

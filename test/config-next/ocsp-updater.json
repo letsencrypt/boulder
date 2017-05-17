@@ -39,11 +39,6 @@
     }
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4

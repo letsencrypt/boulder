@@ -80,6 +80,11 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 			net.ParseIP("127.0.0.1"),
 		}, nil
 	}
+	if hostname == "ipv6.localhost" {
+		return []net.IP{
+			net.ParseIP("::1"),
+		}, nil
+	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, nil
 }
