@@ -663,11 +663,10 @@ func TestRandomDirectoryKey(t *testing.T) {
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
-	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/directory")
-	mux.ServeHTTP(responseWriter, &http.Request{
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
 		Host:   "127.0.0.1:4300",
@@ -690,11 +689,10 @@ func TestRandomDirectoryKey(t *testing.T) {
 	}
 
 	responseWriter.Body.Reset()
-	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
 		"User-Agent": {"LetsEncryptPythonClient"},
 	}
-	mux.ServeHTTP(responseWriter, &http.Request{
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
 		Host:   "127.0.0.1:4300",
