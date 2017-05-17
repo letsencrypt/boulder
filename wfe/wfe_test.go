@@ -3,7 +3,6 @@ package wfe
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -604,15 +603,6 @@ func TestIndex(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
 }
 
-type fakeReader struct{}
-
-func (fr *fakeReader) Read(p []byte) (n int, err error) {
-	for i := range p {
-		p[i] = 1
-	}
-	return len(p), nil
-}
-
 func TestDirectory(t *testing.T) {
 	// Note: using `wfe.BaseURL` to test the non-relative /directory behaviour
 	// This tests to ensure the `Host` in the following `http.Request` is not
@@ -666,14 +656,17 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+}
 
+func TestRandomDirectoryKey(t *testing.T) {
 	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
-	origRead := rand.Reader
-	defer func() { rand.Reader = origRead }()
-	rand.Reader = &fakeReader{}
+	defer features.Reset()
+	wfe, _ := setupWFE(t)
+	wfe.BaseURL = "http://localhost:4300"
+	mux := wfe.Handler()
 
-	responseWriter.Body.Reset()
-	url, _ = url.Parse("/directory")
+	responseWriter := httptest.NewRecorder()
+	url, _ := url.Parse("/directory")
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
@@ -681,10 +674,26 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"AQEBAQEBAQE":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	var dir map[string]interface{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found := false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Failed to find random entry in directory: %s", responseWriter.Body.String())
+	}
 
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
+	headers := map[string][]string{
+		"User-Agent": {"LetsEncryptPythonClient"},
+	}
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
@@ -693,7 +702,20 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	dir = map[string]interface{}{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found = false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Error("Found random entry in directory with 'LetsEncryptPythonClient' UA")
+	}
 }
 
 func TestRelativeDirectory(t *testing.T) {
