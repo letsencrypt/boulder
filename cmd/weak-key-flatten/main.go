@@ -44,7 +44,7 @@ func main() {
 		list = append(list, k)
 	}
 	jsonList, err := json.Marshal(list)
-
+	cmd.FailOnError(err, "failed to marshal list")
 	err = ioutil.WriteFile(*output, jsonList, os.ModePerm)
 	cmd.FailOnError(err, fmt.Sprintf("fail to write to %s", *output))
 }

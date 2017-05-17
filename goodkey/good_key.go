@@ -195,10 +195,8 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	if !policy.AllowRSA {
 		return berrors.MalformedError("RSA keys are not allowed")
 	}
-	if policy.weakRSAList != nil {
-		if policy.weakRSAList.Known(key.N.Bytes()) {
-			return berrors.MalformedError("key is on a known weak RSA key list")
-		}
+	if policy.weakRSAList != nil && policy.weakRSAList.Known(key.N.Bytes()) {
+		return berrors.MalformedError("key is on a known weak RSA key list")
 	}
 
 	// Baseline Requirements Appendix A

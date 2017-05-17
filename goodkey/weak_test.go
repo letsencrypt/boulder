@@ -26,6 +26,5 @@ func TestLoadKeys(t *testing.T) {
 
 	wk, err := loadSuffixes(tempPath)
 	test.AssertNotError(t, err, "Failed to load suffixes from directory")
-
 	test.Assert(t, wk.Known([]byte("asd")), "weakKeys.Known failed to find suffix that has been added")
 }
