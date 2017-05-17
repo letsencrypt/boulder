@@ -28,14 +28,14 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
 	pkHash := sha256.Sum256(rawKey)
 	sct := ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
-		LogID:      pkHash,
+		LogID:      ct.LogID{KeyID: pkHash},
 		Timestamp:  1337,
 	}
 	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
 		Leaf: ct.MerkleTreeLeaf{
 			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: ct.TimestampedEntry{
-				X509Entry: ct.ASN1Cert(leaf),
+			TimestampedEntry: &ct.TimestampedEntry{
+				X509Entry: &ct.ASN1Cert{Data: leaf},
 				EntryType: ct.X509LogEntryType,
 			},
 		},

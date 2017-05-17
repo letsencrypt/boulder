@@ -73,7 +73,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load CT submission bundle")
 	bundle := []ct.ASN1Cert{}
 	for _, cert := range pemBundle {
-		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
+		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
 	}
 
 	var tls *tls.Config
