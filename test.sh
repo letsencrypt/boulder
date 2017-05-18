@@ -9,8 +9,9 @@ fi
 # RUN variable with the ones you want (see .travis.yml for an example).
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
-# GOPATH).
-RUN=${RUN:-vet fmt migrations unit coverage integration errcheck}
+# GOPATH). We also omit coverage by default on local runs because it generates
+# artifacts on disk that aren't needed.
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.
@@ -77,7 +78,7 @@ function run_unit_tests() {
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
     echo "running test suite with race detection"
-    go test -race -p 1 ${TESTPATHS}
+    run go test -race -p 1 ${TESTPATHS}
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -98,7 +99,7 @@ function run_test_coverage() {
   echo "running test suite with coverage enabled and without race detection"
   for path in ${TESTPATHS}; do
     dir=$(basename $path)
-    go test -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
+    run go test -cover -coverprofile=${dir}.coverprofile ${path}
   done
 
   # Gather all the coverprofiles
@@ -211,7 +212,7 @@ fi
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_expect_silence errcheck \
-    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/letsencrypt/boulder/vendor/github.com/cactus/go-statsd-client/statsd:.* \
+    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.* \
     $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test)
   end_context #errcheck
 fi

@@ -824,13 +824,15 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		tldNames = append(tldNames, exactPublicSuffixes...)
 	}
 
-	// Enforce the certificate count rate limit against the tldNames as well as
-	// any subdomains.
-	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID, ra.SA.CountCertificatesByNames)
-	if err != nil {
-		return err
+	// If there are any tldNames, enforce the certificate count rate limit against
+	// them and any subdomains.
+	if len(tldNames) > 0 {
+		namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID, ra.SA.CountCertificatesByNames)
+		if err != nil {
+			return err
+		}
+		badNames = append(badNames, namesOutOfLimit...)
 	}
-	badNames = append(badNames, namesOutOfLimit...)
 
 	if len(badNames) > 0 {
 		// check if there is already a existing certificate for

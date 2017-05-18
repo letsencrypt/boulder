@@ -626,6 +626,22 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
+	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
+	// the correct terms-of-service URL.
+	_ = features.Set(map[string]bool{"DirectoryMeta": true})
+	responseWriter.Body.Reset()
+	url, _ = url.Parse("/directory")
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+
+	// Even with the DirectoryMeta flag enabled, if the UA is
+	// LetsEncryptPythonClient we expect to *not* see the meta entry.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{

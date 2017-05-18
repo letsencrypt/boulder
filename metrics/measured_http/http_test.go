@@ -36,7 +36,7 @@ func TestMeasuring(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("/foo", sleepyHandler{clk})
 	mh := MeasuredHandler{
-		ServeMux: mux,
+		serveMux: mux,
 		clk:      clk,
 		stat:     stat,
 	}

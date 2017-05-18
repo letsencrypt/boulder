@@ -13,17 +13,11 @@ import (
 // a Prometheus metric name
 var invalidPromChars = regexp.MustCompile(`[^[:alnum:]\_:]+`)
 
-// promAdjust adjusts a name for use by Prometheus: It strips off a single label
-// of prefix (which is always the name of the service, and therefore duplicated
-// by Prometheus' instance labels), and replaces "-" and "." with "_". Invalid
-// metric name characters that remain (e.g. `>`) are removed.
+// promAdjust adjusts a name for use by Prometheus: It and replaces "-" and "."
+// with "_". Invalid metric name characters that remain (e.g. `>`) are removed.
 func promAdjust(name string) string {
 	name = strings.Replace(name, "-", "_", -1)
-	labels := strings.Split(name, ".")
-	if len(labels) < 2 {
-		return invalidPromChars.ReplaceAllString(labels[0], "")
-	}
-	name = strings.Join(labels[1:], "_")
+	name = strings.Replace(name, ".", "_", -1)
 	return invalidPromChars.ReplaceAllString(name, "")
 }
 
@@ -33,6 +27,7 @@ func promAdjust(name string) string {
 // same metric). It is safe for concurrent access.
 type autoProm struct {
 	sync.RWMutex
+	prometheus.Registerer
 	metrics map[string]prometheus.Collector
 }
 
@@ -54,23 +49,34 @@ func (ap *autoProm) get(name string, make maker) prometheus.Collector {
 		return ap.metrics[name]
 	}
 	result = make(name)
-	prometheus.MustRegister(result)
+	ap.Registerer.MustRegister(result)
 	ap.metrics[name] = result
 	return result
 }
 
-func newAutoProm() *autoProm {
+func newAutoProm(registerer prometheus.Registerer) *autoProm {
 	return &autoProm{
-		metrics: make(map[string]prometheus.Collector),
+		metrics:    make(map[string]prometheus.Collector),
+		Registerer: prometheus.NewRegistry(),
 	}
 }
 
-var gauges = newAutoProm()
-var counters = newAutoProm()
-var summaries = newAutoProm()
+// autoRegisterer wraps three autoProm instances, one for each type of metric
+// managed by this module, and provides methods to get/make those metrics.
+type autoRegisterer struct {
+	gauges, counters, summaries *autoProm
+}
 
-func autoGauge(name string) prometheus.Gauge {
-	return gauges.get(name, func(cleaned string) prometheus.Collector {
+func newAutoRegisterer(registerer prometheus.Registerer) *autoRegisterer {
+	return &autoRegisterer{
+		gauges:    newAutoProm(registerer),
+		counters:  newAutoProm(registerer),
+		summaries: newAutoProm(registerer),
+	}
+}
+
+func (ar *autoRegisterer) autoGauge(name string) prometheus.Gauge {
+	return ar.gauges.get(name, func(cleaned string) prometheus.Collector {
 		return prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: cleaned,
 			Help: "auto",
@@ -78,8 +84,8 @@ func autoGauge(name string) prometheus.Gauge {
 	}).(prometheus.Gauge)
 }
 
-func autoCounter(name string) prometheus.Counter {
-	return counters.get(name, func(cleaned string) prometheus.Collector {
+func (ar *autoRegisterer) autoCounter(name string) prometheus.Counter {
+	return ar.counters.get(name, func(cleaned string) prometheus.Collector {
 		return prometheus.NewCounter(prometheus.CounterOpts{
 			Name: cleaned,
 			Help: "auto",
@@ -87,8 +93,8 @@ func autoCounter(name string) prometheus.Counter {
 	}).(prometheus.Counter)
 }
 
-func autoSummary(name string) prometheus.Summary {
-	return summaries.get(name, func(cleaned string) prometheus.Collector {
+func (ar *autoRegisterer) autoSummary(name string) prometheus.Summary {
+	return ar.summaries.get(name, func(cleaned string) prometheus.Collector {
 		return prometheus.NewSummary(prometheus.SummaryOpts{
 			Name: cleaned,
 			Help: "auto",

@@ -39,6 +39,7 @@ import (
 
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
@@ -108,15 +109,14 @@ func (log grpcLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprintln(args...))
 }
 
-// StatsAndLogging constructs a Statter and an AuditLogger based on its config
+// StatsAndLogging constructs a metrics.Scope and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger, and configures
 // the cfssl, mysql, and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
-func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
-	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
-	FailOnError(err, "Couldn't connect to statsd")
+func StatsAndLogging(logConf SyslogConfig) (metrics.Scope, blog.Logger) {
+	scope := metrics.NewPromScope(prometheus.DefaultRegisterer)
 
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
@@ -137,7 +137,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLogger(grpcLogger{logger})
 
-	return stats, logger
+	return scope, logger
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
