@@ -230,10 +230,10 @@ func TestHTTPBadPort(t *testing.T) {
 
 	va, _ := setup(hs)
 
-	// Pick a random port between 9000 and 10000 - with great certainty we won't
+	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
 	// intended
-	badPort := 9000 + mrand.Intn(1000)
+	badPort := 40000 + mrand.Intn(25000)
 	va.httpPort = badPort
 
 	_, prob := va.validateHTTP01(ctx, ident, chall)
@@ -449,7 +449,6 @@ func TestTLSSNI01(t *testing.T) {
 	hs := tlssni01Srv(t, chall)
 
 	va, log := setup(hs)
-	port := getPort(hs)
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
@@ -462,6 +461,7 @@ func TestTLSSNI01(t *testing.T) {
 	}
 
 	log.Clear()
+	port := getPort(hs)
 	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
 		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
@@ -521,7 +521,6 @@ func TestTLSSNI02(t *testing.T) {
 	hs := tlssni02Srv(t, chall)
 
 	va, log := setup(hs)
-	port := getPort(hs)
 
 	_, prob := va.validateTLSSNI02(ctx, ident, chall)
 	if prob != nil {
@@ -534,6 +533,7 @@ func TestTLSSNI02(t *testing.T) {
 	}
 
 	log.Clear()
+	port := getPort(hs)
 	_, prob = va.validateTLSSNI02(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
 		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
