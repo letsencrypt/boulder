@@ -106,5 +106,7 @@ func Enabled(n FeatureFlag) bool {
 func Reset() {
 	fMu.Lock()
 	defer fMu.Unlock()
-	features = initial
+	for k, v := range initial {
+		features[k] = v
+	}
 }
