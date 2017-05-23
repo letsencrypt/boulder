@@ -22,10 +22,6 @@
         "sa.boulder",
         "wfe.boulder"
       ]
-    },
-    "features": {
-      "AllowAccountDeactivation": true,
-      "AllowRenewalFirstRL": true
     }
   },
 

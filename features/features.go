@@ -12,7 +12,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	AllowAccountDeactivation
 	AllowKeyRollover
 	GoogleSafeBrowsingV4
 	UseAIAIssuerURL
@@ -30,19 +29,16 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused: false,
-	AllowAccountDeactivation: false,
-	AllowKeyRollover:         false,
-	GoogleSafeBrowsingV4:     false,
-	UseAIAIssuerURL:          false,
-	AllowTLS02Challenges:     false,
-	GenerateOCSPEarly:        false,
-	ReusePendingAuthz:        false,
-	CountCertificatesExact:   false,
-	RandomDirectoryEntry:     false,
-	IPv6First:                false,
-	DirectoryMeta:            false,
-	AllowRenewalFirstRL:      false,
+	unused:                 false,
+	AllowKeyRollover:       false,
+	GoogleSafeBrowsingV4:   false,
+	UseAIAIssuerURL:        false,
+	AllowTLS02Challenges:   false,
+	GenerateOCSPEarly:      false,
+	CountCertificatesExact: false,
+	RandomDirectoryEntry:   false,
+	IPv6First:              false,
+	DirectoryMeta:          false,
 }
 
 var fMu = new(sync.RWMutex)

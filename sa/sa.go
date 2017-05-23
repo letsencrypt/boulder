@@ -18,7 +18,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -124,11 +123,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	const query = "WHERE id = ?"
 	var model interface{}
 	var err error
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, id)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, id)
-	}
+	model, err = selectRegistrationv2(ssa.dbMap, query, id)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 	}
@@ -150,11 +145,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if err != nil {
 		return core.Registration{}, err
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, sha)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, sha)
-	}
+	model, err = selectRegistrationv2(ssa.dbMap, query, sha)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
@@ -628,11 +619,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	const query = "WHERE id = ?"
 	var model interface{}
 	var err error
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
-	}
+	model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
 	if err == sql.ErrNoRows {
 		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
@@ -646,17 +633,10 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	// version we need to cast both the updated and existing model to their proper types
 	// so that we can copy over the LockCol from one to the other. Once we have copied
 	// that field we reassign to the interface so gorp can properly update it.
-	if features.Enabled(features.AllowAccountDeactivation) {
-		erm := model.(*regModelv2)
-		urm := updatedRegModel.(*regModelv2)
-		urm.LockCol = erm.LockCol
-		updatedRegModel = urm
-	} else {
-		erm := model.(*regModelv1)
-		urm := updatedRegModel.(*regModelv1)
-		urm.LockCol = erm.LockCol
-		updatedRegModel = urm
-	}
+	erm := model.(*regModelv2)
+	urm := updatedRegModel.(*regModelv2)
+	urm.LockCol = erm.LockCol
+	updatedRegModel = urm
 
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
