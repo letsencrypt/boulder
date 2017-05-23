@@ -242,19 +242,34 @@ type certificateRequestEvent struct {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
-func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
-	limit := ra.rlPolicies.RegistrationsPerIP()
+func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context, ip net.IP) error {
+	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
 
-	if limit.Enabled() {
+	if exactRegLimit.Enabled() {
 		now := ra.clk.Now()
-		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
+		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, exactRegLimit.WindowBegin(now), now)
 		if err != nil {
 			return err
 		}
-		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+		if count >= exactRegLimit.GetThreshold(ip.String(), noRegistrationID) {
 			ra.regByIPStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 			return berrors.RateLimitError("too many registrations for this IP")
+		}
+		ra.regByIPStats.Inc("Pass", 1)
+	}
+
+	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
+	if fuzzyRegLimit.Enabled() && features.Enabled(features.RegistrationsPerIPRange) {
+		now := ra.clk.Now()
+		count, err := ra.SA.CountRegistrationsByIPRange(ctx, ip, fuzzyRegLimit.WindowBegin(now), now)
+		if err != nil {
+			return err
+		}
+		if count >= fuzzyRegLimit.GetThreshold(ip.String(), noRegistrationID) {
+			ra.regByIPStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
+			return berrors.RateLimitError("too many registrations for this IP range")
 		}
 		ra.regByIPStats.Inc("Pass", 1)
 	}
@@ -266,7 +281,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
-	if err = ra.checkRegistrationLimit(ctx, init.InitialIP); err != nil {
+	if err = ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
 		return core.Registration{}, err
 	}
 
