@@ -1,7 +1,7 @@
 package goodkey
 
 // This file defines a basic method for testing if a given RSA public key is on one of
-// the Debian weak key lists and is therefore considered easily enumerable. Instead of
+// the Debian weak key lists and is therefore considered compromised. Instead of
 // directly loading the hash suffixes from the individual lists we flatten them all
 // into a single JSON list using cmd/weak-key-flatten for ease of use.
 
@@ -13,8 +13,10 @@ import (
 	"io/ioutil"
 )
 
+type truncatedHash [10]byte
+
 type weakKeys struct {
-	suffixes map[[10]byte]struct{}
+	suffixes map[truncatedHash]struct{}
 }
 
 func loadSuffixes(path string) (*weakKeys, error) {
@@ -23,13 +25,13 @@ func loadSuffixes(path string) (*weakKeys, error) {
 		return nil, err
 	}
 
-	suffixList := []string{}
+	var suffixList []string
 	err = json.Unmarshal(f, &suffixList)
 	if err != nil {
 		return nil, err
 	}
 
-	wk := &weakKeys{suffixes: make(map[[10]byte]struct{})}
+	wk := &weakKeys{suffixes: make(map[truncatedHash]struct{})}
 	for _, suffix := range suffixList {
 		err := wk.addSuffix(suffix)
 		if err != nil {
@@ -40,7 +42,7 @@ func loadSuffixes(path string) (*weakKeys, error) {
 }
 
 func (wk *weakKeys) addSuffix(str string) error {
-	var suffix [10]byte
+	var suffix truncatedHash
 	decoded, err := hex.DecodeString(str)
 	if err != nil {
 		return err
@@ -55,7 +57,7 @@ func (wk *weakKeys) addSuffix(str string) error {
 
 func (wk *weakKeys) Known(modulus []byte) bool {
 	hash := sha1.Sum(modulus)
-	var suffix [10]byte
+	var suffix truncatedHash
 	copy(suffix[:], hash[10:])
 	_, present := wk.suffixes[suffix]
 	return present

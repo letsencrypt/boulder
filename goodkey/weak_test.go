@@ -10,7 +10,7 @@ import (
 )
 
 func TestKnown(t *testing.T) {
-	wk := &weakKeys{suffixes: make(map[[10]byte]struct{})}
+	wk := &weakKeys{suffixes: make(map[truncatedHash]struct{})}
 	err := wk.addSuffix("200352313bc059445190")
 	test.AssertNotError(t, err, "weakKeys.addSuffix failed")
 	test.Assert(t, wk.Known([]byte("asd")), "weakKeys.Known failed to find suffix that has been added")

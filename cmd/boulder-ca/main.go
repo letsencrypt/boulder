@@ -159,7 +159,7 @@ func main() {
 	issuers, err := loadIssuers(c)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyDirectory)
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	cai, err := ca.NewCertificateAuthorityImpl(
