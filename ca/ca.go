@@ -491,6 +491,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 	certDER := block.Bytes
 
+	_, err = x509.ParseCertificate(certDER)
+	if err != nil {
+		err = berrors.InternalServerError("failed to parse certificate: %s", err)
+		ca.log.AuditErr(fmt.Sprintf(
+			"Parsing certificate failed, orphaning certificate: serial=[%s] err=[%v]",
+			serialHex,
+			err))
+		return emptyCert, err
+	}
+
 	cert := core.Certificate{
 		DER: certDER,
 	}
