@@ -638,6 +638,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	}
 
 	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
+		if len(wfe.SubscriberAgreementURL) > 0 {
+			response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+		}
 		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
