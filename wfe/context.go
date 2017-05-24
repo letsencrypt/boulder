@@ -13,17 +13,19 @@ import (
 )
 
 type requestEvent struct {
-	ID        string    `json:",omitempty"`
-	RealIP    string    `json:",omitempty"`
-	Endpoint  string    `json:",omitempty"`
-	Method    string    `json:",omitempty"`
-	Errors    []string  `json:",omitempty"`
-	Requester int64     `json:",omitempty"`
-	Contacts  *[]string `json:",omitempty"`
-	UserAgent string    `json:",omitempty"`
-	Code      int
-	Payload   string                 `json:",omitempty"`
-	Extra     map[string]interface{} `json:",omitempty"`
+	ID            string    `json:",omitempty"`
+	RealIP        string    `json:",omitempty"`
+	Endpoint      string    `json:",omitempty"`
+	Method        string    `json:",omitempty"`
+	Errors        []string  `json:",omitempty"`
+	Requester     int64     `json:",omitempty"`
+	Contacts      *[]string `json:",omitempty"`
+	RequestNonce  string    `json:",omitempty"`
+	ResponseNonce string    `json:",omitempty"`
+	UserAgent     string    `json:",omitempty"`
+	Code          int
+	Payload       string                 `json:",omitempty"`
+	Extra         map[string]interface{} `json:",omitempty"`
 }
 
 func (e *requestEvent) AddError(msg string, args ...interface{}) {

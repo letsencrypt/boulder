@@ -1881,6 +1881,8 @@ type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }
 
+// TestLogPayload ensures that verifyPOST sets the Payload field of the logEvent
+// it is passed.
 func TestLogPayload(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	event := newRequestEvent()
