@@ -169,7 +169,7 @@ def test_ct_submission():
     url_a = "http://boulder:4500/submissions"
     url_b = "http://boulder:4501/submissions"
     submissions_a = urllib2.urlopen(url_a).read()
-    submissions_b = urllib2.urlopen(url_a).read()
+    submissions_b = urllib2.urlopen(url_b).read()
     expected_a_submissions = int(submissions_a)+1
     expected_b_submissions = int(submissions_b)+1
     auth_and_issue([random_domain()])
