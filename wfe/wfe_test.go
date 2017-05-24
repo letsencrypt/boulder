@@ -658,6 +658,64 @@ func TestDirectory(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 }
 
+func TestRandomDirectoryKey(t *testing.T) {
+	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
+	defer features.Reset()
+	wfe, _ := setupWFE(t)
+	wfe.BaseURL = "http://localhost:4300"
+
+	responseWriter := httptest.NewRecorder()
+	url, _ := url.Parse("/directory")
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	var dir map[string]interface{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found := false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Failed to find random entry in directory: %s", responseWriter.Body.String())
+	}
+
+	responseWriter.Body.Reset()
+	headers := map[string][]string{
+		"User-Agent": {"LetsEncryptPythonClient"},
+	}
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+		Header: headers,
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	dir = map[string]interface{}{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found = false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Error("Found random entry in directory with 'LetsEncryptPythonClient' UA")
+	}
+}
+
 func TestRelativeDirectory(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
 	defer features.Reset()

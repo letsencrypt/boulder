@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	ct "github.com/google/certificate-transparency/go"
+	ct "github.com/google/certificate-transparency-go"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -69,7 +69,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load CT submission bundle")
 	bundle := []ct.ASN1Cert{}
 	for _, cert := range pemBundle {
-		bundle = append(bundle, ct.ASN1Cert(cert.Raw))
+		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
 	}
 
 	var tls *tls.Config

@@ -10,6 +10,7 @@ package ocsp
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/cloudflare/cfssl/certdb"
 	"github.com/cloudflare/cfssl/log"
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
@@ -47,6 +49,64 @@ type InMemorySource map[string][]byte
 func (src InMemorySource) Response(request *ocsp.Request) (response []byte, present bool) {
 	response, present = src[request.SerialNumber.String()]
 	return
+}
+
+// DBSource represnts a source of OCSP responses backed by the certdb package.
+type DBSource struct {
+	Accessor certdb.Accessor
+}
+
+// NewDBSource creates a new DBSource type with an associated dbAccessor.
+func NewDBSource(dbAccessor certdb.Accessor) Source {
+	return DBSource{
+		Accessor: dbAccessor,
+	}
+}
+
+// Response implements cfssl.ocsp.responder.Source, which returns the
+// OCSP response in the Database for the given request with the expiration
+// date furthest in the future.  Response also returns a bool that is false
+// if there were any errors obtaining the OCSP response and/or no OCSP response
+// is present in the DB for the given request.  Response will return a true
+// bool if the byte array returned is a valid OCSP response.
+func (src DBSource) Response(req *ocsp.Request) ([]byte, bool) {
+	if req == nil {
+		return nil, false
+	}
+
+	aki := hex.EncodeToString(req.IssuerKeyHash)
+	sn := req.SerialNumber
+
+	if sn == nil {
+		return nil, false
+	}
+	strSN := sn.String()
+
+	if src.Accessor == nil {
+		log.Errorf("No DB Accessor")
+		return nil, false
+	}
+	records, err := src.Accessor.GetOCSP(strSN, aki)
+
+	// Response() logs when there are errors obtaining the OCSP response
+	// and returns nil, false.
+	if err != nil {
+		log.Errorf("Error obtaining OCSP response: %s", err)
+		return nil, false
+	}
+
+	if len(records) == 0 {
+		return nil, false
+	}
+
+	// Response() finds the OCSPRecord with the expiration date furthest in the future.
+	cur := records[0]
+	for _, rec := range records {
+		if rec.Expiry.After(cur.Expiry) {
+			cur = rec
+		}
+	}
+	return []byte(cur.Body), true
 }
 
 // NewSourceFromFile reads the named file into an InMemorySource.
@@ -138,9 +198,16 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 				base64RequestBytes[i] = '+'
 			}
 		}
+		// In certain situations a UA may construct a request that has a double
+		// slash between the host name and the base64 request body due to naively
+		// constructing the request URL. In that case strip the leading slash
+		// so that we can still decode the request.
+		if len(base64RequestBytes) > 0 && base64RequestBytes[0] == '/' {
+			base64RequestBytes = base64RequestBytes[1:]
+		}
 		requestBody, err = base64.StdEncoding.DecodeString(string(base64RequestBytes))
 		if err != nil {
-			log.Infof("Error decoding base64 from URL: %s", base64Request)
+			log.Infof("Error decoding base64 from URL: %s", string(base64RequestBytes))
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
