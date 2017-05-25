@@ -6,6 +6,7 @@ package goodkey
 // into a single JSON list using cmd/weak-key-flatten for ease of use.
 
 import (
+	"crypto/rsa"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -55,7 +56,8 @@ func (wk *weakKeys) addSuffix(str string) error {
 	return nil
 }
 
-func (wk *weakKeys) Known(modulus []byte) bool {
+func (wk *weakKeys) Known(key *rsa.PublicKey) bool {
+	modulus := key.N.Bytes()
 	hash := sha1.Sum(modulus)
 	var suffix truncatedHash
 	copy(suffix[:], hash[10:])

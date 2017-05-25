@@ -44,14 +44,17 @@ type KeyPolicy struct {
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
-func NewKeyPolicy(weakKeyDir string) (KeyPolicy, error) {
+// weakKeyFile contains the path to a JSON file containing truncated modulus
+// hashes of known weak RSA keys. If this argument is empty RSA modulus hash
+// checking will be disabled.
+func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
 	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
 	}
-	if weakKeyDir != "" {
-		keyList, err := loadSuffixes(weakKeyDir)
+	if weakKeyFile != "" {
+		keyList, err := loadSuffixes(weakKeyFile)
 		if err != nil {
 			return KeyPolicy{}, err
 		}
@@ -195,7 +198,7 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	if !policy.AllowRSA {
 		return berrors.MalformedError("RSA keys are not allowed")
 	}
-	if policy.weakRSAList != nil && policy.weakRSAList.Known(key.N.Bytes()) {
+	if policy.weakRSAList != nil && policy.weakRSAList.Known(&key) {
 		return berrors.MalformedError("key is on a known weak RSA key list")
 	}
 
