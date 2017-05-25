@@ -70,6 +70,7 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz       bool
 
 	regByIPStats         metrics.Scope
+	regByIPRangeStats    metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
 	certsForDomainStats  metrics.Scope
 	totalCertsStats      metrics.Scope
@@ -103,6 +104,7 @@ func NewRegistrationAuthorityImpl(
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
 		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
+		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
@@ -267,11 +269,9 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
 	}
 
 	if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
-		ra.regByIPStats.Inc("Exceeded", 1)
 		return berrors.RateLimitError("too many registrations for this IP")
 	}
 
-	ra.regByIPStats.Inc("Pass", 1)
 	return nil
 }
 
@@ -283,9 +283,11 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
 	err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
 	if err != nil {
+		ra.regByIPStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 		return err
 	}
+	ra.regByIPStats.Inc("Pass", 1)
 
 	// Check the registrations per IP range limit using the
 	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
@@ -293,11 +295,13 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
 	err = ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
 	if err != nil {
+		ra.regByIPRangeStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
 		// For the fuzzyRegLimit we use a new error message that specifically
 		// mentions that the limit being exceeded is applied to a *range* of IPs
 		return berrors.RateLimitError("too many registrations for this IP range")
 	}
+	ra.regByIPRangeStats.Inc("Pass", 1)
 
 	return nil
 }
