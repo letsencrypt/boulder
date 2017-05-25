@@ -440,10 +440,6 @@ func testKey() *rsa.PublicKey {
 }
 
 func TestNewRegistrationRateLimit(t *testing.T) {
-	// Enable the RegistrationsPerIPRange feature flag to get the expected fuzzy
-	// /48 counting for IPv6 behaviour we test
-	_ = features.Set(map[string]bool{"RegistrationsPerIPRange": true})
-
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 

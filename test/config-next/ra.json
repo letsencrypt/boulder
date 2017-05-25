@@ -43,8 +43,7 @@
       "IDNASupport": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
-      "CountCertificatesExact": true,
-      "RegistrationsPerIPRange": true
+      "CountCertificatesExact": true
     }
   },
 

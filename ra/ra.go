@@ -260,7 +260,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	}
 
 	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
-	if fuzzyRegLimit.Enabled() && features.Enabled(features.RegistrationsPerIPRange) {
+	if fuzzyRegLimit.Enabled() {
 		now := ra.clk.Now()
 		count, err := ra.SA.CountRegistrationsByIPRange(ctx, ip, fuzzyRegLimit.WindowBegin(now), now)
 		if err != nil {
