@@ -289,6 +289,11 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	}
 	ra.regByIPStats.Inc("Pass", 1)
 
+	// We only apply the fuzzy reg limit to IPv6 addresses
+	if ip.To4() == nil {
+		return nil
+	}
+
 	// Check the registrations per IP range limit using the
 	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
 	// within a larger address range
