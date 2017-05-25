@@ -242,37 +242,63 @@ type certificateRequestEvent struct {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
+// registrationCounter is a type to abstract the use of
+// ra.SA.CountRegistrationsByIP or ra.SA.CountRegistrationsByIPRange
+type registrationCounter func(context.Context, net.IP, time.Time, time.Time) (int, error)
+
+// checkRegistrationIPLimit checks a specific registraton limit by using the
+// provided registrationCounter function to determine if the limit has been
+// exceeded for a given IP
+func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
+	ctx context.Context,
+	limit ratelimit.RateLimitPolicy,
+	ip net.IP,
+	counter registrationCounter) error {
+
+	if !limit.Enabled() {
+		return nil
+	}
+
+	now := ra.clk.Now()
+	windowBegin := limit.WindowBegin(now)
+	count, err := counter(ctx, ip, windowBegin, now)
+	if err != nil {
+		return err
+	}
+
+	if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+		ra.regByIPStats.Inc("Exceeded", 1)
+		return berrors.RateLimitError("too many registrations for this IP")
+	}
+
+	ra.regByIPStats.Inc("Pass", 1)
+	return nil
+}
+
+// checkRegistrationLimits enforces the RegistrationsPerIP and
+// RegistrationsPerIPRange limits
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context, ip net.IP) error {
+	// Check the registrations per IP limit using the CountRegistrationsByIP SA
+	// function that matches IP addresses exactly
 	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
-
-	if exactRegLimit.Enabled() {
-		now := ra.clk.Now()
-		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, exactRegLimit.WindowBegin(now), now)
-		if err != nil {
-			return err
-		}
-		if count >= exactRegLimit.GetThreshold(ip.String(), noRegistrationID) {
-			ra.regByIPStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
-			return berrors.RateLimitError("too many registrations for this IP")
-		}
-		ra.regByIPStats.Inc("Pass", 1)
+	err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
+	if err != nil {
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
+		return err
 	}
 
+	// Check the registrations per IP range limit using the
+	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
+	// within a larger address range
 	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
-	if fuzzyRegLimit.Enabled() {
-		now := ra.clk.Now()
-		count, err := ra.SA.CountRegistrationsByIPRange(ctx, ip, fuzzyRegLimit.WindowBegin(now), now)
-		if err != nil {
-			return err
-		}
-		if count >= fuzzyRegLimit.GetThreshold(ip.String(), noRegistrationID) {
-			ra.regByIPStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
-			return berrors.RateLimitError("too many registrations for this IP range")
-		}
-		ra.regByIPStats.Inc("Pass", 1)
+	err = ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
+	if err != nil {
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
+		// For the fuzzyRegLimit we use a new error message that specifically
+		// mentions that the limit being exceeded is applied to a *range* of IPs
+		return berrors.RateLimitError("too many registrations for this IP range")
 	}
+
 	return nil
 }
 
