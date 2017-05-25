@@ -250,7 +250,7 @@ type registrationCounter func(context.Context, net.IP, time.Time, time.Time) (in
 
 // checkRegistrationIPLimit checks a specific registraton limit by using the
 // provided registrationCounter function to determine if the limit has been
-// exceeded for a given IP
+// exceeded for a given IP or IP range
 func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
 	ctx context.Context,
 	limit ratelimit.RateLimitPolicy,
