@@ -275,6 +275,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// & host.
 	for k, v := range directory {
 		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
+			relativeDir[k] = v
 			continue
 		}
 		switch v := v.(type) {

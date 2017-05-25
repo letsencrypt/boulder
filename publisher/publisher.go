@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	ct "github.com/google/certificate-transparency/go"
-	ctClient "github.com/google/certificate-transparency/go/client"
-	"github.com/google/certificate-transparency/go/jsonclient"
+	ct "github.com/google/certificate-transparency-go"
+	ctClient "github.com/google/certificate-transparency-go/client"
+	"github.com/google/certificate-transparency-go/jsonclient"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
@@ -185,7 +185,7 @@ func (pub *Impl) SubmitToSingleCT(
 
 	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
 	defer cancel()
-	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
+	chain := append([]ct.ASN1Cert{ct.ASN1Cert{der}}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
@@ -240,8 +240,8 @@ func (pub *Impl) singleLogSubmit(
 	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
 		Leaf: ct.MerkleTreeLeaf{
 			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: ct.TimestampedEntry{
-				X509Entry: chain[0],
+			TimestampedEntry: &ct.TimestampedEntry{
+				X509Entry: &chain[0],
 				EntryType: ct.X509LogEntryType,
 			},
 		},
@@ -250,29 +250,20 @@ func (pub *Impl) singleLogSubmit(
 		return err
 	}
 
-	internalSCT, err := sctToInternal(sct, serial)
-	if err != nil {
-		return err
-	}
-
-	err = pub.sa.AddSCTReceipt(ctx, internalSCT)
+	err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) (core.SignedCertificateTimestamp, error) {
-	sig, err := ct.MarshalDigitallySigned(sct.Signature)
-	if err != nil {
-		return core.SignedCertificateTimestamp{}, err
-	}
+func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) core.SignedCertificateTimestamp {
 	return core.SignedCertificateTimestamp{
 		CertificateSerial: serial,
 		SCTVersion:        uint8(sct.SCTVersion),
-		LogID:             sct.LogID.Base64String(),
+		LogID:             base64.StdEncoding.EncodeToString(sct.LogID.KeyID[:]),
 		Timestamp:         sct.Timestamp,
 		Extensions:        sct.Extensions,
-		Signature:         sig,
-	}, nil
+		Signature:         sct.Signature.Signature,
+	}
 }
