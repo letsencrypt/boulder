@@ -637,7 +637,11 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context
 		return nil, errIncompleteRequest
 	}
 
-	count, err := sas.inner.CountRegistrationsByIPRange(ctx, net.IP(request.Ip), time.Unix(0, *request.Range.Earliest), time.Unix(0, *request.Range.Latest))
+	count, err := sas.inner.CountRegistrationsByIPRange(
+		ctx,
+		net.IP(request.Ip),
+		time.Unix(0, *request.Range.Earliest),
+		time.Unix(0, *request.Range.Latest))
 	if err != nil {
 		return nil, err
 	}
