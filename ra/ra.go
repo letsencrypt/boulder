@@ -289,8 +289,10 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	}
 	ra.regByIPStats.Inc("Pass", 1)
 
-	// We only apply the fuzzy reg limit to IPv6 addresses
-	if ip.To4() == nil {
+	// We only apply the fuzzy reg limit to IPv6 addresses.
+	// Per https://golang.org/pkg/net/#IP.To4 "If ip is not an IPv4 address, To4
+	// returns nil"
+	if ip.To4() != nil {
 		return nil
 	}
 
