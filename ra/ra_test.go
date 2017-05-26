@@ -1398,14 +1398,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 
 	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
 	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
-	}
 
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
-	changed = mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with empty update")
 	}

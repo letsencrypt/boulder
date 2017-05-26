@@ -4,9 +4,9 @@ package features
 
 import "fmt"
 
-const _FeatureFlag_name = "unusedAllowKeyRolloverGoogleSafeBrowsingV4UseAIAIssuerURLAllowTLS02ChallengesGenerateOCSPEarlyCountCertificatesExactRandomDirectoryEntryIPv6FirstDirectoryMeta"
+const _FeatureFlag_name = "unusedGoogleSafeBrowsingV4UseAIAIssuerURLAllowTLS02ChallengesGenerateOCSPEarlyCountCertificatesExactRandomDirectoryEntryIPv6FirstDirectoryMeta"
 
-var _FeatureFlag_index = [...]uint8{0, 6, 22, 42, 57, 77, 94, 116, 136, 145, 158}
+var _FeatureFlag_index = [...]uint8{0, 6, 26, 41, 61, 78, 100, 120, 129, 142}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

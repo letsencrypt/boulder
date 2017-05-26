@@ -12,7 +12,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	AllowKeyRollover
 	GoogleSafeBrowsingV4
 	UseAIAIssuerURL
 	AllowTLS02Challenges
@@ -30,7 +29,6 @@ const (
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                 false,
-	AllowKeyRollover:       false,
 	GoogleSafeBrowsingV4:   false,
 	UseAIAIssuerURL:        false,
 	AllowTLS02Challenges:   false,
