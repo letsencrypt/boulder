@@ -62,11 +62,37 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := h.clk.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 
+	// Use the method string only if it's a recognized HTTP method. This avoids
+	// ballooning timeseries with invalid methods from public input.
+	var method string
+	switch r.Method {
+	case http.MethodGet:
+		fallthrough
+	case http.MethodHead:
+		fallthrough
+	case http.MethodPost:
+		fallthrough
+	case http.MethodPut:
+		fallthrough
+	case http.MethodPatch:
+		fallthrough
+	case http.MethodDelete:
+		fallthrough
+	case http.MethodConnect:
+		fallthrough
+	case http.MethodOptions:
+		fallthrough
+	case http.MethodTrace:
+		method = r.Method
+	default:
+		method = "unknown"
+	}
+
 	subHandler, pattern := h.Handler(r)
 	defer func() {
 		h.stat.With(prometheus.Labels{
 			"endpoint": pattern,
-			"method":   r.Method,
+			"method":   method,
 			"code":     fmt.Sprintf("%d", rwws.code),
 		}).Observe(h.clk.Since(begin).Seconds())
 	}()
