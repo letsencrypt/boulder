@@ -43,34 +43,22 @@ const (
 	maxResponseSize = 128
 )
 
-var (
-	validationTime = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "validation_time",
-			Help: "Time taken to validate a challenge",
-		},
-		[]string{"type", "result"})
-)
-
-func init() {
-	prometheus.MustRegister(validationTime)
-}
-
 var validationTimeout = time.Second * 5
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log          blog.Logger
-	dnsResolver  bdns.DNSResolver
-	issuerDomain string
-	safeBrowsing SafeBrowsing
-	httpPort     int
-	httpsPort    int
-	tlsPort      int
-	userAgent    string
-	stats        metrics.Scope
-	clk          clock.Clock
-	caaDR        *cdr.CAADistributedResolver
+	log            blog.Logger
+	dnsResolver    bdns.DNSResolver
+	issuerDomain   string
+	safeBrowsing   SafeBrowsing
+	httpPort       int
+	httpsPort      int
+	tlsPort        int
+	userAgent      string
+	stats          metrics.Scope
+	clk            clock.Clock
+	caaDR          *cdr.CAADistributedResolver
+	validationTime *prometheus.HistogramVec
 }
 
 // NewValidationAuthorityImpl constructs a new VA
@@ -85,18 +73,27 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
+	validationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "validation_time",
+			Help: "Time taken to validate a challenge",
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(validationTime)
+
 	return &ValidationAuthorityImpl{
-		log:          logger,
-		dnsResolver:  resolver,
-		issuerDomain: issuerDomain,
-		safeBrowsing: sbc,
-		httpPort:     pc.HTTPPort,
-		httpsPort:    pc.HTTPSPort,
-		tlsPort:      pc.TLSPort,
-		userAgent:    userAgent,
-		stats:        stats,
-		clk:          clk,
-		caaDR:        cdrClient,
+		log:            logger,
+		dnsResolver:    resolver,
+		issuerDomain:   issuerDomain,
+		safeBrowsing:   sbc,
+		httpPort:       pc.HTTPPort,
+		httpsPort:      pc.HTTPSPort,
+		tlsPort:        pc.TLSPort,
+		userAgent:      userAgent,
+		stats:          stats,
+		clk:            clk,
+		caaDR:          cdrClient,
+		validationTime: validationTime,
 	}
 }
 
@@ -793,7 +790,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	validationTime.With(prometheus.Labels{
+	va.validationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
 	}).Observe(time.Since(vStart).Seconds())

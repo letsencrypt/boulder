@@ -18,13 +18,15 @@ type Scope interface {
 	Timing(stat string, delta int64) error
 	TimingDuration(stat string, delta time.Duration) error
 	SetInt(stat string, value int64) error
+
+	MustRegister(...prometheus.Collector)
 }
 
 // promScope is a Scope that sends data to Prometheus
 type promScope struct {
+	prometheus.Registerer
 	*autoRegisterer
-	prefix     string
-	registerer prometheus.Registerer
+	prefix string
 }
 
 var _ Scope = &promScope{}
@@ -46,7 +48,7 @@ func NewNoopScope() Scope {
 // prefixes given joined by periods
 func (s *promScope) NewScope(scopes ...string) Scope {
 	scope := strings.Join(scopes, ".")
-	return NewPromScope(s.registerer, s.prefix+scope)
+	return NewPromScope(s.Registerer, s.prefix+scope)
 }
 
 // Inc increments the given stat and adds the Scope's prefix to the name
