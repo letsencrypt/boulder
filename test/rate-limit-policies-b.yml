@@ -26,6 +26,11 @@ registrationsPerIP:
   threshold: 9999
   overrides:
     127.0.0.1: 999990
+registrationsPerIPRange:
+  window: 168h # 1 week
+  threshold: 99999
+  overrides:
+    127.0.0.1: 1000000
 pendingAuthorizationsPerAccount:
   window: 168h # 1 week, should match pending authorization lifetime.
   threshold: 999
