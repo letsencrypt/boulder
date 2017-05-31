@@ -687,6 +687,8 @@ func TestExtensions(t *testing.T) {
 	defer ctrl.Finish()
 	stats := mock_metrics.NewMockScope(ctrl)
 
+	stats.EXPECT().MustRegister(gomock.Any()).AnyTimes()
+
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,

@@ -40,11 +40,6 @@ func NewPromScope(registerer prometheus.Registerer, scopes ...string) Scope {
 	}
 }
 
-// NewNoopScope returns a Scope that won't collect anything
-func NewNoopScope() Scope {
-	return NewPromScope(prometheus.NewRegistry())
-}
-
 // NewScope generates a new Scope prefixed by this Scope's prefix plus the
 // prefixes given joined by periods
 func (s *promScope) NewScope(scopes ...string) Scope {
@@ -87,4 +82,34 @@ func (s *promScope) TimingDuration(stat string, delta time.Duration) error {
 func (s *promScope) SetInt(stat string, value int64) error {
 	s.autoGauge(s.prefix + stat).Set(float64(value))
 	return nil
+}
+
+type noopScope struct{}
+
+// NewNoopScope returns a Scope that won't collect anything
+func NewNoopScope() Scope {
+	return noopScope{}
+}
+func (ns noopScope) NewScope(scopes ...string) Scope {
+	return ns
+}
+func (_ noopScope) Inc(stat string, value int64) error {
+	return nil
+}
+func (_ noopScope) Gauge(stat string, value int64) error {
+	return nil
+}
+func (_ noopScope) GaugeDelta(stat string, value int64) error {
+	return nil
+}
+func (_ noopScope) Timing(stat string, delta int64) error {
+	return nil
+}
+func (_ noopScope) TimingDuration(stat string, delta time.Duration) error {
+	return nil
+}
+func (_ noopScope) SetInt(stat string, value int64) error {
+	return nil
+}
+func (_ noopScope) MustRegister(...prometheus.Collector) {
 }
