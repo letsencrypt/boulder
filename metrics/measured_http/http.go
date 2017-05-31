@@ -66,23 +66,9 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// ballooning timeseries with invalid methods from public input.
 	var method string
 	switch r.Method {
-	case http.MethodGet:
-		fallthrough
-	case http.MethodHead:
-		fallthrough
-	case http.MethodPost:
-		fallthrough
-	case http.MethodPut:
-		fallthrough
-	case http.MethodPatch:
-		fallthrough
-	case http.MethodDelete:
-		fallthrough
-	case http.MethodConnect:
-		fallthrough
-	case http.MethodOptions:
-		fallthrough
-	case http.MethodTrace:
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodConnect,
+		http.MethodOptions, http.MethodTrace:
 		method = r.Method
 	default:
 		method = "unknown"
