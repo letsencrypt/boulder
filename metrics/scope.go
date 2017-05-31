@@ -34,6 +34,7 @@ var _ Scope = &promScope{}
 // NewPromScope returns a Scope that sends data to Prometheus
 func NewPromScope(registerer prometheus.Registerer, scopes ...string) Scope {
 	return &promScope{
+		Registerer:     registerer,
 		prefix:         strings.Join(scopes, ".") + ".",
 		autoRegisterer: newAutoRegisterer(registerer),
 	}
