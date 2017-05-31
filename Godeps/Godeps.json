@@ -107,6 +107,10 @@
 			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
 		},
 		{
+			"ImportPath": "github.com/golang/mock/mockgen/model",
+			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
+		},
+		{
 			"ImportPath": "github.com/golang/protobuf/proto",
 			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
 		},
