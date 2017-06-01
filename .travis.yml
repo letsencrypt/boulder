@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.8
+  - 1.8.3
 
 addons:
   hosts:
@@ -36,7 +36,7 @@ env:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="vet fmt migrations integration godep-restore errcheck generate"
+    - RUN="vet fmt migrations integration godep-restore errcheck generate dashlint"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"

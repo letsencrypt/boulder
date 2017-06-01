@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -359,6 +358,11 @@ func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, 
 	return 0, nil
 }
 
+// CountRegistrationsByIPRange is a mock
+func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
+	return 0, nil
+}
+
 // CountPendingAuthorizations is a mock
 func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
 	return 0, nil
@@ -387,44 +391,6 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 // SubmitToSingleCT is a mock
 func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
 	return nil
-}
-
-// Statter is a stat counter that is a no-op except for locally handling Inc
-// calls (which are most of what we use).
-type Statter struct {
-	statsd.NoopClient
-	Counters            map[string]int64
-	TimingDurationCalls []TimingDuration
-}
-
-// TimingDuration records a statsd call to TimingDuration.
-type TimingDuration struct {
-	Metric   string
-	Duration time.Duration
-	Rate     float32
-}
-
-// Inc increments the indicated metric by the indicated value, in the Counters
-// map maintained by the statter
-func (s *Statter) Inc(metric string, value int64, rate float32) error {
-	s.Counters[metric] += value
-	return nil
-}
-
-// TimingDuration stores the parameters in the LastTimingDuration field of the
-// MockStatter.
-func (s *Statter) TimingDuration(metric string, delta time.Duration, rate float32) error {
-	s.TimingDurationCalls = append(s.TimingDurationCalls, TimingDuration{
-		Metric:   metric,
-		Duration: delta,
-		Rate:     rate,
-	})
-	return nil
-}
-
-// NewStatter returns an empty statter with all counters zero
-func NewStatter() *Statter {
-	return &Statter{statsd.NoopClient{}, map[string]int64{}, nil}
 }
 
 // Mailer is a mock

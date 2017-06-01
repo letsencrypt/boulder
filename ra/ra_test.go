@@ -162,6 +162,7 @@ type dummyRateLimitConfig struct {
 	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
+	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
@@ -177,6 +178,10 @@ func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
 
 func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
 	return r.RegistrationsPerIPPolicy
+}
+
+func (r *dummyRateLimitConfig) RegistrationsPerIPRange() ratelimit.RateLimitPolicy {
+	return r.RegistrationsPerIPRangePolicy
 }
 
 func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
@@ -426,6 +431,87 @@ func TestNewRegistrationBadKey(t *testing.T) {
 
 	_, err := ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
+}
+
+// testKey returns a random 2048 bit RSA public key for test registrations
+func testKey() *rsa.PublicKey {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	return &key.PublicKey
+}
+
+func TestNewRegistrationRateLimit(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Specify a dummy rate limit policy that allows 1 registration per exact IP
+	// match, and 2 per range.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		RegistrationsPerIPPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+		RegistrationsPerIPRangePolicy: ratelimit.RateLimitPolicy{
+			Threshold: 2,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+
+	// Create one registration for an IPv4 address
+	mailto := "mailto:foo@letsencrypt.org"
+	reg := core.Registration{
+		Contact:   &[]string{mailto},
+		Key:       &jose.JsonWebKey{Key: testKey()},
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	// There should be no errors - it is within the RegistrationsPerIP rate limit
+	_, err := ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
+
+	// Create another registration for the same IPv4 address by changing the key
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+
+	// There should be an error since a 2nd registration will exceed the
+	// RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+
+	// Create a registration for an IPv6 address
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+
+	// There should be no errors - it is within the RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
+
+	// Create a 2nd registration for the IPv6 address by changing the key
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+
+	// There should be an error since a 2nd reg for the same IPv6 address will
+	// exceed the RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+
+	// Create a registration for an IPv6 address in the same /48
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+
+	// There should be no errors since two IPv6 addresses in the same /48 is
+	// within the RegistrationsPerIPRange limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
+
+	// Create a registration for yet another IPv6 address in the same /48
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9654")
+
+	// There should be an error since three registrations within the same IPv6
+	// /48 is outside of the RegistrationsPerIPRange limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP range")
 }
 
 type NoUpdateSA struct {
@@ -1463,6 +1549,72 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	// it.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+}
+
+// mockSAOnlyExact is a Mock SA that will fail all calls to
+// CountCertifcatesByNames and will return 0 for all
+// CountCertificatesByExactNames calls. It can be used to test that the correct
+// function is called for a PSL matching domain
+type mockSAOnlyExact struct {
+	mocks.StorageAuthority
+}
+
+// CountCertificatesByNames for a mockSAOnlyExact will always fail
+func (m mockSAOnlyExact) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	return nil, fmt.Errorf("mockSAOnlyExact had non-exact CountCertificatesByNames called")
+}
+
+// CountCertificatesByExactNames will always return 0 for every input name
+func (m mockSAOnlyExact) CountCertificatesByExactNames(_ context.Context, names []string, _, _ time.Time) ([]*sapb.CountByNames_MapElement, error) {
+	var results []*sapb.CountByNames_MapElement
+	// For each name in the input, return a count of 0
+	for _, name := range names {
+		results = append(results, nameCount(name, 0))
+	}
+	return results, nil
+}
+
+// TestPSLMatchIssuance tests the conditions from Boulder issue #2758 in which
+// the original CountCertificatesExact implementation would cause an RPC error
+// if *only* an exact PSL matching domain was requested for issuance.
+// https://github.com/letsencrypt/boulder/issues/2758
+func TestPSLMatchIssuance(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 2 certificates per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 2,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+	}
+
+	// We use "dedyn.io" for the test on the implicit assumption that it is
+	// present on the public suffix list. Quickly verify that this is true before
+	// continuing with the rest of the test.
+	_, err := publicsuffix.Domain("dedyn.io")
+	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
+
+	// Use a mock that will fail all calls to CountCertificatesByNames, only
+	// supporting CountCertificatesByExactNames
+	mockSA := &mockSAOnlyExact{}
+	ra.SA = mockSA
+
+	_ = features.Set(map[string]bool{"CountCertificatesExact": false})
+	defer features.Reset()
+
+	// Without CountCertificatesExact enabled we expect the rate limit check to
+	// fail since it will use the in-exact SA method that the mock always fails
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "exact PSL match certificate per name rate limit used wrong SA RPC")
+
+	// Enable the CountCertificatesExact feature flag
+	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
+
+	// With CountCertificatesExact enabled we expect the limit check to pass when
+	// names only includes exact PSL matches and the RA will use the SA's exact
+	// name lookup which the mock provides
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "exact PSL match certificate per name rate limit used wrong SA RPC")
 }
 
 func TestDeactivateAuthorization(t *testing.T) {

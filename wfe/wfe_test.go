@@ -626,6 +626,22 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
+	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
+	// the correct terms-of-service URL.
+	_ = features.Set(map[string]bool{"DirectoryMeta": true})
+	responseWriter.Body.Reset()
+	url, _ = url.Parse("/directory")
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+
+	// Even with the DirectoryMeta flag enabled, if the UA is
+	// LetsEncryptPythonClient we expect to *not* see the meta entry.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
@@ -640,6 +656,64 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+}
+
+func TestRandomDirectoryKey(t *testing.T) {
+	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
+	defer features.Reset()
+	wfe, _ := setupWFE(t)
+	wfe.BaseURL = "http://localhost:4300"
+
+	responseWriter := httptest.NewRecorder()
+	url, _ := url.Parse("/directory")
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	var dir map[string]interface{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found := false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Failed to find random entry in directory: %s", responseWriter.Body.String())
+	}
+
+	responseWriter.Body.Reset()
+	headers := map[string][]string{
+		"User-Agent": {"LetsEncryptPythonClient"},
+	}
+	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
+		Header: headers,
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	dir = map[string]interface{}{}
+	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	found = false
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Error("Found random entry in directory with 'LetsEncryptPythonClient' UA")
+	}
 }
 
 func TestRelativeDirectory(t *testing.T) {
@@ -1723,11 +1797,9 @@ func TestGetCertificate(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
-	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.0.1"`)
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1743,7 +1815,6 @@ func TestGetCertificate(t *testing.T) {
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.99.99,192.168.0.1"`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1808,6 +1879,21 @@ func TestLengthRequired(t *testing.T) {
 
 type mockSADifferentStoredKey struct {
 	core.StorageGetter
+}
+
+// TestLogPayload ensures that verifyPOST sets the Payload field of the logEvent
+// it is passed.
+func TestLogPayload(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, err := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	test.AssertEquals(t, event.Payload, payload)
 }
 
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {

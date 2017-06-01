@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
@@ -285,7 +284,6 @@ func TestIssueCertificate(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	sa := &mockSA{}
 	ca.SA = sa
@@ -346,7 +344,6 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -371,7 +368,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -420,7 +416,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -467,7 +462,6 @@ func TestNoHostnames(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -487,7 +481,6 @@ func TestRejectTooManyNames(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -508,7 +501,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -533,7 +525,6 @@ func TestShortKey(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -555,7 +546,6 @@ func TestAllowNoCN(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Couldn't create new CA")
 	ca.forceCNFromSAN = false
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -595,7 +585,6 @@ func TestLongCommonName(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -615,7 +604,6 @@ func TestWrongSignature(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -638,7 +626,6 @@ func TestProfileSelection(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -694,7 +681,6 @@ func TestExtensions(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 

@@ -39,7 +39,6 @@ command descriptions:
 `
 
 type config struct {
-	Statsd    cmd.StatsdConfig
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
 	Syslog    cmd.SyslogConfig
@@ -126,8 +125,7 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-	stats, logger := cmd.StatsAndLogging(conf.Statsd, conf.Syslog)
-	scope := metrics.NewStatsdScope(stats, "OrphanFinder")
+	scope, logger := cmd.StatsAndLogging(conf.Syslog)
 
 	var tls *tls.Config
 	if conf.TLS.CertFile != nil {

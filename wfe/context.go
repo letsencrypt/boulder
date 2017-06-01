@@ -13,19 +13,19 @@ import (
 )
 
 type requestEvent struct {
-	ID            string `json:",omitempty"`
-	RealIP        string `json:",omitempty"`
-	ClientAddr    string `json:",omitempty"`
-	Endpoint      string `json:",omitempty"`
-	Method        string `json:",omitempty"`
-	Errors        []string
-	Requester     int64                  `json:",omitempty"`
-	Contacts      *[]string              `json:",omitempty"`
-	RequestNonce  string                 `json:",omitempty"`
-	ResponseNonce string                 `json:",omitempty"`
-	UserAgent     string                 `json:",omitempty"`
-	Extra         map[string]interface{} `json:",omitempty"`
+	ID            string    `json:",omitempty"`
+	RealIP        string    `json:",omitempty"`
+	Endpoint      string    `json:",omitempty"`
+	Method        string    `json:",omitempty"`
+	Errors        []string  `json:",omitempty"`
+	Requester     int64     `json:",omitempty"`
+	Contacts      *[]string `json:",omitempty"`
+	RequestNonce  string    `json:",omitempty"`
+	ResponseNonce string    `json:",omitempty"`
+	UserAgent     string    `json:",omitempty"`
 	Code          int
+	Payload       string                 `json:",omitempty"`
+	Extra         map[string]interface{} `json:",omitempty"`
 }
 
 func (e *requestEvent) AddError(msg string, args ...interface{}) {
@@ -51,12 +51,11 @@ type topHandler struct {
 
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &requestEvent{
-		ID:         core.NewToken(),
-		RealIP:     r.Header.Get("X-Real-IP"),
-		ClientAddr: getClientAddr(r),
-		Method:     r.Method,
-		UserAgent:  r.Header.Get("User-Agent"),
-		Extra:      make(map[string]interface{}, 0),
+		ID:        core.NewToken(),
+		RealIP:    r.Header.Get("X-Real-IP"),
+		Method:    r.Method,
+		UserAgent: r.Header.Get("User-Agent"),
+		Extra:     make(map[string]interface{}, 0),
 	}
 	w.Header().Set("Boulder-Request-ID", logEvent.ID)
 	defer th.logEvent(logEvent)

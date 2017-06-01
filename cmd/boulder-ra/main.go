@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
@@ -71,12 +70,14 @@ type config struct {
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
 
+		// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
+		// hashes of known easily enumerable keys.
+		WeakKeyFile string
+
 		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
-
-	Statsd cmd.StatsdConfig
 
 	Syslog cmd.SyslogConfig
 
@@ -102,8 +103,7 @@ func main() {
 	err = features.Set(c.RA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
-	scope := metrics.NewStatsdScope(stats, "RA")
+	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
@@ -159,12 +159,15 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
+	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile)
+	cmd.FailOnError(err, "Unable to create key policy")
+
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
-		goodkey.NewKeyPolicy(),
+		kp,
 		c.RA.MaxNames,
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,

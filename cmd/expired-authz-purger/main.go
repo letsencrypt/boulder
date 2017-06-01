@@ -27,7 +27,6 @@ type eapConfig struct {
 	ExpiredAuthzPurger struct {
 		cmd.DBConfig
 
-		Statsd cmd.StatsdConfig
 		Syslog cmd.SyslogConfig
 
 		GracePeriod cmd.ConfigDuration
@@ -151,8 +150,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to set feature flags")
 
 	// Set up logging
-	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
-	scope := metrics.NewStatsdScope(stats, "AuthzPurger")
+	scope, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Syslog)
 	auditlogger.Info(cmd.VersionString(clientName))
 
 	defer auditlogger.AuditPanic()

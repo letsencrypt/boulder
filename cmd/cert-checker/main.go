@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -96,7 +97,7 @@ type certChecker struct {
 	rMu          *sync.Mutex
 	issuedReport report
 	checkPeriod  time.Duration
-	stats        metrics.Statter
+	stats        metrics.Scope
 }
 
 func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
@@ -297,8 +298,6 @@ func main() {
 	err = features.Set(config.CertChecker.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
-	cmd.FailOnError(err, "Failed to create StatsD client")
 	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	cmd.FailOnError(err, "Failed to dial syslog")
 	logger, err := blog.New(syslogger, 0, 0)
@@ -323,7 +322,8 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(saDbMap, metrics.NewStatsdScope(stats, "CertChecker"))
+	scope := metrics.NewPromScope(prometheus.DefaultRegisterer)
+	go sa.ReportDbConnCount(saDbMap, scope)
 
 	pa, err := policy.New(config.PA.Challenges)
 	cmd.FailOnError(err, "Failed to create PA")
@@ -353,7 +353,7 @@ func main() {
 		go func() {
 			s := checker.clock.Now()
 			checker.processCerts(wg, config.CertChecker.BadResultsOnly)
-			stats.TimingDuration("certChecker.processingLatency", time.Since(s), 1.0)
+			scope.TimingDuration("certChecker.processingLatency", time.Since(s))
 		}()
 	}
 	wg.Wait()

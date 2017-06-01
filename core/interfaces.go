@@ -105,6 +105,7 @@ type StorageGetter interface {
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
 	CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
+	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
