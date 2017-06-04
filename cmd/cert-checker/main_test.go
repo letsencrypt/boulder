@@ -303,7 +303,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 	// Boulder won't issue for, but are instead testing the defense-in-depth
 	// `isForbiddenDomain` function called *after* the PA has vetted the name
 	// against the complex hostname policy file.
-	testcases := []struct {
+	testCases := []struct {
 		Name     string
 		Expected bool
 	}{
@@ -336,7 +336,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 		{Name: "jokes.yocalhost", Expected: false},
 	}
 
-	for _, tc := range testcases {
+	for _, tc := range testCases {
 		result, _ := isForbiddenDomain(tc.Name)
 		test.AssertEquals(t, result, tc.Expected)
 	}

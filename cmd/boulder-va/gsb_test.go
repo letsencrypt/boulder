@@ -12,7 +12,7 @@ import (
 
 // TestConfigCheck tests that configCheck() does what it says on the tin
 func TestConfigCheck(t *testing.T) {
-	testcases := []struct {
+	testCases := []struct {
 		conf     *cmd.GoogleSafeBrowsingConfig
 		expected error
 	}{
@@ -49,7 +49,7 @@ func TestConfigCheck(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testcases {
+	for _, tc := range testCases {
 		result := configCheck(tc.conf)
 		test.AssertEquals(t, result, tc.expected)
 	}

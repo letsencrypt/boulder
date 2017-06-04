@@ -637,9 +637,9 @@ func TestProfileSelection(t *testing.T) {
 		{ECDSACSR, x509.KeyUsageDigitalSignature},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%v usage", testCase.ExpectedKeyUsage), func(t *testing.T) {
-			csr, err := x509.ParseCertificateRequest(testCase.CSR)
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%v usage", tc.ExpectedKeyUsage), func(t *testing.T) {
+			csr, err := x509.ParseCertificateRequest(tc.CSR)
 			test.AssertNotError(t, err, "Cannot parse CSR")
 
 			// Sign CSR
@@ -650,8 +650,8 @@ func TestProfileSelection(t *testing.T) {
 			cert, err := x509.ParseCertificate(issuedCert.DER)
 			test.AssertNotError(t, err, "Certificate failed to parse")
 
-			if cert.KeyUsage != testCase.ExpectedKeyUsage {
-				t.Errorf("expected key usage %v, got %v", testCase.ExpectedKeyUsage, cert.KeyUsage)
+			if cert.KeyUsage != tc.ExpectedKeyUsage {
+				t.Errorf("expected key usage %v, got %v", tc.ExpectedKeyUsage, cert.KeyUsage)
 			}
 		})
 	}
