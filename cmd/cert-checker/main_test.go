@@ -304,40 +304,44 @@ func TestIsForbiddenDomain(t *testing.T) {
 	// `isForbiddenDomain` function called *after* the PA has vetted the name
 	// against the complex hostname policy file.
 	testCases := []struct {
-		Name     string
-		Expected bool
+		name     string
+		expected bool
 	}{
 		/* Expected to be forbidden test cases */
 		// Whitespace only
-		{Name: "", Expected: true},
-		{Name: "   ", Expected: true},
+		{"", true},
+		{"   ", true},
 		// Anything .mil
-		{Name: "foodnotbombs.mil", Expected: true},
-		{Name: "www.foodnotbombs.mil", Expected: true},
-		{Name: ".mil", Expected: true},
+		{"foodnotbombs.mil", true},
+		{"www.foodnotbombs.mil", true},
+		{".mil", true},
 		// Anything .local
-		{Name: "yokel.local", Expected: true},
-		{Name: "off.on.remote.local", Expected: true},
-		{Name: ".local", Expected: true},
+		{"yokel.local", true},
+		{"off.on.remote.local", true},
+		{".local", true},
 		// Localhost is verboten
-		{Name: "localhost", Expected: true},
+		{"localhost", true},
 		// Anything .localhost
-		{Name: ".localhost", Expected: true},
-		{Name: "local.localhost", Expected: true},
-		{Name: "extremely.local.localhost", Expected: true},
+		{".localhost", true},
+		{"local.localhost", true},
+		{"extremely.local.localhost", true},
 
 		/* Expected to be allowed test cases */
-		{Name: "ok.computer.com", Expected: false},
-		{Name: "ok.millionaires", Expected: false},
-		{Name: "ok.milly", Expected: false},
-		{Name: "ok", Expected: false},
-		{Name: "nearby.locals", Expected: false},
-		{Name: "yocalhost", Expected: false},
-		{Name: "jokes.yocalhost", Expected: false},
+		{"ok.computer.com", false},
+		{"ok.millionaires", false},
+		{"ok.milly", false},
+		{"ok", false},
+		{"nearby.locals", false},
+		{"yocalhost", false},
+		{"jokes.yocalhost", false},
 	}
 
 	for _, tc := range testCases {
-		result, _ := isForbiddenDomain(tc.Name)
-		test.AssertEquals(t, result, tc.Expected)
+		t.Run(fmt.Sprintf("%q domain allowed %v", tc.name, tc.expected), func(t *testing.T) {
+			result, _ := isForbiddenDomain(tc.name)
+			if result != tc.expected {
+				t.Errorf("got %v, expected %v", result, tc.expected)
+			}
+		})
 	}
 }
