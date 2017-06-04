@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"fmt"
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -32,8 +33,10 @@ func TestDNSError(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		if tc.err.Error() != tc.expected {
-			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
-		}
+		t.Run(fmt.Sprintf("%q error case", tc.expected), func(t *testing.T) {
+			if tc.err.Error() != tc.expected {
+				t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
+			}
+		})
 	}
 }

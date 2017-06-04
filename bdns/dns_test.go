@@ -582,22 +582,25 @@ func TestRetry(t *testing.T) {
 	}
 
 	for i, tc := range tests {
-		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
+		// TODO: Get this to print the expected error instead of the index.
+		t.Run(fmt.Sprintf("error case %d", i), func(t *testing.T) {
+			dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
-		dr.dnsClient = tc.te
-		_, _, err := dr.LookupTXT(context.Background(), "example.com")
-		if err == errTooManyRequests {
-			t.Errorf("#%d, sent more requests than the test case handles", i)
-		}
-		expectedErr := tc.expected
-		if (expectedErr == nil && err != nil) ||
-			(expectedErr != nil && err == nil) ||
-			(expectedErr != nil && expectedErr.Error() != err.Error()) {
-			t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
-		}
-		if tc.expectedCount != tc.te.count {
-			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
-		}
+			dr.dnsClient = tc.te
+			_, _, err := dr.LookupTXT(context.Background(), "example.com")
+			if err == errTooManyRequests {
+				t.Errorf("#%d, sent more requests than the test case handles", i)
+			}
+			expectedErr := tc.expected
+			if (expectedErr == nil && err != nil) ||
+				(expectedErr != nil && err == nil) ||
+				(expectedErr != nil && expectedErr.Error() != err.Error()) {
+				t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
+			}
+			if tc.expectedCount != tc.te.count {
+				t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
+			}
+		})
 	}
 
 	dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 3)
