@@ -27,8 +27,10 @@ func TestCheckpointIntervalOK(t *testing.T) {
 		{interval{start: 10, end: 15}},
 	}
 	for _, tc := range okCases {
-		err := tc.testInterval.ok()
-		test.AssertNotError(t, err, "valid interval produced ok() error")
+		t.Run(fmt.Sprintf("%v interval", tc.testInterval), func(t *testing.T) {
+			err := tc.testInterval.ok()
+			test.AssertNotError(t, err, "valid interval produced ok() error")
+		})
 	}
 
 	// Test a number of intervals known to be invalid, ensure that the produced
@@ -43,9 +45,13 @@ func TestCheckpointIntervalOK(t *testing.T) {
 		{interval{start: 999, end: 10}, "interval start value (999) is greater than end value (10)"},
 	}
 	for _, tc := range failureCases {
-		err := tc.testInterval.ok()
-		test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was ok", tc.testInterval))
-		test.AssertEquals(t, err.Error(), tc.expectedError)
+		t.Run(fmt.Sprintf("%q error", tc.expectedError), func(t *testing.T) {
+			err := tc.testInterval.ok()
+			test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was ok", tc.testInterval))
+			if err.Error() != tc.expectedError {
+				t.Errorf("got %q, expected %q", err.Error(), tc.expectedError)
+			}
+		})
 	}
 }
 

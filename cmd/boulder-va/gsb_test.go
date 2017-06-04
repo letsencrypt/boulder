@@ -50,8 +50,12 @@ func TestConfigCheck(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := configCheck(tc.conf)
-		test.AssertEquals(t, result, tc.expected)
+		t.Run(fmt.Sprintf("%q error case", tc.expected), func(t *testing.T) {
+			result := configCheck(tc.conf)
+			if result != tc.expected {
+				t.Errorf("got %q, expected %q", result, tc.expected)
+			}
+		})
 	}
 }
 

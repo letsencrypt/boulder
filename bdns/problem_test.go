@@ -2,9 +2,9 @@ package bdns
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
-	"fmt"
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
