@@ -645,15 +645,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		}
 
 		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ?", idJSON)
-		switch err {
-		case sql.ErrNoRows:
+		if err == sql.ErrNoRows {
 			// No existing authz found, proceed to create one.
-			break
-		case nil:
+		} else if err == nil {
 			// We found an authz, but we still need to fetch its challenges. To
 			// simplify things, just call GetAuthorization, which takes care of that.
 			return ssa.GetAuthorization(ctx, pa.ID)
-		default:
+		} else {
+			// Any error other than ErrNoRows; return the error
 			return output, err
 		}
 	}
