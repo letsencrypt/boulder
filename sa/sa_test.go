@@ -204,7 +204,7 @@ func TestAddAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 }
 
-func TestRecyclePendingAuthorization(t *testing.T) {
+func TestRecyclePendingDisabled(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -213,6 +213,47 @@ func TestRecyclePendingAuthorization(t *testing.T) {
 
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertNotEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+}
+
+func TestRecyclePendingEnabled(t *testing.T) {
+	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	authz := core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  "dns",
+			Value: "example.letsencrypt.org",
+		},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				URI:    "https://acme-example.letsencrypt.org/challenge123",
+				Type:   "http-01",
+				Status: "pending",
+				Token:  "abc",
+			},
+		},
+	}
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	authz.Challenges = nil
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+	test.Assert(t, len(pendingAuthz.Challenges) > 0, "no challenges")
+	test.AssertEquals(t, pendingAuthz.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {

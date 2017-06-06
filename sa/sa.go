@@ -636,12 +636,34 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 // NewPendingAuthorization stores a new Pending Authorization
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
 	var output core.Authorization
+
+	// Check if we can recycle an existing, pending authz.
+	if features.Enabled(features.ReusePendingAuthz) {
+		idJSON, err := json.Marshal(authz.Identifier)
+		if err != nil {
+			return output, err
+		}
+
+		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ?", idJSON)
+		switch err {
+		case sql.ErrNoRows:
+			// No existing authz found, proceed to create one.
+			break
+		case nil:
+			// We found an authz, but we still need to fetch its challenges. To
+			// simplify things, just call GetAuthorization, which takes care of that.
+			return ssa.GetAuthorization(ctx, pa.ID)
+		default:
+			return output, err
+		}
+	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return output, err
 	}
 
-	// Check that it doesn't exist already
+	// Create a random ID and check that it doesn't exist already
 	authz.ID = core.NewToken()
 	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
 		authz.ID = core.NewToken()
