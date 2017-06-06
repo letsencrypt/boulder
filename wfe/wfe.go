@@ -552,6 +552,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
 		return nil, nil, reg, probs.Malformed("JWS verification error")
 	}
+	logEvent.Payload = string(payload)
 
 	// Check that the request has a known anti-replay nonce
 	nonce := parsedJws.Signatures[0].Header.Nonce

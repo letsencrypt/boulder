@@ -11,6 +11,7 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 60,
     "pendingAuthorizationLifetimeDays": 7,
+    "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",

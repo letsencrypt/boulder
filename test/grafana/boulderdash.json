@@ -19,7 +19,7 @@
   },
   "editable": true,
   "gnetId": null,
-  "graphTooltip": 0,
+  "graphTooltip": 2,
   "hideControls": false,
   "id": null,
   "links": [],
@@ -27,7 +27,7 @@
   "rows": [
     {
       "collapse": false,
-      "height": "250px",
+      "height": 256,
       "panels": [
         {
           "aliasColors": {},
@@ -53,13 +53,14 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
-          "span": 12,
+          "span": 6,
           "stack": false,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum by (job) (rate(response_time_count{code!~\"50.\"}[$interval])) / sum by (job) (rate(response_time_count{}[$interval]))",
+              "expr": "sum by (instance) (rate(response_time_count{code!~\"50.\",instance=~\".*wfe.*\"}[$interval])) / sum by (instance) (rate(response_time_count{}[$interval]))",
               "intervalFactor": 2,
+              "legendFormat": "",
               "metric": "",
               "refId": "A",
               "step": 240
@@ -88,6 +89,78 @@
               "logBase": 1,
               "max": "1.1",
               "min": "0",
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "id": 19,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 6,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum by (instance) (rate(response_time_count[$interval]))",
+              "interval": "",
+              "intervalFactor": 2,
+              "legendFormat": "{{instance}}",
+              "refId": "A",
+              "step": 240
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Request volume",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
               "show": true
             },
             {
@@ -148,7 +221,7 @@
               "legendFormat": "{{result}}",
               "metric": "",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -222,7 +295,7 @@
               "legendFormat": "{{result}}",
               "metric": "",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -296,7 +369,7 @@
               "legendFormat": "{{result}}",
               "metric": "",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -375,7 +448,8 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum by (code) (rate(response_time_count{method=\"GET\"}[$interval]))",
+              "expr": "sum by (code) (rate(response_time_count{method=\"GET\",instance=~\".*wfe.*\"}[$interval]))",
+              "interval": "",
               "intervalFactor": 2,
               "legendFormat": "{{code}}",
               "metric": "response_",
@@ -386,7 +460,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "GETs per second by response code",
+          "title": "GETs per second by response code (WFE)",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -447,7 +521,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum by (code) (rate(response_time_count{method=\"POST\"}[$interval]))",
+              "expr": "sum by (code) (rate(response_time_count{method=\"POST\",instance=~\".*wfe.*\"}[$interval]))",
               "intervalFactor": 2,
               "legendFormat": "{{code}}",
               "refId": "A",
@@ -457,7 +531,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "POSTs per second by response code",
+          "title": "POSTs per second by response code (WFE)",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -535,7 +609,7 @@
               "intervalFactor": 2,
               "legendFormat": "{{endpoint}}",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -606,8 +680,9 @@
               "interval": "",
               "intervalFactor": 2,
               "legendFormat": "{{endpoint}}",
+              "metric": "response_",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -680,7 +755,7 @@
               "legendFormat": "{{code}} {{endpoint}}",
               "metric": "",
               "refId": "A",
-              "step": 600
+              "step": 240
             }
           ],
           "thresholds": [],
@@ -760,7 +835,9 @@
           "targets": [
             {
               "expr": "sum by (code) (rate(response_time_count{endpoint=\"/acme/new-reg\"}[$interval]))",
+              "interval": "",
               "intervalFactor": 2,
+              "legendFormat": "{{code}}",
               "refId": "A",
               "step": 600
             }
@@ -787,7 +864,7 @@
               "label": null,
               "logBase": 1,
               "max": null,
-              "min": null,
+              "min": "0",
               "show": true
             },
             {
@@ -929,7 +1006,7 @@
               "label": null,
               "logBase": 1,
               "max": null,
-              "min": null,
+              "min": "0",
               "show": true
             },
             {
@@ -971,10 +1048,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum by (code) (rate(response_time_count{method=\"POST\",endpoint=\"/acme/challenge\"}[$interval]))",
+              "expr": "sum by (code) (rate(response_time_count{method=\"POST\",endpoint=\"/acme/challenge/\"}[$interval]))",
               "interval": "",
               "intervalFactor": 2,
               "legendFormat": "{{code}}",
+              "metric": "",
               "refId": "A",
               "step": 600
             }
@@ -1001,7 +1079,7 @@
               "label": null,
               "logBase": 1,
               "max": null,
-              "min": null,
+              "min": "0",
               "show": true
             },
             {
@@ -1061,7 +1139,7 @@
               "legendFormat": "{{instance}}",
               "metric": "process_cpu_seconds_total",
               "refId": "A",
-              "step": 240
+              "step": 120
             }
           ],
           "thresholds": [],
@@ -1110,7 +1188,233 @@
     {
       "collapse": false,
       "height": 250,
-      "panels": [],
+      "panels": [
+        {
+          "aliasColors": {},
+          "bars": false,
+          "datasource": "$datasource",
+          "fill": 3,
+          "id": 16,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 4,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum by (method, code) (rate(response_time_count{instance=~\".*ocsp.*\",code!=\"405\"}[$interval]))",
+              "interval": "",
+              "intervalFactor": 2,
+              "legendFormat": "{{method}}, {{code}}",
+              "metric": "",
+              "refId": "A",
+              "step": 240
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "OCSP response volume",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "id": 17,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 4,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.5, sum by (le, endpoint) (rate(response_time_bucket{instance=~\".*ocsp.*\"}[$interval])))",
+              "interval": "",
+              "intervalFactor": 2,
+              "legendFormat": "median",
+              "refId": "A",
+              "step": 240
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum by (le, endpoint) (rate(response_time_bucket{instance=~\".*ocsp.*\"}[$interval])))",
+              "hide": false,
+              "intervalFactor": 2,
+              "legendFormat": "99th percentile",
+              "refId": "B",
+              "step": 240
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "OCSP latency",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "id": 18,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 4,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum by (job) (rate(response_time_count{code!~\"[45]0.\",instance=~\".*ocsp.*\"}[$interval])) / sum by (job) (rate(response_time_count{instance=~\".*ocsp.*\"}[$interval]))",
+              "interval": "",
+              "intervalFactor": 2,
+              "legendFormat": "success rate",
+              "refId": "A",
+              "step": 240
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "OCSP success rate (excluding 400s)",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        }
+      ],
       "repeat": null,
       "repeatIteration": null,
       "repeatRowId": null,
@@ -1244,5 +1548,5 @@
   },
   "timezone": "utc",
   "title": "Boulderdash",
-  "version": 6
+  "version": 25
 }

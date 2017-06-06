@@ -40,15 +40,27 @@ type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
+	weakRSAList        *weakKeys
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
-func NewKeyPolicy() KeyPolicy {
-	return KeyPolicy{
+// weakKeyFile contains the path to a JSON file containing truncated modulus
+// hashes of known weak RSA keys. If this argument is empty RSA modulus hash
+// checking will be disabled.
+func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
+	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
 	}
+	if weakKeyFile != "" {
+		keyList, err := loadSuffixes(weakKeyFile)
+		if err != nil {
+			return KeyPolicy{}, err
+		}
+		kp.weakRSAList = keyList
+	}
+	return kp, nil
 }
 
 // GoodKey returns true if the key is acceptable for both TLS use and account
@@ -185,6 +197,9 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	if !policy.AllowRSA {
 		return berrors.MalformedError("RSA keys are not allowed")
+	}
+	if policy.weakRSAList != nil && policy.weakRSAList.Known(&key) {
+		return berrors.MalformedError("key is on a known weak RSA key list")
 	}
 
 	// Baseline Requirements Appendix A

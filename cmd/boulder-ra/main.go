@@ -70,6 +70,10 @@ type config struct {
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
 
+		// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
+		// hashes of known easily enumerable keys.
+		WeakKeyFile string
+
 		Features map[string]bool
 	}
 
@@ -155,12 +159,15 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
+	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile)
+	cmd.FailOnError(err, "Unable to create key policy")
+
 	rai := ra.NewRegistrationAuthorityImpl(
 		clock.Default(),
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
-		goodkey.NewKeyPolicy(),
+		kp,
 		c.RA.MaxNames,
 		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,

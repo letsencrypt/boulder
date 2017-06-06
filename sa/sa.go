@@ -300,10 +300,32 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 }
 
 // CountRegistrationsByIP returns the number of registrations created in the
-// time range in an IP range. For IPv4 addresses, that range is limited to the
-// single IP. For IPv6 addresses, that range is a /48, since it's not uncommon
-// for one person to have a /48 to themselves.
+// time range for a single IP address.
 func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM registrations
+		 WHERE
+		 initialIP = :ip AND
+		 :earliest < createdAt AND
+		 createdAt <= :latest`,
+		map[string]interface{}{
+			"ip":       []byte(ip),
+			"earliest": earliest,
+			"latest":   latest,
+		})
+	if err != nil {
+		return -1, err
+	}
+	return int(count), nil
+}
+
+// CountRegistrationsByIPRange returns the number of registrations created in
+// the time range in an IP range. For IPv4 addresses, that range is limited to
+// the single IP. For IPv6 addresses, that range is a /48, since it's not
+// uncommon for one person to have a /48 to themselves.
+func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
 	err := ssa.dbMap.SelectOne(
@@ -315,7 +337,6 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"ip":       ip.String(),
 			"earliest": earliest,
 			"latest":   latest,
 			"beginIP":  []byte(beginIP),

@@ -105,7 +105,9 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString(clientName))
 
-	wfe, err := wfe.NewWebFrontEndImpl(scope, clock.Default(), goodkey.NewKeyPolicy(), logger)
+	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
+	cmd.FailOnError(err, "Unable to create key policy")
+	wfe, err := wfe.NewWebFrontEndImpl(scope, clock.Default(), kp, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(c, logger, scope)
 	wfe.RA = rac
@@ -130,7 +132,7 @@ func main() {
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-	logger.Info(fmt.Sprintf("WFE using key policy: %#v", goodkey.NewKeyPolicy()))
+	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
 
 	// Set up paths
 	wfe.BaseURL = c.Common.BaseURL
