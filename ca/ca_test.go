@@ -637,20 +637,23 @@ func TestProfileSelection(t *testing.T) {
 		{ECDSACSR, x509.KeyUsageDigitalSignature},
 	}
 
-	for _, testCase := range testCases {
-		csr, err := x509.ParseCertificateRequest(testCase.CSR)
-		test.AssertNotError(t, err, "Cannot parse CSR")
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%v usage", tc.ExpectedKeyUsage), func(t *testing.T) {
+			csr, err := x509.ParseCertificateRequest(tc.CSR)
+			test.AssertNotError(t, err, "Cannot parse CSR")
 
-		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(ctx, *csr, 1001)
-		test.AssertNotError(t, err, "Failed to sign certificate")
+			// Sign CSR
+			issuedCert, err := ca.IssueCertificate(ctx, *csr, 1001)
+			test.AssertNotError(t, err, "Failed to sign certificate")
 
-		// Verify cert contents
-		cert, err := x509.ParseCertificate(issuedCert.DER)
-		test.AssertNotError(t, err, "Certificate failed to parse")
+			// Verify cert contents
+			cert, err := x509.ParseCertificate(issuedCert.DER)
+			test.AssertNotError(t, err, "Certificate failed to parse")
 
-		t.Logf("expected key usage %v, got %v", testCase.ExpectedKeyUsage, cert.KeyUsage)
-		test.AssertEquals(t, cert.KeyUsage, testCase.ExpectedKeyUsage)
+			if cert.KeyUsage != tc.ExpectedKeyUsage {
+				t.Errorf("expected key usage %v, got %v", tc.ExpectedKeyUsage, cert.KeyUsage)
+			}
+		})
 	}
 }
 

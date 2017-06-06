@@ -1118,7 +1118,7 @@ func TestAvailableAddresses(t *testing.T) {
 	v4a := net.ParseIP("127.0.0.1")
 	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
 
-	testcases := []struct {
+	testCases := []struct {
 		input core.ValidationRecord
 		v4    []net.IP
 		v6    []net.IP
@@ -1171,7 +1171,7 @@ func TestAvailableAddresses(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testcases {
+	for _, tc := range testCases {
 		// Split the input record into v4/v6 addresses
 		v4result, v6result := availableAddresses(tc.input)
 

@@ -12,7 +12,7 @@ import (
 )
 
 func TestErrors(t *testing.T) {
-	testcases := []struct {
+	testCases := []struct {
 		err          error
 		expectedCode codes.Code
 	}{
@@ -28,7 +28,7 @@ func TestErrors(t *testing.T) {
 		{&probs.ProblemDetails{Type: probs.ConnectionProblem, Detail: "testing..."}, ProblemDetails},
 	}
 
-	for _, tc := range testcases {
+	for _, tc := range testCases {
 		wrappedErr := wrapError(nil, tc.err)
 		test.AssertEquals(t, grpc.Code(wrappedErr), tc.expectedCode)
 		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))

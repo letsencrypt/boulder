@@ -373,28 +373,29 @@ func TestHandleFunc(t *testing.T) {
 	}
 
 	// Plain requests (no CORS)
-	type testCase struct {
+	testCases := []struct {
 		allowed        []string
 		reqMethod      string
 		shouldCallStub bool
 		shouldSucceed  bool
-	}
-	var lastNonce string
-	for _, c := range []testCase{
+	}{
 		{[]string{"GET", "POST"}, "GET", true, true},
 		{[]string{"GET", "POST"}, "POST", true, true},
 		{[]string{"GET"}, "", false, false},
 		{[]string{"GET"}, "POST", false, false},
 		{[]string{"GET"}, "OPTIONS", false, true},
 		{[]string{"GET"}, "MAKE-COFFEE", false, false}, // 405, or 418?
-	} {
-		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
-		test.AssertEquals(t, stubCalled, c.shouldCallStub)
-		if c.shouldSucceed {
+	}
+
+	var lastNonce string
+	for _, tc := range testCases {
+		runWrappedHandler(&http.Request{Method: tc.reqMethod}, tc.allowed...)
+		test.AssertEquals(t, stubCalled, tc.shouldCallStub)
+		if tc.shouldSucceed {
 			test.AssertEquals(t, rw.Code, http.StatusOK)
 		} else {
 			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
-			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
+			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(tc.allowed), ", ")))
 			assertJSONEquals(t,
 				rw.Body.String(),
 				`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
@@ -2160,7 +2161,7 @@ func TestKeyRollover(t *testing.T) {
 		  "status": 400
 		}`)
 
-	for _, testCase := range []struct {
+	testCases := []struct {
 		payload          string
 		expectedResponse string
 	}{
@@ -2210,8 +2211,10 @@ func TestKeyRollover(t *testing.T) {
 		     "Status": "valid"
 		   }`,
 		},
-	} {
-		inner, err := signer.Sign([]byte(testCase.payload))
+	}
+
+	for _, tc := range testCases {
+		inner, err := signer.Sign([]byte(tc.payload))
 		test.AssertNotError(t, err, "Unable to sign")
 		innerStr := inner.FullSerialize()
 		innerStr = innerStr[:len(innerStr)-1] + `,"resource":"key-change"}` // awful
@@ -2219,6 +2222,6 @@ func TestKeyRollover(t *testing.T) {
 
 		responseWriter.Body.Reset()
 		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
+		assertJSONEquals(t, responseWriter.Body.String(), tc.expectedResponse)
 	}
 }
