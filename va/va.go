@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -811,7 +812,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 	va.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
 
 	var prob *probs.ProblemDetails
-	if int64(len(errors)) > va.maxRemoteFailures {
+	if int64(len(errors)) > atomic.LoadInt64(&va.maxRemoteFailures) {
 		for err := range errors {
 			// Don't surface gRPC errors to the user
 			if error, ok := err.(*probs.ProblemDetails); ok {

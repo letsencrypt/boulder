@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1334,6 +1335,7 @@ func TestFallbackTLS(t *testing.T) {
 type multiSrv struct {
 	*httptest.Server
 
+	mu         sync.Mutex
 	allowedUAs map[string]struct{}
 }
 
@@ -1341,9 +1343,11 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 	m := http.NewServeMux()
 
 	server := httptest.NewUnstartedServer(m)
-	ms := &multiSrv{server, allowedUAs}
+	ms := &multiSrv{server, sync.Mutex{}, allowedUAs}
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		ms.mu.Lock()
+		defer ms.mu.Unlock()
 		if _, ok := ms.allowedUAs[r.UserAgent()]; ok {
 			ch := core.Challenge{Token: token}
 			keyAuthz, _ := ch.ExpectedKeyAuthorization(accountKey)
@@ -1387,30 +1391,38 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Errorf("performRemoteValidation failed: %s", prob)
 	}
 
+	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
+	ms.mu.Unlock()
 	localVA.performRemoteValidation(context.Background(), ident.Value, chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob == nil {
 		t.Error("performRemoteValidation didn't fail when one 'remote' validation failed")
 	}
 
+	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	ms.allowedUAs["remote 1"] = struct{}{}
 	ms.allowedUAs["remote 2"] = struct{}{}
+	ms.mu.Unlock()
 
 	_, err := localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed: %s", err)
 	}
 
+	ms.mu.Lock()
 	delete(ms.allowedUAs, "local")
+	ms.mu.Unlock()
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when local validation failed")
 	}
 
+	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
+	ms.mu.Unlock()
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
@@ -1422,7 +1434,9 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
 	}
 
+	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 2")
+	ms.mu.Unlock()
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when both 'remote' validations failed")
