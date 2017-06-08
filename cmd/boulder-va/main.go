@@ -41,7 +41,7 @@ type config struct {
 		CAASERVFAILExceptions string
 
 		RemoteVAs                   []cmd.GRPCClientConfig
-		MaxRemoteValidationFailures int
+		MaxRemoteValidationFailures int64
 
 		Features map[string]bool
 	}

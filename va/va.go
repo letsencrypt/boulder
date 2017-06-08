@@ -65,7 +65,7 @@ type ValidationAuthorityImpl struct {
 	clk               clock.Clock
 	caaDR             *cdr.CAADistributedResolver
 	remoteVAs         []RemoteVA
-	maxRemoteFailures int
+	maxRemoteFailures int64
 
 	validationTime           *prometheus.HistogramVec
 	remoteValidationTime     *prometheus.HistogramVec
@@ -79,7 +79,7 @@ func NewValidationAuthorityImpl(
 	cdrClient *cdr.CAADistributedResolver,
 	resolver bdns.DNSResolver,
 	remoteVAs []RemoteVA,
-	maxRemoteFailures int,
+	maxRemoteFailures int64,
 	userAgent string,
 	issuerDomain string,
 	stats metrics.Scope,
@@ -811,7 +811,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 	va.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
 
 	var prob *probs.ProblemDetails
-	if len(errors) > va.maxRemoteFailures {
+	if int64(len(errors)) > va.maxRemoteFailures {
 		for err := range errors {
 			// Don't surface gRPC errors to the user
 			if error, ok := err.(*probs.ProblemDetails); ok {

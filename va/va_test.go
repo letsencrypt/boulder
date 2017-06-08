@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1415,7 +1416,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
 	}
 
-	localVA.maxRemoteFailures = 1
+	atomic.StoreInt64(&localVA.maxRemoteFailures, 1)
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
