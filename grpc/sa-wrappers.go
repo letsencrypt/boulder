@@ -225,6 +225,28 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Cont
 	return int(*response.Count), nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountRegistrationsByIPRange(ctx, &sapb.CountRegistrationsByIPRequest{
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+		Ip: ip,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
 func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.Context, regID int64) (int, error) {
 	response, err := sac.inner.CountPendingAuthorizations(ctx, &sapb.RegistrationID{Id: &regID})
 	if err != nil {
@@ -601,7 +623,29 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Cont
 		return nil, errIncompleteRequest
 	}
 
-	count, err := sas.inner.CountRegistrationsByIP(ctx, net.IP(request.Ip), time.Unix(0, *request.Range.Earliest), time.Unix(0, *request.Range.Latest))
+	count, err := sas.inner.CountRegistrationsByIP(
+		ctx,
+		net.IP(request.Ip),
+		time.Unix(0, *request.Range.Earliest),
+		time.Unix(0, *request.Range.Latest))
+	if err != nil {
+		return nil, err
+	}
+
+	castedCount := int64(count)
+	return &sapb.Count{Count: &castedCount}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	if request == nil || request.Ip == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+		return nil, errIncompleteRequest
+	}
+
+	count, err := sas.inner.CountRegistrationsByIPRange(
+		ctx,
+		net.IP(request.Ip),
+		time.Unix(0, *request.Range.Earliest),
+		time.Unix(0, *request.Range.Latest))
 	if err != nil {
 		return nil, err
 	}

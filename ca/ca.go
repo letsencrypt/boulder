@@ -126,7 +126,6 @@ type CertificateAuthorityImpl struct {
 	defaultIssuer    *internalIssuer
 	SA               certificateStorage
 	PA               core.PolicyAuthority
-	Publisher        core.Publisher
 	keyPolicy        goodkey.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
@@ -528,15 +527,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 			regID,
 		))
 		return emptyCert, err
-	}
-
-	// Submit the certificate to any configured CT logs
-	if ca.Publisher != nil {
-		go func() {
-			// since we don't want this method to be canceled if the parent context
-			// expires pass a background context to it
-			_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
-		}()
 	}
 
 	return cert, nil

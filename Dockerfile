@@ -1,6 +1,6 @@
 # To minimize the fetching of various layers this image and tag should
 # be used as the base of the bhsm container in boulder/docker-compose.yml
-FROM letsencrypt/boulder-tools:2017-03-30
+FROM letsencrypt/boulder-tools:2017-05-25
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 4430 8053 8055

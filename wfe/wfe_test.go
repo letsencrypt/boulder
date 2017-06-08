@@ -1797,11 +1797,9 @@ func TestGetCertificate(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
-	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.0.1"`)
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1817,7 +1815,6 @@ func TestGetCertificate(t *testing.T) {
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.99.99,192.168.0.1"`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1882,6 +1879,21 @@ func TestLengthRequired(t *testing.T) {
 
 type mockSADifferentStoredKey struct {
 	core.StorageGetter
+}
+
+// TestLogPayload ensures that verifyPOST sets the Payload field of the logEvent
+// it is passed.
+func TestLogPayload(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, err := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	test.AssertEquals(t, event.Payload, payload)
 }
 
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {

@@ -11,7 +11,7 @@ fi
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH). We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
-RUN=${RUN:-vet fmt migrations unit integration errcheck}
+RUN=${RUN:-vet fmt migrations unit integration errcheck dashlint}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.
@@ -249,6 +249,12 @@ if [[ "$RUN" =~ "rpm" ]]; then
   start_context "rpm"
   run make rpm
   end_context #"rpm"
+fi
+
+if [[ "$RUN" =~ "dashlint" ]]; then
+  start_context "dashlint"
+  run python test/grafana/lint.py
+  end_context #"dashlint"
 fi
 
 exit ${FAILURE}
