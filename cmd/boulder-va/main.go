@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -135,14 +136,14 @@ func main() {
 		resolver = r
 	}
 
-	var remotes []core.ValidationAuthority
+	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		tls, err := c.VA.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 		for _, rva := range c.VA.RemoteVAs {
-			vaConn, err := bgrpc.ClientSetup(rva, tls, scope)
+			vaConn, err := bgrpc.ClientSetup(&rva, tls, scope)
 			cmd.FailOnError(err, "Unable to create remote VA client")
-			remotes = append(remotes, bgrpc.NewValidationAuthorityGRPCClient(vaConn))
+			remotes = append(remotes, va.RemoteVA{bgrpc.NewValidationAuthorityGRPCClient(vaConn), strings.Join(rva.ServerAddresses, ",")})
 		}
 	}
 

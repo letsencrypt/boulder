@@ -2,7 +2,7 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": ":8004",
+    "debugAddr": ":8010",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
@@ -17,7 +17,7 @@
       "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
-      "address": ":9092",
+      "address": ":9097",
       "clientNames": [
         "ra.boulder"
       ]
@@ -30,17 +30,7 @@
     "features": {
       "GoogleSafeBrowsingV4": true,
       "IPv6First": true
-    },
-    "remoteVAs": [
-      {
-        "serverAddresses": ["va.boulder:19097"],
-        "timeout": "15s"
-      },
-      {
-        "serverAddresses": ["va.boulder:19098"],
-        "timeout": "15s"
-      }
-    ]
+    }
   },
 
   "syslog": {

@@ -47,14 +47,17 @@ def start(race_detection):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    for srv in [
+    forwards = [
             [":19091", "publisher.boulder:9091"],
             [":19092", "va.boulder:9092"],
             [":19093", "ca.boulder:9093"],
             [":19094", "ra.boulder:9094"],
             [":19095", "sa.boulder:9095"],
             [":19096", "ca.boulder:9096"],
-    ]:
+    ]
+    if default_config_dir.startswith("test/config-next"):
+        forwards.extend([[":19097", "remote-va-a.boulder:9097"], [":19098", "remote-va-b.boulder:9098"]])
+    for srv in forwards:
         forward(srv[0], srv[1])
     progs = [
         # The gsb-test-srv needs to be started before the VA or its intial DB
@@ -72,6 +75,11 @@ def start(race_detection):
         'dns-test-srv',
         'mail-test-srv --closeFirst 5'
     ]
+    if default_config_dir.startswith("test/config-next"):
+        progs.extend([
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
+        ])
     if not install(race_detection):
         return False
     for prog in progs:
@@ -93,6 +101,8 @@ def start(race_detection):
             if not check():
                 return False
             ports = range(8000, 8005) + [4000, 4430]
+            if default_config_dir.startswith("test/config-next"):
+                ports.extend([8010, 8011])
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))

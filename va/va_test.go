@@ -1379,6 +1379,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	probCh := make(chan *probs.ProblemDetails, 1)
+	ident := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 	localVA.performRemoteValidation(context.Background(), ident.Value, chall, core.Authorization{}, probCh)
 	prob := <-probCh
 	if prob != nil {
