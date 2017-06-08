@@ -39,6 +39,9 @@ type config struct {
 		// Feature flag to enable enforcement of CAA SERVFAILs.
 		CAASERVFAILExceptions string
 
+		RemoteVAs                   []cmd.GRPCClientConfig
+		MaxRemoteValidationFailures int
+
 		Features map[string]bool
 	}
 
@@ -132,11 +135,24 @@ func main() {
 		resolver = r
 	}
 
+	var remotes []core.ValidationAuthority
+	if len(c.VA.RemoteVAs) > 0 {
+		tls, err := c.VA.TLS.Load()
+		cmd.FailOnError(err, "TLS config")
+		for _, rva := range c.VA.RemoteVAs {
+			vaConn, err := bgrpc.ClientSetup(rva, tls, scope)
+			cmd.FailOnError(err, "Unable to create remote VA client")
+			remotes = append(remotes, bgrpc.NewValidationAuthorityGRPCClient(vaConn))
+		}
+	}
+
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
 		cdrClient,
 		resolver,
+		remotes,
+		c.VA.MaxRemoteValidationFailures,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
 		scope,

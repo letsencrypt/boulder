@@ -45,20 +45,31 @@ const (
 
 var validationTimeout = time.Second * 5
 
+type RemoteVA struct {
+	core.ValidationAuthority
+
+	Address string
+}
+
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log            blog.Logger
-	dnsResolver    bdns.DNSResolver
-	issuerDomain   string
-	safeBrowsing   SafeBrowsing
-	httpPort       int
-	httpsPort      int
-	tlsPort        int
-	userAgent      string
-	stats          metrics.Scope
-	clk            clock.Clock
-	caaDR          *cdr.CAADistributedResolver
-	validationTime *prometheus.HistogramVec
+	log               blog.Logger
+	dnsResolver       bdns.DNSResolver
+	issuerDomain      string
+	safeBrowsing      SafeBrowsing
+	httpPort          int
+	httpsPort         int
+	tlsPort           int
+	userAgent         string
+	stats             metrics.Scope
+	clk               clock.Clock
+	caaDR             *cdr.CAADistributedResolver
+	remoteVAs         []RemoteVA
+	maxRemoteFailures int
+
+	validationTime           *prometheus.HistogramVec
+	remoteValidationTime     *prometheus.HistogramVec
+	remoteValidationFailures *prometheus.HistogramVec
 }
 
 // NewValidationAuthorityImpl constructs a new VA
@@ -67,6 +78,8 @@ func NewValidationAuthorityImpl(
 	sbc SafeBrowsing,
 	cdrClient *cdr.CAADistributedResolver,
 	resolver bdns.DNSResolver,
+	remoteVAs []RemoteVA,
+	maxRemoteFailures int,
 	userAgent string,
 	issuerDomain string,
 	stats metrics.Scope,
@@ -80,20 +93,37 @@ func NewValidationAuthorityImpl(
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(validationTime)
+	remoteValidationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "remote_validation_time",
+			Help: "Time taken to remotely validate a challenge",
+		},
+		[]string{"type"})
+	stats.MustRegister(remoteValidationTime)
+	remoteValidationFailures := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "remote_validation_failures",
+			Help: "Number of remote VAs that failed during challenge validation",
+		}, nil)
+	stats.MustRegister(remoteValidationFailures)
 
 	return &ValidationAuthorityImpl{
-		log:            logger,
-		dnsResolver:    resolver,
-		issuerDomain:   issuerDomain,
-		safeBrowsing:   sbc,
-		httpPort:       pc.HTTPPort,
-		httpsPort:      pc.HTTPSPort,
-		tlsPort:        pc.TLSPort,
-		userAgent:      userAgent,
-		stats:          stats,
-		clk:            clk,
-		caaDR:          cdrClient,
-		validationTime: validationTime,
+		log:                      logger,
+		dnsResolver:              resolver,
+		issuerDomain:             issuerDomain,
+		safeBrowsing:             sbc,
+		httpPort:                 pc.HTTPPort,
+		httpsPort:                pc.HTTPSPort,
+		tlsPort:                  pc.TLSPort,
+		userAgent:                userAgent,
+		stats:                    stats,
+		clk:                      clk,
+		caaDR:                    cdrClient,
+		validationTime:           validationTime,
+		remoteValidationTime:     remoteValidationTime,
+		remoteValidationFailures: remoteValidationFailures,
+		remoteVAs:                remoteVAs,
+		maxRemoteFailures:        maxRemoteFailures,
 	}
 }
 
@@ -757,6 +787,46 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	return nil, probs.Malformed(fmt.Sprintf("invalid challenge type %s", challenge.Type))
 }
 
+func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
+	s := va.clk.Now()
+	errors := make(chan error, len(va.remoteVAs))
+	wg := new(sync.WaitGroup)
+	for _, remoteVA := range va.remoteVAs {
+		wg.Add(1)
+		go func(rva RemoteVA) {
+			defer wg.Done()
+			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
+			if err != nil {
+				va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Address, err))
+				errors <- err
+			}
+		}(remoteVA)
+	}
+	wg.Wait()
+	close(errors)
+
+	va.remoteValidationTime.With(prometheus.Labels{
+		"type": string(challenge.Type),
+	}).Observe(va.clk.Since(s).Seconds())
+	va.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
+
+	var prob *probs.ProblemDetails
+	if len(errors) > va.maxRemoteFailures {
+		for err := range errors {
+			// Don't surface gRPC errors to the user
+			if error, ok := err.(*probs.ProblemDetails); ok {
+				// only return the last error to the user
+				prob = error
+			}
+		}
+		if prob == nil {
+			prob = probs.ServerInternal("All remote PerformValidation RPCs failed")
+		}
+	}
+
+	result <- prob
+}
+
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
 //
@@ -769,6 +839,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
+
+	var remoteError chan *probs.ProblemDetails
+	if len(va.remoteVAs) > 0 {
+		remoteError = make(chan *probs.ProblemDetails, 1)
+		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
+	}
 
 	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
@@ -784,6 +860,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
+	} else if remoteError != nil {
+		prob = <-remoteError
+		if prob != nil {
+			challenge.Status = core.StatusInvalid
+			challenge.Error = prob
+			logEvent.Error = prob.Error()
+		} else {
+			challenge.Status = core.StatusValid
+		}
 	} else {
 		challenge.Status = core.StatusValid
 	}

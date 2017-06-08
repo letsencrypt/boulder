@@ -1056,6 +1056,8 @@ func setup(srv *httptest.Server) (*ValidationAuthorityImpl, *blog.Mock) {
 		nil,
 		nil,
 		&bdns.MockDNSResolver{},
+		nil,
+		0,
 		"user agent 1.0",
 		"letsencrypt.org",
 		metrics.NewNoopScope(),
@@ -1078,6 +1080,8 @@ func TestCheckCAAFallback(t *testing.T) {
 		nil,
 		caaDR,
 		&bdns.MockDNSResolver{},
+		nil,
+		0,
 		"user agent 1.0",
 		"ca.com",
 		metrics.NewNoopScope(),
@@ -1324,4 +1328,101 @@ func TestFallbackTLS(t *testing.T) {
 	test.AssertEquals(t, len(records[0].AddressesTried), 1)
 	// We expect that IPv6 localhost address was tried
 	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
+}
+
+type multiSrv struct {
+	*httptest.Server
+
+	allowedUAs map[string]struct{}
+}
+
+func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *multiSrv {
+	m := http.NewServeMux()
+
+	server := httptest.NewUnstartedServer(m)
+	ms := &multiSrv{server, allowedUAs}
+
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := ms.allowedUAs[r.UserAgent()]; ok {
+			ch := core.Challenge{Token: token}
+			keyAuthz, _ := ch.ExpectedKeyAuthorization(accountKey)
+			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz, "\\n\\r \\t")
+			fmt.Fprint(w, keyAuthz, "\n\r \t")
+		} else {
+			fmt.Fprint(w, "???")
+		}
+	})
+
+	ms.Start()
+	return ms
+}
+
+func TestPerformRemoteValidation(t *testing.T) {
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
+	defer ms.Close()
+
+	// Create a local test VA and two 'remote' VAs
+	localVA, _ := setup(ms.Server)
+	localVA.userAgent = "local"
+	remoteVA1, _ := setup(ms.Server)
+	remoteVA1.userAgent = "remote 1"
+	remoteVA2, _ := setup(ms.Server)
+	remoteVA2.userAgent = "remote 2"
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{remoteVA2, "remote 2"},
+	}
+
+	probCh := make(chan *probs.ProblemDetails, 1)
+	localVA.performRemoteValidation(context.Background(), ident.Value, chall, core.Authorization{}, probCh)
+	prob := <-probCh
+	if prob != nil {
+		t.Errorf("performRemoteValidation failed: %s", prob)
+	}
+
+	delete(ms.allowedUAs, "remote 1")
+	localVA.performRemoteValidation(context.Background(), ident.Value, chall, core.Authorization{}, probCh)
+	prob = <-probCh
+	if prob == nil {
+		t.Error("performRemoteValidation didn't fail when one 'remote' validation failed")
+	}
+
+	ms.allowedUAs["local"] = struct{}{}
+	ms.allowedUAs["remote 1"] = struct{}{}
+	ms.allowedUAs["remote 2"] = struct{}{}
+
+	_, err := localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err != nil {
+		t.Errorf("PerformValidation failed: %s", err)
+	}
+
+	delete(ms.allowedUAs, "local")
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err == nil {
+		t.Error("PerformValidation didn't fail when local validation failed")
+	}
+
+	ms.allowedUAs["local"] = struct{}{}
+	delete(ms.allowedUAs, "remote 1")
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err == nil {
+		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
+	}
+
+	localVA.maxRemoteFailures = 1
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err != nil {
+		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
+	}
+
+	delete(ms.allowedUAs, "remote 2")
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err == nil {
+		t.Error("PerformValidation didn't fail when both 'remote' validations failed")
+	}
 }
