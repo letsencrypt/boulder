@@ -8,7 +8,6 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
@@ -22,13 +21,7 @@
         "va.boulder"
       ]
     },
-    "GoogleSafeBrowsing": {
-      "APIKey": "my-voice-is-my-passport",
-      "DataDir": "/tmp/gsb-a",
-      "ServerURL": "http://boulder:6000"
-    },
     "features": {
-      "GoogleSafeBrowsingV4": true,
       "IPv6First": true
     }
   },

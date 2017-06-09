@@ -52,41 +52,13 @@ type RemoteVA struct {
 	Address string
 }
 
-// ValidationAuthorityImpl represents a VA
-type ValidationAuthorityImpl struct {
-	log               blog.Logger
-	dnsResolver       bdns.DNSResolver
-	issuerDomain      string
-	safeBrowsing      SafeBrowsing
-	httpPort          int
-	httpsPort         int
-	tlsPort           int
-	userAgent         string
-	stats             metrics.Scope
-	clk               clock.Clock
-	caaDR             *cdr.CAADistributedResolver
-	remoteVAs         []RemoteVA
-	maxRemoteFailures int64
-
+type vaMetrics struct {
 	validationTime           *prometheus.HistogramVec
 	remoteValidationTime     *prometheus.HistogramVec
 	remoteValidationFailures *prometheus.HistogramVec
 }
 
-// NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(
-	pc *cmd.PortConfig,
-	sbc SafeBrowsing,
-	cdrClient *cdr.CAADistributedResolver,
-	resolver bdns.DNSResolver,
-	remoteVAs []RemoteVA,
-	maxRemoteFailures int64,
-	userAgent string,
-	issuerDomain string,
-	stats metrics.Scope,
-	clk clock.Clock,
-	logger blog.Logger,
-) *ValidationAuthorityImpl {
+func initMetrics(stats metrics.Scope) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "validation_time",
@@ -108,23 +80,63 @@ func NewValidationAuthorityImpl(
 		}, nil)
 	stats.MustRegister(remoteValidationFailures)
 
-	return &ValidationAuthorityImpl{
-		log:                      logger,
-		dnsResolver:              resolver,
-		issuerDomain:             issuerDomain,
-		safeBrowsing:             sbc,
-		httpPort:                 pc.HTTPPort,
-		httpsPort:                pc.HTTPSPort,
-		tlsPort:                  pc.TLSPort,
-		userAgent:                userAgent,
-		stats:                    stats,
-		clk:                      clk,
-		caaDR:                    cdrClient,
+	return &vaMetrics{
 		validationTime:           validationTime,
 		remoteValidationTime:     remoteValidationTime,
 		remoteValidationFailures: remoteValidationFailures,
-		remoteVAs:                remoteVAs,
-		maxRemoteFailures:        maxRemoteFailures,
+	}
+}
+
+// ValidationAuthorityImpl represents a VA
+type ValidationAuthorityImpl struct {
+	log               blog.Logger
+	dnsResolver       bdns.DNSResolver
+	issuerDomain      string
+	safeBrowsing      SafeBrowsing
+	httpPort          int
+	httpsPort         int
+	tlsPort           int
+	userAgent         string
+	stats             metrics.Scope
+	clk               clock.Clock
+	caaDR             *cdr.CAADistributedResolver
+	remoteVAs         []RemoteVA
+	maxRemoteFailures int64
+	hostname          string
+
+	metrics *vaMetrics
+}
+
+// NewValidationAuthorityImpl constructs a new VA
+func NewValidationAuthorityImpl(
+	pc *cmd.PortConfig,
+	sbc SafeBrowsing,
+	cdrClient *cdr.CAADistributedResolver,
+	resolver bdns.DNSResolver,
+	remoteVAs []RemoteVA,
+	maxRemoteFailures int64,
+	userAgent string,
+	issuerDomain string,
+	stats metrics.Scope,
+	clk clock.Clock,
+	logger blog.Logger,
+) *ValidationAuthorityImpl {
+
+	return &ValidationAuthorityImpl{
+		log:               logger,
+		dnsResolver:       resolver,
+		issuerDomain:      issuerDomain,
+		safeBrowsing:      sbc,
+		httpPort:          pc.HTTPPort,
+		httpsPort:         pc.HTTPSPort,
+		tlsPort:           pc.TLSPort,
+		userAgent:         userAgent,
+		stats:             stats,
+		clk:               clk,
+		caaDR:             cdrClient,
+		metrics:           initMetrics(stats),
+		remoteVAs:         remoteVAs,
+		maxRemoteFailures: maxRemoteFailures,
 	}
 }
 
@@ -811,10 +823,10 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 	wg.Wait()
 	close(errors)
 
-	va.remoteValidationTime.With(prometheus.Labels{
+	va.metrics.remoteValidationTime.With(prometheus.Labels{
 		"type": string(challenge.Type),
 	}).Observe(va.clk.Since(s).Seconds())
-	va.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
+	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
 
 	var prob *probs.ProblemDetails
 	if int64(len(errors)) > atomic.LoadInt64(&va.maxRemoteFailures) {
@@ -881,7 +893,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	va.validationTime.With(prometheus.Labels{
+	va.metrics.validationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
 	}).Observe(time.Since(vStart).Seconds())
