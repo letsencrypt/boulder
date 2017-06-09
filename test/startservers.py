@@ -80,6 +80,11 @@ def start(race_detection):
             'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
             'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
         ])
+        # GSB doesn't like sharing databases so make sure the two remote VAs have a special place to put them
+        if not os.path.exists("/tmp/gsb-a"):
+            os.makedirs("/tmp/gsb-a")
+        if not os.path.exists("/tmp/gsb-b"):
+            os.makedirs("/tmp/gsb-b")
     if not install(race_detection):
         return False
     for prog in progs:

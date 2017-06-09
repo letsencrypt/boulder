@@ -24,7 +24,7 @@
     },
     "GoogleSafeBrowsing": {
       "APIKey": "my-voice-is-my-passport",
-      "DataDir": "/tmp",
+      "DataDir": "/tmp/gsb-a",
       "ServerURL": "http://boulder:6000"
     },
     "features": {
