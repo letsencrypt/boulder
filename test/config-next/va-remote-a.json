@@ -2,7 +2,7 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": ":8010",
+    "debugAddr": ":8011",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
@@ -19,7 +19,7 @@
     "grpc": {
       "address": ":9097",
       "clientNames": [
-        "ra.boulder"
+        "va.boulder"
       ]
     },
     "GoogleSafeBrowsing": {

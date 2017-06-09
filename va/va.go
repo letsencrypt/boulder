@@ -798,8 +798,13 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 			defer wg.Done()
 			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
 			if err != nil {
-				va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Address, err))
-				errors <- err
+				// returned error can be a nil *probs.ProblemDetails which breaks the
+				// err != nil check so do a slightly more complicated unwrap check to
+				// make sure we don't choke on that.
+				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
+					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Address, err))
+					errors <- err
+				}
 			}
 		}(remoteVA)
 	}
@@ -821,7 +826,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 			}
 		}
 		if prob == nil {
-			prob = probs.ServerInternal("All remote PerformValidation RPCs failed")
+			prob = probs.ServerInternal("Remote PerformValidation RPCs failed")
 		}
 	}
 

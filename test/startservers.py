@@ -56,7 +56,8 @@ def start(race_detection):
             [":19096", "ca.boulder:9096"],
     ]
     if default_config_dir.startswith("test/config-next"):
-        forwards.extend([[":19097", "remote-va-a.boulder:9097"], [":19098", "remote-va-b.boulder:9098"]])
+        forwards.extend([[":19097", "va.boulder:9097"], [":19098", "va.boulder:9098"]])
+
     for srv in forwards:
         forward(srv[0], srv[1])
     progs = [
@@ -107,7 +108,7 @@ def start(race_detection):
                 return False
             ports = range(8000, 8005) + [4000, 4430]
             if default_config_dir.startswith("test/config-next"):
-                ports.extend([8010, 8011])
+                ports.extend([8011, 8012])
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))
