@@ -35,7 +35,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -1052,7 +1051,6 @@ func setup(srv *httptest.Server) (*ValidationAuthorityImpl, *blog.Mock) {
 	va := NewValidationAuthorityImpl(
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
-		nil,
 		nil,
 		&bdns.MockDNSResolver{},
 		"user agent 1.0",
