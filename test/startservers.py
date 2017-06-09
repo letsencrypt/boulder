@@ -74,10 +74,13 @@ def start(race_detection):
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv --closeFirst 5',
-        'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
-        'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
+        'mail-test-srv --closeFirst 5'
     ]
+    if default_config_dir.startswith("test/config-next"):
+        progs.extend([
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
+        ])
     if not install(race_detection):
         return False
     for prog in progs:
@@ -98,7 +101,9 @@ def start(race_detection):
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
-            ports = range(8000, 8005) + [4000, 4430] + [8011, 8012]
+            ports = range(8000, 8005) + [4000, 4430]
+            if default_config_dir.startswith("test/config-next"):
+                ports.extend([8011, 8012])
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))
