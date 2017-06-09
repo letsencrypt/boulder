@@ -8,7 +8,6 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -96,18 +95,6 @@ func main() {
 	}
 	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
 
-	var cdrClient *cdr.CAADistributedResolver
-	if c.VA.CAADistributedResolver != nil {
-		var err error
-		cdrClient, err = cdr.New(
-			scope,
-			c.VA.CAADistributedResolver.Timeout.Duration,
-			c.VA.CAADistributedResolver.MaxFailures,
-			c.VA.CAADistributedResolver.Proxies,
-			logger)
-		cmd.FailOnError(err, "Failed to create CAADistributedResolver")
-	}
-
 	dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
@@ -135,7 +122,6 @@ func main() {
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
-		cdrClient,
 		resolver,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,

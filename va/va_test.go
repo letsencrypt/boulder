@@ -29,7 +29,6 @@ import (
 	"gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -1062,36 +1061,6 @@ func setup(srv *httptest.Server) (*ValidationAuthorityImpl, *blog.Mock) {
 		clock.Default(),
 		logger)
 	return va, logger
-}
-
-func TestCheckCAAFallback(t *testing.T) {
-	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
-	defer testSrv.Close()
-
-	logger := blog.NewMock()
-	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
-	caaDR.URI = testSrv.URL
-	caaDR.Clients["1.1.1.1"] = new(http.Client)
-	va := NewValidationAuthorityImpl(
-		&cmd.PortConfig{},
-		nil,
-		caaDR,
-		&bdns.MockDNSResolver{},
-		"user agent 1.0",
-		"ca.com",
-		metrics.NewNoopScope(),
-		clock.Default(),
-		logger)
-
-	prob := va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
-	test.Assert(t, prob == nil, fmt.Sprintf("returned ProblemDetails was non-nil: %#v", prob))
-
-	va.caaDR = nil
-	prob = va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
-	test.Assert(t, prob != nil, "returned ProblemDetails was nil")
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, prob.Detail, "DNS problem: query timed out looking up CAA for bad-local-resolver.com")
 }
 
 func TestParseResults(t *testing.T) {
