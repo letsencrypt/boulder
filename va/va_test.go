@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -316,10 +317,20 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Domain name is invalid.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnknownHostProblem)
+}
+
+func TestHTTPTimeout(t *testing.T) {
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, chall.Token)
+	// TODO(#1989): close hs
+
+	va, _ := setup(hs)
 
 	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
-	_, prob = va.validateHTTP01(ctx, ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -328,6 +339,12 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expectMatch := regexp.MustCompile(
+		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout")
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
@@ -388,7 +405,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, ident, chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, "Could not connect to other.valid")
+	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Error getting validation data")
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
@@ -609,7 +626,10 @@ func TestTLSError(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("TLS validation should have failed: What cert was used?")
 	}
-	test.AssertEquals(t, prob.Type, probs.TLSProblem)
+	if prob.Type != probs.TLSProblem {
+		t.Errorf("Wrong problem type: got %s, expected type %s",
+			prob, probs.TLSProblem)
+	}
 }
 
 // misconfiguredTLSSrv is a TLS HTTP test server that returns a certificate

@@ -6,6 +6,7 @@ package mock_metrics
 import (
 	gomock "github.com/golang/mock/gomock"
 	metrics "github.com/letsencrypt/boulder/metrics"
+	prometheus "github.com/prometheus/client_golang/prometheus"
 	time "time"
 )
 
@@ -58,6 +59,18 @@ func (_m *MockScope) Inc(_param0 string, _param1 int64) error {
 
 func (_mr *_MockScopeRecorder) Inc(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Inc", arg0, arg1)
+}
+
+func (_m *MockScope) MustRegister(_param0 ...prometheus.Collector) {
+	_s := []interface{}{}
+	for _, _x := range _param0 {
+		_s = append(_s, _x)
+	}
+	_m.ctrl.Call(_m, "MustRegister", _s...)
+}
+
+func (_mr *_MockScopeRecorder) MustRegister(arg0 ...interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "MustRegister", arg0...)
 }
 
 func (_m *MockScope) NewScope(_param0 ...string) metrics.Scope {

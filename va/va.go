@@ -43,34 +43,22 @@ const (
 	maxResponseSize = 128
 )
 
-var (
-	validationTime = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "validation_time",
-			Help: "Time taken to validate a challenge",
-		},
-		[]string{"type", "result"})
-)
-
-func init() {
-	prometheus.MustRegister(validationTime)
-}
-
 var validationTimeout = time.Second * 5
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log          blog.Logger
-	dnsResolver  bdns.DNSResolver
-	issuerDomain string
-	safeBrowsing SafeBrowsing
-	httpPort     int
-	httpsPort    int
-	tlsPort      int
-	userAgent    string
-	stats        metrics.Scope
-	clk          clock.Clock
-	caaDR        *cdr.CAADistributedResolver
+	log            blog.Logger
+	dnsResolver    bdns.DNSResolver
+	issuerDomain   string
+	safeBrowsing   SafeBrowsing
+	httpPort       int
+	httpsPort      int
+	tlsPort        int
+	userAgent      string
+	stats          metrics.Scope
+	clk            clock.Clock
+	caaDR          *cdr.CAADistributedResolver
+	validationTime *prometheus.HistogramVec
 }
 
 // NewValidationAuthorityImpl constructs a new VA
@@ -85,18 +73,27 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
+	validationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "validation_time",
+			Help: "Time taken to validate a challenge",
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(validationTime)
+
 	return &ValidationAuthorityImpl{
-		log:          logger,
-		dnsResolver:  resolver,
-		issuerDomain: issuerDomain,
-		safeBrowsing: sbc,
-		httpPort:     pc.HTTPPort,
-		httpsPort:    pc.HTTPSPort,
-		tlsPort:      pc.TLSPort,
-		userAgent:    userAgent,
-		stats:        stats,
-		clk:          clk,
-		caaDR:        cdrClient,
+		log:            logger,
+		dnsResolver:    resolver,
+		issuerDomain:   issuerDomain,
+		safeBrowsing:   sbc,
+		httpPort:       pc.HTTPPort,
+		httpsPort:      pc.HTTPSPort,
+		tlsPort:        pc.TLSPort,
+		userAgent:      userAgent,
+		stats:          stats,
+		clk:            clk,
+		caaDR:          cdrClient,
+		validationTime: validationTime,
 	}
 }
 
@@ -341,8 +338,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	validationRecords = append(validationRecords, dialer.record)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
-		return nil, validationRecords,
-			parseHTTPConnError(fmt.Sprintf("Could not connect to %s", urlHost), err)
+		return nil, validationRecords, detailedError(err)
 	}
 
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -524,8 +520,7 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier co
 
 	if err != nil {
 		va.log.Info(fmt.Sprintf("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err))
-		return nil,
-			parseHTTPConnError(fmt.Sprintf("Failed to connect to %s for %s challenge", hostPort, challenge.Type), err)
+		return nil, detailedError(err)
 	}
 	// close errors are not important here
 	defer func() {
@@ -610,30 +605,34 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02(ctx context.Context, identif
 // we try to talk TLS to a server that only talks HTTP
 var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
 
-// parseHTTPConnError returns a ProblemDetails corresponding to an error
-// that occurred during domain validation.
-func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
+// detailedError returns a ProblemDetails corresponding to an error
+// that occurred during HTTP-01 or TLS-SNI domain validation. Specifically it
+// tries to unwrap known Go error types and present something a little more
+// meaningful.
+func detailedError(err error) *probs.ProblemDetails {
+	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	if urlErr, ok := err.(*url.Error); ok {
-		err = urlErr.Err
+		prob := detailedError(urlErr.Err)
+		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
+		return prob
 	}
 
 	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
-		return probs.Malformed(fmt.Sprintf("%s: Server only speaks HTTP, not TLS", detail))
+		return probs.Malformed(fmt.Sprintf("Server only speaks HTTP, not TLS"))
 	}
 
-	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
-	// no differentiation between a DNSSEC failure and an unknown host. If we
-	// do not verify DNSSEC ourselves, this function should be modified.
 	if netErr, ok := err.(*net.OpError); ok {
-		dnsErr, ok := netErr.Err.(*net.DNSError)
-		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
-			return probs.UnknownHost(detail)
-		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
-			return probs.TLSError(detail)
+		if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
+			// As of Go 1.8, all the tls.alert error strings are reasonable to hand back to a
+			// user.
+			return probs.TLSError(netErr.Error())
 		}
 	}
+	if err, ok := err.(net.Error); ok && err.Timeout() {
+		return probs.ConnectionFailure("Timeout")
+	}
 
-	return probs.ConnectionFailure(detail)
+	return probs.ConnectionFailure("Error getting validation data")
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -793,7 +792,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	validationTime.With(prometheus.Labels{
+	va.validationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
 	}).Observe(time.Since(vStart).Seconds())

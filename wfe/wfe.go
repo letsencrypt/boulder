@@ -602,7 +602,11 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
-		wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
+		if ierr != nil {
+			wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
+		} else {
+			wfe.log.AuditErr(fmt.Sprintf("Internal error - %s", prob.Detail))
+		}
 	}
 
 	problemDoc, err := marshalIndent(prob)
