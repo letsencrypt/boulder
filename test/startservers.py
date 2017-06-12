@@ -77,6 +77,7 @@ def start(race_detection):
         'mail-test-srv --closeFirst 5'
     ]
     if default_config_dir.startswith("test/config-next"):
+        # Run the two 'remote' VAs
         progs.extend([
             'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
             'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
@@ -103,6 +104,7 @@ def start(race_detection):
                 return False
             ports = range(8000, 8005) + [4000, 4430]
             if default_config_dir.startswith("test/config-next"):
+                # Add the two 'remote' VA debug ports
                 ports.extend([8011, 8012])
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
