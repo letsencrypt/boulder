@@ -173,6 +173,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		var fa authzModel
 		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 		if err != nil {
+			err = Rollback(tx, err)
 			return
 		}
 		authz = fa.Authorization
