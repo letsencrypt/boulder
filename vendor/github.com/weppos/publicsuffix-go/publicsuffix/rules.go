@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version cabeda8 (Mon Apr 24 07:17:11 2017)"
+const defaultListVersion = "PSL version aefdb12 (Thu Jun  8 11:51:49 2017)"
 
 func init() {
-	r := [8152]Rule{
+	r := [8155]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -3948,6 +3948,7 @@ func init() {
 		{1, "name", 1, false},
 		{1, "nc", 1, false},
 		{1, "asso.nc", 2, false},
+		{1, "nom.nc", 2, false},
 		{1, "ne", 1, false},
 		{1, "net", 1, false},
 		{1, "nf", 1, false},
@@ -6667,7 +6668,6 @@ func init() {
 		{1, "oracle", 1, false},
 		{1, "orange", 1, false},
 		{1, "organic", 1, false},
-		{1, "orientexpress", 1, false},
 		{1, "origins", 1, false},
 		{1, "osaka", 1, false},
 		{1, "otsuka", 1, false},
@@ -7145,6 +7145,9 @@ func init() {
 		{1, "zippo", 1, false},
 		{1, "zone", 1, false},
 		{1, "zuerich", 1, false},
+		{1, "cc.ua", 2, true},
+		{1, "inf.ua", 2, true},
+		{1, "ltd.ua", 2, true},
 		{1, "beep.pl", 2, true},
 		{2, "compute.estate", 3, true},
 		{2, "alces.network", 3, true},
@@ -7610,6 +7613,8 @@ func init() {
 		{1, "dyn.home-webserver.de", 3, true},
 		{1, "myhome-server.de", 2, true},
 		{1, "ddnss.org", 2, true},
+		{1, "definima.net", 2, true},
+		{1, "definima.io", 2, true},
 		{1, "dynv6.net", 2, true},
 		{1, "e4.cz", 2, true},
 		{1, "enonic.io", 2, true},
@@ -7871,6 +7876,7 @@ func init() {
 		{1, "blogspot.ug", 2, true},
 		{1, "blogspot.vn", 2, true},
 		{1, "cloudfunctions.net", 2, true},
+		{1, "cloud.goog", 2, true},
 		{1, "codespot.com", 2, true},
 		{1, "googleapis.com", 2, true},
 		{1, "googlecode.com", 2, true},
@@ -8156,9 +8162,6 @@ func init() {
 		{1, "za.net", 2, true},
 		{1, "za.org", 2, true},
 		{1, "now.sh", 2, true},
-		{1, "cc.ua", 2, true},
-		{1, "inf.ua", 2, true},
-		{1, "ltd.ua", 2, true},
 	}
 	DefaultList.rules = r[:]
 }
