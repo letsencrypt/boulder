@@ -569,27 +569,3 @@ type FQDNSet struct {
 	Issued  time.Time
 	Expires time.Time
 }
-
-// GPDNSAnswer represents a DNS record returned by the Google Public DNS API
-type GPDNSAnswer struct {
-	Name string `json:"name"`
-	Type uint16 `json:"type"`
-	TTL  int    `json:"TTL"`
-	Data string `json:"data"`
-}
-
-// GPDNSAnswer represents a DNS record returned by the Google Public DNS API
-type GPDNSResponse struct {
-	// Ignored fields
-	//   tc
-	//   rd
-	//   ra
-	//   ad
-	//   cd
-	//   question
-	//   additional
-	//   edns_client_subnet
-	Status  int           `json:"Status"`
-	Answer  []GPDNSAnswer `json:"Answer"`
-	Comment string        `json:"Comment"`
-}
