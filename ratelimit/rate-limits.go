@@ -15,6 +15,7 @@ type Limits interface {
 	TotalCertificates() RateLimitPolicy
 	CertificatesPerName() RateLimitPolicy
 	RegistrationsPerIP() RateLimitPolicy
+	RegistrationsPerIPRange() RateLimitPolicy
 	PendingAuthorizationsPerAccount() RateLimitPolicy
 	InvalidAuthorizationsPerAccount() RateLimitPolicy
 	CertificatesPerFQDNSet() RateLimitPolicy
@@ -55,6 +56,15 @@ func (r *limitsImpl) RegistrationsPerIP() RateLimitPolicy {
 		return RateLimitPolicy{}
 	}
 	return r.rlPolicy.RegistrationsPerIP
+}
+
+func (r *limitsImpl) RegistrationsPerIPRange() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+	return r.rlPolicy.RegistrationsPerIPRange
 }
 
 func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
@@ -119,6 +129,12 @@ type rateLimitConfig struct {
 	// Note: Since this is checked before a registration is created, setting a
 	// RegistrationOverride on it has no effect.
 	RegistrationsPerIP RateLimitPolicy `yaml:"registrationsPerIP"`
+	// Number of registrations that can be created per fuzzy IP range. Unlike
+	// RegistrationsPerIP this will apply to a /48 for IPv6 addresses to help curb
+	// abuse from easily obtained IPv6 ranges.
+	// Note: Like RegistrationsPerIP, setting a RegistrationOverride has no
+	// effect here.
+	RegistrationsPerIPRange RateLimitPolicy `yaml:"registrationsPerIPRange"`
 	// Number of pending authorizations that can exist per account. Overrides by
 	// key are not applied, but overrides by registration are.
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
