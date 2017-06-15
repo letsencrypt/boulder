@@ -57,7 +57,7 @@ func main() {
 
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	var grpcSrv *grpc.Server

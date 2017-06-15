@@ -20,6 +20,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -29,6 +30,7 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   blog.Logger
+	scope metrics.Scope
 }
 
 func digest256(data []byte) []byte {
@@ -50,13 +52,19 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(
+	dbMap *gorp.DbMap,
+	clk clock.Clock,
+	logger blog.Logger,
+	scope metrics.Scope,
+) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
 		clk:   clk,
 		log:   logger,
+		scope: scope,
 	}
 
 	return ssa, nil
@@ -651,6 +659,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		} else if err == nil {
 			// We found an authz, but we still need to fetch its challenges. To
 			// simplify things, just call GetAuthorization, which takes care of that.
+			ssa.scope.Inc("reused_authz", 1)
 			return ssa.GetAuthorization(ctx, pa.ID)
 		} else {
 			// Any error other than ErrNoRows; return the error
