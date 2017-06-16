@@ -71,7 +71,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 			Name: "remote_validation_time",
 			Help: "Time taken to remotely validate a challenge",
 		},
-		[]string{"type"})
+		[]string{"type", "result"})
 	stats.MustRegister(remoteValidationTime)
 	remoteValidationFailures := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -803,11 +803,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
 	s := va.clk.Now()
 	errors := make(chan error, len(va.remoteVAs))
-	wg := new(sync.WaitGroup)
 	for _, remoteVA := range va.remoteVAs {
-		wg.Add(1)
 		go func(rva RemoteVA) {
-			defer wg.Done()
 			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
 			if err != nil {
 				// returned error can be a nil *probs.ProblemDetails which breaks the
@@ -815,34 +812,43 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// make sure we don't choke on that.
 				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
 					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Address, err))
-					errors <- err
+				} else if ok && p == nil {
+					err = nil
 				}
 			}
+			errors <- err
 		}(remoteVA)
 	}
-	wg.Wait()
-	close(errors)
 
-	va.metrics.remoteValidationTime.With(prometheus.Labels{
-		"type": string(challenge.Type),
-	}).Observe(va.clk.Since(s).Seconds())
-	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(len(errors)))
-
-	var prob *probs.ProblemDetails
-	if int64(len(errors)) > atomic.LoadInt64(&va.maxRemoteFailures) {
-		for err := range errors {
-			// Don't surface gRPC errors to the user
-			if error, ok := err.(*probs.ProblemDetails); ok {
-				// only return the last error to the user
-				prob = error
-			}
+	required := len(va.remoteVAs) - int(atomic.LoadInt64(&va.maxRemoteFailures))
+	good := 0
+	bad := 0
+	state := "failure"
+	for err := range errors {
+		if err == nil {
+			good++
+		} else {
+			bad++
 		}
-		if prob == nil {
-			prob = probs.ServerInternal("Remote PerformValidation RPCs failed")
+		if good >= required {
+			result <- nil
+			state = "success"
+			break
+		} else if bad > int(atomic.LoadInt64(&va.maxRemoteFailures)) {
+			if prob, ok := err.(*probs.ProblemDetails); ok {
+				result <- prob
+			} else {
+				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")
+			}
+			break
 		}
 	}
 
-	result <- prob
+	va.metrics.remoteValidationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": state,
+	}).Observe(va.clk.Since(s).Seconds())
+	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(bad))
 }
 
 // PerformValidation validates the given challenge. It always returns a list of
