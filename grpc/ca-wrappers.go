@@ -7,7 +7,6 @@
 package grpc
 
 import (
-	"crypto/x509"
 	"errors"
 	"time"
 
@@ -34,14 +33,11 @@ func NewCertificateAuthorityClient(inner caPB.CertificateAuthorityClient, innerO
 	return &CertificateAuthorityClientWrapper{inner, innerOCSP}
 }
 
-func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (core.Certificate, error) {
 	if cac.inner == nil {
 		return core.Certificate{}, errors.New("this CA client does not support issuing certificates")
 	}
-	res, err := cac.inner.IssueCertificate(ctx, &caPB.IssueCertificateRequest{
-		Csr:            csr.Raw,
-		RegistrationID: &regID,
-	})
+	res, err := cac.inner.IssueCertificate(ctx, issueReq)
 	if err != nil {
 		return core.Certificate{}, err
 	}
@@ -76,11 +72,7 @@ func NewCertificateAuthorityServer(inner core.CertificateAuthority) *Certificate
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*corepb.Certificate, error) {
-	csr, err := x509.ParseCertificateRequest(request.Csr)
-	if err != nil {
-		return nil, err
-	}
-	cert, err := cas.inner.IssueCertificate(ctx, *csr, *request.RegistrationID)
+	cert, err := cas.inner.IssueCertificate(ctx, request)
 	if err != nil {
 		return nil, err
 	}

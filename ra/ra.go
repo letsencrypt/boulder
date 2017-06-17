@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -736,7 +737,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(ctx, *csr, regID); err != nil {
+	issueReq := &caPB.IssueCertificateRequest{
+		Csr:            csr.Raw,
+		RegistrationID: &regID,
+	}
+	if cert, err = ra.CA.IssueCertificate(ctx, issueReq); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
