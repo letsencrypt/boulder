@@ -13,9 +13,7 @@ import (
 
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
-	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/net/context"
 
@@ -670,16 +668,10 @@ func TestExtensions(t *testing.T) {
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	stats := mock_metrics.NewMockScope(ctrl)
-
-	stats.EXPECT().MustRegister(gomock.Any()).AnyTimes()
-
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
-		stats,
+		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
@@ -699,6 +691,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
 	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
+		ca.csrExtensionCount.Reset()
 		ca.signatureCount.Reset()
 		coreCert, err := ca.IssueCertificate(ctx, *csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
@@ -709,45 +702,53 @@ func TestExtensions(t *testing.T) {
 
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
-	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1))
 	noStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
 	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert
 	ca.enableMustStaple = true
-	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1))
 	singleStapleCert := sign(mustStapleCSR)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
 	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
-	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1))
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
 	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
 
 	// ... but if it doesn't ask for stapling, there should be an error
-	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1))
-	stats.EXPECT().Inc(metricCSRExtensionTLSFeatureInvalid, int64(1))
+	ca.csrExtensionCount.Reset()
 	ca.signatureCount.Reset()
 	_, err = ca.IssueCertificate(ctx, *tlsFeatureUnknownCSR, 1001)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 1)
 	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
 	test.Assert(t, berrors.Is(err, berrors.Malformed), "Wrong error type when rejecting a CSR with empty TLS feature extension")
 
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
-	stats.EXPECT().Inc(metricCSRExtensionOther, int64(1))
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, ca.csrExtensionCount), 1)
 	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
 }
 
 func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
+	return count("purpose", signatureType, signatureCount)
+}
+
+func count(key string, value string, counter *prometheus.CounterVec) int {
 	ch := make(chan prometheus.Metric, 10)
-	signatureCount.With(prometheus.Labels{"purpose": signatureType}).Collect(ch)
+	counter.With(prometheus.Labels{key: value}).Collect(ch)
 	m := <-ch
 	var iom io_prometheus_client.Metric
 	_ = m.Write(&iom)
