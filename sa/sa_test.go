@@ -24,6 +24,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -45,7 +46,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	sa, err := NewSQLStorageAuthority(dbMap, fc, log)
+	sa, err := NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -202,6 +203,58 @@ func TestAddAuthorization(t *testing.T) {
 
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+}
+
+func TestRecyclePendingDisabled(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertNotEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+}
+
+func TestRecyclePendingEnabled(t *testing.T) {
+	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	authz := core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  "dns",
+			Value: "example.letsencrypt.org",
+		},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				URI:    "https://acme-example.letsencrypt.org/challenge123",
+				Type:   "http-01",
+				Status: "pending",
+				Token:  "abc",
+			},
+		},
+	}
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	authz.Challenges = nil
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+	test.Assert(t, len(pendingAuthz.Challenges) > 0, "no challenges")
+	test.AssertEquals(t, pendingAuthz.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
