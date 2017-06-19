@@ -865,7 +865,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
 	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
