@@ -24,7 +24,8 @@
       ]
     },
     "features": {
-      "AllowAccountDeactivation": true
+      "AllowAccountDeactivation": true,
+      "ReusePendingAuthz": true
     }
   },
 
