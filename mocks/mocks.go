@@ -2,19 +2,14 @@ package mocks
 
 import (
 	"database/sql"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	mrand "math/rand"
 	"net"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v1"
 
@@ -358,6 +353,11 @@ func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, 
 	return 0, nil
 }
 
+// CountRegistrationsByIPRange is a mock
+func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
+	return 0, nil
+}
+
 // CountPendingAuthorizations is a mock
 func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
 	return 0, nil
@@ -425,42 +425,4 @@ func (m *Mailer) Close() error {
 // Connect is a mock
 func (m *Mailer) Connect() error {
 	return nil
-}
-
-// GPDNSHandler mocks the Google Public DNS API
-func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Query().Get("name") {
-	case "test-domain", "bad-local-resolver.com":
-		resp := core.GPDNSResponse{
-			Status: dns.RcodeSuccess,
-			Answer: []core.GPDNSAnswer{
-				{Name: r.URL.Query().Get("name"), Type: 257, TTL: 10, Data: "0 issue \"ca.com\""},
-			},
-		}
-		data, err := json.Marshal(resp)
-		if err != nil {
-			return
-		}
-		w.Write(data)
-	case "break":
-		w.WriteHeader(400)
-	case "break-rcode":
-		data, err := json.Marshal(core.GPDNSResponse{Status: dns.RcodeServerFailure})
-		if err != nil {
-			return
-		}
-		w.Write(data)
-	case "break-dns-quorum":
-		resp := core.GPDNSResponse{
-			Status: dns.RcodeSuccess,
-			Answer: []core.GPDNSAnswer{
-				{Name: r.URL.Query().Get("name"), Type: 257, TTL: 10, Data: strconv.Itoa(mrand.Int())},
-			},
-		}
-		data, err := json.Marshal(resp)
-		if err != nil {
-			return
-		}
-		w.Write(data)
-	}
 }

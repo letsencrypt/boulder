@@ -70,6 +70,7 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz       bool
 
 	regByIPStats         metrics.Scope
+	regByIPRangeStats    metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
 	certsForDomainStats  metrics.Scope
 	totalCertsStats      metrics.Scope
@@ -103,6 +104,7 @@ func NewRegistrationAuthorityImpl(
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
 		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
+		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
@@ -165,8 +167,9 @@ func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
 
 var (
 	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
-	emptyDNSResponseError = berrors.InvalidEmailError("empty DNS response")
-	multipleAddressError  = berrors.InvalidEmailError("more than one e-mail address")
+	emptyDNSResponseError = berrors.InvalidEmailError(
+		"empty DNS response validating email domain - no MX/A records")
+	multipleAddressError = berrors.InvalidEmailError("more than one e-mail address")
 )
 
 func problemIsTimeout(err error) bool {
@@ -242,22 +245,72 @@ type certificateRequestEvent struct {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
-func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
-	limit := ra.rlPolicies.RegistrationsPerIP()
+// registrationCounter is a type to abstract the use of
+// ra.SA.CountRegistrationsByIP or ra.SA.CountRegistrationsByIPRange
+type registrationCounter func(context.Context, net.IP, time.Time, time.Time) (int, error)
 
-	if limit.Enabled() {
-		now := ra.clk.Now()
-		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
-		if err != nil {
-			return err
-		}
-		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
-			ra.regByIPStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
-			return berrors.RateLimitError("too many registrations for this IP")
-		}
-		ra.regByIPStats.Inc("Pass", 1)
+// checkRegistrationIPLimit checks a specific registraton limit by using the
+// provided registrationCounter function to determine if the limit has been
+// exceeded for a given IP or IP range
+func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
+	ctx context.Context,
+	limit ratelimit.RateLimitPolicy,
+	ip net.IP,
+	counter registrationCounter) error {
+
+	if !limit.Enabled() {
+		return nil
 	}
+
+	now := ra.clk.Now()
+	windowBegin := limit.WindowBegin(now)
+	count, err := counter(ctx, ip, windowBegin, now)
+	if err != nil {
+		return err
+	}
+
+	if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+		return berrors.RateLimitError("too many registrations for this IP")
+	}
+
+	return nil
+}
+
+// checkRegistrationLimits enforces the RegistrationsPerIP and
+// RegistrationsPerIPRange limits
+func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context, ip net.IP) error {
+	// Check the registrations per IP limit using the CountRegistrationsByIP SA
+	// function that matches IP addresses exactly
+	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
+	err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
+	if err != nil {
+		ra.regByIPStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
+		return err
+	}
+	ra.regByIPStats.Inc("Pass", 1)
+
+	// We only apply the fuzzy reg limit to IPv6 addresses.
+	// Per https://golang.org/pkg/net/#IP.To4 "If ip is not an IPv4 address, To4
+	// returns nil"
+	if ip.To4() != nil {
+		return nil
+	}
+
+	// Check the registrations per IP range limit using the
+	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
+	// within a larger address range
+	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
+	err = ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
+	if err != nil {
+		ra.regByIPRangeStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
+		// For the fuzzyRegLimit we use a new error message that specifically
+		// mentions that the limit being exceeded is applied to a *range* of IPs
+		return berrors.RateLimitError("too many registrations for this IP range")
+	}
+	ra.regByIPRangeStats.Inc("Pass", 1)
+
 	return nil
 }
 
@@ -266,7 +319,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
-	if err = ra.checkRegistrationLimit(ctx, init.InitialIP); err != nil {
+	if err = ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
 		return core.Registration{}, err
 	}
 

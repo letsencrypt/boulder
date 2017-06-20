@@ -98,19 +98,6 @@ const (
 	metricCSRExtensionOther = "CSRExtensions.Other"
 )
 
-var (
-	signatureCount = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose"})
-)
-
-func init() {
-	prometheus.MustRegister(signatureCount)
-}
-
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 }
@@ -126,7 +113,6 @@ type CertificateAuthorityImpl struct {
 	defaultIssuer    *internalIssuer
 	SA               certificateStorage
 	PA               core.PolicyAuthority
-	Publisher        core.Publisher
 	keyPolicy        goodkey.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
@@ -136,6 +122,7 @@ type CertificateAuthorityImpl struct {
 	maxNames         int
 	forceCNFromSAN   bool
 	enableMustStaple bool
+	signatureCount   *prometheus.CounterVec
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -239,6 +226,14 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
 	}
 
+	signatureCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose"})
+	stats.MustRegister(signatureCount)
+
 	ca = &CertificateAuthorityImpl{
 		issuers:          internalIssuers,
 		defaultIssuer:    defaultIssuer,
@@ -251,6 +246,7 @@ func NewCertificateAuthorityImpl(
 		keyPolicy:        keyPolicy,
 		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
 		enableMustStaple: config.EnableMustStaple,
+		signatureCount:   signatureCount,
 	}
 
 	if config.Expiry == "" {
@@ -379,7 +375,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
 	ca.noteSignError(err)
 	if err == nil {
-		signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
+		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
 	return ocspResponse, err
 }
@@ -474,7 +470,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
-	signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": "cert"}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
@@ -528,15 +524,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 			regID,
 		))
 		return emptyCert, err
-	}
-
-	// Submit the certificate to any configured CT logs
-	if ca.Publisher != nil {
-		go func() {
-			// since we don't want this method to be canceled if the parent context
-			// expires pass a background context to it
-			_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
-		}()
 	}
 
 	return cert, nil

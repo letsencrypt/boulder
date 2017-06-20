@@ -162,6 +162,7 @@ type dummyRateLimitConfig struct {
 	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
+	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
@@ -177,6 +178,10 @@ func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
 
 func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
 	return r.RegistrationsPerIPPolicy
+}
+
+func (r *dummyRateLimitConfig) RegistrationsPerIPRange() ratelimit.RateLimitPolicy {
+	return r.RegistrationsPerIPRangePolicy
 }
 
 func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
@@ -217,7 +222,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -426,6 +431,87 @@ func TestNewRegistrationBadKey(t *testing.T) {
 
 	_, err := ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
+}
+
+// testKey returns a random 2048 bit RSA public key for test registrations
+func testKey() *rsa.PublicKey {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	return &key.PublicKey
+}
+
+func TestNewRegistrationRateLimit(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Specify a dummy rate limit policy that allows 1 registration per exact IP
+	// match, and 2 per range.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		RegistrationsPerIPPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+		RegistrationsPerIPRangePolicy: ratelimit.RateLimitPolicy{
+			Threshold: 2,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+
+	// Create one registration for an IPv4 address
+	mailto := "mailto:foo@letsencrypt.org"
+	reg := core.Registration{
+		Contact:   &[]string{mailto},
+		Key:       &jose.JsonWebKey{Key: testKey()},
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	// There should be no errors - it is within the RegistrationsPerIP rate limit
+	_, err := ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
+
+	// Create another registration for the same IPv4 address by changing the key
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+
+	// There should be an error since a 2nd registration will exceed the
+	// RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+
+	// Create a registration for an IPv6 address
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+
+	// There should be no errors - it is within the RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
+
+	// Create a 2nd registration for the IPv6 address by changing the key
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+
+	// There should be an error since a 2nd reg for the same IPv6 address will
+	// exceed the RegistrationsPerIP rate limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+
+	// Create a registration for an IPv6 address in the same /48
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+
+	// There should be no errors since two IPv6 addresses in the same /48 is
+	// within the RegistrationsPerIPRange limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
+
+	// Create a registration for yet another IPv6 address in the same /48
+	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9654")
+
+	// There should be an error since three registrations within the same IPv6
+	// /48 is outside of the RegistrationsPerIPRange limit
+	_, err = ra.NewRegistration(ctx, reg)
+	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP range")
 }
 
 type NoUpdateSA struct {

@@ -24,6 +24,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -45,7 +46,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	sa, err := NewSQLStorageAuthority(dbMap, fc, log)
+	sa, err := NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -202,6 +203,58 @@ func TestAddAuthorization(t *testing.T) {
 
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+}
+
+func TestRecyclePendingDisabled(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID})
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertNotEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+}
+
+func TestRecyclePendingEnabled(t *testing.T) {
+	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	authz := core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  "dns",
+			Value: "example.letsencrypt.org",
+		},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				URI:    "https://acme-example.letsencrypt.org/challenge123",
+				Type:   "http-01",
+				Status: "pending",
+				Token:  "abc",
+			},
+		},
+	}
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+
+	authz.Challenges = nil
+	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
+
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.AssertEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
+	test.Assert(t, len(pendingAuthz.Challenges) > 0, "no challenges")
+	test.AssertEquals(t, pendingAuthz.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
@@ -686,11 +739,13 @@ func TestCountRegistrationsByIP(t *testing.T) {
 
 	contact := "mailto:foo@example.com"
 
+	// Create one IPv4 registration
 	_, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
+	// Create two IPv6 registrations, both within the same /48
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
@@ -708,16 +763,86 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour * 24)
 	latest := fc.Now()
 
+	// There should be 0 registrations for an IPv4 address we didn't add
+	// a registration for
 	count, err := sa.CountRegistrationsByIP(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 0)
+	// There should be 1 registration for the IPv4 address we did add
+	// a registration for
 	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 1)
+	// There should be 1 registration for the first IPv6 address we added
+	// a registration for
 	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count, 1)
+	// There should be 1 registration for the second IPv6 address we added
+	// a registration for as well
+	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 1)
+	// There should be 0 registrations for an IPv6 address in the same /48 as the
+	// two IPv6 addresses with registrations
 	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 0)
+}
+
+func TestCountRegistrationsByIPRange(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	contact := "mailto:foo@example.com"
+
+	// Create one IPv4 registration
+	_, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Contact:   &[]string{contact},
+		InitialIP: net.ParseIP("43.34.43.34"),
+	})
+	// Create two IPv6 registrations, both within the same /48
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Contact:   &[]string{contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Contact:   &[]string{contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+
+	earliest := fc.Now().Add(-time.Hour * 24)
+	latest := fc.Now()
+
+	// There should be 0 registrations in the range for an IPv4 address we didn't
+	// add a registration for
+	count, err := sa.CountRegistrationsByIPRange(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 0)
+	// There should be 1 registration in the range for the IPv4 address we did
+	// add a registration for
+	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 1)
+	// There should be 2 registrations in the range for the first IPv6 address we added
+	// a registration for because it's in the same /48
+	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
+	// There should be 2 registrations in the range for the second IPv6 address
+	// we added a registration for as well, because it too is in the same /48
+	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
+	// There should also be 2 registrations in the range for an arbitrary IPv6 address in
+	// the same /48 as the registrations we added
+	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 2)
 }

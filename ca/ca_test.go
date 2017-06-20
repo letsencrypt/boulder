@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
@@ -285,7 +284,6 @@ func TestIssueCertificate(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	sa := &mockSA{}
 	ca.SA = sa
@@ -346,7 +344,6 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -371,7 +368,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -420,7 +416,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -467,7 +462,6 @@ func TestNoHostnames(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -487,7 +481,6 @@ func TestRejectTooManyNames(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -508,7 +501,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -533,7 +525,6 @@ func TestShortKey(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -555,7 +546,6 @@ func TestAllowNoCN(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Couldn't create new CA")
 	ca.forceCNFromSAN = false
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -595,7 +585,6 @@ func TestLongCommonName(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -615,7 +604,6 @@ func TestWrongSignature(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -638,7 +626,6 @@ func TestProfileSelection(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -687,6 +674,8 @@ func TestExtensions(t *testing.T) {
 	defer ctrl.Finish()
 	stats := mock_metrics.NewMockScope(ctrl)
 
+	stats.EXPECT().MustRegister(gomock.Any()).AnyTimes()
+
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -694,7 +683,6 @@ func TestExtensions(t *testing.T) {
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.Publisher = &mocks.Publisher{}
 	ca.PA = testCtx.pa
 	ca.SA = &mockSA{}
 
@@ -711,7 +699,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
 	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
-		signatureCount.Reset()
+		ca.signatureCount.Reset()
 		coreCert, err := ca.IssueCertificate(ctx, *csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
 		cert, err := x509.ParseCertificate(coreCert.DER)
@@ -723,7 +711,7 @@ func TestExtensions(t *testing.T) {
 	// Must Staple.
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	noStapleCert := sign(mustStapleCSR)
-	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, noStapleCert), 0)
 
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
@@ -731,21 +719,21 @@ func TestExtensions(t *testing.T) {
 	ca.enableMustStaple = true
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	singleStapleCert := sign(mustStapleCSR)
-	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, singleStapleCert), 1)
 
 	// Even if there are multiple TLS Feature extensions, only one extension should be included
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	duplicateMustStapleCert := sign(duplicateMustStapleCSR)
-	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, duplicateMustStapleCert), 1)
 
 	// ... but if it doesn't ask for stapling, there should be an error
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeature, int64(1)).Return(nil)
 	stats.EXPECT().Inc(metricCSRExtensionTLSFeatureInvalid, int64(1)).Return(nil)
-	signatureCount.Reset()
+	ca.signatureCount.Reset()
 	_, err = ca.IssueCertificate(ctx, *tlsFeatureUnknownCSR, 1001)
-	test.AssertEquals(t, signatureCountByPurpose("cert"), 0)
+	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
 	test.Assert(t, berrors.Is(err, berrors.Malformed), "Wrong error type when rejecting a CSR with empty TLS feature extension")
 
@@ -753,11 +741,11 @@ func TestExtensions(t *testing.T) {
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	stats.EXPECT().Inc(metricCSRExtensionOther, int64(1)).Return(nil)
 	unsupportedExtensionCert := sign(unsupportedExtensionCSR)
-	test.AssertEquals(t, signatureCountByPurpose("cert"), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
 	test.AssertEquals(t, len(unsupportedExtensionCert.Extensions), len(singleStapleCert.Extensions)-1)
 }
 
-func signatureCountByPurpose(signatureType string) int {
+func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
 	ch := make(chan prometheus.Metric, 10)
 	signatureCount.With(prometheus.Labels{"purpose": signatureType}).Collect(ch)
 	m := <-ch

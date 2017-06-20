@@ -20,6 +20,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -29,6 +30,7 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   blog.Logger
+	scope metrics.Scope
 }
 
 func digest256(data []byte) []byte {
@@ -50,13 +52,19 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(
+	dbMap *gorp.DbMap,
+	clk clock.Clock,
+	logger blog.Logger,
+	scope metrics.Scope,
+) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
 		clk:   clk,
 		log:   logger,
+		scope: scope,
 	}
 
 	return ssa, nil
@@ -173,6 +181,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		var fa authzModel
 		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 		if err != nil {
+			err = Rollback(tx, err)
 			return
 		}
 		authz = fa.Authorization
@@ -300,10 +309,32 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 }
 
 // CountRegistrationsByIP returns the number of registrations created in the
-// time range in an IP range. For IPv4 addresses, that range is limited to the
-// single IP. For IPv6 addresses, that range is a /48, since it's not uncommon
-// for one person to have a /48 to themselves.
+// time range for a single IP address.
 func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM registrations
+		 WHERE
+		 initialIP = :ip AND
+		 :earliest < createdAt AND
+		 createdAt <= :latest`,
+		map[string]interface{}{
+			"ip":       []byte(ip),
+			"earliest": earliest,
+			"latest":   latest,
+		})
+	if err != nil {
+		return -1, err
+	}
+	return int(count), nil
+}
+
+// CountRegistrationsByIPRange returns the number of registrations created in
+// the time range in an IP range. For IPv4 addresses, that range is limited to
+// the single IP. For IPv6 addresses, that range is a /48, since it's not
+// uncommon for one person to have a /48 to themselves.
+func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
 	err := ssa.dbMap.SelectOne(
@@ -315,7 +346,6 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"ip":       ip.String(),
 			"earliest": earliest,
 			"latest":   latest,
 			"beginIP":  []byte(beginIP),
@@ -612,15 +642,38 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
-// NewPendingAuthorization stores a new Pending Authorization
+// NewPendingAuthorization retrieves a pending authorization for
+// authz.Identifier if one exists, or creates a new one otherwise.
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
 	var output core.Authorization
+
+	// Check if we can recycle an existing, pending authz.
+	if features.Enabled(features.ReusePendingAuthz) {
+		idJSON, err := json.Marshal(authz.Identifier)
+		if err != nil {
+			return output, err
+		}
+
+		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ?", idJSON)
+		if err == sql.ErrNoRows {
+			// No existing authz found, proceed to create one.
+		} else if err == nil {
+			// We found an authz, but we still need to fetch its challenges. To
+			// simplify things, just call GetAuthorization, which takes care of that.
+			ssa.scope.Inc("reused_authz", 1)
+			return ssa.GetAuthorization(ctx, pa.ID)
+		} else {
+			// Any error other than ErrNoRows; return the error
+			return output, err
+		}
+	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return output, err
 	}
 
-	// Check that it doesn't exist already
+	// Create a random ID and check that it doesn't exist already
 	authz.ID = core.NewToken()
 	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
 		authz.ID = core.NewToken()

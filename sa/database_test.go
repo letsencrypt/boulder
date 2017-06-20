@@ -63,6 +63,9 @@ func TestNewDbMap(t *testing.T) {
 
 func TestStrictness(t *testing.T) {
 	dbMap, err := NewDbMap(vars.DBConnSA, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = dbMap.Exec(`insert into authz set
 		id="hi", identifier="foo", status="pending", combinations="combos",
 		registrationID=999999999999999999999999999;`)
