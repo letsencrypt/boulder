@@ -20,8 +20,8 @@ CREATE TABLE `authorizations` (
   UNIQUE KEY `token` (`token`),
   UNIQUE KEY `identifier_key` (`identifierType`, `identifierValue`),
 
-  KEY `regId_idx` (`registrationID`) COMMENT 'Common lookup',
-  CONSTRAINT `regId_authz` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  KEY `a_regId_idx` (`registrationID`) COMMENT 'Common lookup',
+  CONSTRAINT `a_regId_authz` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
