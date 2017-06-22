@@ -313,19 +313,21 @@ def test_expired_authz_purger():
 
 def test_renewal_exemption():
     """
-    Under a single domain, issue one certificate, then a renewal of that
+    Under a single domain, issue one certificate, then two renewals of that
     certificate, then one more different certificate (with a different
     subdomain). Since the certificatesPerName rate limit in testing is 2 per 90
-    days, and the renewal should be discounted under the renewal exemption, each of
-    these issuances should succeed. Then do one last issuance that we expect to
-    be rate limited, just to check that the rate limit is actually 2, and we are
-    testing what we think we are testing. See
+    days, and the renewals should be discounted under the renewal exemption,
+    each of these issuances should succeed. Then do one last issuance that we
+    expect to be rate limited, just to check that the rate limit is actually 2,
+    and we are testing what we think we are testing. See
     https://letsencrypt.org/docs/rate-limits/ for more details.
     """
     base_domain = random_domain()
     # First issuance
     auth_and_issue(["www." + base_domain])
-    # Renewal
+    # First Renewal
+    auth_and_issue(["www." + base_domain])
+    # Second Renewal
     auth_and_issue(["www." + base_domain])
     # Issuance of a different cert
     auth_and_issue(["blog." + base_domain])
@@ -418,8 +420,6 @@ def main():
     exit_status = 0
 
 def run_chisel():
-    test_renewal_exemption()
-    return
     # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add TLS-SNI test.
 
     test_expired_authz_purger()
@@ -434,6 +434,7 @@ def run_chisel():
     test_ocsp()
     test_single_ocsp()
     test_dns_challenge()
+    test_renewal_exemption()
 
 if __name__ == "__main__":
     try:
