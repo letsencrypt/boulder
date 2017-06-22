@@ -118,17 +118,22 @@ func (n noopScope) Inc(stat string, value int64) error {
 func (n noopScope) Gauge(stat string, value int64) error {
 	return nil
 }
+
 func (n noopScope) GaugeDelta(stat string, value int64) error {
 	return nil
 }
+
 func (n noopScope) Timing(stat string, delta int64) error {
 	return nil
 }
+
 func (n noopScope) TimingDuration(stat string, delta time.Duration) error {
 	return nil
 }
+
 func (n noopScope) SetInt(stat string, value int64) error {
 	return nil
 }
+
 func (n noopScope) MustRegister(...prometheus.Collector) {
 }
