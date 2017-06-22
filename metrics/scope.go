@@ -18,6 +18,8 @@ type Scope interface {
 	Timing(stat string, delta int64) error
 	TimingDuration(stat string, delta time.Duration) error
 	SetInt(stat string, value int64) error
+
+	MustRegister(...prometheus.Collector)
 }
 
 // promScope is a Scope that sends data to Prometheus
@@ -36,6 +38,10 @@ func NewPromScope(registerer prometheus.Registerer, scopes ...string) Scope {
 		autoRegisterer: newAutoRegisterer(registerer),
 		registerer:     registerer,
 	}
+}
+
+func (s *promScope) MustRegister(collectors ...prometheus.Collector) {
+	s.registerer.MustRegister(collectors...)
 }
 
 // NewNoopScope returns a Scope that won't collect anything
