@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -330,7 +331,7 @@ func setup(t *testing.T) testCtx {
 	cleanUp := test.ResetSATestDatabase(t)
 
 	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

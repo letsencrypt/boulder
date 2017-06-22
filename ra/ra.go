@@ -167,8 +167,9 @@ func (ra *RegistrationAuthorityImpl) updateIssuedCount() error {
 
 var (
 	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
-	emptyDNSResponseError = berrors.InvalidEmailError("empty DNS response")
-	multipleAddressError  = berrors.InvalidEmailError("more than one e-mail address")
+	emptyDNSResponseError = berrors.InvalidEmailError(
+		"empty DNS response validating email domain - no MX/A records")
+	multipleAddressError = berrors.InvalidEmailError("more than one e-mail address")
 )
 
 func problemIsTimeout(err error) bool {

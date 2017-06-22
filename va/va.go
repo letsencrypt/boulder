@@ -25,7 +25,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -57,7 +56,6 @@ type ValidationAuthorityImpl struct {
 	userAgent      string
 	stats          metrics.Scope
 	clk            clock.Clock
-	caaDR          *cdr.CAADistributedResolver
 	validationTime *prometheus.HistogramVec
 }
 
@@ -65,7 +63,6 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
 	sbc SafeBrowsing,
-	cdrClient *cdr.CAADistributedResolver,
 	resolver bdns.DNSResolver,
 	userAgent string,
 	issuerDomain string,
@@ -92,7 +89,6 @@ func NewValidationAuthorityImpl(
 		userAgent:      userAgent,
 		stats:          stats,
 		clk:            clk,
-		caaDR:          cdrClient,
 		validationTime: validationTime,
 	}
 }
@@ -677,48 +673,18 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 }
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	prob := va.checkCAAInternal(ctx, identifier)
-	if va.caaDR != nil && prob != nil && prob.Type == probs.ConnectionProblem {
-		return va.checkGPDNS(ctx, identifier)
-	}
-	return prob
-}
-
-func (va *ValidationAuthorityImpl) checkCAAInternal(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, ident)
+	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
 	va.log.AuditInfo(fmt.Sprintf(
 		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-		ident.Value,
-		present,
-		valid,
-	))
-	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
-	}
-	return nil
-}
-
-func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	results := va.parallelCAALookup(ctx, identifier.Value, va.caaDR.LookupCAA)
-	set, err := parseResults(results)
-	if err != nil {
-		return probs.ConnectionFailure(err.Error())
-	}
-	present, valid := va.validateCAASet(set)
-	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA records for %s using GPDNS, [Present: %t, Valid for issuance: %t]",
 		identifier.Value,
 		present,
 		valid,
 	))
 	if !valid {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA records prevents issuance for %s", identifier.Value),
-		}
+		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
 	return nil
 }
