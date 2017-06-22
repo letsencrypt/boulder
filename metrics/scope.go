@@ -52,7 +52,11 @@ func NewNoopScope() Scope {
 // NewScope generates a new Scope prefixed by this Scope's prefix plus the
 // prefixes given joined by periods
 func (s *promScope) NewScope(scopes ...string) Scope {
-	return NewPromScope(s.registerer, append(s.prefix, scopes...)...)
+	return &promScope{
+		prefix:         append(s.prefix, scopes...),
+		autoRegisterer: s.autoRegisterer,
+		registerer:     s.registerer,
+	}
 }
 
 // Inc increments the given stat and adds the Scope's prefix to the name
