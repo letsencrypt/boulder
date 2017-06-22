@@ -1331,6 +1331,9 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 	ms := &multiSrv{server, sync.Mutex{}, allowedUAs}
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.UserAgent() == "slow remote" {
+			time.Sleep(time.Second * 5)
+		}
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 		if _, ok := ms.allowedUAs[r.UserAgent()]; ok {
@@ -1354,7 +1357,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 
 	// Create an IPv4 test server
 	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
-	defer ms.Close()
+	// defer ms.Close()
 
 	// Create a local test VA and two 'remote' VAs
 	localVA, _ := setup(ms.Server)
@@ -1368,6 +1371,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		{remoteVA2, "remote 2"},
 	}
 
+	// Both remotes working, should succeed
 	probCh := make(chan *probs.ProblemDetails, 1)
 	ident := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 	localVA.performRemoteValidation(context.Background(), ident.Value, chall, core.Authorization{}, probCh)
@@ -1376,6 +1380,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Errorf("performRemoteValidation failed: %s", prob)
 	}
 
+	// Only remote 1 working, should fail
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
@@ -1391,11 +1396,13 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.allowedUAs["remote 2"] = struct{}{}
 	ms.mu.Unlock()
 
+	// Both local and remotes working, should succeed
 	_, err := localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed: %s", err)
 	}
 
+	// Only remotes working, should fail
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "local")
 	ms.mu.Unlock()
@@ -1404,6 +1411,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Error("PerformValidation didn't fail when local validation failed")
 	}
 
+	// Local and remote 2 working, should fail
 	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
@@ -1413,17 +1421,49 @@ func TestPerformRemoteValidation(t *testing.T) {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
 	}
 
+	// Local and remote 2 working with maxRemoteFailures == 1, should succeed
 	atomic.StoreInt64(&localVA.maxRemoteFailures, 1)
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
 	}
 
+	// Only local working, should fail
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 2")
 	ms.mu.Unlock()
 	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when both 'remote' validations failed")
+	}
+
+	// Local and remote 1 working, should succeed and return early
+	ms.mu.Lock()
+	ms.allowedUAs["remote 1"] = struct{}{}
+	ms.mu.Unlock()
+	remoteVA2.userAgent = "slow remote"
+	s := time.Now()
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err != nil {
+		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
+	}
+	took := time.Since(s)
+	if took >= (time.Second * 5) {
+		t.Errorf("PerformValidation didn't return early on success: took %s, expected <5s", took)
+	}
+
+	// Only local working, should fail and return early
+	ms.mu.Lock()
+	delete(ms.allowedUAs, "remote 1")
+	ms.mu.Unlock()
+	atomic.StoreInt64(&localVA.maxRemoteFailures, 0)
+	s = time.Now()
+	_, err = localVA.PerformValidation(context.Background(), ident.Value, chall, core.Authorization{})
+	if err == nil {
+		t.Error("PerformValidation didn't fail when two validations failed")
+	}
+	took = time.Since(s)
+	if took >= (time.Second * 5) {
+		t.Errorf("PerformValidation didn't return early on failure: took %s, expected <5s", took)
 	}
 }
