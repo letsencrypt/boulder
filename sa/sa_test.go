@@ -250,8 +250,8 @@ func TestRecyclePendingEnabled(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new expired pending authorization")
 
 	// Add expected authz
-	fc.Add(time.Hour)
-	expires = fc.Now().Add(time.Hour) // magic pointer
+	fc.Add(3 * time.Hour)
+	expires = fc.Now().Add(2 * time.Hour) // magic pointer
 	pendingAuthzA, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, pendingAuthzA.ID != "", "ID shouldn't be blank")
