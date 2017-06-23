@@ -11,7 +11,7 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - /tmp:/tmp
-        net: bridge
+        network_mode: bridge
         extra_hosts:
           - le.wtf:127.0.0.1
           - boulder:127.0.0.1
@@ -49,7 +49,7 @@ services:
           - 5657
     bmysql:
         image: mariadb:10.1
-        net: bridge
+        network_mode: bridge
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
@@ -57,7 +57,7 @@ services:
             driver: none
     prom:
         image: prom/prometheus
-        net: bridge
+        network_mode: bridge
         ports:
           - 9090:9090
         volumes:
