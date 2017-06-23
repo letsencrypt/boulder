@@ -61,14 +61,11 @@ func (c contactExporter) findContactsForDomains(domains []string) ([]contact, er
 		// https://github.com/coopernurse/gorp/blob/9cd2b5ef5b82fde4e7c51776ac3f94398b8af076/gorp.go#L1644-L1651
 		_, err := c.dbMap.Select(
 			&contactsList,
-			`SELECT DISTINCT(id) FROM registrations WHERE contact != 'null' AND
-                         id IN (
-                           SELECT registrationID FROM certificates
-                           WHERE expires >= :expireCutoff AND
-                           serial IN (
-                             SELECT serial FROM issuedNames
-                             WHERE reversedName = :reversedName
-                           )
+			`SELECT registrationID as id FROM certificates
+                         WHERE expires >= :expireCutoff AND
+                         serial IN (
+                           SELECT serial FROM issuedNames
+                            WHERE reversedName = :reversedName
                          )`,
 			map[string]interface{}{
 				"expireCutoff": c.clk.Now().Add(-c.grace),
