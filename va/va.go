@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -99,7 +98,7 @@ type ValidationAuthorityImpl struct {
 	stats             metrics.Scope
 	clk               clock.Clock
 	remoteVAs         []RemoteVA
-	maxRemoteFailures int64
+	maxRemoteFailures int
 	hostname          string
 
 	metrics *vaMetrics
@@ -111,7 +110,7 @@ func NewValidationAuthorityImpl(
 	sbc SafeBrowsing,
 	resolver bdns.DNSResolver,
 	remoteVAs []RemoteVA,
-	maxRemoteFailures int64,
+	maxRemoteFailures int,
 	userAgent string,
 	issuerDomain string,
 	stats metrics.Scope,
@@ -788,7 +787,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 		}(remoteVA)
 	}
 
-	required := len(va.remoteVAs) - int(atomic.LoadInt64(&va.maxRemoteFailures))
+	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
 	state := "failure"
@@ -802,7 +801,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 			result <- nil
 			state = "success"
 			break
-		} else if bad > int(atomic.LoadInt64(&va.maxRemoteFailures)) {
+		} else if bad > va.maxRemoteFailures {
 			if prob, ok := err.(*probs.ProblemDetails); ok {
 				result <- prob
 			} else {
