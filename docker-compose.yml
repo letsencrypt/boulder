@@ -1,8 +1,9 @@
 version: '2'
 services:
     boulder:
-        build: .
-        dockerfile: Dockerfile
+        build:
+            context: .
+            dockerfile: Dockerfile
         environment:
             FAKE_DNS: 127.0.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
