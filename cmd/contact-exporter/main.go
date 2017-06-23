@@ -73,7 +73,6 @@ func (c contactExporter) findContactsForDomains(domains []string) ([]contact, er
 			},
 		)
 		if err != nil {
-			c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
 			return nil, err
 		}
 	}
@@ -141,7 +140,7 @@ Required arguments:
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
 	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
-	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file")
+	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
