@@ -20,7 +20,7 @@ Make sure you have a local copy of Boulder in your `$GOPATH`:
 
 Additionally, make sure you have Docker Engine 1.10.0+ and Docker Compose
 1.6.0+ installed. If you do not, you can follow Docker's [installation
-instructions]((https://docs.docker.com/compose/install/).
+instructions](https://docs.docker.com/compose/install/).
 
 To start Boulder in a Docker container, run:
 
