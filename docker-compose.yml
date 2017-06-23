@@ -53,7 +53,8 @@ services:
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
-        log_driver: none
+        logging:
+            driver: none
     prom:
         image: prom/prometheus
         net: bridge
