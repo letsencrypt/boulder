@@ -56,6 +56,9 @@ func (c contactExporter) findContacts() ([]contact, error) {
 func (c contactExporter) findContactsForDomains(domains []string) ([]contact, error) {
 	var contactsList []contact
 	for _, domain := range domains {
+		// Pass the same list in each time, gorp will happily just append to the slice
+		// instead of overwriting it each time
+		// https://github.com/coopernurse/gorp/blob/9cd2b5ef5b82fde4e7c51776ac3f94398b8af076/gorp.go#L1644-L1651
 		_, err := c.dbMap.Select(
 			&contactsList,
 			`SELECT DISTINCT(id) FROM registrations WHERE contact != 'null' AND
