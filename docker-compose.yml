@@ -47,6 +47,7 @@ services:
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm.so
         expose:
           - 5657
+        network_mode: bridge
     bmysql:
         image: mariadb:10.1
         network_mode: bridge
