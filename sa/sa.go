@@ -434,10 +434,10 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 }
 
 // countCertificates returns, for a single domain, the count of
-// non-renewal certificates issued in the given time range for that domain using the
+// non-renewal certificate issuances in the given time range for that domain using the
 // provided query, assumed to be either `countCertificatesExactSelect` or
 // `countCertificatesSelect`. Renewals of certificates issued within the same
-// window are considered "free" and not returned as part of this count.
+// window are considered "free" and are not counted.
 //
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
@@ -1065,7 +1065,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([][]byte
 		qmarks[i] = "?"
 	}
 	query := "SELECT setHash FROM fqdnSets " +
-		"WHERE serial IN (" + strings.Join(qmarks, ",") + ") "
+		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
 	_, err := ssa.dbMap.Select(
 		&fqdnSets,
 		query,
@@ -1078,7 +1078,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([][]byte
 }
 
 // getNewIssuancesByFQDNSet returns a count of new issuances (renewals are not
-// included) for a given slice of fqdnSets that were issued after the earliest
+// included) for a given slice of fqdnSets that occurred after the earliest
 // parameter.
 func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earliest time.Time) (int, error) {
 	var results []struct {
@@ -1117,7 +1117,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earl
 
 	processedSetHashes := make(map[string]struct{})
 	issuanceCount := 0
-	// Loop through each set hash result, counting issuance per unique set hash
+	// Loop through each set hash result, counting issuances per unique set hash
 	// that are within the window specified by the earliest parameter
 	for _, result := range results {
 		key := string(result.SetHash)
