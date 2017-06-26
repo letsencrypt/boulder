@@ -99,7 +99,6 @@ type ValidationAuthorityImpl struct {
 	clk               clock.Clock
 	remoteVAs         []RemoteVA
 	maxRemoteFailures int
-	hostname          string
 
 	metrics *vaMetrics
 }
@@ -791,6 +790,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 	good := 0
 	bad := 0
 	state := "failure"
+	// Due to channel behavior this could block indefinitely and we rely on gRPC
+	// honoring the context deadline used in client calls to prevent that from
+	// happening.
 	for err := range errors {
 		if err == nil {
 			good++
@@ -803,6 +805,11 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 			break
 		} else if bad > va.maxRemoteFailures {
 			if prob, ok := err.(*probs.ProblemDetails); ok {
+				// The overall error returned is whichever error
+				// happened to tip the threshold. This is fine
+				// since we expect that any remote validation
+				// failures will typically be the same across
+				// instances.
 				result <- prob
 			} else {
 				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")

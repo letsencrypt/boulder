@@ -230,7 +230,7 @@ func DebugServer(addr string) {
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("unable to boot debug server on %#v: %s", addr, err)
+		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	err = http.Serve(ln, nil)

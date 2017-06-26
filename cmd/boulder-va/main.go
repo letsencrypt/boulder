@@ -40,7 +40,7 @@ type config struct {
 		CAASERVFAILExceptions string
 
 		RemoteVAs                   []cmd.GRPCClientConfig
-		MaxRemoteValidationFailures int64
+		MaxRemoteValidationFailures int
 
 		Features map[string]bool
 	}
@@ -131,7 +131,13 @@ func main() {
 		for _, rva := range c.VA.RemoteVAs {
 			vaConn, err := bgrpc.ClientSetup(&rva, tls, scope)
 			cmd.FailOnError(err, "Unable to create remote VA client")
-			remotes = append(remotes, va.RemoteVA{bgrpc.NewValidationAuthorityGRPCClient(vaConn), strings.Join(rva.ServerAddresses, ",")})
+			remotes = append(
+				remotes,
+				va.RemoteVA{
+					bgrpc.NewValidationAuthorityGRPCClient(vaConn),
+					strings.Join(rva.ServerAddresses, ","),
+				},
+			)
 		}
 	}
 
