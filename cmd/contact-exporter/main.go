@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -58,10 +59,10 @@ func (c contactExporter) findContactsForDomains(domains []string) ([]contact, er
 	for _, domain := range domains {
 		// Pass the same list in each time, gorp will happily just append to the slice
 		// instead of overwriting it each time
-		// https://github.com/coopernurse/gorp/blob/9cd2b5ef5b82fde4e7c51776ac3f94398b8af076/gorp.go#L1644-L1651
+		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
 			&contactsList,
-			`SELECT registrationID as id FROM certificates
+			`SELECT registrationID AS id FROM certificates
                          WHERE expires >= :expireCutoff AND
                          serial IN (
                            SELECT serial FROM issuedNames
@@ -73,6 +74,9 @@ func (c contactExporter) findContactsForDomains(domains []string) ([]contact, er
 			},
 		)
 		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
 			return nil, err
 		}
 	}
