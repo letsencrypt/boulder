@@ -53,15 +53,16 @@ func TestAutoRegisterer(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	ap := newAutoRegisterer(registry)
 	gauge := ap.autoGauge("ima_stat")
+	expected := "Desc{fqName: \"ima_stat\", help: \"auto\", constLabels: {}, variableLabels: []}"
 	if gauge == nil {
 		t.Fatal("gauge was nil")
 	}
-	expected := "Desc{fqName: \"ima_stat\", help: \"auto\", constLabels: {}, variableLabels: []}"
 	gaugeDesc := gauge.Desc().String()
 	if gaugeDesc != expected {
 		t.Errorf("gauge description: got %q, expected %q", gaugeDesc, expected)
 	}
-	counter := ap.autoCounter("ima_stat")
+	counter := ap.autoCounter("ima_counter")
+	expected = "Desc{fqName: \"ima_counter\", help: \"auto\", constLabels: {}, variableLabels: []}"
 	if counter == nil {
 		t.Fatal("counter was nil")
 	}
@@ -69,7 +70,8 @@ func TestAutoRegisterer(t *testing.T) {
 	if counterDesc != expected {
 		t.Errorf("counter description: got %q, expected %q", counterDesc, expected)
 	}
-	summary := ap.autoSummary("ima_stat")
+	summary := ap.autoSummary("ima_summary")
+	expected = "Desc{fqName: \"ima_summary\", help: \"auto\", constLabels: {}, variableLabels: []}"
 	if summary == nil {
 		t.Fatal("summary was nil")
 	}
