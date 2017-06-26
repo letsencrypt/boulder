@@ -1103,7 +1103,7 @@ func TestReverseName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		output := reverseName(tc.inputDomain)
+		output := ReverseName(tc.inputDomain)
 		test.AssertEquals(t, output, tc.inputReversed)
 	}
 }
