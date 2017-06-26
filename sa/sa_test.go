@@ -222,12 +222,12 @@ func TestRecyclePendingDisabled(t *testing.T) {
 }
 
 func TestRecyclePendingEnabled(t *testing.T) {
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
 
-	sa, _, cleanUp := initSA(t)
+	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	expires := fc.Now()
 	authz := core.Authorization{
 		RegistrationID: reg.ID,
 		Identifier: core.AcmeIdentifier{
@@ -242,19 +242,37 @@ func TestRecyclePendingEnabled(t *testing.T) {
 				Token:  "abc",
 			},
 		},
+		Expires: &expires,
 	}
-	pendingAuthz, err := sa.NewPendingAuthorization(ctx, authz)
 
+	// Add expired authz
+	_, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Couldn't create new expired pending authorization")
+
+	// Add expected authz
+	fc.Add(3 * time.Hour)
+	expires = fc.Now().Add(2 * time.Hour) // magic pointer
+	pendingAuthzA, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(t, pendingAuthz.ID != "", "ID shouldn't be blank")
+	test.Assert(t, pendingAuthzA.ID != "", "ID shouldn't be blank")
+	// Add extra authz for kicks
+	pendingAuthzB, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, pendingAuthzB.ID != "", "ID shouldn't be blank")
+
+	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
 
 	authz.Challenges = nil
 	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
 
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.AssertEquals(t, pendingAuthz.ID, pendingAuthz2.ID)
-	test.Assert(t, len(pendingAuthz.Challenges) > 0, "no challenges")
-	test.AssertEquals(t, pendingAuthz.Challenges[0].Token, "abc")
+	test.Assert(
+		t,
+		pendingAuthzA.ID == pendingAuthz2.ID || pendingAuthzB.ID == pendingAuthz2.ID,
+		fmt.Sprintf("unexpected pending authz ID, wanted: %q or %q, got: %q", pendingAuthzA.ID, pendingAuthzB.ID, pendingAuthz2.ID),
+	)
+	test.Assert(t, len(pendingAuthz2.Challenges) > 0, "no challenges")
+	test.AssertEquals(t, pendingAuthz2.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
@@ -1085,7 +1103,7 @@ func TestReverseName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		output := reverseName(tc.inputDomain)
+		output := ReverseName(tc.inputDomain)
 		test.AssertEquals(t, output, tc.inputReversed)
 	}
 }

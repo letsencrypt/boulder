@@ -406,7 +406,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Contex
 	return ret, nil
 }
 
-func reverseName(domain string) string {
+func ReverseName(domain string) string {
 	labels := strings.Split(domain, ".")
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
 		labels[i], labels[j] = labels[j], labels[i]
@@ -459,7 +459,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		&serials,
 		query,
 		map[string]interface{}{
-			"reversedDomain": reverseName(domain),
+			"reversedDomain": ReverseName(domain),
 			"earliest":       earliest,
 			"latest":         latest,
 			"limit":          max + 1,
@@ -654,7 +654,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 			return output, err
 		}
 
-		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ?", idJSON)
+		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ? AND expires > ? LIMIT 1", idJSON, ssa.clk.Now().Add(time.Hour))
 		if err == sql.ErrNoRows {
 			// No existing authz found, proceed to create one.
 		} else if err == nil {
@@ -1037,7 +1037,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
-			reverseName(name),
+			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore)
 		qmarks = append(qmarks, "(?, ?, ?)")
