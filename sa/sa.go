@@ -1046,10 +1046,14 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.D
 	return count, err
 }
 
-// getFQDNSetsBySerials returns a slice of []byte `setHash` entries from the
-// fqdnSets table for the certificate serials provided.
-func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([][]byte, error) {
-	var fqdnSets [][]byte
+// setHash is a []byte representing the hash of an FQDN Set
+type setHash []byte
+
+// getFQDNSetsBySerials finds the setHashes corresponding to a set of
+// certificate serials. These serials can be used to check whether any
+// certificates have been issued for the same set of names previously.
+func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHash, error) {
+	var fqdnSets []setHash
 
 	// It is unexpected that this function would be called with no serials
 	if len(serials) == 0 {
@@ -1071,7 +1075,11 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([][]byte
 		query,
 		params...)
 
-	if err != nil && err != sql.ErrNoRows {
+	// NOTE(@cpu): We don't explicitly check if `err != sql.ErrNoRows` here
+	// because we *want* ErrNoRows to be treated as an error since its an internal
+	// consistency violation. The serials existed when we found them in
+	// issuedNames, they should continue to exist here.
+	if err != nil {
 		return nil, err
 	}
 	return fqdnSets, nil
@@ -1080,17 +1088,19 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([][]byte
 // getNewIssuancesByFQDNSet returns a count of new issuances (renewals are not
 // included) for a given slice of fqdnSets that occurred after the earliest
 // parameter.
-func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earliest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, earliest time.Time) (int, error) {
 	var results []struct {
 		Serial  string
-		SetHash []byte
+		SetHash setHash
 		Issued  time.Time
 	}
 
 	qmarks := make([]string, len(fqdnSets))
 	params := make([]interface{}, len(fqdnSets))
 	for i, setHash := range fqdnSets {
-		params[i] = setHash
+		// We have to cast the setHash back to []byte here since the sql package
+		// isn't able to convert `sa.setHash` for the parameter value itself
+		params[i] = []byte(setHash)
 		qmarks[i] = "?"
 	}
 
@@ -1115,7 +1125,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earl
 		return 0, err
 	}
 
-	processedSetHashes := make(map[string]struct{})
+	processedSetHashes := make(map[string]bool)
 	issuanceCount := 0
 	// Loop through each set hash result, counting issuances per unique set hash
 	// that are within the window specified by the earliest parameter
@@ -1123,7 +1133,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earl
 		key := string(result.SetHash)
 		// Skip set hashes that we have already processed - we only care about the
 		// first issuance
-		if _, exists := processedSetHashes[key]; exists {
+		if processedSetHashes[key] {
 			continue
 		}
 
@@ -1134,7 +1144,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets [][]byte, earl
 
 		// Otherwise note the issuance and mark the set hash as processed
 		issuanceCount++
-		processedSetHashes[key] = struct{}{}
+		processedSetHashes[key] = true
 	}
 
 	// Return the count of how many non-renewal issuances there were

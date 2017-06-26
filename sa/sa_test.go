@@ -1041,7 +1041,7 @@ func TestReverseName(t *testing.T) {
 type fqdnTestcase struct {
 	Serial       string
 	Names        []string
-	ExpectedHash []byte
+	ExpectedHash setHash
 	Issued       time.Time
 	Expires      time.Time
 }
@@ -1050,9 +1050,9 @@ func setupFQDNSets(t *testing.T, db *gorp.DbMap, fc clock.FakeClock) map[string]
 	namesA := []string{"a.example.com", "B.example.com"}
 	namesB := []string{"example.org"}
 	namesC := []string{"letsencrypt.org"}
-	expectedHashA := []byte{0x92, 0xc7, 0xf2, 0x47, 0xbd, 0x1e, 0xea, 0x8d, 0x52, 0x7f, 0xb0, 0x59, 0x19, 0xe9, 0xbe, 0x81, 0x78, 0x88, 0xe6, 0xf7, 0x55, 0xf0, 0x1c, 0xc9, 0x63, 0x15, 0x5f, 0x8e, 0x52, 0xae, 0x95, 0xc1}
-	expectedHashB := []byte{0xbf, 0xab, 0xc3, 0x74, 0x32, 0x95, 0x8b, 0x6, 0x33, 0x60, 0xd3, 0xad, 0x64, 0x61, 0xc9, 0xc4, 0x73, 0x5a, 0xe7, 0xf8, 0xed, 0xd4, 0x65, 0x92, 0xa5, 0xe0, 0xf0, 0x14, 0x52, 0xb2, 0xe4, 0xb5}
-	expectedHashC := []byte{0xf2, 0xbb, 0x7b, 0xab, 0x8, 0x2c, 0x18, 0xee, 0x8, 0x97, 0x17, 0xbe, 0x67, 0xd7, 0x12, 0x14, 0xaa, 0x4, 0xac, 0xe2, 0x29, 0x2a, 0x67, 0x2c, 0x37, 0x2c, 0xf3, 0x33, 0xe1, 0xb0, 0xd8, 0xe7}
+	expectedHashA := setHash{0x92, 0xc7, 0xf2, 0x47, 0xbd, 0x1e, 0xea, 0x8d, 0x52, 0x7f, 0xb0, 0x59, 0x19, 0xe9, 0xbe, 0x81, 0x78, 0x88, 0xe6, 0xf7, 0x55, 0xf0, 0x1c, 0xc9, 0x63, 0x15, 0x5f, 0x8e, 0x52, 0xae, 0x95, 0xc1}
+	expectedHashB := setHash{0xbf, 0xab, 0xc3, 0x74, 0x32, 0x95, 0x8b, 0x6, 0x33, 0x60, 0xd3, 0xad, 0x64, 0x61, 0xc9, 0xc4, 0x73, 0x5a, 0xe7, 0xf8, 0xed, 0xd4, 0x65, 0x92, 0xa5, 0xe0, 0xf0, 0x14, 0x52, 0xb2, 0xe4, 0xb5}
+	expectedHashC := setHash{0xf2, 0xbb, 0x7b, 0xab, 0x8, 0x2c, 0x18, 0xee, 0x8, 0x97, 0x17, 0xbe, 0x67, 0xd7, 0x12, 0x14, 0xaa, 0x4, 0xac, 0xe2, 0x29, 0x2a, 0x67, 0x2c, 0x37, 0x2c, 0xf3, 0x33, 0xe1, 0xb0, 0xd8, 0xe7}
 
 	now := fc.Now()
 
@@ -1179,19 +1179,19 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 
 	// Calling getNewIssuancesByFQDNSet with FQDNSet hashes that don't exist
 	// should return 0
-	count, err = sa.getNewIssuancesByFQDNSet([][]byte{[]byte{0xC0, 0xFF, 0xEE}, []byte{0x13, 0x37}}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{setHash{0xC0, 0xFF, 0xEE}, setHash{0x13, 0x37}}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for non-existent set hashes")
 	test.AssertEquals(t, count, 0)
 
 	// Calling getNewIssuancesByFQDNSet with the "a" expected hash should return
 	// 1, since both testcase "b" was a renewal of testcase "a"
-	count, err = sa.getNewIssuancesByFQDNSet([][]byte{testcases["a"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["a"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase a")
 	test.AssertEquals(t, count, 1)
 
 	// Calling getNewIssuancesByFQDNSet with the "c" expected hash should return
 	// 1, since there is only one issuance for this sethash
-	count, err = sa.getNewIssuancesByFQDNSet([][]byte{testcases["c"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c")
 	test.AssertEquals(t, count, 1)
 
@@ -1199,12 +1199,12 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 	// only 1, since there is only one issuance for the provided set hashes that
 	// is within the earliest window. The issuance for "d" was too far in the past
 	// to be counted
-	count, err = sa.getNewIssuancesByFQDNSet([][]byte{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d")
 	test.AssertEquals(t, count, 1)
 
 	// But by moving the earliest point behind the "d" issuance, we should now get a count of 2
-	count, err = sa.getNewIssuancesByFQDNSet([][]byte{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d with adjusted earliest")
 	test.AssertEquals(t, count, 2)
 }
