@@ -1075,10 +1075,14 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHas
 		query,
 		params...)
 
+	if err != nil {
+		return nil, err
+	}
+
 	// The serials existed when we found them in issuedNames, they should continue
 	// to exist here. Otherwise an internal consistency violation occured and
 	// needs to be audit logged
-	if err != nil {
+	if err == sql.ErrNoRows {
 		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")
 		ssa.log.AuditErr(err.Error())
 		return nil, err
