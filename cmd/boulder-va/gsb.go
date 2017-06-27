@@ -121,7 +121,8 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 	if err != nil {
 		return nil, err
 	}
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*60)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel() // avoid leak
 	err = sb.WaitUntilReady(ctx)
 	if err != nil {
 		return nil, err
