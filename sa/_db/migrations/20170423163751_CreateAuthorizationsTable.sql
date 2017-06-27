@@ -16,13 +16,9 @@ CREATE TABLE `authorizations` (
   `thumbprint` mediumblob,
 
   PRIMARY KEY (`id`),
-  UNIQUE KEY `identifier_key` (`identifierType`, `identifierValue`),
 
-  KEY `registrationID_status_expires_idx` (`registrationID`, `status`, `expires`),
-  CONSTRAINT `registrationID_status_expires_idx` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-
-  KEY `identifierType_identifierValue_status_registrationID_expires_idx` (`identifierType`, `identifierValue`, `status`, `registrationID`, `expires`),
-  CONSTRAINT `identifierType_identifierValue_status_registrationID_expires_idx` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  KEY `regId_authorizations_idx` (`registrationID`) COMMENT 'Common lookup',
+  CONSTRAINT `regId_authorizations`  FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
