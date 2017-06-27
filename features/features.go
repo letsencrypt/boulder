@@ -24,6 +24,7 @@ const (
 	RandomDirectoryEntry
 	IPv6First
 	DirectoryMeta
+	AllowRenewalFirstRL
 )
 
 // List of features and their default value, protected by fMu
@@ -41,6 +42,7 @@ var features = map[FeatureFlag]bool{
 	RandomDirectoryEntry:     false,
 	IPv6First:                false,
 	DirectoryMeta:            false,
+	AllowRenewalFirstRL:      false,
 }
 
 var fMu = new(sync.RWMutex)
