@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
+	gorp "gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -1106,4 +1107,175 @@ func TestReverseName(t *testing.T) {
 		output := ReverseName(tc.inputDomain)
 		test.AssertEquals(t, output, tc.inputReversed)
 	}
+}
+
+type fqdnTestcase struct {
+	Serial       string
+	Names        []string
+	ExpectedHash setHash
+	Issued       time.Time
+	Expires      time.Time
+}
+
+func setupFQDNSets(t *testing.T, db *gorp.DbMap, fc clock.FakeClock) map[string]fqdnTestcase {
+	namesA := []string{"a.example.com", "B.example.com"}
+	namesB := []string{"example.org"}
+	namesC := []string{"letsencrypt.org"}
+	expectedHashA := setHash{0x92, 0xc7, 0xf2, 0x47, 0xbd, 0x1e, 0xea, 0x8d, 0x52, 0x7f, 0xb0, 0x59, 0x19, 0xe9, 0xbe, 0x81, 0x78, 0x88, 0xe6, 0xf7, 0x55, 0xf0, 0x1c, 0xc9, 0x63, 0x15, 0x5f, 0x8e, 0x52, 0xae, 0x95, 0xc1}
+	expectedHashB := setHash{0xbf, 0xab, 0xc3, 0x74, 0x32, 0x95, 0x8b, 0x6, 0x33, 0x60, 0xd3, 0xad, 0x64, 0x61, 0xc9, 0xc4, 0x73, 0x5a, 0xe7, 0xf8, 0xed, 0xd4, 0x65, 0x92, 0xa5, 0xe0, 0xf0, 0x14, 0x52, 0xb2, 0xe4, 0xb5}
+	expectedHashC := setHash{0xf2, 0xbb, 0x7b, 0xab, 0x8, 0x2c, 0x18, 0xee, 0x8, 0x97, 0x17, 0xbe, 0x67, 0xd7, 0x12, 0x14, 0xaa, 0x4, 0xac, 0xe2, 0x29, 0x2a, 0x67, 0x2c, 0x37, 0x2c, 0xf3, 0x33, 0xe1, 0xb0, 0xd8, 0xe7}
+
+	now := fc.Now()
+
+	testcases := map[string]fqdnTestcase{
+		// One test case with serial "a" issued now and expiring in two hours for
+		// namesA
+		"a": fqdnTestcase{
+			Serial:       "a",
+			Names:        namesA,
+			ExpectedHash: expectedHashA,
+			Issued:       now,
+			Expires:      now.Add(time.Hour * 2).UTC(),
+		},
+		// One test case with serial "b", issued one hour from now and expiring in
+		// two hours, also for namesA
+		"b": fqdnTestcase{
+			Serial:       "b",
+			Names:        namesA,
+			ExpectedHash: expectedHashA,
+			Issued:       now.Add(time.Hour),
+			Expires:      now.Add(time.Hour * 2).UTC(),
+		},
+		// One test case with serial "c", issued one hour from now and expiring in
+		// two hours, for namesB
+		"c": fqdnTestcase{
+			Serial:       "c",
+			Names:        namesB,
+			ExpectedHash: expectedHashB,
+			Issued:       now.Add(time.Hour),
+			Expires:      now.Add(time.Hour * 2).UTC(),
+		},
+		// One test case with serial "d", issued five hours in the past and expiring
+		// in two hours from now, with namesC
+		"d": fqdnTestcase{
+			Serial:       "d",
+			Names:        namesC,
+			ExpectedHash: expectedHashC,
+			Issued:       now.Add(-5 * time.Hour),
+			Expires:      now.Add(time.Hour * 2).UTC(),
+		},
+	}
+
+	for _, tc := range testcases {
+		tx, err := db.Begin()
+		test.AssertNotError(t, err, "Failed to open transaction")
+		err = addFQDNSet(tx, tc.Names, tc.Serial, tc.Issued, tc.Expires)
+		test.AssertNotError(t, err, fmt.Sprintf("Failed to add fqdnSet for %#v", tc))
+		test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+	}
+
+	return testcases
+}
+
+func TestGetFQDNSetsBySerials(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add the test fqdn sets
+	testcases := setupFQDNSets(t, sa.dbMap, fc)
+
+	// Asking for the fqdnSets for no serials should produce an error since this
+	// is not expected in normal conditions
+	fqdnSets, err := sa.getFQDNSetsBySerials([]string{})
+	test.AssertError(t, err, "No error calling getFQDNSetsBySerials for empty serials")
+	test.AssertEquals(t, len(fqdnSets), 0)
+
+	// Asking for the fqdnSets for serials that don't exist should return nothing
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"this", "doesn't", "exist"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for non-existent serials")
+	test.AssertEquals(t, len(fqdnSets), 0)
+
+	// Asking for the fqdnSets for serial "a" should return the expectedHashA hash
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"a"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"a\"")
+	test.AssertEquals(t, len(fqdnSets), 1)
+	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["a"].ExpectedHash))
+
+	// Asking for the fqdnSets for serial "b" should return the expectedHashA hash
+	// because cert "b" has namesA subjects
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"b"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"b\"")
+	test.AssertEquals(t, len(fqdnSets), 1)
+	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["b"].ExpectedHash))
+
+	// Asking for the fqdnSets for serial "d" should return the expectedHashC hash
+	// because cert "d" has namesC subjects
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"d"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"d\"")
+	test.AssertEquals(t, len(fqdnSets), 1)
+	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["d"].ExpectedHash))
+
+	// Asking for the fqdnSets for serial "c" should return the expectedHashB hash
+	// because cert "c" has namesB subjects
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"c"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"c\"")
+	test.AssertEquals(t, len(fqdnSets), 1)
+	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["c"].ExpectedHash))
+
+	// Asking for the fqdnSets for serial "a", "b", "c" and "made up" should return
+	// the three expected hashes - two expectedHashA (for "a" and "b"), one
+	// expectedHashB (for "c")
+	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"a", "b", "c", "made up"})
+	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"a\", \"b\", \"c\", \"made up\"")
+	test.AssertEquals(t, len(fqdnSets), 3)
+	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["a"].ExpectedHash))
+	test.AssertEquals(t, string(fqdnSets[1]), string(testcases["b"].ExpectedHash))
+	test.AssertEquals(t, string(fqdnSets[2]), string(testcases["c"].ExpectedHash))
+}
+
+func TestGetNewIssuancesByFQDNSet(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add the test fqdn sets
+	testcases := setupFQDNSets(t, sa.dbMap, fc)
+
+	// Use one hour ago as the earliest cut off
+	earliest := fc.Now().Add(-time.Hour)
+
+	// Calling getNewIssuancesByFQDNSet with an empty FQDNSet should error
+	count, err := sa.getNewIssuancesByFQDNSet(nil, earliest)
+	test.AssertError(t, err, "No error calling getNewIssuancesByFQDNSet for empty fqdn set")
+	test.AssertEquals(t, count, -1)
+
+	// Calling getNewIssuancesByFQDNSet with FQDNSet hashes that don't exist
+	// should return 0
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{setHash{0xC0, 0xFF, 0xEE}, setHash{0x13, 0x37}}, earliest)
+	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for non-existent set hashes")
+	test.AssertEquals(t, count, 0)
+
+	// Calling getNewIssuancesByFQDNSet with the "a" expected hash should return
+	// 1, since both testcase "b" was a renewal of testcase "a"
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["a"].ExpectedHash}, earliest)
+	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase a")
+	test.AssertEquals(t, count, 1)
+
+	// Calling getNewIssuancesByFQDNSet with the "c" expected hash should return
+	// 1, since there is only one issuance for this sethash
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash}, earliest)
+	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c")
+	test.AssertEquals(t, count, 1)
+
+	// Calling getNewIssuancesByFQDNSet with the "c" and "d" expected hashes should return
+	// only 1, since there is only one issuance for the provided set hashes that
+	// is within the earliest window. The issuance for "d" was too far in the past
+	// to be counted
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest)
+	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d")
+	test.AssertEquals(t, count, 1)
+
+	// But by moving the earliest point behind the "d" issuance, we should now get a count of 2
+	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
+	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d with adjusted earliest")
+	test.AssertEquals(t, count, 2)
 }
