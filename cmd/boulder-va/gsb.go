@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	safebrowsingv4 "github.com/google/safebrowsing"
 	"github.com/letsencrypt/boulder/cmd"
@@ -120,7 +121,8 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 	if err != nil {
 		return nil, err
 	}
-	err = sb.WaitUntilReady(context.Background())
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*60)
+	err = sb.WaitUntilReady(ctx)
 	if err != nil {
 		return nil, err
 	}
