@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -116,6 +117,10 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		ServerURL: gsb.ServerURL,
 		Logger:    gsbLogAdapter{logger},
 	})
+	if err != nil {
+		return nil, err
+	}
+	err = sb.WaitUntilReady(context.Background())
 	if err != nil {
 		return nil, err
 	}

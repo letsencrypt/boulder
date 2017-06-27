@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	pb "github.com/google/safebrowsing/internal/safebrowsing_proto"
 
@@ -40,14 +41,14 @@ type api interface {
 
 // netAPI is an api object that talks to the server over HTTP.
 type netAPI struct {
-	client http.Client
+	client *http.Client
 	url    *url.URL
 }
 
 // newNetAPI creates a new netAPI object pointed at the provided root URL.
 // For every request, it will use the provided API key.
 // If the protocol is not specified in root, then this defaults to using HTTPS.
-func newNetAPI(root string, key string) (*netAPI, error) {
+func newNetAPI(root string, key string, timeout time.Duration) (*netAPI, error) {
 	if !strings.Contains(root, "://") {
 		root = "https://" + root
 	}
@@ -60,7 +61,7 @@ func newNetAPI(root string, key string) (*netAPI, error) {
 	q.Set("key", key)
 	q.Set("alt", "proto")
 	u.RawQuery = q.Encode()
-	return &netAPI{url: u}, nil
+	return &netAPI{url: u, client: &http.Client{Timeout: timeout}}, nil
 }
 
 // doRequests performs a POST to requestPath. It uses the marshaled form of req
