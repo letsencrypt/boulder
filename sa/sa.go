@@ -20,6 +20,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -29,6 +30,7 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   blog.Logger
+	scope metrics.Scope
 }
 
 func digest256(data []byte) []byte {
@@ -50,13 +52,19 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(
+	dbMap *gorp.DbMap,
+	clk clock.Clock,
+	logger blog.Logger,
+	scope metrics.Scope,
+) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
 		clk:   clk,
 		log:   logger,
+		scope: scope,
 	}
 
 	return ssa, nil
@@ -398,7 +406,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Contex
 	return ret, nil
 }
 
-func reverseName(domain string) string {
+func ReverseName(domain string) string {
 	labels := strings.Split(domain, ".")
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
 		labels[i], labels[j] = labels[j], labels[i]
@@ -451,7 +459,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		&serials,
 		query,
 		map[string]interface{}{
-			"reversedDomain": reverseName(domain),
+			"reversedDomain": ReverseName(domain),
 			"earliest":       earliest,
 			"latest":         latest,
 			"limit":          max + 1,
@@ -663,15 +671,38 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
-// NewPendingAuthorization stores a new Pending Authorization
+// NewPendingAuthorization retrieves a pending authorization for
+// authz.Identifier if one exists, or creates a new one otherwise.
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
 	var output core.Authorization
+
+	// Check if we can recycle an existing, pending authz.
+	if features.Enabled(features.ReusePendingAuthz) {
+		idJSON, err := json.Marshal(authz.Identifier)
+		if err != nil {
+			return output, err
+		}
+
+		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ? AND expires > ? LIMIT 1", idJSON, ssa.clk.Now().Add(time.Hour))
+		if err == sql.ErrNoRows {
+			// No existing authz found, proceed to create one.
+		} else if err == nil {
+			// We found an authz, but we still need to fetch its challenges. To
+			// simplify things, just call GetAuthorization, which takes care of that.
+			ssa.scope.Inc("reused_authz", 1)
+			return ssa.GetAuthorization(ctx, pa.ID)
+		} else {
+			// Any error other than ErrNoRows; return the error
+			return output, err
+		}
+	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return output, err
 	}
 
-	// Check that it doesn't exist already
+	// Create a random ID and check that it doesn't exist already
 	authz.ID = core.NewToken()
 	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
 		authz.ID = core.NewToken()
@@ -1035,7 +1066,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
-			reverseName(name),
+			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore)
 		qmarks = append(qmarks, "(?, ?, ?)")

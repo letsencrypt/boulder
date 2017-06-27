@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -79,6 +80,30 @@ func TestFindContacts(t *testing.T) {
 	test.AssertEquals(t, contacts[1].ID, regB.ID)
 	test.AssertEquals(t, contacts[2].ID, regC.ID)
 	test.AssertEquals(t, contacts[3].ID, regD.ID)
+}
+
+func TestFindContactsForDomains(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
+
+	// Add some test registrations
+	testCtx.addRegistrations(t)
+
+	// Run findContacts - since no certificates have been added corresponding to
+	// the above registrations, no contacts should be found.
+	contacts, err := testCtx.c.findContactsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findContacts() produced error")
+	test.AssertEquals(t, len(contacts), 0)
+
+	// Now add some certificates
+	testCtx.addCertificates(t)
+
+	contacts, err = testCtx.c.findContactsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findContactsForDomains() failed")
+	test.AssertEquals(t, len(contacts), 3)
+	test.AssertEquals(t, contacts[0].ID, regA.ID)
+	test.AssertEquals(t, contacts[1].ID, regC.ID)
+	test.AssertEquals(t, contacts[2].ID, regD.ID)
 }
 
 func exampleContacts() []contact {
@@ -260,6 +285,12 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	err := ctx.c.dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
+	_, err = ctx.c.dbMap.Exec(
+		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
+		"com.example-a",
+		serial1String,
+	)
+	test.AssertNotError(t, err, "Couldn't add issued name for certA")
 
 	// Add one cert for RegB that already expired 30 days ago
 	rawCertB := x509.Certificate{
@@ -279,6 +310,12 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	err = ctx.c.dbMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
+	_, err = ctx.c.dbMap.Exec(
+		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
+		"com.example-b",
+		serial2String,
+	)
+	test.AssertNotError(t, err, "Couldn't add issued name for certB")
 
 	// Add one cert for RegC that expires in 30 days
 	rawCertC := x509.Certificate{
@@ -298,6 +335,12 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	err = ctx.c.dbMap.Insert(certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
+	_, err = ctx.c.dbMap.Exec(
+		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
+		"com.example-c",
+		serial3String,
+	)
+	test.AssertNotError(t, err, "Couldn't add issued name for certC")
 
 	// Add one cert for RegD that expires in 30 days
 	rawCertD := x509.Certificate{
@@ -317,6 +360,12 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	err = ctx.c.dbMap.Insert(certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
+	_, err = ctx.c.dbMap.Exec(
+		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
+		"com.example-d",
+		serial4String,
+	)
+	test.AssertNotError(t, err, "Couldn't add issued name for certD")
 }
 
 func setup(t *testing.T) testCtx {
@@ -330,7 +379,7 @@ func setup(t *testing.T) testCtx {
 	cleanUp := test.ResetSATestDatabase(t)
 
 	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
