@@ -459,7 +459,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 	if err == sql.ErrNoRows {
 		return 0, nil
 	} else if err != nil {
-		return -1, err
+		return 0, err
 	} else if count > max {
 		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
@@ -477,7 +477,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		// were visible within our search window
 		fqdnSets, err := ssa.getFQDNSetsBySerials(serials)
 		if err != nil {
-			return -1, err
+			return 0, err
 		}
 
 		// Using those FQDN Set Hashes, we can then find all of the non-renewal
@@ -485,7 +485,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		// hashes we know about
 		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(fqdnSets, earliest)
 		if err != nil {
-			return -1, err
+			return 0, err
 		}
 		return nonRenewalIssuances, nil
 	} else {
