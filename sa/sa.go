@@ -436,8 +436,9 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 // countCertificates returns, for a single domain, the count of
 // non-renewal certificate issuances in the given time range for that domain using the
 // provided query, assumed to be either `countCertificatesExactSelect` or
-// `countCertificatesSelect`. Renewals of certificates issued within the same
-// window are considered "free" and are not counted.
+// `countCertificatesSelect`. If the `AllowRenewalFirstRL` feature flag is set,
+// renewals of certificates issued within the same window are considered "free"
+// and are not counted.
 //
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
@@ -463,27 +464,40 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 
-	// If there are no serials found, short circuit since there isn't subsequent
-	// work to do
-	if len(serials) == 0 {
-		return 0, nil
-	}
+	// If the `AllowRenewalFirstRL` feature flag is enabled then do the work
+	// required to discount renewals
+	if features.Enabled(features.AllowRenewalFirstRL) {
+		// If there are no serials found, short circuit since there isn't subsequent
+		// work to do
+		if len(serials) == 0 {
+			return 0, nil
+		}
 
-	// Find all FQDN Set Hashes with the serials from the issuedNames table that
-	// were visible within our search window
-	fqdnSets, err := ssa.getFQDNSetsBySerials(serials)
-	if err != nil {
-		return -1, err
-	}
+		// Find all FQDN Set Hashes with the serials from the issuedNames table that
+		// were visible within our search window
+		fqdnSets, err := ssa.getFQDNSetsBySerials(serials)
+		if err != nil {
+			return -1, err
+		}
 
-	// Using those FQDN Set Hashes, we can then find all of the non-renewal
-	// issuances with a second query against the fqdnSets table using the set
-	// hashes we know about
-	nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(fqdnSets, earliest)
-	if err != nil {
-		return -1, err
+		// Using those FQDN Set Hashes, we can then find all of the non-renewal
+		// issuances with a second query against the fqdnSets table using the set
+		// hashes we know about
+		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(fqdnSets, earliest)
+		if err != nil {
+			return -1, err
+		}
+		return nonRenewalIssuances, nil
+	} else {
+		// Otherwise, use the preexisting behaviour and deduplicate by serials
+		// returning a count of unique serials qignoring any potential renewals
+		serialMap := make(map[string]struct{}, len(serials))
+		for _, s := range serials {
+			serialMap[s] = struct{}{}
+		}
+
+		return len(serialMap), nil
 	}
-	return nonRenewalIssuances, nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding

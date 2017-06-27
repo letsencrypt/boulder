@@ -322,6 +322,12 @@ def test_renewal_exemption():
     and we are testing what we think we are testing. See
     https://letsencrypt.org/docs/rate-limits/ for more details.
     """
+
+    # TODO(@cpu): Once the `AllowRenewalFirstRL` feature flag is enabled by
+    # default, delete this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
     base_domain = random_domain()
     # First issuance
     auth_and_issue(["www." + base_domain])
