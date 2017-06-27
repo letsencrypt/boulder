@@ -47,7 +47,7 @@ def start(race_detection):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    forwards = [
+    for srv in [
             [":19091", "publisher.boulder:9091"],
             [":19092", "va.boulder:9092"],
             [":19093", "ca.boulder:9093"],
@@ -56,9 +56,7 @@ def start(race_detection):
             [":19096", "ca.boulder:9096"],
             [":19097", "va.boulder:9097"],
             [":19098", "va.boulder:9098"]
-    ]
-
-    for srv in forwards:
+    ]:
         forward(srv[0], srv[1])
     progs = [
         # The gsb-test-srv needs to be started before the VA or its intial DB
