@@ -44,9 +44,11 @@ const (
 
 var validationTimeout = time.Second * 5
 
+// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the address
+// of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
+// provide a way to extract this metadata which is useful for debugging gRPC connection issues
 type RemoteVA struct {
 	core.ValidationAuthority
-
 	Address string
 }
 
