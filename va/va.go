@@ -44,12 +44,12 @@ const (
 
 var validationTimeout = time.Second * 5
 
-// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the address
+// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
-// provide a way to extract this metadata which is useful for debugging gRPC connection issues
+// provide a way to extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	core.ValidationAuthority
-	Address string
+	Addresses string
 }
 
 type vaMetrics struct {
@@ -779,7 +779,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
 				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
-					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Address, err))
+					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err))
 				} else if ok && p == nil {
 					err = nil
 				}
