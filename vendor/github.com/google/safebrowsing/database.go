@@ -20,6 +20,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"log"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -30,7 +31,11 @@ import (
 // jitter is the maximum amount of time that we expect an API list update to
 // actually take. We add this time to the update period time to give some
 // leeway before declaring the database as stale.
-const jitter = 30 * time.Second
+const (
+	maxRetryDelay  = 24 * time.Hour
+	baseRetryDelay = 15 * time.Minute
+	jitter         = 30 * time.Second
+)
 
 // database tracks the state of the threat lists published by the Safe Browsing
 // API. Since the global blacklist is constantly changing, the contents of the
@@ -63,8 +68,10 @@ type database struct {
 	tfl threatsForLookup
 	ml  sync.RWMutex // Protects tfl, err, and last
 
-	err  error     // Last error encountered
-	last time.Time // Last time the threat list were synced
+	err             error         // Last error encountered
+	readyCh         chan struct{} // Used for waiting until not in an error state.
+	last            time.Time     // Last time the threat list were synced
+	updateAPIErrors uint          // Number of times we attempted to contact the api and failed
 
 	log *log.Logger
 }
@@ -94,11 +101,14 @@ type databaseFormat struct {
 // Init initializes the database from the specified file in config.DBPath.
 // It reports true if the database was successfully loaded.
 func (db *database) Init(config *Config, logger *log.Logger) bool {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.setError(errors.New("not intialized"))
 	db.config = config
 	db.log = logger
 	if db.config.DBPath == "" {
 		db.log.Printf("no database file specified")
-		db.setError(errStale)
+		db.setError(errors.New("no database loaded"))
 		return false
 	}
 	dbf, err := loadDatabase(db.config.DBPath)
@@ -112,7 +122,9 @@ func (db *database) Init(config *Config, logger *log.Logger) bool {
 	// superset of the specified configuration.
 	if db.config.now().Sub(dbf.Time) > (db.config.UpdatePeriod + jitter) {
 		db.log.Printf("database loaded is stale")
-		db.setError(errStale)
+		db.ml.Lock()
+		defer db.ml.Unlock()
+		db.setStale()
 		return false
 	}
 	tfuNew := make(threatsForUpdate)
@@ -120,8 +132,8 @@ func (db *database) Init(config *Config, logger *log.Logger) bool {
 		if row, ok := dbf.Table[td]; ok {
 			tfuNew[td] = row
 		} else {
-			db.log.Printf("database configuration mismatch")
-			db.setError(errStale)
+			db.log.Printf("database configuration mismatch, missing %v", td)
+			db.setError(errors.New("database configuration mismatch"))
 			return false
 		}
 	}
@@ -140,15 +152,39 @@ func (db *database) Status() error {
 		return db.err
 	}
 	if db.config.now().Sub(db.last) > (db.config.UpdatePeriod + jitter) {
-		return errStale
+		db.setStale()
+		return db.err
 	}
 	return nil
+}
+
+// UpdateLag reports the amount of time in between when we expected to run
+// a database update and the current time
+func (db *database) UpdateLag() time.Duration {
+	lag := db.SinceLastUpdate()
+	if lag < db.config.UpdatePeriod {
+		return 0
+	}
+	return lag - db.config.UpdatePeriod
+}
+
+// SinceLastUpdate gives the duration since the last database update
+func (db *database) SinceLastUpdate() time.Duration {
+	db.ml.RLock()
+	defer db.ml.RUnlock()
+
+	return db.config.now().Sub(db.last)
+}
+
+// Ready returns a channel that's closed when the database is ready for queries.
+func (db *database) Ready() <-chan struct{} {
+	return db.readyCh
 }
 
 // Update synchronizes the local threat lists with those maintained by the
 // global Safe Browsing API servers. If the update is successful, Status should
 // report a nil error.
-func (db *database) Update(api api) {
+func (db *database) Update(api api) (time.Duration, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
@@ -183,23 +219,42 @@ func (db *database) Update(api api) {
 	last := db.config.now()
 	resp, err := api.ListUpdate(req)
 	if err != nil {
-		db.log.Printf("ListUpdate failure: %v", err)
+		db.log.Printf("ListUpdate failure (%d): %v", db.updateAPIErrors+1, err)
 		db.setError(err)
-		return
+		// backoff strategy: MIN((2**N-1 * 15 minutes) * (RAND + 1), 24 hours)
+		n := 1 << db.updateAPIErrors
+		delay := time.Duration(float64(n) * (rand.Float64() + 1) * float64(baseRetryDelay))
+		if delay > maxRetryDelay {
+			delay = maxRetryDelay
+		}
+		db.updateAPIErrors++
+		return delay, false
+	}
+	db.updateAPIErrors = 0
+
+	// add jitter to wait time to avoid all servers lining up
+	nextUpdateWait := db.config.UpdatePeriod + time.Duration(rand.Int31n(60)-30)*time.Second
+	if resp.MinimumWaitDuration != nil {
+		serverMinWait := time.Duration(resp.MinimumWaitDuration.Seconds)*time.Second + time.Duration(resp.MinimumWaitDuration.Nanos)
+		if serverMinWait > nextUpdateWait {
+			nextUpdateWait = serverMinWait
+			db.log.Printf("Server requested next update in %v", nextUpdateWait)
+		}
 	}
 	if len(resp.ListUpdateResponses) != numTypes {
+		db.setError(errors.New("safebrowsing: threat list count mismatch"))
 		db.log.Printf("invalid server response: got %d, want %d threat lists",
 			len(resp.ListUpdateResponses), numTypes)
-		db.setError(errors.New("safebrowsing: threat list count mismatch"))
-		return
+		return nextUpdateWait, false
 	}
 
 	// Update the threat database with the response.
 	db.generateThreatsForUpdate()
 	if err := db.tfu.update(resp); err != nil {
-		db.log.Printf("update failure: %v", err)
 		db.setError(err)
-		return
+		db.log.Printf("update failure: %v", err)
+		db.tfu = nil
+		return nextUpdateWait, false
 	}
 	dbf := databaseFormat{make(threatsForUpdate), last}
 	for td, phs := range db.tfu {
@@ -215,6 +270,8 @@ func (db *database) Update(api api) {
 			db.log.Printf("save failure: %v", err)
 		}
 	}
+
+	return nextUpdateWait, true
 }
 
 // Lookup looks up the full hash in the threat list and returns a partial
@@ -242,8 +299,36 @@ func (db *database) setError(err error) {
 	db.tfu = nil
 
 	db.ml.Lock()
+	if db.err == nil {
+		db.readyCh = make(chan struct{})
+	}
 	db.tfl, db.err, db.last = nil, err, time.Time{}
 	db.ml.Unlock()
+}
+
+// setStale sets the error state to a stale message, without clearing
+// the database state.
+//
+// This assumes that the db.ml lock is already held.
+func (db *database) setStale() {
+	if db.err == nil {
+		db.readyCh = make(chan struct{})
+	}
+	db.err = errStale
+}
+
+// clearError clears the db error state, and unblocks any callers of
+// WaitUntilReady.
+//
+// This assumes that the db.mu lock is already held.
+func (db *database) clearError() {
+	db.ml.Lock()
+	defer db.ml.Unlock()
+
+	if db.err != nil {
+		close(db.readyCh)
+	}
+	db.err = nil
 }
 
 // generateThreatsForUpdate regenerates the threatsForUpdate hashes from
@@ -284,10 +369,11 @@ func (db *database) generateThreatsForLookups(last time.Time) {
 
 	db.ml.Lock()
 	wasBad := db.err != nil
-	db.tfl, db.err, db.last = tfl, nil, last
+	db.tfl, db.last = tfl, last
 	db.ml.Unlock()
 
 	if wasBad {
+		db.clearError()
 		db.log.Printf("database is now healthy")
 	}
 }
@@ -424,7 +510,9 @@ func (tfu threatsForUpdate) update(resp *pb.FetchThreatListUpdatesResponse) erro
 			return err
 		}
 
-		phs.SHA256 = m.GetChecksum().Sha256
+		if cs := m.GetChecksum(); cs != nil {
+			phs.SHA256 = cs.Sha256
+		}
 		if !bytes.Equal(phs.SHA256, phs.Hashes.SHA256()) {
 			return errors.New("safebrowsing: threat list SHA256 mismatch")
 		}

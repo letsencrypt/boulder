@@ -426,13 +426,9 @@ func generateLookupHosts(urlStr string) ([]string, error) {
 		return nil, err
 	}
 	// handle IPv4 and IPv6 addresses.
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		return nil, err
-	}
-	ip := net.ParseIP(strings.Trim(u.Host, "[]"))
+	ip := net.ParseIP(strings.Trim(host, "[]"))
 	if ip != nil {
-		return []string{u.Host}, nil
+		return []string{host}, nil
 	}
 	hostComponents := strings.Split(host, ".")
 
