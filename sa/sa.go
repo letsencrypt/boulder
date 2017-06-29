@@ -1114,8 +1114,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHas
 		qmarks[i] = "?"
 	}
 	query := "SELECT setHash FROM fqdnSets " +
-		"WHERE serial IN (" + strings.Join(qmarks, ",") + ") " +
-		"ORDER BY setHash ASC"
+		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
 	_, err := ssa.dbMap.Select(
 		&fqdnSets,
 		query,
