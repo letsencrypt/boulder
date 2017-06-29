@@ -1225,12 +1225,26 @@ func TestGetFQDNSetsBySerials(t *testing.T) {
 	// Asking for the fqdnSets for serial "a", "b", "c" and "made up" should return
 	// the three expected hashes - two expectedHashA (for "a" and "b"), one
 	// expectedHashB (for "c")
+	expectedHashes := map[string]int{
+		string(testcases["a"].ExpectedHash): 2,
+		string(testcases["c"].ExpectedHash): 1,
+	}
 	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"a", "b", "c", "made up"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"a\", \"b\", \"c\", \"made up\"")
-	test.AssertEquals(t, len(fqdnSets), 3)
-	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["a"].ExpectedHash))
-	test.AssertEquals(t, string(fqdnSets[1]), string(testcases["b"].ExpectedHash))
-	test.AssertEquals(t, string(fqdnSets[2]), string(testcases["c"].ExpectedHash))
+
+	for _, setHash := range fqdnSets {
+		setHashKey := string(setHash)
+		if _, present := expectedHashes[setHashKey]; !present {
+			t.Errorf("Unexpected setHash in results: %#v", setHash)
+		}
+		expectedHashes[setHashKey]--
+		if expectedHashes[setHashKey] <= 0 {
+			delete(expectedHashes, setHashKey)
+		}
+	}
+	if len(expectedHashes) != 0 {
+		t.Errorf("Some expected setHashes were not observed: %#v", expectedHashes)
+	}
 }
 
 func TestGetNewIssuancesByFQDNSet(t *testing.T) {

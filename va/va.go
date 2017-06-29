@@ -46,32 +46,21 @@ const (
 
 var validationTimeout = time.Second * 5
 
-// ValidationAuthorityImpl represents a VA
-type ValidationAuthorityImpl struct {
-	log            blog.Logger
-	dnsResolver    bdns.DNSResolver
-	issuerDomain   string
-	safeBrowsing   SafeBrowsing
-	httpPort       int
-	httpsPort      int
-	tlsPort        int
-	userAgent      string
-	stats          metrics.Scope
-	clk            clock.Clock
-	validationTime *prometheus.HistogramVec
+// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
+// of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
+// provide a way to extract this metadata which is useful for debugging gRPC connection issues.
+type RemoteVA struct {
+	core.ValidationAuthority
+	Addresses string
 }
 
-// NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(
-	pc *cmd.PortConfig,
-	sbc SafeBrowsing,
-	resolver bdns.DNSResolver,
-	userAgent string,
-	issuerDomain string,
-	stats metrics.Scope,
-	clk clock.Clock,
-	logger blog.Logger,
-) *ValidationAuthorityImpl {
+type vaMetrics struct {
+	validationTime           *prometheus.HistogramVec
+	remoteValidationTime     *prometheus.HistogramVec
+	remoteValidationFailures *prometheus.HistogramVec
+}
+
+func initMetrics(stats metrics.Scope) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "validation_time",
@@ -79,19 +68,73 @@ func NewValidationAuthorityImpl(
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(validationTime)
+	remoteValidationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "remote_validation_time",
+			Help: "Time taken to remotely validate a challenge",
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(remoteValidationTime)
+	remoteValidationFailures := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "remote_validation_failures",
+			Help: "Number of remote VAs that failed during challenge validation",
+		}, nil)
+	stats.MustRegister(remoteValidationFailures)
+
+	return &vaMetrics{
+		validationTime:           validationTime,
+		remoteValidationTime:     remoteValidationTime,
+		remoteValidationFailures: remoteValidationFailures,
+	}
+}
+
+// ValidationAuthorityImpl represents a VA
+type ValidationAuthorityImpl struct {
+	log               blog.Logger
+	dnsResolver       bdns.DNSResolver
+	issuerDomain      string
+	safeBrowsing      SafeBrowsing
+	httpPort          int
+	httpsPort         int
+	tlsPort           int
+	userAgent         string
+	stats             metrics.Scope
+	clk               clock.Clock
+	remoteVAs         []RemoteVA
+	maxRemoteFailures int
+
+	metrics *vaMetrics
+}
+
+// NewValidationAuthorityImpl constructs a new VA
+func NewValidationAuthorityImpl(
+	pc *cmd.PortConfig,
+	sbc SafeBrowsing,
+	resolver bdns.DNSResolver,
+	remoteVAs []RemoteVA,
+	maxRemoteFailures int,
+	userAgent string,
+	issuerDomain string,
+	stats metrics.Scope,
+	clk clock.Clock,
+	logger blog.Logger,
+) *ValidationAuthorityImpl {
 
 	return &ValidationAuthorityImpl{
-		log:            logger,
-		dnsResolver:    resolver,
-		issuerDomain:   issuerDomain,
-		safeBrowsing:   sbc,
-		httpPort:       pc.HTTPPort,
-		httpsPort:      pc.HTTPSPort,
-		tlsPort:        pc.TLSPort,
-		userAgent:      userAgent,
-		stats:          stats,
-		clk:            clk,
-		validationTime: validationTime,
+		log:               logger,
+		dnsResolver:       resolver,
+		issuerDomain:      issuerDomain,
+		safeBrowsing:      sbc,
+		httpPort:          pc.HTTPPort,
+		httpsPort:         pc.HTTPSPort,
+		tlsPort:           pc.TLSPort,
+		userAgent:         userAgent,
+		stats:             stats,
+		clk:               clk,
+		metrics:           initMetrics(stats),
+		remoteVAs:         remoteVAs,
+		maxRemoteFailures: maxRemoteFailures,
 	}
 }
 
@@ -730,6 +773,65 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	return nil, probs.Malformed(fmt.Sprintf("invalid challenge type %s", challenge.Type))
 }
 
+func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
+	s := va.clk.Now()
+	errors := make(chan error, len(va.remoteVAs))
+	for _, remoteVA := range va.remoteVAs {
+		go func(rva RemoteVA) {
+			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
+			if err != nil {
+				// returned error can be a nil *probs.ProblemDetails which breaks the
+				// err != nil check so do a slightly more complicated unwrap check to
+				// make sure we don't choke on that.
+				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
+					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err))
+				} else if ok && p == nil {
+					err = nil
+				}
+			}
+			errors <- err
+		}(remoteVA)
+	}
+
+	required := len(va.remoteVAs) - va.maxRemoteFailures
+	good := 0
+	bad := 0
+	state := "failure"
+	// Due to channel behavior this could block indefinitely and we rely on gRPC
+	// honoring the context deadline used in client calls to prevent that from
+	// happening.
+	for err := range errors {
+		if err == nil {
+			good++
+		} else {
+			bad++
+		}
+		if good >= required {
+			result <- nil
+			state = "success"
+			break
+		} else if bad > va.maxRemoteFailures {
+			if prob, ok := err.(*probs.ProblemDetails); ok {
+				// The overall error returned is whichever error
+				// happened to tip the threshold. This is fine
+				// since we expect that any remote validation
+				// failures will typically be the same across
+				// instances.
+				result <- prob
+			} else {
+				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")
+			}
+			break
+		}
+	}
+
+	va.metrics.remoteValidationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": state,
+	}).Observe(va.clk.Since(s).Seconds())
+	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(bad))
+}
+
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
 //
@@ -742,6 +844,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
+
+	var remoteError chan *probs.ProblemDetails
+	if len(va.remoteVAs) > 0 {
+		remoteError = make(chan *probs.ProblemDetails, 1)
+		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
+	}
 
 	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
@@ -757,13 +865,22 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
+	} else if remoteError != nil {
+		prob = <-remoteError
+		if prob != nil {
+			challenge.Status = core.StatusInvalid
+			challenge.Error = prob
+			logEvent.Error = prob.Error()
+		} else {
+			challenge.Status = core.StatusValid
+		}
 	} else {
 		challenge.Status = core.StatusValid
 	}
 
 	logEvent.Challenge = challenge
 
-	va.validationTime.With(prometheus.Labels{
+	va.metrics.validationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
 	}).Observe(time.Since(vStart).Seconds())
