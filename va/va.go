@@ -14,9 +14,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -622,6 +624,9 @@ func detailedError(err error) *probs.ProblemDetails {
 			// As of Go 1.8, all the tls.alert error strings are reasonable to hand back to a
 			// user.
 			return probs.TLSError(netErr.Error())
+		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
+			syscallErr.Err == syscall.ECONNREFUSED {
+			return probs.ConnectionFailure("connection refused")
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
