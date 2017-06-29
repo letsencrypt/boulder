@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/go-gorp/gorp.v2"
@@ -47,6 +49,36 @@ func (c contactExporter) findContacts() ([]contact, error) {
 	if err != nil {
 		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
 		return nil, err
+	}
+
+	return contactsList, nil
+}
+
+func (c contactExporter) findContactsForDomains(domains []string) ([]contact, error) {
+	var contactsList []contact
+	for _, domain := range domains {
+		// Pass the same list in each time, gorp will happily just append to the slice
+		// instead of overwriting it each time
+		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
+		_, err := c.dbMap.Select(
+			&contactsList,
+			`SELECT registrationID AS id FROM certificates
+                         WHERE expires >= :expireCutoff AND
+                         serial IN (
+                           SELECT serial FROM issuedNames
+                            WHERE reversedName = :reversedName
+                         )`,
+			map[string]interface{}{
+				"expireCutoff": c.clk.Now().Add(-c.grace),
+				"reversedName": sa.ReverseName(domain),
+			},
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, err
+		}
 	}
 
 	return contactsList, nil
@@ -112,6 +144,7 @@ Required arguments:
 func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
 	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
+	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
 	type config struct {
 		ContactExporter struct {
 			cmd.DBConfig
@@ -155,8 +188,16 @@ func main() {
 		grace: *grace,
 	}
 
-	contacts, err := exporter.findContacts()
-	cmd.FailOnError(err, "Could not find contacts")
+	var contacts []contact
+	if *domainsFile != "" {
+		df, err := ioutil.ReadFile(*domainsFile)
+		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
+		contacts, err = exporter.findContactsForDomains(strings.Split(string(df), "\n"))
+		cmd.FailOnError(err, "Could not find contacts")
+	} else {
+		contacts, err = exporter.findContacts()
+		cmd.FailOnError(err, "Could not find contacts")
+	}
 
 	err = writeContacts(contacts, *outFile)
 	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile %q", *outFile))

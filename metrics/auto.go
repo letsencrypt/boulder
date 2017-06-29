@@ -57,7 +57,7 @@ func (ap *autoProm) get(name string, make maker) prometheus.Collector {
 func newAutoProm(registerer prometheus.Registerer) *autoProm {
 	return &autoProm{
 		metrics:    make(map[string]prometheus.Collector),
-		Registerer: prometheus.NewRegistry(),
+		Registerer: registerer,
 	}
 }
 
