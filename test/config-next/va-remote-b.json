@@ -2,13 +2,12 @@
   "va": {
     "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder",
-    "debugAddr": ":8004",
+    "debugAddr": ":8012",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
@@ -17,30 +16,14 @@
       "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
-      "address": ":9092",
+      "address": ":9098",
       "clientNames": [
-        "ra.boulder"
+        "va.boulder"
       ]
     },
-    "GoogleSafeBrowsing": {
-      "APIKey": "my-voice-is-my-passport",
-      "DataDir": "/tmp",
-      "ServerURL": "http://boulder:6000"
-    },
     "features": {
-      "GoogleSafeBrowsingV4": true,
       "IPv6First": true
-    },
-    "remoteVAs": [
-      {
-        "serverAddresses": ["va.boulder:19097"],
-        "timeout": "15s"
-      },
-      {
-        "serverAddresses": ["va.boulder:19098"],
-        "timeout": "15s"
-      }
-    ]
+    }
   },
 
   "syslog": {
