@@ -17,9 +17,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -240,6 +242,9 @@ func TestHTTPBadPort(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	if !strings.Contains(prob.Detail, "Connection refused") {
+		t.Errorf("Expected a connection refused error, got %q", prob.Detail)
+	}
 }
 
 func TestHTTP(t *testing.T) {
@@ -1311,4 +1316,20 @@ func TestFallbackTLS(t *testing.T) {
 	test.AssertEquals(t, len(records[0].AddressesTried), 1)
 	// We expect that IPv6 localhost address was tried
 	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
+}
+
+func TestDetailedError(t *testing.T) {
+	err := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: &os.SyscallError{
+			Syscall: "getsockopt",
+			Err:     syscall.ECONNREFUSED,
+		},
+	}
+	expected := "Connection refused"
+	actual := detailedError(err).Detail
+	if actual != expected {
+		t.Errorf("Wrong detail for connection refused. Got %q, expected %q", actual, expected)
+	}
 }
