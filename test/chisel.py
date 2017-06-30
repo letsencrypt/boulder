@@ -160,9 +160,9 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
     authzs = [client.request_domain_challenges(d) for d in domains]
 
     if chall_type == "http-01":
-        cleanup = do_dns_challenges(client, authzs)
-    elif chall_type == "dns-01":
         cleanup = do_http_challenges(client, authzs)
+    elif chall_type == "dns-01":
+        cleanup = do_dns_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
