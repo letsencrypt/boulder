@@ -106,7 +106,7 @@ def start(race_detection):
                 # Add the two 'remote' VA debug ports
                 ports.extend([8011, 8012])
             # Add the wfe v2 debug port
-            ports.extend(8013)
+            ports.extend([8013])
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))
