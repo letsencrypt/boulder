@@ -409,7 +409,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, ident, chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Error getting validation data")
+	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Connection refused")
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
