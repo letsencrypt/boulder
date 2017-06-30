@@ -17,8 +17,10 @@ CREATE TABLE `authorizations` (
 
   PRIMARY KEY (`id`),
 
-  KEY `regId_authorizations_idx` (`registrationID`) COMMENT 'Common lookup',
-  CONSTRAINT `regId_authorizations`  FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`)
+  KEY `registrationID_status_expires_idx` (`registrationID`, `status`, `expires`),
+  KEY `identifierType_identifierValue_status_registrationID_expires_idx` (`identifierType`, `identifierValue`, `status`, `registrationID`, `expires`),
+
+  CONSTRAINT `regId_authorizations` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
