@@ -212,9 +212,16 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 		d.stats.Inc("IPv4Fallback", 1)
 	}
 
-	// This shouldn't happen, but be defensive about it anyway
-	if len(v4) < 1 {
-		return nil, fmt.Errorf("No available addresses for dialer to dial")
+	// If there are no IPv4 addresses and we tried an IPv6 address return an
+	// error - there's nothing left to try
+	if len(v4) == 0 && len(d.record.AddressesTried) > 0 {
+		return nil,
+			fmt.Errorf("Unable to contact %q at %q, no additional IPv4 addresses to try as fallback",
+				d.record.Hostname, d.record.AddressesTried[0])
+	} else if len(v4) == 0 && len(d.record.AddressesTried) == 0 {
+		// It shouldn't be possible that there are no IPv4 addresses and no previous
+		// attempts at an IPv6 address connection but be defensive about it anyway
+		return nil, fmt.Errorf("no IP addresses found for %q", d.record.Hostname)
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
@@ -469,13 +476,17 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 		va.stats.Inc("IPv4Fallback", 1)
 	}
 
-	// If there are no v4 addresses then return an error about there being no
-	// usable addresses found. We don't say "no IP addresses found" here because
-	// we may have tried an IPv6 address before this point, had it fail, and then
-	// found no fallbacks.
-	if len(v4) < 1 {
+	// If there are no IPv4 addresses and we tried an IPv6 address return
+	// an error - there's nothing left to try
+	if len(v4) == 0 && len(thisRecord.AddressesTried) > 0 {
 		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("no working IP addresses found for %q", identifier.Value))
+			fmt.Sprintf("Unable to contact %q at %q, no additional IPv4 addresses to try as fallback",
+				thisRecord.Hostname, thisRecord.AddressesTried[0]))
+	} else if len(v4) == 0 && len(thisRecord.AddressesTried) == 0 {
+		// It shouldn't be possible that there are no IPv4 addresses and no previous
+		// attempts at an IPv6 address connection but be defensive about it anyway
+		return nil, validationRecords, probs.Malformed(
+			fmt.Sprintf("No IP addresses found for %q", thisRecord.Hostname))
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
