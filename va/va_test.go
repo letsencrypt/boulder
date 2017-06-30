@@ -17,10 +17,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -241,6 +243,9 @@ func TestHTTPBadPort(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	if !strings.Contains(prob.Detail, "Connection refused") {
+		t.Errorf("Expected a connection refused error, got %q", prob.Detail)
+	}
 }
 
 func TestHTTP(t *testing.T) {
@@ -404,7 +409,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, ident, chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Error getting validation data")
+	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Connection refused")
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
@@ -1474,5 +1479,21 @@ func TestPerformRemoteValidation(t *testing.T) {
 	took = time.Since(s)
 	if took >= (time.Second * 5) {
 		t.Errorf("PerformValidation didn't return early on failure: took %s, expected <5s", took)
+	}
+}
+
+func TestDetailedError(t *testing.T) {
+	err := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: &os.SyscallError{
+			Syscall: "getsockopt",
+			Err:     syscall.ECONNREFUSED,
+		},
+	}
+	expected := "Connection refused"
+	actual := detailedError(err).Detail
+	if actual != expected {
+		t.Errorf("Wrong detail for connection refused. Got %q, expected %q", actual, expected)
 	}
 }
