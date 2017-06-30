@@ -15,7 +15,7 @@
     "subscriberAgreementURL": "http://boulder:4001/terms/v1",
     "checkMalformedCSR": true,
     "allowAuthzDeactivation": true,
-    "debugAddr": ":8011",
+    "debugAddr": ":8013",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",

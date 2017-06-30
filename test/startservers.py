@@ -54,6 +54,8 @@ def start(race_detection):
             [":19094", "ra.boulder:9094"],
             [":19095", "sa.boulder:9095"],
             [":19096", "ca.boulder:9096"],
+            [":19097", "va.boulder:9097"],
+            [":19098", "va.boulder:9098"]
     ]:
         forward(srv[0], srv[1])
     progs = [
@@ -73,6 +75,12 @@ def start(race_detection):
         'dns-test-srv',
         'mail-test-srv --closeFirst 5'
     ]
+    if default_config_dir.startswith("test/config-next"):
+        # Run the two 'remote' VAs
+        progs.extend([
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
+            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
+        ])
     if not install(race_detection):
         return False
     for prog in progs:
@@ -93,7 +101,12 @@ def start(race_detection):
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
-            ports = range(8000, 8005) + [4000,4001,4430,4431]
+            ports = range(8000, 8005) + [4000, 4001, 4430, 4431]
+            if default_config_dir.startswith("test/config-next"):
+                # Add the two 'remote' VA debug ports
+                ports.extend([8011, 8012])
+            # Add the wfe v2 debug port
+            ports.extend(8013)
             for debug_port in ports:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect(('localhost', debug_port))
