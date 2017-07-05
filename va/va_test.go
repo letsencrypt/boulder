@@ -1306,7 +1306,7 @@ func TestFallbackTLS(t *testing.T) {
 	test.Assert(t, prob != nil, "validation succeeded with broken IPv6 and no IPv4 fallback")
 	// We expect that the problem has the correct error message about nothing to fallback to
 	test.AssertEquals(t, prob.Detail,
-		"Unable to contact \"ipv6.localhost\" at \"::1\", no additional IPv4 addresses to try as fallback")
+		"Unable to contact \"ipv6.localhost\" at \"::1\", no IPv4 addresses to try as fallback")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
 	// We expect that the address eventually used was the IPv6 localhost address

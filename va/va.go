@@ -216,7 +216,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 	// error - there's nothing left to try
 	if len(v4) == 0 && len(d.record.AddressesTried) > 0 {
 		return nil,
-			fmt.Errorf("Unable to contact %q at %q, no additional IPv4 addresses to try as fallback",
+			fmt.Errorf("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
 				d.record.Hostname, d.record.AddressesTried[0])
 	} else if len(v4) == 0 && len(d.record.AddressesTried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
@@ -480,7 +480,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	// an error - there's nothing left to try
 	if len(v4) == 0 && len(thisRecord.AddressesTried) > 0 {
 		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("Unable to contact %q at %q, no additional IPv4 addresses to try as fallback",
+			fmt.Sprintf("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
 				thisRecord.Hostname, thisRecord.AddressesTried[0]))
 	} else if len(v4) == 0 && len(thisRecord.AddressesTried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
