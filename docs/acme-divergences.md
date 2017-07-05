@@ -48,10 +48,6 @@ from the directory instead.
 
 Boulder does not provide the "index" link relation pointing at the directory URL.
 
-## [Section 7.1.1](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1.1)
-
-Boulder does not implement the `meta` field returned by the `directory` endpoint.
-
 ## [Section 7.1.2](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1.2)
 
 Boulder does not implement the `terms-of-service-agreed` or `orders` fields in the registration object (nor the endpoints the latter links to).
