@@ -13,14 +13,20 @@ Boulder has a Dockerfile to make it easy to install and set up all its
 dependencies. This is how the maintainers work on Boulder, and is our main
 recommended way to run it.
 
-Make sure you have a local copy of Boulder in your `$GOPATH`:
+Make sure you have a local copy of Boulder in your `$GOPATH`, and that you are
+in that directory:
 
     export GOPATH=~/gopath
     git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
+    cd $GOPATH/src/github.com/letsencrypt/boulder
 
 Additionally, make sure you have Docker Engine 1.10.0+ and Docker Compose
 1.6.0+ installed. If you do not, you can follow Docker's [installation
 instructions](https://docs.docker.com/compose/install/).
+
+We recommend having **at least 2GB of RAM** available on your Docker host. In
+practice using less RAM may result in the MariaDB container failing in
+non-obvious ways.
 
 To start Boulder in a Docker container, run:
 
