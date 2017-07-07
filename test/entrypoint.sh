@@ -19,7 +19,7 @@ wait_tcp_port() {
 	sleep 1
     done
     exec 6>&-
-    echo "Connected to $host:$port!"
+    echo "Connected to $host:$port"
 }
 cat <<EOF >> /etc/hosts
 127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder
