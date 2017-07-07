@@ -1192,6 +1192,47 @@ func TestAvailableAddresses(t *testing.T) {
 	}
 }
 
+// TestHTTP01DialerFallback tests the underlying dialer used by HTTP01
+// challenges. In particular it ensures that both the first IPv6 request and the
+// subsequent IPv4 request get a new dialer each.
+func TestHTTP01DialerFallback(t *testing.T) {
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	// Set the IPv6First feature flag
+	_ = features.Set(map[string]bool{"IPv6First": true})
+	defer features.Reset()
+
+	// Create a test VA
+	va, _ := setup(hs, 0)
+
+	// Create a test dialer for the dual homed host
+	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
+
+	// Try to dial the dialer
+	_, dialProb := d.Dial("", "ipv4.and.ipv6.localhost")
+
+	// There shouldn't be a problem from this dial
+	test.AssertEquals(t, dialProb, nil)
+
+	// We should have constructed two inner dialers, one for each connection
+	test.AssertEquals(t, d.dialerCount, 2)
+
+	// We expect one validation record to be present
+	test.AssertNotNil(t, d.record, "there should be a non-nil validaiton record on the dialer")
+	// We expect that the address used was the IPv4 localhost address
+	test.AssertEquals(t, d.record.AddressUsed.String(), "127.0.0.1")
+	// We expect that one address was tried before the address used
+	test.AssertEquals(t, len(d.record.AddressesTried), 1)
+	// We expect that IPv6 address was tried before the address used
+	test.AssertEquals(t, d.record.AddressesTried[0].String(), "::1")
+}
+
 func TestFallbackDialer(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01()

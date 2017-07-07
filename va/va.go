@@ -173,13 +173,20 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 	return addr, addrs, nil
 }
 
-type dialer struct {
-	record core.ValidationRecord
-	stats  metrics.Scope
+type http01Dialer struct {
+	record      core.ValidationRecord
+	stats       metrics.Scope
+	dialerCount int
 }
 
-func (d *dialer) Dial(_, _ string) (net.Conn, error) {
-	realDialer := net.Dialer{Timeout: validationTimeout}
+func (d *http01Dialer) newDialer() net.Dialer {
+	// Record that we created a new dialer
+	d.dialerCount++
+	return net.Dialer{Timeout: validationTimeout}
+}
+
+func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
+	realDialer := d.newDialer()
 
 	// Split the available addresses into v4 and v6 addresses
 	v4, v6 := availableAddresses(d.record)
@@ -211,6 +218,8 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
 		d.record.AddressesTried = append(d.record.AddressesTried, d.record.AddressUsed)
+		// Reconstruct the underlying dialer to get a new timeout for the second request
+		realDialer = d.newDialer()
 		d.stats.Inc("IPv4Fallback", 1)
 	}
 
@@ -248,8 +257,8 @@ func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
 
 // resolveAndConstructDialer gets the preferred address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (dialer, *probs.ProblemDetails) {
-	d := dialer{
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (http01Dialer, *probs.ProblemDetails) {
+	d := http01Dialer{
 		record: core.ValidationRecord{
 			Hostname: name,
 			Port:     strconv.Itoa(port),
