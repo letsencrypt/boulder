@@ -1,0 +1,50 @@
+{
+  "wfe": {
+    "listenAddress": "0.0.0.0:4001",
+    "TLSListenAddress": "0.0.0.0:4431",
+    "serverCertificatePath": "test/wfe.pem",
+    "serverKeyPath": "test/wfe.key",
+    "requestTimeout": "10s",
+    "allowOrigins": ["*"],
+    "certCacheDuration": "6h",
+    "certNoCacheExpirationWindow": "96h",
+    "indexCacheDuration": "24h",
+    "issuerCacheDuration": "48h",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
+    "subscriberAgreementURL": "http://boulder:4001/terms/v1",
+    "acceptRevocationReason": true,
+    "allowAuthzDeactivation": true,
+    "debugAddr": ":8013",
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+    },
+    "raService": {
+      "serverAddresses": ["ra.boulder:19094"],
+      "timeout": "15s"
+    },
+    "saService": {
+      "serverAddresses": ["sa.boulder:19095"],
+      "timeout": "15s"
+    },
+    "features": {
+      "AllowAccountDeactivation": true,
+      "AllowKeyRollover": true,
+      "UseAIAIssuerURL": true,
+      "RandomDirectoryEntry": true,
+      "DirectoryMeta": true
+    }
+  },
+
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 4
+  },
+
+  "common": {
+    "issuerCert": "test/test-ca.pem",
+    "dnsResolver": "127.0.0.1:8053"
+  }
+}

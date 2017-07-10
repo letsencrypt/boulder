@@ -3,9 +3,11 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	safebrowsingv4 "github.com/google/safebrowsing"
 	"github.com/letsencrypt/boulder/cmd"
@@ -116,6 +118,12 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		ServerURL: gsb.ServerURL,
 		Logger:    gsbLogAdapter{logger},
 	})
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel() // avoid leak
+	err = sb.WaitUntilReady(ctx)
 	if err != nil {
 		return nil, err
 	}

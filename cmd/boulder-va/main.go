@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -37,6 +38,9 @@ type config struct {
 
 		// Feature flag to enable enforcement of CAA SERVFAILs.
 		CAASERVFAILExceptions string
+
+		RemoteVAs                   []cmd.GRPCClientConfig
+		MaxRemoteValidationFailures int
 
 		Features map[string]bool
 	}
@@ -119,18 +123,36 @@ func main() {
 		resolver = r
 	}
 
+	tls, err := c.VA.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
+
+	var remotes []va.RemoteVA
+	if len(c.VA.RemoteVAs) > 0 {
+		for _, rva := range c.VA.RemoteVAs {
+			vaConn, err := bgrpc.ClientSetup(&rva, tls, scope)
+			cmd.FailOnError(err, "Unable to create remote VA client")
+			remotes = append(
+				remotes,
+				va.RemoteVA{
+					bgrpc.NewValidationAuthorityGRPCClient(vaConn),
+					strings.Join(rva.ServerAddresses, ","),
+				},
+			)
+		}
+	}
+
 	vai := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
 		resolver,
+		remotes,
+		c.VA.MaxRemoteValidationFailures,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
 		scope,
 		clk,
 		logger)
 
-	tls, err := c.VA.TLS.Load()
-	cmd.FailOnError(err, "TLS config")
 	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tls, scope)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
