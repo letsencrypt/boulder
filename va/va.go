@@ -186,7 +186,8 @@ type http01Dialer struct {
 
 // realDialer is used to create a true `net.Dialer` that can be used once an IP
 // address to connect to is determined. It increments the `dialerCount` integer
-// to track how many "fresh" dialer instances have been created during a `Dial`.
+// to track how many "fresh" dialer instances have been created during a `Dial`
+// for testing purposes.
 func (d *http01Dialer) realDialer() *net.Dialer {
 	// Record that we created a new instance of a real net.Dialer
 	d.dialerCount++
