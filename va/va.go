@@ -254,6 +254,7 @@ func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
 	// talking to the first IPv6 address, try the first IPv4 address
 	address := net.JoinHostPort(v4[0].String(), d.record.Port)
 	d.record.AddressUsed = v4[0]
+	realDialer = d.realDialer()
 	return realDialer.Dial("tcp", address)
 }
 
