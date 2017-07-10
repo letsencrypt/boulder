@@ -233,8 +233,6 @@ func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
 		d.record.AddressesTried = append(d.record.AddressesTried, d.record.AddressUsed)
-		// Reconstruct the underlying dialer to get a new timeout for the second request
-		realDialer = d.realDialer()
 		d.stats.Inc("IPv4Fallback", 1)
 	}
 
