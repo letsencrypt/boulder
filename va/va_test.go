@@ -1211,7 +1211,8 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
-	// Create a test dialer for the dual homed host
+	// Create a test dialer for the dual homed host. There is only an IPv4 httpSrv
+	// so the IPv6 address returned in the AAAA record will always fail.
 	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
 
 	// Try to dial the dialer
