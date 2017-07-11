@@ -356,8 +356,6 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-const clientName = "ExpirationMailer"
-
 type config struct {
 	Mailer struct {
 		cmd.ServiceConfig
@@ -409,7 +407,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
