@@ -119,7 +119,7 @@ mailing is underway, ensuring we use the correct address if a user has updated
 their contact information between the time of export and the time of
 notification.
 
-The ID exporter's registration ID output will be JSON of the form:
+The ID exporter's output will be JSON of the form:
   [
    { "id": 1 },
    ...
