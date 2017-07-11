@@ -19,22 +19,22 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type contactExporter struct {
+type idExporter struct {
 	log   blog.Logger
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	grace time.Duration
 }
 
-type contact struct {
+type id struct {
 	ID int64 `json:"id"`
 }
 
-// Find all registration contacts with unexpired certificates.
-func (c contactExporter) findContacts() ([]contact, error) {
-	var contactsList []contact
+// Find all registration IDs with unexpired certificates.
+func (c idExporter) findIDs() ([]id, error) {
+	var idsList []id
 	_, err := c.dbMap.Select(
-		&contactsList,
+		&idsList,
 		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
@@ -47,21 +47,21 @@ func (c contactExporter) findContacts() ([]contact, error) {
 			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
-		c.log.AuditErr(fmt.Sprintf("Error finding contacts: %s", err))
+		c.log.AuditErr(fmt.Sprintf("Error finding IDs: %s", err))
 		return nil, err
 	}
 
-	return contactsList, nil
+	return idsList, nil
 }
 
-func (c contactExporter) findContactsForDomains(domains []string) ([]contact, error) {
-	var contactsList []contact
+func (c idExporter) findIDsForDomains(domains []string) ([]id, error) {
+	var idsList []id
 	for _, domain := range domains {
 		// Pass the same list in each time, gorp will happily just append to the slice
 		// instead of overwriting it each time
 		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
-			&contactsList,
+			&idsList,
 			`SELECT registrationID AS id FROM certificates
                          WHERE expires >= :expireCutoff AND
                          serial IN (
@@ -81,13 +81,13 @@ func (c contactExporter) findContactsForDomains(domains []string) ([]contact, er
 		}
 	}
 
-	return contactsList, nil
+	return idsList, nil
 }
 
-// The `writeContacts` function produces a file containing JSON serialized
+// The `writeIDs` function produces a file containing JSON serialized
 // contact objects
-func writeContacts(contactsList []contact, outfile string) error {
-	data, err := json.Marshal(contactsList)
+func writeIDs(idsList []id, outfile string) error {
+	data, err := json.Marshal(idsList)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func writeContacts(contactsList []contact, outfile string) error {
 const usageIntro = `
 Introduction:
 
-The contact exporter exists to retrieve the IDs of all registered
+The ID exporter exists to retrieve the IDs of all registered
 users with currently unexpired certificates. This list of registration IDs can
 then be given as input to the notification mailer to send bulk notifications.
 
@@ -119,7 +119,7 @@ mailing is underway, ensuring we use the correct address if a user has updated
 their contact information between the time of export and the time of
 notification.
 
-The contact exporter's registration ID output will be JSON of the form:
+The ID exporter's registration ID output will be JSON of the form:
   [
    { "id": 1 },
    ...
@@ -129,12 +129,12 @@ The contact exporter's registration ID output will be JSON of the form:
 Examples:
   Export all registration IDs with unexpired certificates to "regs.json":
 
-  contact-exporter -config test/config/contact-exporter.json -outfile regs.json
+  id-exporter -config test/config/id-exporter.json -outfile regs.json
 
   Export all registration IDs with certificates that are unexpired or expired
   within the last two days to "regs.json":
 
-  contact-exporter -config test/config/contact-exporter.json -grace 48h -outfile
+  id-exporter -config test/config/id-exporter.json -grace 48h -outfile
     "regs.json"
 
 Required arguments:
@@ -181,24 +181,24 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	exporter := contactExporter{
+	exporter := idExporter{
 		log:   log,
 		dbMap: dbMap,
 		clk:   cmd.Clock(),
 		grace: *grace,
 	}
 
-	var contacts []contact
+	var ids []id
 	if *domainsFile != "" {
 		df, err := ioutil.ReadFile(*domainsFile)
 		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
-		contacts, err = exporter.findContactsForDomains(strings.Split(string(df), "\n"))
-		cmd.FailOnError(err, "Could not find contacts")
+		ids, err = exporter.findIDsForDomains(strings.Split(string(df), "\n"))
+		cmd.FailOnError(err, "Could not find IDs")
 	} else {
-		contacts, err = exporter.findContacts()
-		cmd.FailOnError(err, "Could not find contacts")
+		ids, err = exporter.findIDs()
+		cmd.FailOnError(err, "Could not find IDs")
 	}
 
-	err = writeContacts(contacts, *outFile)
-	cmd.FailOnError(err, fmt.Sprintf("Could not write contacts to outfile %q", *outFile))
+	err = writeIDs(ids, *outFile)
+	cmd.FailOnError(err, fmt.Sprintf("Could not write IDs to outfile %q", *outFile))
 }
