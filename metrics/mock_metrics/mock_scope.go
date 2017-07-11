@@ -31,30 +31,24 @@ func (_m *MockScope) EXPECT() *_MockScopeRecorder {
 	return _m.recorder
 }
 
-func (_m *MockScope) Gauge(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "Gauge", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) Gauge(_param0 string, _param1 int64) {
+	_m.ctrl.Call(_m, "Gauge", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) Gauge(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Gauge", arg0, arg1)
 }
 
-func (_m *MockScope) GaugeDelta(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "GaugeDelta", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) GaugeDelta(_param0 string, _param1 int64) {
+	_m.ctrl.Call(_m, "GaugeDelta", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) GaugeDelta(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "GaugeDelta", arg0, arg1)
 }
 
-func (_m *MockScope) Inc(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "Inc", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) Inc(_param0 string, _param1 int64) {
+	_m.ctrl.Call(_m, "Inc", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) Inc(arg0, arg1 interface{}) *gomock.Call {
@@ -87,30 +81,24 @@ func (_mr *_MockScopeRecorder) NewScope(arg0 ...interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "NewScope", arg0...)
 }
 
-func (_m *MockScope) SetInt(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "SetInt", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) SetInt(_param0 string, _param1 int64) {
+	_m.ctrl.Call(_m, "SetInt", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) SetInt(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "SetInt", arg0, arg1)
 }
 
-func (_m *MockScope) Timing(_param0 string, _param1 int64) error {
-	ret := _m.ctrl.Call(_m, "Timing", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) Timing(_param0 string, _param1 int64) {
+	_m.ctrl.Call(_m, "Timing", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) Timing(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Timing", arg0, arg1)
 }
 
-func (_m *MockScope) TimingDuration(_param0 string, _param1 time.Duration) error {
-	ret := _m.ctrl.Call(_m, "TimingDuration", _param0, _param1)
-	ret0, _ := ret[0].(error)
-	return ret0
+func (_m *MockScope) TimingDuration(_param0 string, _param1 time.Duration) {
+	_m.ctrl.Call(_m, "TimingDuration", _param0, _param1)
 }
 
 func (_mr *_MockScopeRecorder) TimingDuration(arg0, arg1 interface{}) *gomock.Call {

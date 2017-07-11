@@ -866,8 +866,8 @@ func TestPerformValidationInvalid(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
@@ -881,8 +881,8 @@ func TestDNSValidationEmpty(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -900,8 +900,8 @@ func TestPerformValidationValid(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -1271,7 +1271,7 @@ func TestFallbackDialer(t *testing.T) {
 	va.stats = scope
 
 	// We expect the IPV4 Fallback stat to be incremented
-	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
 	// The validation is expected to succeed with IPv6First enabled even though
 	// the V6 server doesn't exist because we fallback to the IPv4 address.
@@ -1324,7 +1324,7 @@ func TestFallbackTLS(t *testing.T) {
 	va.stats = scope
 
 	// We expect the IPV4 Fallback stat to be incremented
-	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
 	// The validation is expected to succeed now that IPv6First is enabled by the
 	// fallback to the IPv4 address that has a test server waiting
