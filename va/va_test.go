@@ -1526,17 +1526,37 @@ func TestPerformRemoteValidation(t *testing.T) {
 }
 
 func TestDetailedError(t *testing.T) {
-	err := &net.OpError{
-		Op:  "dial",
-		Net: "tcp",
-		Err: &os.SyscallError{
-			Syscall: "getsockopt",
-			Err:     syscall.ECONNREFUSED,
+	cases := []struct {
+		err      error
+		expected string
+	}{
+		{
+			&net.OpError{
+				Op:  "dial",
+				Net: "tcp",
+				Err: &os.SyscallError{
+					Syscall: "getsockopt",
+					Err:     syscall.ECONNREFUSED,
+				},
+			},
+			"Connection refused",
+		},
+		{
+			&net.OpError{
+				Op:  "dial",
+				Net: "tcp",
+				Err: &os.SyscallError{
+					Syscall: "getsockopt",
+					Err:     syscall.ECONNRESET,
+				},
+			},
+			"Connection reset by peer",
 		},
 	}
-	expected := "Connection refused"
-	actual := detailedError(err).Detail
-	if actual != expected {
-		t.Errorf("Wrong detail for connection refused. Got %q, expected %q", actual, expected)
+	for _, tc := range cases {
+		actual := detailedError(tc.err).Detail
+		if actual != tc.expected {
+			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
+		}
 	}
 }
