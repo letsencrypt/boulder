@@ -12,6 +12,7 @@ RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt
 RUN chown -R buser /go/
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
+COPY . ./
 
 RUN mkdir bin
 
