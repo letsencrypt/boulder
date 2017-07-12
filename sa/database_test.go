@@ -38,15 +38,14 @@ func TestMaxOpenConns(t *testing.T) {
 
 func TestNewDbMap(t *testing.T) {
 	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expectedTransformed = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&strict=true&writeTimeout=800ms"
-
+	const expected = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=STRICT_ALL_TABLES"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
 	}()
 	sqlOpen = func(dbType, connectString string) (*sql.DB, error) {
-		if connectString != expectedTransformed {
-			t.Errorf("incorrect connection string mangling, got %v", connectString)
+		if connectString != expected {
+			t.Errorf("incorrect connection string mangling, want %#v, got %#v", expected, connectString)
 		}
 		return nil, errExpected
 	}
