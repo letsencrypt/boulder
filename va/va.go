@@ -44,7 +44,11 @@ const (
 	maxResponseSize = 128
 )
 
-var validationTimeout = time.Second * 5
+// singleDialTimeout specifies how long an individual `Dial` operation may take
+// before timing out. This timeout ignores the base RPC timeout and is strictly
+// used for the Dial operations that take place during an
+// HTTP-01/TLS-SNI-[01|02] challenge validation.
+var singleDialTimeout = time.Second * 5
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -191,7 +195,7 @@ type http01Dialer struct {
 func (d *http01Dialer) realDialer() *net.Dialer {
 	// Record that we created a new instance of a real net.Dialer
 	d.dialerCount++
-	return &net.Dialer{Timeout: validationTimeout}
+	return &net.Dialer{Timeout: singleDialTimeout}
 }
 
 // Dial processes the IP addresses from the inner validation record, using
@@ -402,7 +406,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	client := http.Client{
 		Transport:     tr,
 		CheckRedirect: logRedirect,
-		Timeout:       validationTimeout,
+		Timeout:       singleDialTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
 	// Append a validation record now that we have dialed the dialer
@@ -588,7 +592,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 
 func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: singleDialTimeout}, "tcp", hostPort, &tls.Config{
 		ServerName:         zName,
 		InsecureSkipVerify: true,
 	})
