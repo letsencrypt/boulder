@@ -72,6 +72,7 @@
 package safebrowsing
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -94,6 +95,10 @@ const (
 	// strings to send with every API call.
 	DefaultID      = "GoSafeBrowser"
 	DefaultVersion = "1.0.0"
+
+	// DefaultRequestTimeout is the default amount of time a single
+	// api request can take.
+	DefaultRequestTimeout = time.Minute
 )
 
 // Errors specific to this package.
@@ -207,6 +212,9 @@ type Config struct {
 	// If empty, it defaults to DefaultThreatLists.
 	ThreatLists []ThreatDescriptor
 
+	// RequestTimeout determines the timeout value for the http client.
+	RequestTimeout time.Duration
+
 	// Logger is an io.Writer that allows SafeBrowser to write debug information
 	// intended for human consumption.
 	// If empty, no logs will be written.
@@ -231,6 +239,9 @@ func (c *Config) setDefaults() bool {
 	if c.UpdatePeriod <= 0 {
 		c.UpdatePeriod = DefaultUpdatePeriod
 	}
+	if c.RequestTimeout <= 0 {
+		c.RequestTimeout = DefaultRequestTimeout
+	}
 	if c.compressionTypes == nil {
 		c.compressionTypes = []pb.CompressionType{pb.CompressionType_RAW, pb.CompressionType_RICE}
 	}
@@ -251,8 +262,8 @@ func (c Config) copy() Config {
 // local database and caching that would normally be needed to interact
 // with the API server.
 type SafeBrowser struct {
+	stats  Stats // Must be first for 64-bit alignment on non 64-bit systems.
 	config Config
-	stats  Stats
 	api    api
 	db     database
 	c      cache
@@ -267,10 +278,11 @@ type SafeBrowser struct {
 
 // Stats records statistics regarding SafeBrowser's operation.
 type Stats struct {
-	QueriesByDatabase int64 // Number of queries satisfied by the database alone
-	QueriesByCache    int64 // Number of queries satisfied by the cache alone
-	QueriesByAPI      int64 // Number of queries satisfied by an API call
-	QueriesFail       int64 // Number of queries that could not be satisfied
+	QueriesByDatabase int64         // Number of queries satisfied by the database alone
+	QueriesByCache    int64         // Number of queries satisfied by the cache alone
+	QueriesByAPI      int64         // Number of queries satisfied by an API call
+	QueriesFail       int64         // Number of queries that could not be satisfied
+	DatabaseUpdateLag time.Duration // Duration since last *missed* update. 0 if next update is in the future.
 }
 
 // NewSafeBrowser creates a new SafeBrowser.
@@ -286,7 +298,7 @@ func NewSafeBrowser(conf Config) (*SafeBrowser, error) {
 	// Create the SafeBrowsing object.
 	if conf.api == nil {
 		var err error
-		conf.api, err = newNetAPI(conf.ServerURL, conf.APIKey)
+		conf.api, err = newNetAPI(conf.ServerURL, conf.APIKey, conf.RequestTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -316,14 +328,19 @@ func NewSafeBrowser(conf Config) (*SafeBrowser, error) {
 	}
 	sb.log = log.New(w, "safebrowsing: ", log.Ldate|log.Ltime|log.Lshortfile)
 
+	delay := time.Duration(0)
 	// If database file is provided, use that to initialize.
 	if !sb.db.Init(&sb.config, sb.log) {
-		sb.db.Update(sb.api)
+		delay, _ = sb.db.Update(sb.api)
+	} else {
+		if age := sb.db.SinceLastUpdate(); age < sb.config.UpdatePeriod {
+			delay = sb.config.UpdatePeriod - age
+		}
 	}
 
 	// Start the background list updater.
 	sb.done = make(chan bool)
-	go sb.updater(conf.UpdatePeriod)
+	go sb.updater(delay)
 	return sb, nil
 }
 
@@ -337,8 +354,26 @@ func (sb *SafeBrowser) Status() (Stats, error) {
 		QueriesByCache:    atomic.LoadInt64(&sb.stats.QueriesByCache),
 		QueriesByAPI:      atomic.LoadInt64(&sb.stats.QueriesByAPI),
 		QueriesFail:       atomic.LoadInt64(&sb.stats.QueriesFail),
+		DatabaseUpdateLag: sb.db.UpdateLag(),
 	}
 	return stats, sb.db.Status()
+}
+
+// WaitUntilReady blocks until the database is not in an error state.
+// Returns nil when the database is ready. Returns an error if the provided
+// context is canceled or if the SafeBrowser instance is Closed.
+func (sb *SafeBrowser) WaitUntilReady(ctx context.Context) error {
+	if atomic.LoadUint32(&sb.closed) == 1 {
+		return errClosed
+	}
+	select {
+	case <-sb.db.Ready():
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-sb.done:
+		return errClosed
+	}
 }
 
 // LookupURLs looks up the provided URLs. It returns a list of threats, one for
@@ -492,16 +527,17 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 // updater is a blocking method that periodically updates the local database.
 // This should be run as a separate goroutine and will be automatically stopped
 // when sb.Close is called.
-func (sb *SafeBrowser) updater(period time.Duration) {
-	ticker := time.NewTicker(period)
-	defer ticker.Stop()
-
+func (sb *SafeBrowser) updater(delay time.Duration) {
 	for {
+		sb.log.Printf("Next update in %v", delay)
 		select {
-		case <-ticker.C:
-			sb.log.Printf("background threat list update")
-			sb.c.Purge()
-			sb.db.Update(sb.api)
+		case <-time.After(delay):
+			var ok bool
+			if delay, ok = sb.db.Update(sb.api); ok {
+				sb.log.Printf("background threat list updated")
+				sb.c.Purge()
+			}
+
 		case <-sb.done:
 			return
 		}

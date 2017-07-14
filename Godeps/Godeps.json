@@ -115,6 +115,10 @@
 			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
+			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+		},
+		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
 			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
 		},
@@ -144,11 +148,11 @@
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
-			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
+			"Rev": "a8c029efb52bae66853e05241150ab338e98fbc7"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing/internal/safebrowsing_proto",
-			"Rev": "fc74adc270b82ff5a2f288fa84e40213eae713c5"
+			"Rev": "a8c029efb52bae66853e05241150ab338e98fbc7"
 		},
 		{
 			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",

@@ -14,6 +14,8 @@
 
 syntax = "proto3";
 
+import "google/protobuf/duration.proto";
+
 package safebrowsing_proto;
 
 // The Safe Browsing APIs enable clients to check web resources (most commonly
@@ -81,7 +83,7 @@ message ThreatMatch {
 
   // The cache lifetime for the returned match. Clients must not cache this
   // response for more than this duration to avoid false positives.
-  Duration cache_duration = 5;
+  google.protobuf.Duration cache_duration = 5;
 }
 
 // Request to check entries against lists.
@@ -208,7 +210,7 @@ message FetchThreatListUpdatesResponse {
 
   // The minimum duration the client must wait before issuing any update
   // request. If this field is not set clients may update as soon as they want.
-  Duration minimum_wait_duration = 2;
+  google.protobuf.Duration minimum_wait_duration = 2;
 }
 
 // Request to return full hashes matched by the provided hash prefixes.
@@ -231,11 +233,11 @@ message FindFullHashesResponse {
   // The minimum duration the client must wait before issuing any find hashes
   // request. If this field is not set, clients can issue a request as soon as
   // they want.
-  Duration minimum_wait_duration = 2;
+  google.protobuf.Duration minimum_wait_duration = 2;
 
   // For requested entities that did not match the threat list, how long to
   // cache the response.
-  Duration negative_cache_duration = 3;
+  google.protobuf.Duration negative_cache_duration = 3;
 }
 
 
@@ -443,25 +445,4 @@ message ThreatListDescriptor {
 message ListThreatListsResponse {
   // The lists available for download by the client.
   repeated ThreatListDescriptor threat_lists = 1;
-}
-
-// A Duration represents a signed, fixed-length span of time represented
-// as a count of seconds and fractions of seconds at nanosecond
-// resolution. It is independent of any calendar and concepts like "day"
-// or "month". It is related to Timestamp in that the difference between
-// two Timestamp values is a Duration and it can be added or subtracted
-// from a Timestamp. Range is approximately +-10,000 years.
-message Duration {
-
-  // Signed seconds of the span of time. Must be from -315,576,000,000
-  // to +315,576,000,000 inclusive.
-  int64 seconds = 1;
-
-  // Signed fractions of a second at nanosecond resolution of the span
-  // of time. Durations less than one second are represented with a 0
-  // `seconds` field and a positive or negative `nanos` field. For durations
-  // of one second or more, a non-zero value for the `nanos` field must be
-  // of the same sign as the `seconds` field. Must be from -999,999,999
-  // to +999,999,999 inclusive.
-  int32 nanos = 2;
 }
