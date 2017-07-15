@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v1"
@@ -676,27 +677,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
 	var output core.Authorization
 
-	// Check if we can recycle an existing, pending authz.
-	if features.Enabled(features.ReusePendingAuthz) {
-		idJSON, err := json.Marshal(authz.Identifier)
-		if err != nil {
-			return output, err
-		}
-
-		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ? AND expires > ? LIMIT 1", idJSON, ssa.clk.Now().Add(time.Hour))
-		if err == sql.ErrNoRows {
-			// No existing authz found, proceed to create one.
-		} else if err == nil {
-			// We found an authz, but we still need to fetch its challenges. To
-			// simplify things, just call GetAuthorization, which takes care of that.
-			ssa.scope.Inc("reused_authz", 1)
-			return ssa.GetAuthorization(ctx, pa.ID)
-		} else {
-			// Any error other than ErrNoRows; return the error
-			return output, err
-		}
-	}
-
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return output, err
@@ -744,6 +724,54 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
 	return output, err
+}
+
+// GetPendingAuthorization returns the most recent Pending authorization
+// with the given identifier, if available.
+func (ssa *SQLStorageAuthority) GetPendingAuthorization(
+	ctx context.Context,
+	regID int64,
+	identifierType string,
+	identifierValue string,
+) (*core.Authorization, error) {
+	identifierJSON, err := json.Marshal(core.AcmeIdentifier{
+		Type:  core.IdentifierType(identifierType),
+		Value: identifierValue,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: This will use the index on `registrationId`, `expires`, which should
+	// keep the amount of scanning to a minimum. That index does not include the
+	// identifier, so accounts with huge numbers of pending authzs may result in
+	// slow queries here.
+	pa, err := selectPendingAuthz(ssa.dbMap,
+		`WHERE registrationID = :regID
+			 AND identifier = :identifierJSON
+			 AND status = :status
+			 AND expires > :nowish
+		 ORDER BY expires ASC
+		 LIMIT 1`,
+		map[string]interface{}{
+			"regID":          regID,
+			"identifierJSON": identifierJSON,
+			"status":         acme.StatusPending,
+			"nowish":         ssa.clk.Now().Add(time.Hour),
+		})
+	if err == sql.ErrNoRows {
+		return nil, berrors.NotFoundError("pending authz not found")
+	} else if err == nil {
+		// We found an authz, but we still need to fetch its challenges. To
+		// simplify things, just call GetAuthorization, which takes care of that.
+		ssa.scope.Inc("reused_authz", 1)
+		authz, err := ssa.GetAuthorization(ctx, pa.ID)
+		return &authz, err
+	} else {
+		// Any error other than ErrNoRows; return the error
+		return nil, err
+	}
+
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
