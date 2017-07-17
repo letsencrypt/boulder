@@ -15,8 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/va"
 )
 
-const clientName = "VA"
-
 type config struct {
 	VA struct {
 		cmd.ServiceConfig
@@ -71,7 +69,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,

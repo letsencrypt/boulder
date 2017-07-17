@@ -17,8 +17,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 	"gopkg.in/go-gorp/gorp.v2"
 	"gopkg.in/square/go-jose.v1"
 
@@ -26,7 +27,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -102,7 +102,6 @@ var (
 )
 
 func TestSendNags(t *testing.T) {
-	stats := metrics.NewNoopScope()
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
@@ -110,7 +109,6 @@ func TestSendNags(t *testing.T) {
 	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
 
 	m := mailer{
-		stats:         stats,
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
@@ -118,6 +116,7 @@ func TestSendNags(t *testing.T) {
 		subjectTemplate: staticTmpl,
 		rs:              rs,
 		clk:             fc,
+		stats:           initStats(metrics.NewNoopScope()),
 	}
 
 	cert := &x509.Certificate{
@@ -423,6 +422,15 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	return []core.Certificate{*certA, *certB, *certC, *certD}
 }
 
+func countGroupsAtCapacity(group string, counter *prometheus.CounterVec) int {
+	ch := make(chan prometheus.Metric, 10)
+	counter.With(prometheus.Labels{"nagGroup": group}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
+}
+
 func TestFindCertsAtCapacity(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24})
 
@@ -430,30 +438,18 @@ func TestFindCertsAtCapacity(t *testing.T) {
 
 	log.Clear()
 
-	// Override the mailer `stats` with a mock
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	statter := mock_metrics.NewMockScope(ctrl)
-	testCtx.m.stats = statter
-
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
-
-	// The mock statter should have had the "48h0m0s" nag capacity stat incremented once.
-	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
-	// * 24 to setup() for the nag duration. This is because all of the nags are
-	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Errors.Nag-48h0m0s.AtCapacity", int64(1))
-
-	// findExpiringCertificates() ends up invoking sendNags which calls
-	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("SendLatency", time.Duration(0))
-	// Similarly, findExpiringCertificates() sends its latency as well
-	statter.EXPECT().TimingDuration("ProcessingCertificatesLatency", time.Duration(0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 1)
+
+	// The "48h0m0s" nag group should have its prometheus stat incremented once.
+	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
+	// * 24 to setup() for the nag duration. This is because all of the nags are
+	// offset by defaultNagCheckInterval, which is 24hrs.
+	test.AssertEquals(t, countGroupsAtCapacity("48h0m0s", testCtx.m.stats.nagsAtCapacity), 1)
 
 	// A consecutive run shouldn't find anything - similarly we do not EXPECT()
 	// anything on statter to be called, and if it is then we have a test failure
@@ -871,7 +867,6 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats := metrics.NewNoopScope()
 	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))
@@ -881,7 +876,6 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 
 	m := &mailer{
 		log:             log,
-		stats:           stats,
 		mailer:          mc,
 		emailTemplate:   tmpl,
 		subjectTemplate: subjTmpl,
@@ -890,6 +884,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		nagTimes:        offsetNags,
 		limit:           100,
 		clk:             fc,
+		stats:           initStats(metrics.NewNoopScope()),
 	}
 	return &testCtx{
 		dbMap:   dbMap,

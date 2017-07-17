@@ -31,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -43,7 +44,6 @@ type regStore interface {
 }
 
 type mailer struct {
-	stats           metrics.Scope
 	log             blog.Logger
 	dbMap           *gorp.DbMap
 	rs              regStore
@@ -53,6 +53,15 @@ type mailer struct {
 	nagTimes        []time.Duration
 	limit           int
 	clk             clock.Clock
+	stats           mailerStats
+}
+
+type mailerStats struct {
+	nagsAtCapacity    *prometheus.CounterVec
+	errorCount        *prometheus.CounterVec
+	renewalCount      *prometheus.CounterVec
+	sendLatency       prometheus.Histogram
+	processingLatency prometheus.Histogram
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
@@ -112,7 +121,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		ExpirationSubject: expiringSubject,
 	})
 	if err != nil {
-		m.stats.Inc("Errors.SendingNag.SubjectTemplateFailure", 1)
+		m.stats.errorCount.With(prometheus.Labels{"type": "SubjectTemplateFailure"}).Inc()
 		return err
 	}
 
@@ -128,7 +137,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	msgBuf := new(bytes.Buffer)
 	err = m.emailTemplate.Execute(msgBuf, email)
 	if err != nil {
-		m.stats.Inc("Errors.SendingNag.TemplateFailure", 1)
+		m.stats.errorCount.With(prometheus.Labels{"type": "TemplateFailure"}).Inc()
 		return err
 	}
 	startSending := m.clk.Now()
@@ -138,7 +147,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)
-	m.stats.TimingDuration("SendLatency", elapsed)
+	m.stats.sendLatency.Observe(elapsed.Seconds())
 	return nil
 }
 
@@ -190,7 +199,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
 			m.log.AuditErr(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
-			m.stats.Inc("Errors.GetRegistration", 1)
+			m.stats.errorCount.With(prometheus.Labels{"type": "GetRegistration"}).Inc()
 			continue
 		}
 
@@ -200,7 +209,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			if err != nil {
 				// TODO(#1420): tell registration about this error
 				m.log.AuditErr(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
-				m.stats.Inc("Errors.ParseCertificate", 1)
+				m.stats.errorCount.With(prometheus.Labels{"type": "ParseCertificate"}).Inc()
 				continue
 			}
 
@@ -209,10 +218,10 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				m.log.AuditErr(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
 				// assume not renewed
 			} else if renewed {
-				m.stats.Inc("Renewed", 1)
+				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
 				if err := m.updateCertStatus(cert.Serial); err != nil {
 					m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
-					m.stats.Inc("Errors.UpdateCertificateStatus", 1)
+					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				}
 				continue
 			}
@@ -239,7 +248,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			err = m.updateCertStatus(serial)
 			if err != nil {
 				m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
-				m.stats.Inc("Errors.UpdateCertificateStatus", 1)
+				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				continue
 			}
 		}
@@ -328,15 +337,14 @@ func (m *mailer) findExpiringCertificates() error {
 				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
-			statName := fmt.Sprintf("Errors.Nag-%s.AtCapacity", expiresIn.String())
-			m.stats.Inc(statName, 1)
+			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Inc()
 		}
 
 		processingStarted := m.clk.Now()
 		m.processCerts(certs)
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
-		m.stats.TimingDuration("ProcessingCertificatesLatency", elapsed)
+		m.stats.processingLatency.Observe(elapsed.Seconds())
 	}
 
 	return nil
@@ -355,8 +363,6 @@ func (ds durationSlice) Less(a, b int) bool {
 func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
-
-const clientName = "ExpirationMailer"
 
 type config struct {
 	Mailer struct {
@@ -387,6 +393,54 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
+func initStats(scope metrics.Scope) mailerStats {
+	nagsAtCapacity := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nagsAtCapacity",
+			Help: "Count of nag groups at capcacity",
+		},
+		[]string{"nagGroup"})
+	scope.MustRegister(nagsAtCapacity)
+
+	errorCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "errors",
+			Help: "Number of errors",
+		},
+		[]string{"type"})
+	scope.MustRegister(errorCount)
+
+	renewalCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "renewals",
+			Help: "Number of messages skipped for being renewals",
+		},
+		nil)
+	scope.MustRegister(renewalCount)
+
+	sendLatency := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "sendLatency",
+			Help: "Time the mailer takes sending messages",
+		})
+	scope.MustRegister(sendLatency)
+
+	processingLatency := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "processingLatency",
+			Help: "Time the mailer takes processing certificates",
+		})
+	scope.MustRegister(processingLatency)
+
+	return mailerStats{
+		nagsAtCapacity:    nagsAtCapacity,
+		errorCount:        errorCount,
+		renewalCount:      renewalCount,
+		sendLatency:       sendLatency,
+		processingLatency: processingLatency,
+	}
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
@@ -409,7 +463,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
@@ -489,7 +543,6 @@ func main() {
 	sort.Sort(nags)
 
 	m := mailer{
-		stats:           scope,
 		log:             logger,
 		dbMap:           dbMap,
 		rs:              sac,
@@ -499,6 +552,7 @@ func main() {
 		nagTimes:        nags,
 		limit:           c.Mailer.CertLimit,
 		clk:             cmd.Clock(),
+		stats:           initStats(scope),
 	}
 
 	go cmd.DebugServer(c.Mailer.DebugAddr)

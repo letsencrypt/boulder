@@ -12,12 +12,12 @@ import (
 type Scope interface {
 	NewScope(scopes ...string) Scope
 
-	Inc(stat string, value int64) error
-	Gauge(stat string, value int64) error
-	GaugeDelta(stat string, value int64) error
-	Timing(stat string, delta int64) error
-	TimingDuration(stat string, delta time.Duration) error
-	SetInt(stat string, value int64) error
+	Inc(stat string, value int64)
+	Gauge(stat string, value int64)
+	GaugeDelta(stat string, value int64)
+	Timing(stat string, delta int64)
+	TimingDuration(stat string, delta time.Duration)
+	SetInt(stat string, value int64)
 
 	MustRegister(...prometheus.Collector)
 }
@@ -55,40 +55,34 @@ func (s *promScope) NewScope(scopes ...string) Scope {
 }
 
 // Inc increments the given stat and adds the Scope's prefix to the name
-func (s *promScope) Inc(stat string, value int64) error {
+func (s *promScope) Inc(stat string, value int64) {
 	s.autoCounter(s.statName(stat)).Add(float64(value))
-	return nil
 }
 
 // Gauge sends a gauge stat and adds the Scope's prefix to the name
-func (s *promScope) Gauge(stat string, value int64) error {
+func (s *promScope) Gauge(stat string, value int64) {
 	s.autoGauge(s.statName(stat)).Set(float64(value))
-	return nil
 }
 
 // GaugeDelta sends the change in a gauge stat and adds the Scope's prefix to the name
-func (s *promScope) GaugeDelta(stat string, value int64) error {
+func (s *promScope) GaugeDelta(stat string, value int64) {
 	s.autoGauge(s.statName(stat)).Add(float64(value))
-	return nil
 }
 
 // Timing sends a latency stat and adds the Scope's prefix to the name
-func (s *promScope) Timing(stat string, delta int64) error {
+func (s *promScope) Timing(stat string, delta int64) {
 	s.autoSummary(s.statName(stat) + "_seconds").Observe(float64(delta))
-	return nil
 }
 
 // TimingDuration sends a latency stat as a time.Duration and adds the Scope's
 // prefix to the name
-func (s *promScope) TimingDuration(stat string, delta time.Duration) error {
+func (s *promScope) TimingDuration(stat string, delta time.Duration) {
 	s.autoSummary(s.statName(stat) + "_seconds").Observe(delta.Seconds())
-	return nil
 }
 
 // SetInt sets a stat's integer value and adds the Scope's prefix to the name
-func (s *promScope) SetInt(stat string, value int64) error {
+func (s *promScope) SetInt(stat string, value int64) {
 	s.autoGauge(s.statName(stat)).Set(float64(value))
-	return nil
 }
 
 // statName construct a name for a stat based on the prefix of this scope, plus
@@ -111,28 +105,22 @@ func (n noopScope) NewScope(scopes ...string) Scope {
 	return n
 }
 
-func (n noopScope) Inc(stat string, value int64) error {
-	return nil
+func (n noopScope) Inc(stat string, value int64) {
 }
 
-func (n noopScope) Gauge(stat string, value int64) error {
-	return nil
+func (n noopScope) Gauge(stat string, value int64) {
 }
 
-func (n noopScope) GaugeDelta(stat string, value int64) error {
-	return nil
+func (n noopScope) GaugeDelta(stat string, value int64) {
 }
 
-func (n noopScope) Timing(stat string, delta int64) error {
-	return nil
+func (n noopScope) Timing(stat string, delta int64) {
 }
 
-func (n noopScope) TimingDuration(stat string, delta time.Duration) error {
-	return nil
+func (n noopScope) TimingDuration(stat string, delta time.Duration) {
 }
 
-func (n noopScope) SetInt(stat string, value int64) error {
-	return nil
+func (n noopScope) SetInt(stat string, value int64) {
 }
 
 func (n noopScope) MustRegister(...prometheus.Collector) {
