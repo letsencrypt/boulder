@@ -5,16 +5,17 @@ services:
             context: .
             dockerfile: Dockerfile
         environment:
-            FAKE_DNS: 127.0.0.1
+            #FAKE_DNS: 127.0.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
             BOULDER_CONFIG_DIR: test/config
-        volumes:
-          - .:/go/src/github.com/letsencrypt/boulder
-          - /tmp:/tmp
+        #volumes:
+          #- .:/go/src/github.com/letsencrypt/boulder
+          #- /tmp:/tmp
         network_mode: bridge
         extra_hosts:
           - le.wtf:127.0.0.1
           - boulder:127.0.0.1
+          - letsencrypt.pp.plesk.ru:127.0.0.1
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2

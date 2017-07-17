@@ -12,7 +12,7 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
+    "subscriberAgreementURL": "http://letsencrypt.pp.plesk.ru/terms/v1",
     "checkMalformedCSR": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8000",

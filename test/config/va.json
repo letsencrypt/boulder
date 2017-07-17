@@ -4,9 +4,9 @@
     "userAgent": "boulder",
     "debugAddr": ":8004",
     "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
+      "httpPort": 80,
+      "httpsPort": 443,
+      "tlsPort": 443
     },
     "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 100000,

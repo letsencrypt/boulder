@@ -64,9 +64,6 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	// different hardcoded host. You can do so by setting the FAKE_DNS environment
 	// variable.
 	fakeDNS := os.Getenv("FAKE_DNS")
-	if fakeDNS == "" {
-		fakeDNS = "127.0.0.1"
-	}
 	for _, q := range r.Question {
 		fmt.Printf("dns-srv: Query -- [%s] %s\n", q.Name, dns.TypeToString[q.Qtype])
 		switch q.Qtype {
@@ -78,8 +75,27 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				Class:  dns.ClassINET,
 				Ttl:    0,
 			}
-			record.A = net.ParseIP(fakeDNS)
-
+                        if fakeDNS != "" {
+                               record.A = net.ParseIP(fakeDNS)
+			} else if addr, err := net.ResolveIPAddr("ip4", q.Name); err == nil {
+				record.A = net.ParseIP(addr.String())
+			}
+			fmt.Printf("dns-srv: Result \"%+v\"\n", record.A)
+			m.Answer = append(m.Answer, record)
+		case dns.TypeAAAA:
+			record := new(dns.AAAA)
+			record.Hdr = dns.RR_Header{
+				Name:   q.Name,
+				Rrtype: dns.TypeAAAA,
+				Class:  dns.ClassINET,
+				Ttl:    0,
+			}
+			if fakeDNS != "" {
+				record.AAAA = net.ParseIP(fakeDNS)
+			} else if addr, err := net.ResolveIPAddr("ip6", q.Name); err == nil {
+				record.AAAA = net.ParseIP(addr.String())
+			}
+			fmt.Printf("dns-srv: Result \"%+v\"\n", record.AAAA)
 			m.Answer = append(m.Answer, record)
 		case dns.TypeMX:
 			record := new(dns.MX)
