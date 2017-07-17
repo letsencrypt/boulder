@@ -53,7 +53,7 @@
             "backdate": "1h",
             "ca_constraint": { "is_ca": false },
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://letsencrypt.pp.plesk.ru/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
@@ -90,7 +90,7 @@
             "backdate": "1h",
             "is_ca": false,
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://letsencrypt.pp.plesk.ru/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
