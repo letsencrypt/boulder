@@ -27,10 +27,6 @@
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca2.pem",
-      "NumSessions": 2
-    }, {
-      "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "test/test-ca.pem",
       "NumSessions": 2
     }],
@@ -55,7 +51,7 @@
             "issuer_urls": [
               "http://letsencrypt.pp.plesk.ru/acme/issuer-cert"
             ],
-            "ocsp_url": "http://127.0.0.1:4002/",
+            "ocsp_url": "http://letsencrypt.pp.plesk.ru:4002/",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
@@ -92,7 +88,7 @@
             "issuer_urls": [
               "http://letsencrypt.pp.plesk.ru/acme/issuer-cert"
             ],
-            "ocsp_url": "http://127.0.0.1:4002/",
+            "ocsp_url": "http://letsencrypt.pp.plesk.ru:4002/",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
