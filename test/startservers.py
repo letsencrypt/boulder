@@ -101,7 +101,7 @@ def start(race_detection):
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
-            ports = range(8000, 8005) + [4000, 4001, 4430, 4431]
+            ports = range(8000, 8005) # + [4000, 4001, 4430, 4431]
             if default_config_dir.startswith("test/config-next"):
                 # Add the two 'remote' VA debug ports
                 ports.extend([8011, 8012])
