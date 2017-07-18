@@ -96,7 +96,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	log               blog.Logger
-	dnsResolver       bdns.DNSResolver
+	dnsClient         bdns.DNSClient
 	issuerDomain      string
 	safeBrowsing      SafeBrowsing
 	httpPort          int
@@ -115,7 +115,7 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
 	sbc SafeBrowsing,
-	resolver bdns.DNSResolver,
+	resolver bdns.DNSClient,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
 	userAgent string,
@@ -127,7 +127,7 @@ func NewValidationAuthorityImpl(
 
 	return &ValidationAuthorityImpl{
 		log:               logger,
-		dnsResolver:       resolver,
+		dnsClient:         resolver,
 		issuerDomain:      issuerDomain,
 		safeBrowsing:      sbc,
 		httpPort:          pc.HTTPPort,
@@ -159,7 +159,7 @@ type verificationRequestEvent struct {
 // resolved. This is the same choice made by the Go internal resolution library
 // used by net/http.
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
-	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
+	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		problem := probs.ConnectionFailure(err.Error())
@@ -733,7 +733,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, authorities, err := va.dnsResolver.LookupTXT(ctx, challengeSubdomain)
+	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
@@ -1034,7 +1034,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.dnsResolver.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname, va.dnsClient.LookupCAA)
 	return parseResults(results)
 }
 

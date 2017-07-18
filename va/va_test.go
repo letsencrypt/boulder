@@ -984,7 +984,7 @@ func TestDNSValidationServFail(t *testing.T) {
 
 func TestDNSValidationNoServer(t *testing.T) {
 	va, _ := setup(nil, 0)
-	va.dnsResolver = bdns.NewTestDNSResolverImpl(
+	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
 		metrics.NewNoopScope(),
@@ -1078,7 +1078,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
 		nil,
-		&bdns.MockDNSResolver{},
+		&bdns.MockDNSClient{},
 		nil,
 		maxRemoteFailures,
 		"user agent 1.0",

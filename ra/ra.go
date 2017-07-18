@@ -51,11 +51,11 @@ type RegistrationAuthorityImpl struct {
 	PA        core.PolicyAuthority
 	publisher core.Publisher
 
-	stats       metrics.Scope
-	DNSResolver bdns.DNSResolver
-	clk         clock.Clock
-	log         blog.Logger
-	keyPolicy   goodkey.KeyPolicy
+	stats     metrics.Scope
+	DNSClient bdns.DNSClient
+	clk       clock.Clock
+	log       blog.Logger
+	keyPolicy goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -180,7 +180,7 @@ func problemIsTimeout(err error) bool {
 	return false
 }
 
-func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) error {
+func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient) error {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
 		return unparseableEmailError
@@ -382,7 +382,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 		start := ra.clk.Now()
 		ra.stats.Inc("ValidateEmail.Calls", 1)
-		err = validateEmail(ctx, parsed.Opaque, ra.DNSResolver)
+		err = validateEmail(ctx, parsed.Opaque, ra.DNSClient)
 		ra.stats.TimingDuration("ValidateEmail.Latency", ra.clk.Now().Sub(start))
 		if err != nil {
 			ra.stats.Inc("ValidateEmail.Errors", 1)
