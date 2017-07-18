@@ -183,6 +183,13 @@ type certStatusModel struct {
 	IsExpired             bool              `db:"isExpired"`
 }
 
+type oldCertStatusModel struct {
+	certStatusModel
+
+	SubscribedApproved bool `db:"subscriberApproved"`
+	LockCol            int
+}
+
 // challModel is the description of a core.Challenge in the database
 //
 // The Validation field is a stub; the column is only there for backward compatibility.

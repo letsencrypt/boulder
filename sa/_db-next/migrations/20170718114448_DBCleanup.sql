@@ -9,6 +9,18 @@ ALTER TABLE certificateStatus DROP LockCol;
 
 ALTER TABLE certificateStatus DROP subscriberApproved;
 
+ALTER TABLE certificateStatus ADD id bigint(20) NOT NULL;
+
+ALTER TABLE certificateStatus DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
+
+ALTER TABLE certificateStatus MODIFY COLUMN id int NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE certificates ADD id bigint(20) NOT NULL;
+
+ALTER TABLE certificates DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
+
+ALTER TABLE certificates MODIFY COLUMN id int NOT NULL AUTO_INCREMENT;
+
 ALTER TABLE challenges DROP validated;
 
 
@@ -36,4 +48,12 @@ ALTER TABLE certificateStatus ADD LockCol bigint(20) NOT NULL;
 
 ALTER TABLE certificateStatus ADD subscriberApproved tinyint(1) NOT NULL;
 
-ALTER TABLE challenges ADD validated datetime;
+ALTER TABLE certificateStatus DROP PRIMARY KEY, ADD PRIMARY KEY(serial);
+
+ALTER TABLE certificateStatus DROP id;
+
+ALTER TABLE certificates DROP PRIMARY KEY, ADD PRIMARY KEY(serial);
+
+ALTER TABLE certificates DROP id;
+
+ALTER TABLE challenges ADD validated DATETIME;
