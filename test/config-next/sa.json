@@ -26,7 +26,8 @@
     "features": {
       "AllowAccountDeactivation": true,
       "AllowRenewalFirstRL": true,
-      "ReusePendingAuthz": true
+      "ReusePendingAuthz": true,
+      "CertStatusUpdated": true
     }
   },
 
