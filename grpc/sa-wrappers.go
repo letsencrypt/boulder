@@ -122,13 +122,12 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 		return core.CertificateStatus{}, err
 	}
 
-	if response == nil || response.Serial == nil || response.SubscriberApproved == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 
 	return core.CertificateStatus{
 		Serial:                *response.Serial,
-		SubscriberApproved:    *response.SubscriberApproved,
 		Status:                core.OCSPStatus(*response.Status),
 		OCSPLastUpdated:       time.Unix(0, *response.OcspLastUpdated),
 		RevokedDate:           time.Unix(0, *response.RevokedDate),
@@ -567,7 +566,6 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 
 	return &sapb.CertificateStatus{
 		Serial:                &certStatus.Serial,
-		SubscriberApproved:    &certStatus.SubscriberApproved,
 		Status:                &status,
 		OcspLastUpdated:       &ocspLastUpdatedNano,
 		RevokedDate:           &revokedDateNano,

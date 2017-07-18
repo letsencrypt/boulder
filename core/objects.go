@@ -455,10 +455,6 @@ type IdentifierData struct {
 type CertificateStatus struct {
 	Serial string `db:"serial"`
 
-	// subscriberApproved: true iff the subscriber has posted back to the server
-	//   that they accept the certificate, otherwise 0.
-	SubscriberApproved bool `db:"subscriberApproved"`
-
 	// status: 'good' or 'revoked'. Note that good, expired certificates remain
 	//   with status 'good' but don't necessarily get fresh OCSP responses.
 	Status OCSPStatus `db:"status"`

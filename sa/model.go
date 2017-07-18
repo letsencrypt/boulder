@@ -116,7 +116,7 @@ func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]
 	return models, err
 }
 
-const certStatusFields = "serial, subscriberApproved, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, LockCol, notAfter, isExpired"
+const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
 
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (certStatusModel, error) {
@@ -173,14 +173,12 @@ type regModelv2 struct {
 
 type certStatusModel struct {
 	Serial                string            `db:"serial"`
-	SubscriberApproved    bool              `db:"subscriberApproved"`
 	Status                core.OCSPStatus   `db:"status"`
 	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
 	RevokedDate           time.Time         `db:"revokedDate"`
 	RevokedReason         revocation.Reason `db:"revokedReason"`
 	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
 	OCSPResponse          []byte            `db:"ocspResponse"`
-	LockCol               int64             `json:"-"`
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
 }
@@ -197,10 +195,9 @@ type challModel struct {
 	Error  []byte          `db:"error"`
 	// This field is unused, but is kept temporarily to avoid a database migration.
 	// TODO(#1818): remove
-	Validated        *time.Time `db:"validated"`
-	Token            string     `db:"token"`
-	KeyAuthorization string     `db:"keyAuthorization"`
-	ValidationRecord []byte     `db:"validationRecord"`
+	Token            string `db:"token"`
+	KeyAuthorization string `db:"keyAuthorization"`
+	ValidationRecord []byte `db:"validationRecord"`
 
 	LockCol int64
 }
@@ -208,7 +205,7 @@ type challModel struct {
 // getChallengesQuery fetches exactly the fields in challModel from the
 // challenges table.
 const getChallengesQuery = `
-	SELECT id, authorizationID, type, status, error, validated, token,
+	SELECT id, authorizationID, type, status, error, token,
 		keyAuthorization, validationRecord
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 

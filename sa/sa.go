@@ -546,7 +546,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	statusModel := statusObj.(*certStatusModel)
 	status = core.CertificateStatus{
 		Serial:                statusModel.Serial,
-		SubscriberApproved:    statusModel.SubscriberApproved,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
 		RevokedDate:           statusModel.RevokedDate,
@@ -890,15 +889,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	certStatusOb := &certStatusModel{
-		SubscriberApproved: false,
-		Status:             core.OCSPStatus("good"),
-		OCSPLastUpdated:    time.Time{},
-		OCSPResponse:       []byte{},
-		Serial:             serial,
-		RevokedDate:        time.Time{},
-		RevokedReason:      0,
-		LockCol:            0,
-		NotAfter:           parsedCertificate.NotAfter,
+		Status:          core.OCSPStatus("good"),
+		OCSPLastUpdated: time.Time{},
+		OCSPResponse:    []byte{},
+		Serial:          serial,
+		RevokedDate:     time.Time{},
+		RevokedReason:   0,
+		LockCol:         0,
+		NotAfter:        parsedCertificate.NotAfter,
 	}
 	if len(ocspResponse) != 0 {
 		certStatusOb.OCSPResponse = ocspResponse
