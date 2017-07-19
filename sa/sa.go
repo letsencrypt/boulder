@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/acme"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v1"
@@ -756,7 +755,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 		map[string]interface{}{
 			"regID":          regID,
 			"identifierJSON": identifierJSON,
-			"status":         acme.StatusPending,
+			"status":         core.StatusPending,
 			"nowish":         ssa.clk.Now().Add(time.Hour),
 		})
 	if err == sql.ErrNoRows {
