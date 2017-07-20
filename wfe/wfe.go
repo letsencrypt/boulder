@@ -61,7 +61,7 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	stats metric8df20e6961a16398b85as.Scope
+	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
 
