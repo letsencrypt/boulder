@@ -1,27 +1,30 @@
 
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
+
+-- externalCerts and identifierData were originally needed for PoP challenges
+-- but were never used and can safely be removed since PoP challenges were
+-- removed from the spec.
 DROP TABLE externalCerts;
 
 DROP TABLE identifierData;
 
-ALTER TABLE certificateStatus DROP LockCol;
-
-ALTER TABLE certificateStatus DROP subscriberApproved;
+ALTER TABLE certificateStatus DROP LockCol,
+	DROP subscriberApproved;
 
 START TRANSACTION;
-ALTER TABLE certificateStatus ADD id bigint(20) NOT NULL;
-ALTER TABLE certificateStatus DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
-ALTER TABLE certificateStatus MODIFY COLUMN id bigint(20) NOT NULL AUTO_INCREMENT;
+ALTER TABLE certificateStatus DROP PRIMARY KEY,
+	ADD id BIGINT(20) NOT NULL AUTO_INCREMENT FIRST,
+	ADD PRIMARY KEY(id),
+	ADD UNIQUE serial (serial);
 COMMIT;
 
 START TRANSACTION;
-ALTER TABLE certificates ADD id bigint(20) NOT NULL;
-ALTER TABLE certificates DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
-ALTER TABLE certificates MODIFY COLUMN id bigint(20) NOT NULL AUTO_INCREMENT;
+ALTER TABLE certificates DROP PRIMARY KEY,
+	ADD id BIGINT(20) NOT NULL AUTO_INCREMENT FIRST,
+	ADD PRIMARY KEY(id),
+	ADD UNIQUE serial (serial);
 COMMIT;
-
-ALTER TABLE challenges DROP validated;
 
 
 -- +goose Down
@@ -44,18 +47,19 @@ CREATE TABLE `identifierData` (
   UNIQUE KEY `certSHA1` (`certSHA1`,`reversedName`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-ALTER TABLE certificateStatus ADD LockCol bigint(20) NOT NULL;
-
-ALTER TABLE certificateStatus ADD subscriberApproved tinyint(1) NOT NULL;
+ALTER TABLE certificateStatus ADD LockCol BIGINT(20) NOT NULL,
+	ADD subscriberApproved TINYINT(1) NOT NULL;
 
 START TRANSACTION;
-ALTER TABLE certificateStatus DROP PRIMARY KEY, ADD PRIMARY KEY(serial);
-ALTER TABLE certificateStatus DROP id;
+ALTER TABLE certificateStatus DROP PRIMARY KEY,
+	DROP KEY (serial),
+	ADD PRIMARY KEY(serial),
+	DROP id;
 COMMIT;
 
 START TRANSACTION;
-ALTER TABLE certificates DROP PRIMARY KEY, ADD PRIMARY KEY(serial);
-ALTER TABLE certificates DROP id;
+ALTER TABLE certificates DROP PRIMARY KEY,
+	DROP KEY serial,
+	ADD PRIMARY KEY(serial),
+	DROP id;
 COMMIT;
-
-ALTER TABLE challenges ADD validated DATETIME;
