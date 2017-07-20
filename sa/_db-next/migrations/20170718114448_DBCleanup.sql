@@ -12,13 +12,13 @@ ALTER TABLE certificateStatus DROP subscriberApproved;
 START TRANSACTION;
 ALTER TABLE certificateStatus ADD id bigint(20) NOT NULL;
 ALTER TABLE certificateStatus DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
-ALTER TABLE certificateStatus MODIFY COLUMN id int NOT NULL AUTO_INCREMENT;
+ALTER TABLE certificateStatus MODIFY COLUMN id bigint(20) NOT NULL AUTO_INCREMENT;
 COMMIT;
 
 START TRANSACTION;
 ALTER TABLE certificates ADD id bigint(20) NOT NULL;
 ALTER TABLE certificates DROP PRIMARY KEY, ADD PRIMARY KEY(id), ADD INDEX serial (serial);
-ALTER TABLE certificates MODIFY COLUMN id int NOT NULL AUTO_INCREMENT;
+ALTER TABLE certificates MODIFY COLUMN id bigint(20) NOT NULL AUTO_INCREMENT;
 COMMIT;
 
 ALTER TABLE challenges DROP validated;
