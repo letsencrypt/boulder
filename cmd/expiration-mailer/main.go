@@ -302,7 +302,15 @@ func (m *mailer) findExpiringCertificates() error {
 		var certs []core.Certificate
 		for _, serial := range serials {
 			var cert core.Certificate
-			cert, err := sa.SelectCertificate(m.dbMap, "WHERE serial = ?", serial)
+			err := m.dbMap.SelectOne(&cert,
+				`SELECT
+				cert.*
+				FROM certificates AS cert
+				WHERE serial = :serial`,
+				map[string]interface{}{
+					"serial": serial,
+				},
+			)
 			if err != nil {
 				m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err))
 				return err
