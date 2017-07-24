@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this file,
 // You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Package mysql provides a MySQL driver for Go's database/sql package
+// Package mysql provides a MySQL driver for Go's database/sql package.
 //
 // The driver should be used via the database/sql package:
 //
@@ -21,6 +21,11 @@ import (
 	"database/sql/driver"
 	"net"
 )
+
+// watcher interface is used for context support (From Go 1.8)
+type watcher interface {
+	startWatcher()
+}
 
 // MySQLDriver is exported to make the driver directly accessible.
 // In general the driver is used via the database/sql package.
@@ -52,6 +57,7 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 	mc := &mysqlConn{
 		maxAllowedPacket: maxPacketSize,
 		maxWriteSize:     maxPacketSize - 1,
+		closech:          make(chan struct{}),
 	}
 	mc.cfg, err = ParseDSN(dsn)
 	if err != nil {
@@ -81,6 +87,11 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 		}
 	}
 
+	// Call startWatcher for context support (From Go 1.8)
+	if s, ok := interface{}(mc).(watcher); ok {
+		s.startWatcher()
+	}
+
 	mc.buf = newBuffer(mc.netConn)
 
 	// Set I/O timeouts
@@ -101,7 +112,7 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 	}
 
 	// Handle response to auth packet, switch methods if possible
-	if err = handleAuthResult(mc); err != nil {
+	if err = handleAuthResult(mc, cipher); err != nil {
 		// Authentication failed and MySQL has already closed the connection
 		// (https://dev.mysql.com/doc/internals/en/authentication-fails.html).
 		// Do not send COM_QUIT, just cleanup and return the error.
@@ -134,7 +145,7 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 	return mc, nil
 }
 
-func handleAuthResult(mc *mysqlConn) error {
+func handleAuthResult(mc *mysqlConn, oldCipher []byte) error {
 	// Read Result Packet
 	cipher, err := mc.readResultOK()
 	if err == nil {
@@ -150,6 +161,13 @@ func handleAuthResult(mc *mysqlConn) error {
 		// Retry with old authentication method. Note: there are edge cases
 		// where this should work but doesn't; this is currently "wontfix":
 		// https://github.com/go-sql-driver/mysql/issues/184
+
+		// If CLIENT_PLUGIN_AUTH capability is not supported, no new cipher is
+		// sent and we have to keep using the cipher sent in the init packet.
+		if cipher == nil {
+			cipher = oldCipher
+		}
+
 		if err = mc.writeOldAuthPacket(cipher); err != nil {
 			return err
 		}

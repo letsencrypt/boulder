@@ -99,8 +99,8 @@
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-213-g665b834",
-			"Rev": "665b83488b90b902ce0a305ef6652e599771cdf9"
+			"Comment": "v1.3-28-g3955978",
+			"Rev": "3955978caca48c1658a4bb7a9c6a0f084e326af3"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
@@ -249,8 +249,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.2-13-gf5c9a8a",
-			"Rev": "f5c9a8add78954a8b190cbbad0c60013edbba142"
+			"Comment": "v0.3.2-19-ge91dbc7",
+			"Rev": "e91dbc7c619732e815b11ec8e93a4997f8834cc2"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",

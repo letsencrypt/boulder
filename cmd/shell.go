@@ -54,7 +54,7 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(VersionString(os.Args[0]))
+			fmt.Println(VersionString())
 			os.Exit(0)
 		}
 	}
@@ -251,7 +251,8 @@ func ReadConfigFile(filename string, out interface{}) error {
 }
 
 // VersionString produces a friendly Application version string.
-func VersionString(name string) string {
+func VersionString() string {
+	name := path.Base(os.Args[0])
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 

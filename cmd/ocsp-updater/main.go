@@ -707,8 +707,6 @@ func newLog(logConfig cmd.LogDescription) (*ctLog, error) {
 	return &ctLog{logID: logID, key: logConfig.Key, uri: logConfig.URI}, nil
 }
 
-const clientName = "OCSP"
-
 type config struct {
 	OCSPUpdater cmd.OCSPUpdaterConfig
 
@@ -771,7 +769,7 @@ func main() {
 
 	scope, auditlogger := cmd.StatsAndLogging(c.Syslog)
 	defer auditlogger.AuditPanic()
-	auditlogger.Info(cmd.VersionString(clientName))
+	auditlogger.Info(cmd.VersionString())
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()

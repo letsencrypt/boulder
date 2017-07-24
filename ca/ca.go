@@ -80,22 +80,11 @@ const (
 	metricSigningError = "SigningError"
 	metricHSMError     = metricSigningError + ".HSMError"
 
-	// Increments when CA handles a CSR requesting a "basic" extension:
-	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
-	// basicConstraints, certificatePolicies, crlDistributionPoints,
-	// subjectAlternativeName, subjectKeyIdentifier,
-	metricCSRExtensionBasic = "CSRExtensions.Basic"
-
-	// Increments when CA handles a CSR requesting a TLS Feature extension
-	metricCSRExtensionTLSFeature = "CSRExtensions.TLSFeature"
-
-	// Increments when CA handles a CSR requesting a TLS Feature extension with
-	// an invalid value
-	metricCSRExtensionTLSFeatureInvalid = "CSRExtensions.TLSFeatureInvalid"
-
-	// Increments when CA handles a CSR requesting an extension other than those
-	// listed above
-	metricCSRExtensionOther = "CSRExtensions.Other"
+	csrExtensionCategory          = "category"
+	csrExtensionBasic             = "basic"
+	csrExtensionTLSFeature        = "tls-feature"
+	csrExtensionTLSFeatureInvalid = "tls-feature-invalid"
+	csrExtensionOther             = "other"
 )
 
 type certificateStorage interface {
@@ -110,19 +99,20 @@ type CertificateAuthorityImpl struct {
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
-	defaultIssuer    *internalIssuer
-	sa               certificateStorage
-	pa               core.PolicyAuthority
-	keyPolicy        goodkey.KeyPolicy
-	clk              clock.Clock
-	log              blog.Logger
-	stats            metrics.Scope
-	prefix           int // Prepended to the serial number
-	validityPeriod   time.Duration
-	maxNames         int
-	forceCNFromSAN   bool
-	enableMustStaple bool
-	signatureCount   *prometheus.CounterVec
+	defaultIssuer     *internalIssuer
+	sa                certificateStorage
+	pa                core.PolicyAuthority
+	keyPolicy         goodkey.KeyPolicy
+	clk               clock.Clock
+	log               blog.Logger
+	stats             metrics.Scope
+	prefix            int // Prepended to the serial number
+	validityPeriod    time.Duration
+	maxNames          int
+	forceCNFromSAN    bool
+	enableMustStaple  bool
+	signatureCount    *prometheus.CounterVec
+	csrExtensionCount *prometheus.CounterVec
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -228,6 +218,14 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
 	}
 
+	csrExtensionCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "csrExtensions",
+			Help: "Number of CSRs with extensions of the given category",
+		},
+		[]string{csrExtensionCategory})
+	stats.MustRegister(csrExtensionCount)
+
 	signatureCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "signatures",
@@ -237,20 +235,21 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
-		sa:               sa,
-		pa:               pa,
-		issuers:          internalIssuers,
-		defaultIssuer:    defaultIssuer,
-		rsaProfile:       rsaProfile,
-		ecdsaProfile:     ecdsaProfile,
-		prefix:           config.SerialPrefix,
-		clk:              clk,
-		log:              logger,
-		stats:            stats,
-		keyPolicy:        keyPolicy,
-		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple: config.EnableMustStaple,
-		signatureCount:   signatureCount,
+		sa:                sa,
+		pa:                pa,
+		issuers:           internalIssuers,
+		defaultIssuer:     defaultIssuer,
+		rsaProfile:        rsaProfile,
+		ecdsaProfile:      ecdsaProfile,
+		prefix:            config.SerialPrefix,
+		clk:               clk,
+		log:               logger,
+		stats:             stats,
+		keyPolicy:         keyPolicy,
+		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple:  config.EnableMustStaple,
+		signatureCount:    signatureCount,
+		csrExtensionCount: csrExtensionCount,
 	}
 
 	if config.Expiry == "" {
@@ -308,12 +307,12 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 
 				switch {
 				case ext.Type.Equal(oidTLSFeature):
-					ca.stats.Inc(metricCSRExtensionTLSFeature, 1)
+					ca.csrExtensionCount.With(prometheus.Labels{csrExtensionCategory: csrExtensionTLSFeature}).Inc()
 					value, ok := ext.Value.([]byte)
 					if !ok {
 						return nil, berrors.MalformedError("malformed extension with OID %v", ext.Type)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
-						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1)
+						ca.csrExtensionCount.With(prometheus.Labels{csrExtensionCategory: csrExtensionTLSFeatureInvalid}).Inc()
 						return nil, berrors.MalformedError("unsupported value for extension with OID %v", ext.Type)
 					}
 
@@ -338,11 +337,11 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 	}
 
 	if hasBasic {
-		ca.stats.Inc(metricCSRExtensionBasic, 1)
+		ca.csrExtensionCount.With(prometheus.Labels{csrExtensionCategory: csrExtensionBasic}).Inc()
 	}
 
 	if hasOther {
-		ca.stats.Inc(metricCSRExtensionOther, 1)
+		ca.csrExtensionCount.With(prometheus.Labels{csrExtensionCategory: csrExtensionOther}).Inc()
 	}
 
 	return extensions, nil

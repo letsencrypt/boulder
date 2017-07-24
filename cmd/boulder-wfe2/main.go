@@ -22,8 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/wfe2"
 )
 
-const clientName = "WFE2"
-
 type config struct {
 	WFE struct {
 		cmd.ServiceConfig
@@ -103,7 +101,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")

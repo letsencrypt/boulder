@@ -126,8 +126,8 @@ func TestVersionString(t *testing.T) {
 	core.BuildTime = "RightNow!"
 	core.BuildHost = "Localhost"
 
-	versionStr := VersionString("test")
-	expected := fmt.Sprintf("Versions: test=(TestBuildID RightNow!) Golang=(%s) BuildHost=(Localhost)", runtime.Version())
+	versionStr := VersionString()
+	expected := fmt.Sprintf("Versions: cmd.test=(TestBuildID RightNow!) Golang=(%s) BuildHost=(Localhost)", runtime.Version())
 	test.AssertEquals(t, versionStr, expected)
 }
 
