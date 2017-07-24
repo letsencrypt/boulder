@@ -541,7 +541,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				regID,
 				identifier.Value)
 		} else {
-			return pendingAuth, nil
+			return *pendingAuth, nil
 		}
 	}
 
