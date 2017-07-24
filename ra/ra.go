@@ -520,8 +520,32 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			}
 		}
 	}
+	if features.Enabled(features.ReusePendingAuthz) {
+		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
+		identifierTypeString := string(identifier.Type)
+		saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+		if !ok {
+			return authz, berrors.InternalServerError("SA backend of wrong type")
+		}
+		pendingAuth, err := saGRPC.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
+			RegistrationID:  &regID,
+			IdentifierType:  &identifierTypeString,
+			IdentifierValue: &identifier.Value,
+			ValidUntil:      &nowishNano,
+		})
+		if berrors.Is(err, berrors.NotFound) {
+			// Fall through to normal creation flow.
+		} else if err != nil {
+			return authz, berrors.InternalServerError(
+				"unable to get pending authorization for regID: %d, identifier: %s",
+				regID,
+				identifier.Value)
+		} else {
+			return pendingAuth, nil
+		}
+	}
 
-	// Create validations. The WFE will  update them with URIs before sending them out.
+	// Create challenges. The WFE will  update them with URIs before sending them out.
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
