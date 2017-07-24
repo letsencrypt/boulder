@@ -56,6 +56,8 @@ message GetPendingAuthorizationRequest {
         optional int64 registrationID = 1;
         optional string identifierType = 2;
         optional string identifierValue = 3;
+        // Result must be valid until at least this Unix timestamp (nanos)
+        optional int64 validUntil = 4;
 }
 
 message GetValidAuthorizationsRequest {

@@ -729,13 +729,11 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 // with the given identifier, if available.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	ctx context.Context,
-	regID int64,
-	identifierType string,
-	identifierValue string,
+	req *sapb.GetPendingAuthorizationRequest,
 ) (*core.Authorization, error) {
 	identifierJSON, err := json.Marshal(core.AcmeIdentifier{
-		Type:  core.IdentifierType(identifierType),
-		Value: identifierValue,
+		Type:  core.IdentifierType(*req.IdentifierType),
+		Value: *req.IdentifierValue,
 	})
 	if err != nil {
 		return nil, err
@@ -749,14 +747,14 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 		`WHERE registrationID = :regID
 			 AND identifier = :identifierJSON
 			 AND status = :status
-			 AND expires > :nowish
+			 AND expires > :validUntil
 		 ORDER BY expires ASC
 		 LIMIT 1`,
 		map[string]interface{}{
-			"regID":          regID,
+			"regID":          *req.RegistrationID,
 			"identifierJSON": identifierJSON,
 			"status":         core.StatusPending,
-			"nowish":         ssa.clk.Now().Add(time.Hour),
+			"validUntil":     time.Unix(0, *req.ValidUntil),
 		})
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("pending authz not found")
