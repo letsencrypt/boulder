@@ -10,7 +10,7 @@ It is generated from these files:
 
 It has these top-level messages:
 	RegistrationID
-	JsonWebKey
+	JSONWebKey
 	AuthorizationID
 	GetValidAuthorizationsRequest
 	ValidAuthorizations
@@ -73,17 +73,17 @@ func (m *RegistrationID) GetId() int64 {
 	return 0
 }
 
-type JsonWebKey struct {
+type JSONWebKey struct {
 	Jwk              []byte `protobuf:"bytes,1,opt,name=jwk" json:"jwk,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
-func (m *JsonWebKey) Reset()                    { *m = JsonWebKey{} }
-func (m *JsonWebKey) String() string            { return proto1.CompactTextString(m) }
-func (*JsonWebKey) ProtoMessage()               {}
-func (*JsonWebKey) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+func (m *JSONWebKey) Reset()                    { *m = JSONWebKey{} }
+func (m *JSONWebKey) String() string            { return proto1.CompactTextString(m) }
+func (*JSONWebKey) ProtoMessage()               {}
+func (*JSONWebKey) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
 
-func (m *JsonWebKey) GetJwk() []byte {
+func (m *JSONWebKey) GetJwk() []byte {
 	if m != nil {
 		return m.Jwk
 	}
@@ -734,7 +734,7 @@ func (m *RevokeAuthorizationsByDomainResponse) GetPending() int64 {
 
 func init() {
 	proto1.RegisterType((*RegistrationID)(nil), "sa.RegistrationID")
-	proto1.RegisterType((*JsonWebKey)(nil), "sa.JsonWebKey")
+	proto1.RegisterType((*JSONWebKey)(nil), "sa.JSONWebKey")
 	proto1.RegisterType((*AuthorizationID)(nil), "sa.AuthorizationID")
 	proto1.RegisterType((*GetValidAuthorizationsRequest)(nil), "sa.GetValidAuthorizationsRequest")
 	proto1.RegisterType((*ValidAuthorizations)(nil), "sa.ValidAuthorizations")
@@ -773,7 +773,7 @@ const _ = grpc.SupportPackageIsVersion4
 type StorageAuthorityClient interface {
 	// Getters
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*core.Registration, error)
-	GetRegistrationByKey(ctx context.Context, in *JsonWebKey, opts ...grpc.CallOption) (*core.Registration, error)
+	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*core.Registration, error)
 	GetAuthorization(ctx context.Context, in *AuthorizationID, opts ...grpc.CallOption) (*core.Authorization, error)
 	GetValidAuthorizations(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*ValidAuthorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*core.Certificate, error)
@@ -821,7 +821,7 @@ func (c *storageAuthorityClient) GetRegistration(ctx context.Context, in *Regist
 	return out, nil
 }
 
-func (c *storageAuthorityClient) GetRegistrationByKey(ctx context.Context, in *JsonWebKey, opts ...grpc.CallOption) (*core.Registration, error) {
+func (c *storageAuthorityClient) GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*core.Registration, error) {
 	out := new(core.Registration)
 	err := grpc.Invoke(ctx, "/sa.StorageAuthority/GetRegistrationByKey", in, out, c.cc, opts...)
 	if err != nil {
@@ -1060,7 +1060,7 @@ func (c *storageAuthorityClient) DeactivateAuthorization(ctx context.Context, in
 type StorageAuthorityServer interface {
 	// Getters
 	GetRegistration(context.Context, *RegistrationID) (*core.Registration, error)
-	GetRegistrationByKey(context.Context, *JsonWebKey) (*core.Registration, error)
+	GetRegistrationByKey(context.Context, *JSONWebKey) (*core.Registration, error)
 	GetAuthorization(context.Context, *AuthorizationID) (*core.Authorization, error)
 	GetValidAuthorizations(context.Context, *GetValidAuthorizationsRequest) (*ValidAuthorizations, error)
 	GetCertificate(context.Context, *Serial) (*core.Certificate, error)
@@ -1114,7 +1114,7 @@ func _StorageAuthority_GetRegistration_Handler(srv interface{}, ctx context.Cont
 }
 
 func _StorageAuthority_GetRegistrationByKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JsonWebKey)
+	in := new(JSONWebKey)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1126,7 +1126,7 @@ func _StorageAuthority_GetRegistrationByKey_Handler(srv interface{}, ctx context
 		FullMethod: "/sa.StorageAuthority/GetRegistrationByKey",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, req.(*JsonWebKey))
+		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, req.(*JSONWebKey))
 	}
 	return interceptor(ctx, in, info, handler)
 }

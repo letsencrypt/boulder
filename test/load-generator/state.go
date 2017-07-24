@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -159,7 +159,13 @@ func (s *State) Restore(filename string) error {
 		if err != nil {
 			continue
 		}
-		signer, err := jose.NewSigner(jose.RS256, key)
+		signer, err := jose.NewSigner(jose.SigningKey{
+			Key:       key,
+			Algorithm: jose.ES256,
+		}, &jose.SignerOptions{
+			NonceSource: &nonceSource{s: s},
+			EmbedJWK:    true,
+		})
 		if err != nil {
 			continue
 		}
@@ -447,8 +453,6 @@ func getRegistration(s *State, ctx *context) error {
 		return errors.New("no registrations to return")
 	}
 	ctx.reg = s.regs[mrand.Intn(len(s.regs))]
-	ctx.ns = &nonceSource{s: s}
-	ctx.reg.signer.SetNonceSource(ctx.ns)
 	return nil
 }
 

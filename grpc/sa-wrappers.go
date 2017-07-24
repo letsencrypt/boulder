@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -42,13 +42,13 @@ func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, re
 	return pbToRegistration(response)
 }
 
-func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (core.Registration, error) {
+func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
 	keyBytes, err := key.MarshalJSON()
 	if err != nil {
 		return core.Registration{}, err
 	}
 
-	response, err := sac.inner.GetRegistrationByKey(ctx, &sapb.JsonWebKey{Jwk: keyBytes})
+	response, err := sac.inner.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -479,12 +479,12 @@ func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, re
 	return registrationToPB(reg)
 }
 
-func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Context, request *sapb.JsonWebKey) (*corepb.Registration, error) {
+func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Context, request *sapb.JSONWebKey) (*corepb.Registration, error) {
 	if request == nil || request.Jwk == nil {
 		return nil, errIncompleteRequest
 	}
 
-	var jwk jose.JsonWebKey
+	var jwk jose.JSONWebKey
 	err := jwk.UnmarshalJSON(request.Jwk)
 	if err != nil {
 		return nil, err

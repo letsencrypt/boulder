@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"gopkg.in/go-gorp/gorp.v2"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -23,7 +23,7 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 			return nil, err
 		}
 		return string(jsonBytes), nil
-	case jose.JsonWebKey:
+	case jose.JSONWebKey:
 		jsonBytes, err := t.MarshalJSON()
 		if err != nil {
 			return "", err
@@ -51,7 +51,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			return json.Unmarshal(b, target)
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	case *jose.JsonWebKey:
+	case *jose.JSONWebKey:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {
@@ -61,9 +61,9 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 				return errors.New("FromDb: Empty JWK field.")
 			}
 			b := []byte(*s)
-			k, ok := target.(*jose.JsonWebKey)
+			k, ok := target.(*jose.JSONWebKey)
 			if !ok {
-				return fmt.Errorf("FromDb: Unable to convert %T to *jose.JsonWebKey", target)
+				return fmt.Errorf("FromDb: Unable to convert %T to *jose.JSONWebKey", target)
 			}
 			return k.UnmarshalJSON(b)
 		}
