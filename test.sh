@@ -212,7 +212,7 @@ fi
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_expect_silence errcheck \
-    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.* \
+    -ignore io:Write,os:Remove,net/http:Write \
     $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test)
   end_context #errcheck
 fi

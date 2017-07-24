@@ -262,7 +262,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSResolver = &bdns.MockDNSResolver{}
+	ra.DNSClient = &bdns.MockDNSClient{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -347,7 +347,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, tc := range testFailures {
-		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSClient{})
 		if !berrors.Is(err, berrors.InvalidEmail) {
 			t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
 		}
@@ -359,7 +359,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, addr := range testSuccesses {
-		if err := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); err != nil {
+		if err := validateEmail(context.Background(), addr, &bdns.MockDNSClient{}); err != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
 				addr, err)
 		}

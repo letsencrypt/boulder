@@ -17,8 +17,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const clientName = "Publisher"
-
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
@@ -53,7 +51,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 	for i, ld := range c.Common.CT.Logs {

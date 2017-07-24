@@ -27,8 +27,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const clientName = "AdminRevoker"
-
 const usageString = `
 usage:
 admin-revoker serial-revoke --config <path> <serial> <reason-code>

@@ -41,73 +41,73 @@ const (
 	telNum    = "666-666-7777"
 )
 
-func TestFindContacts(t *testing.T) {
+func TestFindIDs(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
 	// Add some test registrations
 	testCtx.addRegistrations(t)
 
-	// Run findContacts - since no certificates have been added corresponding to
-	// the above registrations, no contacts should be found.
-	contacts, err := testCtx.c.findContacts()
-	test.AssertNotError(t, err, "findContacts() produced error")
-	test.AssertEquals(t, len(contacts), 0)
+	// Run findIDs - since no certificates have been added corresponding to
+	// the above registrations, no IDs should be found.
+	ids, err := testCtx.c.findIDs()
+	test.AssertNotError(t, err, "findIDs() produced error")
+	test.AssertEquals(t, len(ids), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	// Run findContacts - since there are three registrations with unexpired certs
-	// we should get exactly three contacts back: RegA, RegC and RegD. RegB should
+	// Run findIDs - since there are three registrations with unexpired certs
+	// we should get exactly three IDs back: RegA, RegC and RegD. RegB should
 	// *not* be present since their certificate has already expired. Unlike
 	// previous versions of this test RegD is not filtered out for having a `tel:`
 	// contact field anymore - this is the duty of the notify-mailer.
-	contacts, err = testCtx.c.findContacts()
-	test.AssertNotError(t, err, "findContacts() produced error")
-	test.AssertEquals(t, len(contacts), 3)
-	test.AssertEquals(t, contacts[0].ID, regA.ID)
-	test.AssertEquals(t, contacts[1].ID, regC.ID)
-	test.AssertEquals(t, contacts[2].ID, regD.ID)
+	ids, err = testCtx.c.findIDs()
+	test.AssertNotError(t, err, "findIDs() produced error")
+	test.AssertEquals(t, len(ids), 3)
+	test.AssertEquals(t, ids[0].ID, regA.ID)
+	test.AssertEquals(t, ids[1].ID, regC.ID)
+	test.AssertEquals(t, ids[2].ID, regD.ID)
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
-	contacts, err = testCtx.c.findContacts()
-	test.AssertNotError(t, err, "findContacts() produced error")
+	ids, err = testCtx.c.findIDs()
+	test.AssertNotError(t, err, "findIDs() produced error")
 	// Now all four registration should be returned, including RegB since its
 	// certificate expired within the grace period
-	test.AssertEquals(t, len(contacts), 4)
-	test.AssertEquals(t, contacts[0].ID, regA.ID)
-	test.AssertEquals(t, contacts[1].ID, regB.ID)
-	test.AssertEquals(t, contacts[2].ID, regC.ID)
-	test.AssertEquals(t, contacts[3].ID, regD.ID)
+	test.AssertEquals(t, len(ids), 4)
+	test.AssertEquals(t, ids[0].ID, regA.ID)
+	test.AssertEquals(t, ids[1].ID, regB.ID)
+	test.AssertEquals(t, ids[2].ID, regC.ID)
+	test.AssertEquals(t, ids[3].ID, regD.ID)
 }
 
-func TestFindContactsForDomains(t *testing.T) {
+func TestFindIDsForDomains(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
 	// Add some test registrations
 	testCtx.addRegistrations(t)
 
-	// Run findContacts - since no certificates have been added corresponding to
-	// the above registrations, no contacts should be found.
-	contacts, err := testCtx.c.findContactsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
-	test.AssertNotError(t, err, "findContacts() produced error")
-	test.AssertEquals(t, len(contacts), 0)
+	// Run findIDsForDomains - since no certificates have been added corresponding to
+	// the above registrations, no IDs should be found.
+	ids, err := testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findIDs() produced error")
+	test.AssertEquals(t, len(ids), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	contacts, err = testCtx.c.findContactsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
-	test.AssertNotError(t, err, "findContactsForDomains() failed")
-	test.AssertEquals(t, len(contacts), 3)
-	test.AssertEquals(t, contacts[0].ID, regA.ID)
-	test.AssertEquals(t, contacts[1].ID, regC.ID)
-	test.AssertEquals(t, contacts[2].ID, regD.ID)
+	ids, err = testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findIDsForDomains() failed")
+	test.AssertEquals(t, len(ids), 3)
+	test.AssertEquals(t, ids[0].ID, regA.ID)
+	test.AssertEquals(t, ids[1].ID, regC.ID)
+	test.AssertEquals(t, ids[2].ID, regD.ID)
 }
 
-func exampleContacts() []contact {
-	return []contact{
+func exampleIds() []id {
+	return []id{
 		{
 			ID: 1,
 		},
@@ -123,18 +123,18 @@ func exampleContacts() []contact {
 func TestWriteOutput(t *testing.T) {
 	expected := `[{"id":1},{"id":2},{"id":3}]`
 
-	contacts := exampleContacts()
+	ids := exampleIds()
 	dir := os.TempDir()
-	f, err := ioutil.TempFile(dir, "contacts_test")
+	f, err := ioutil.TempFile(dir, "ids_test")
 	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
 
-	// Writing the contacts with no outFile should print to stdout
-	err = writeContacts(contacts, "")
-	test.AssertNotError(t, err, "writeContacts with no outfile produced error")
+	// Writing the ids with no outFile should print to stdout
+	err = writeIDs(ids, "")
+	test.AssertNotError(t, err, "writeIDs with no outfile produced error")
 
-	// Writing the contacts to an outFile should produce the correct results
-	err = writeContacts(contacts, f.Name())
-	test.AssertNotError(t, err, fmt.Sprintf("writeContacts produced an error writing to %s", f.Name()))
+	// Writing the ids to an outFile should produce the correct results
+	err = writeIDs(ids, f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("writeIDs produced an error writing to %s", f.Name()))
 
 	contents, err := ioutil.ReadFile(f.Name())
 	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
@@ -143,7 +143,7 @@ func TestWriteOutput(t *testing.T) {
 }
 
 type testCtx struct {
-	c       contactExporter
+	c       idExporter
 	ssa     core.StorageAdder
 	cleanUp func()
 }
@@ -385,7 +385,7 @@ func setup(t *testing.T) testCtx {
 	}
 
 	return testCtx{
-		c: contactExporter{
+		c: idExporter{
 			dbMap: dbMap,
 			log:   log,
 			clk:   fc,
