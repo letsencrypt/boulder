@@ -182,7 +182,7 @@ type certStatusModel struct {
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
 
-	// TODO(#873, #1818): Deprecated, remove once #2882 has been deployed
+	// TODO(#856, #873): Deprecated, remove once #2882 has been deployed
 	// to production
 	SubscribedApproved bool `db:"subscriberApproved"`
 	LockCol            int
@@ -203,10 +203,7 @@ type challModel struct {
 	Token            string `db:"token"`
 	KeyAuthorization string `db:"keyAuthorization"`
 	ValidationRecord []byte `db:"validationRecord"`
-
-	// TODO(#873, #1818): Deprecated, remove once #2882 has been deployed
-	// to production
-	Validated bool `db:"validated`
+	Validated        bool   `db:"validated"`
 
 	LockCol int64
 }
