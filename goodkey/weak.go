@@ -57,8 +57,8 @@ func (wk *weakKeys) addSuffix(str string) error {
 }
 
 func (wk *weakKeys) Known(key *rsa.PublicKey) bool {
-	modulus := key.N.Bytes()
-	hash := sha1.Sum(modulus)
+	// Hash input is in the format "Modulus={upper-case hex of modulus}\n"
+	hash := sha1.Sum([]byte(fmt.Sprintf("Modulus=%X\n", key.N.Bytes())))
 	var suffix truncatedHash
 	copy(suffix[:], hash[10:])
 	_, present := wk.suffixes[suffix]

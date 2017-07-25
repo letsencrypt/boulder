@@ -184,7 +184,7 @@ func main() {
 		dnsTries = 1
 	}
 	if !c.Common.DNSAllowLoopbackAddresses {
-		rai.DNSResolver = bdns.NewDNSResolverImpl(
+		rai.DNSClient = bdns.NewDNSClientImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
 			nil,
@@ -192,7 +192,7 @@ func main() {
 			clock.Default(),
 			dnsTries)
 	} else {
-		rai.DNSResolver = bdns.NewTestDNSResolverImpl(
+		rai.DNSClient = bdns.NewTestDNSClientImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
 			scope,

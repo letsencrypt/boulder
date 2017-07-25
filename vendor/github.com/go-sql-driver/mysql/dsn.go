@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,7 @@ type Config struct {
 	InterpolateParams       bool // Interpolate placeholders into query string
 	MultiStatements         bool // Allow multiple statements in one query
 	ParseTime               bool // Parse time values to time.Time
+	RejectReadOnly          bool // Reject read-only connections
 	Strict                  bool // Return warnings as errors
 }
 
@@ -195,6 +197,15 @@ func (cfg *Config) FormatDSN() string {
 		buf.WriteString(cfg.ReadTimeout.String())
 	}
 
+	if cfg.RejectReadOnly {
+		if hasParam {
+			buf.WriteString("&rejectReadOnly=true")
+		} else {
+			hasParam = true
+			buf.WriteString("?rejectReadOnly=true")
+		}
+	}
+
 	if cfg.Strict {
 		if hasParam {
 			buf.WriteString("&strict=true")
@@ -247,7 +258,12 @@ func (cfg *Config) FormatDSN() string {
 
 	// other params
 	if cfg.Params != nil {
-		for param, value := range cfg.Params {
+		var params []string
+		for param := range cfg.Params {
+			params = append(params, param)
+		}
+		sort.Strings(params)
+		for _, param := range params {
 			if hasParam {
 				buf.WriteByte('&')
 			} else {
@@ -257,7 +273,7 @@ func (cfg *Config) FormatDSN() string {
 
 			buf.WriteString(param)
 			buf.WriteByte('=')
-			buf.WriteString(url.QueryEscape(value))
+			buf.WriteString(url.QueryEscape(cfg.Params[param]))
 		}
 	}
 
@@ -472,6 +488,14 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 				return
 			}
 
+		// Reject read-only connections
+		case "rejectReadOnly":
+			var isBool bool
+			cfg.RejectReadOnly, isBool = readBool(value)
+			if !isBool {
+				return errors.New("invalid bool value: " + value)
+			}
+
 		// Strict mode
 		case "strict":
 			var isBool bool
@@ -494,6 +518,10 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 				if boolValue {
 					cfg.TLSConfig = "true"
 					cfg.tls = &tls.Config{}
+					host, _, err := net.SplitHostPort(cfg.Addr)
+					if err == nil {
+						cfg.tls.ServerName = host
+					}
 				} else {
 					cfg.TLSConfig = "false"
 				}
@@ -506,7 +534,7 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 					return fmt.Errorf("invalid value for TLS config name: %v", err)
 				}
 
-				if tlsConfig, ok := tlsConfigRegister[name]; ok {
+				if tlsConfig := getTLSConfigClone(name); tlsConfig != nil {
 					if len(tlsConfig.ServerName) == 0 && !tlsConfig.InsecureSkipVerify {
 						host, _, err := net.SplitHostPort(cfg.Addr)
 						if err == nil {
