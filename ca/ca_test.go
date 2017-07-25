@@ -239,6 +239,8 @@ func TestFailNoSerial(t *testing.T) {
 	testCtx.caConfig.SerialPrefix = 0
 	_, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		nil,
+		nil,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
@@ -249,8 +251,11 @@ func TestFailNoSerial(t *testing.T) {
 
 func TestIssueCertificate(t *testing.T) {
 	testCtx := setup(t)
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
@@ -258,9 +263,6 @@ func TestIssueCertificate(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
-	ca.PA = testCtx.pa
-	sa := &mockSA{}
-	ca.SA = sa
 
 	// Sign CSR
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
@@ -308,16 +310,17 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 			Cert:   caCert,
 		},
 	}
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to sign certificate")
@@ -331,16 +334,17 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 
 func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
 
@@ -382,14 +386,14 @@ func TestOCSP(t *testing.T) {
 	}
 	ca, err = NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to remake CA")
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	// Now issue a new cert, signed by newIssuerCert
 	newCert, err := ca.IssueCertificate(ctx, &issueReq)
@@ -466,16 +470,17 @@ func TestInvalidCSRs(t *testing.T) {
 	}
 
 	testCtx := setup(t)
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -489,16 +494,17 @@ func TestInvalidCSRs(t *testing.T) {
 
 func TestRejectValidityTooLong(t *testing.T) {
 	testCtx := setup(t)
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
 	future, err := time.Parse(time.RFC3339, "2025-02-10T00:30:00Z")
@@ -513,8 +519,11 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 func TestAllowNoCN(t *testing.T) {
 	testCtx := setup(t)
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
@@ -522,8 +531,6 @@ func TestAllowNoCN(t *testing.T) {
 		testCtx.logger)
 	test.AssertNotError(t, err, "Couldn't create new CA")
 	ca.forceCNFromSAN = false
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	issueReq := caPB.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID}
 	issuedCert, err := ca.IssueCertificate(ctx, &issueReq)
@@ -555,15 +562,16 @@ func TestAllowNoCN(t *testing.T) {
 func TestProfileSelection(t *testing.T) {
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
+	sa := &mockSA{}
 	ca, _ := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	testCases := []struct {
 		CSR              []byte
@@ -603,15 +611,16 @@ func TestExtensions(t *testing.T) {
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
 
+	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
+		sa,
+		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
 		testCtx.logger)
-	ca.PA = testCtx.pa
-	ca.SA = &mockSA{}
 
 	sign := func(csr []byte) *x509.Certificate {
 		ca.csrExtensionCount.Reset()

@@ -101,8 +101,8 @@ type CertificateAuthorityImpl struct {
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer     *internalIssuer
-	SA                certificateStorage
-	PA                core.PolicyAuthority
+	sa                certificateStorage
+	pa                core.PolicyAuthority
 	keyPolicy         goodkey.KeyPolicy
 	clk               clock.Clock
 	log               blog.Logger
@@ -172,6 +172,8 @@ func makeInternalIssuers(
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
 	config cmd.CAConfig,
+	sa certificateStorage,
+	pa core.PolicyAuthority,
 	clk clock.Clock,
 	stats metrics.Scope,
 	issuers []Issuer,
@@ -234,6 +236,8 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
+		sa:                sa,
+		pa:                pa,
 		issuers:           internalIssuers,
 		defaultIssuer:     defaultIssuer,
 		rsaProfile:        rsaProfile,
@@ -400,7 +404,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		csr,
 		ca.maxNames,
 		&ca.keyPolicy,
-		ca.PA,
+		ca.pa,
 		ca.forceCNFromSAN,
 		regID,
 	); err != nil {
@@ -520,7 +524,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(ctx, certDER, regID, ocspResp)
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
