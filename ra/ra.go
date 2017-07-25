@@ -529,17 +529,16 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			IdentifierValue: &identifier.Value,
 			ValidUntil:      &nowishNano,
 		})
-		if berrors.Is(err, berrors.NotFound) {
-			// Fall through to normal creation flow.
-		} else if err != nil {
+		if err != nil && berrors.Is(err, berrors.NotFound) {
 			return authz, berrors.InternalServerError(
 				"unable to get pending authorization for regID: %d, identifier: %s: %s",
 				regID,
 				identifier.Value,
 				err)
-		} else {
+		} else if err == nil {
 			return *pendingAuth, nil
 		}
+		// Fall through to normal creation flow.
 	}
 
 	// Create challenges. The WFE will  update them with URIs before sending them out.
