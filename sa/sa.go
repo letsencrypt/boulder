@@ -887,8 +887,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	var certStatusOb interface{}
-	certStatus := certStatusModel{
+	certStatus := &certStatusModel{
 		Status:          core.OCSPStatus("good"),
 		OCSPLastUpdated: time.Time{},
 		OCSPResponse:    []byte{},
@@ -900,11 +899,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	if len(ocspResponse) != 0 {
 		certStatus.OCSPResponse = ocspResponse
 		certStatus.OCSPLastUpdated = ssa.clk.Now()
-	}
-	if features.Enabled(features.CertStatusUpdated) {
-		certStatusOb = &certStatus
-	} else {
-		certStatusOb = &oldCertStatusModel{certStatus, false, 0}
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -920,7 +914,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		return "", Rollback(tx, err)
 	}
 
-	err = tx.Insert(certStatusOb)
+	err = tx.Insert(certStatus)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}

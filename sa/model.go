@@ -181,11 +181,9 @@ type certStatusModel struct {
 	OCSPResponse          []byte            `db:"ocspResponse"`
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
-}
 
-type oldCertStatusModel struct {
-	certStatusModel
-
+	// TODO(#873, #1818): Deprecated, remove once #2882 has been deployed
+	// to production
 	SubscribedApproved bool `db:"subscriberApproved"`
 	LockCol            int
 }
@@ -205,6 +203,10 @@ type challModel struct {
 	Token            string `db:"token"`
 	KeyAuthorization string `db:"keyAuthorization"`
 	ValidationRecord []byte `db:"validationRecord"`
+
+	// TODO(#873, #1818): Deprecated, remove once #2882 has been deployed
+	// to production
+	Validated bool `db:"validated`
 
 	LockCol int64
 }

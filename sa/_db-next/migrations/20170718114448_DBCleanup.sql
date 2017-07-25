@@ -9,8 +9,8 @@ DROP TABLE externalCerts;
 
 DROP TABLE identifierData;
 
-ALTER TABLE certificateStatus DROP LockCol,
-	DROP subscriberApproved;
+ALTER TABLE certificateStatus MODIFY LockCol BIGINT(20) NULL DEFAULT 0,
+  MODIFY subscriberApproved tinyint(1) NULL DEFAULT 0;
 
 START TRANSACTION;
 ALTER TABLE certificateStatus DROP PRIMARY KEY,
@@ -47,8 +47,8 @@ CREATE TABLE `identifierData` (
   UNIQUE KEY `certSHA1` (`certSHA1`,`reversedName`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-ALTER TABLE certificateStatus ADD LockCol BIGINT(20) NOT NULL,
-	ADD subscriberApproved TINYINT(1) NOT NULL;
+ALTER TABLE certificateStatus MODIFY LockCol BIGINT(20) NOT NULL,
+  MODIFY subscriberApproved tinyint(1) NOT NULL;
 
 START TRANSACTION;
 ALTER TABLE certificateStatus DROP PRIMARY KEY,

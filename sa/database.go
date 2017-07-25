@@ -198,5 +198,4 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 	dbMap.AddTableWithName(certStatusModel{}, "certificateStatus").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(oldCertStatusModel{}, "certificateStatus").SetKeys(false, "Serial")
 }
