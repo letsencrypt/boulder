@@ -26,6 +26,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"golang.org/x/net/context"
 
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -383,11 +384,20 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
+	if issueReq.RegistrationID == nil {
+		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
+	}
+	regID := *issueReq.RegistrationID
+
+	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
+	if err != nil {
+		return emptyCert, err
+	}
 	if err := csrlib.VerifyCSR(
-		&csr,
+		csr,
 		ca.maxNames,
 		&ca.keyPolicy,
 		ca.PA,
@@ -398,7 +408,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
-	requestedExtensions, err := ca.extensionsFromCSR(&csr)
+	requestedExtensions, err := ca.extensionsFromCSR(csr)
 	if err != nil {
 		return emptyCert, err
 	}

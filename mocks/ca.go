@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -18,7 +19,7 @@ type MockCA struct {
 }
 
 // IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (core.Certificate, error) {
 	if ca.PEM == nil {
 		return core.Certificate{}, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
