@@ -753,7 +753,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 		map[string]interface{}{
 			"regID":          *req.RegistrationID,
 			"identifierJSON": identifierJSON,
-			"status":         core.StatusPending,
+			"status":         string(core.StatusPending),
 			"validUntil":     time.Unix(0, *req.ValidUntil),
 		})
 	if err == sql.ErrNoRows {

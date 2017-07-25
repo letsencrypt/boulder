@@ -647,7 +647,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 }
 
 func TestReusePendingAuthorization(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
@@ -665,8 +665,22 @@ func TestReusePendingAuthorization(t *testing.T) {
 
 	// The first authz should be reused as the second and thus have the same ID
 	test.AssertEquals(t, firstAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
 
-	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+	otherReg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("3.2.3.3"),
+		Status:    core.StatusValid,
+	})
+	test.AssertNotError(t, err, "Creating otherReg")
+	// An authz created under another registration ID should not be reused.
+	thirdAuthz, err := ra.NewAuthorization(ctx, core.Authorization{
+		Identifier: AuthzInitial.Identifier,
+	}, otherReg.ID)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	if thirdAuthz.ID == firstAuthz.ID {
+		t.Error("Authorization was reused for a different account.")
+	}
 }
 
 type mockSAWithBadGetValidAuthz struct {

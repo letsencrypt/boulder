@@ -533,9 +533,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			// Fall through to normal creation flow.
 		} else if err != nil {
 			return authz, berrors.InternalServerError(
-				"unable to get pending authorization for regID: %d, identifier: %s",
+				"unable to get pending authorization for regID: %d, identifier: %s: %s",
 				regID,
-				identifier.Value)
+				identifier.Value,
+				err)
 		} else {
 			return *pendingAuth, nil
 		}
