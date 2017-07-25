@@ -585,7 +585,7 @@ func TestNewAuthorization(t *testing.T) {
 	t.Log("DONE TestNewAuthorization")
 }
 
-func TestReuseAuthorization(t *testing.T) {
+func TestReuseValidAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -643,6 +643,29 @@ func TestReuseAuthorization(t *testing.T) {
 	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, sniIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+}
+
+func TestReusePendingAuthorization(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
+	defer features.Reset()
+
+	// Create one pending authorization
+	firstAuthz, err := ra.NewAuthorization(ctx, AuthzInitial, Registration.ID)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+
+	// Create another one with the same identifier
+	secondAuthz, err := ra.NewAuthorization(ctx, core.Authorization{
+		Identifier: AuthzInitial.Identifier,
+	}, Registration.ID)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+
+	// The first authz should be reused as the second and thus have the same ID
+	test.AssertEquals(t, firstAuthz.ID, secondAuthz.ID)
+
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
 

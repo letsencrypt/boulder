@@ -523,11 +523,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if features.Enabled(features.ReusePendingAuthz) {
 		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
 		identifierTypeString := string(identifier.Type)
-		saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
-		if !ok {
-			return authz, berrors.InternalServerError("SA backend of wrong type")
-		}
-		pendingAuth, err := saGRPC.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
+		pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
 			RegistrationID:  &regID,
 			IdentifierType:  &identifierTypeString,
 			IdentifierValue: &identifier.Value,
