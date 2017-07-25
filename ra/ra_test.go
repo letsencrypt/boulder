@@ -581,8 +581,6 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
 	test.AssertNotError(t, authz.Challenges[0].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
 	test.AssertNotError(t, authz.Challenges[1].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 1 returned an error")
-
-	t.Log("DONE TestNewAuthorization")
 }
 
 func TestReuseAuthorization(t *testing.T) {
@@ -805,8 +803,6 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-
-	t.Log("DONE TestUpdateAuthorization")
 }
 
 func TestUpdateAuthorizationExpired(t *testing.T) {
@@ -861,8 +857,6 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
-
-	t.Log("DONE TestUpdateAuthorizationNewRPC")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -894,8 +888,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
-
-	t.Log("DONE TestCertificateKeyNotEqualAccountKey")
 }
 
 func TestAuthorizationRequired(t *testing.T) {
@@ -915,8 +907,6 @@ func TestAuthorizationRequired(t *testing.T) {
 
 	_, err = ra.NewCertificate(ctx, certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
-
-	t.Log("DONE TestAuthorizationRequired")
 }
 
 func TestNewCertificate(t *testing.T) {
