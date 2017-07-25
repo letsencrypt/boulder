@@ -568,7 +568,7 @@ func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func issueCertificateSubtestProfileSelectionSetup(t *testing.T) *CertificateAuthorityImpl {
+func issueCertificateSubTestProfileSelectionSetup(t *testing.T) *CertificateAuthorityImpl {
 	testCtx := setup(t)
 	testCtx.caConfig.MaxNames = 3
 	sa := &mockSA{}
