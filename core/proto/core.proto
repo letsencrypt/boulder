@@ -64,4 +64,14 @@ message Authorization {
         optional bytes combinations = 7;
 }
 
+message Order {
+        optional int64 id = 1;
+        optional int64 registrationID = 2;
+        optional int64 expires = 3;
+        optional bytes csr = 4;
+        optional bytes error = 5;
+        optional string certificateSerial = 6;
+        repeated Authorization authorizations = 7;
+}
+
 message Empty {}

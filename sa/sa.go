@@ -17,6 +17,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1250,4 +1251,46 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		return err
 	}
 	return tx.Commit()
+}
+
+// NewOrder adds a new v2 style order to the database
+func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+	order := &orderModel{
+		RegistrationID:    *req.RegistrationID,
+		Expires:           *req.Expires,
+		CSR:               req.Csr,
+		Error:             req.Error,
+		CertificateSerial: *req.CertificateSerial,
+	}
+
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Insert(order)
+	if err != nil {
+		err = Rollback(tx, err)
+		return nil, err
+	}
+
+	for _, authz := range req.Authorizations {
+		otoa := &orderToAuthzModel{
+			OrderID: order.ID,
+			AuthzID: *authz.Id,
+		}
+		err = tx.Insert(otoa)
+		if err != nil {
+			err = Rollback(tx, err)
+			return nil, err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	req.Id = &order.ID
+	return req, nil
 }

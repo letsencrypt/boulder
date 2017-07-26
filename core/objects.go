@@ -569,3 +569,15 @@ type FQDNSet struct {
 	Issued  time.Time
 	Expires time.Time
 }
+
+// Order represents the request object that forms the basis of the v2 style
+// issuance flow
+type Order struct {
+	ID                int64
+	RegistrationID    int64
+	Expires           time.Time
+	CSR               []byte
+	Error             error
+	CertificateSerial string
+	Authorizations    []Authorization
+}

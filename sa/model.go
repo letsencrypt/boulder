@@ -343,3 +343,17 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	}
 	return c, nil
 }
+
+type orderModel struct {
+	ID                int64
+	RegistrationID    int64
+	Expires           int64
+	CSR               []byte
+	Error             []byte
+	CertificateSerial string
+}
+
+type orderToAuthzModel struct {
+	OrderID int64
+	AuthzID string
+}

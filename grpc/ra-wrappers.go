@@ -46,7 +46,7 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	req, err := authzToPB(authz)
+	req, err := AuthzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
 	}
@@ -99,7 +99,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Context, authz core.Authorization, challengeIndex int, chall core.Challenge) (core.Authorization, error) {
-	authzPB, err := authzToPB(authz)
+	authzPB, err := AuthzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
 	}
@@ -155,7 +155,7 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
-	authzPB, err := authzToPB(auth)
+	authzPB, err := AuthzToPB(auth)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	return authzToPB(newAuthz)
+	return AuthzToPB(newAuthz)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
@@ -271,7 +271,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	return authzToPB(newAuthz)
+	return AuthzToPB(newAuthz)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
@@ -332,4 +332,11 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 		return nil, err
 	}
 	return &corepb.Empty{}, nil
+}
+
+func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
+	if request == nil || request.RegistrationID == nil || request.Csr == nil {
+		return nil, errIncompleteRequest
+	}
+	return ras.inner.NewOrder(ctx, request)
 }

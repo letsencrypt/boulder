@@ -20,6 +20,8 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/csr"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -28,6 +30,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
@@ -69,6 +72,7 @@ type RegistrationAuthorityImpl struct {
 	maxNames              int
 	forceCNFromSAN        bool
 	reuseValidAuthz       bool
+	orderValidity         time.Duration
 
 	regByIPStats         metrics.Scope
 	regByIPRangeStats    metrics.Scope
@@ -1322,4 +1326,47 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		return berrors.InternalServerError(err.Error())
 	}
 	return nil
+}
+
+// NewOrder asd
+func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	expires := ra.clk.Now().Add(ra.orderValidity).Unix()
+	order := &corepb.Order{
+		RegistrationID: req.RegistrationID,
+		Expires:        &expires,
+		Csr:            req.Csr,
+	}
+	parsedCSR, err := x509.ParseCertificateRequest(req.Csr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = csr.VerifyCSR(parsedCSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.RegistrationID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, name := range parsedCSR.DNSNames {
+		authz, err := ra.NewAuthorization(ctx, core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: name,
+			},
+		}, *req.RegistrationID)
+		if err != nil {
+			return nil, err
+		}
+		authzPB, err := grpc.AuthzToPB(authz)
+		if err != nil {
+			return nil, err
+		}
+		order.Authorizations = append(order.Authorizations, authzPB)
+	}
+
+	storedOrder, err := ra.SA.NewOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+
+	return storedOrder, nil
 }

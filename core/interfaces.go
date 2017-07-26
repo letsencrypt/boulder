@@ -2,13 +2,16 @@ package core
 
 import (
 	"crypto/x509"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
 	"net"
 	"net/http"
 	"time"
 
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
+
 	caPB "github.com/letsencrypt/boulder/ca/proto"
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -76,6 +79,9 @@ type RegistrationAuthority interface {
 	// [WebFrontEnd]
 	DeactivateAuthorization(ctx context.Context, auth Authorization) error
 
+	// [WebFrontEnd]
+	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)
+
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
@@ -125,6 +131,7 @@ type StorageAdder interface {
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
+	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 }
 
 // StorageAuthority interface represents a simple key/value
