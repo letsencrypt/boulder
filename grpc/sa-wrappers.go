@@ -122,13 +122,12 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 		return core.CertificateStatus{}, err
 	}
 
-	if response == nil || response.Serial == nil || response.SubscriberApproved == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 
 	return core.CertificateStatus{
 		Serial:                *response.Serial,
-		SubscriberApproved:    *response.SubscriberApproved,
 		Status:                core.OCSPStatus(*response.Status),
 		OCSPLastUpdated:       time.Unix(0, *response.OcspLastUpdated),
 		RevokedDate:           time.Unix(0, *response.RevokedDate),
@@ -262,6 +261,18 @@ func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.
 
 func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sac.inner.CountInvalidAuthorizations(ctx, request)
+}
+
+func (sac StorageAuthorityClientWrapper) GetPendingAuthorization(ctx context.Context, request *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	authzPB, err := sac.inner.GetPendingAuthorization(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	authz, err := pbToAuthz(authzPB)
+	if err != nil {
+		return nil, err
+	}
+	return &authz, nil
 }
 
 func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
@@ -578,7 +589,6 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 
 	return &sapb.CertificateStatus{
 		Serial:                &certStatus.Serial,
-		SubscriberApproved:    &certStatus.SubscriberApproved,
 		Status:                &status,
 		OcspLastUpdated:       &ocspLastUpdatedNano,
 		RevokedDate:           &revokedDateNano,
@@ -681,6 +691,18 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations(ctx context.
 
 func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sas.inner.CountInvalidAuthorizations(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Context, request *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	authz, err := sas.inner.GetPendingAuthorization(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	authzPB, err := authzToPB(*authz)
+	if err != nil {
+		return nil, err
+	}
+	return authzPB, err
 }
 
 func (sas StorageAuthorityServerWrapper) GetSCTReceipt(ctx context.Context, request *sapb.GetSCTReceiptRequest) (*sapb.SignedCertificateTimestamp, error) {

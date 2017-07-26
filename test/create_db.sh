@@ -9,8 +9,6 @@ if [[ $MYSQL_CONTAINER ]]; then
 	dbconn="-u root -h boulder-mysql --port 3306"
 fi
 
-APPLY_NEXT_MIGRATIONS=${APPLY_NEXT_MIGRATIONS:-true}
-
 # MariaDB sets the default binlog_format to STATEMENT,
 # which causes warnings that fail tests. Instead set it
 # to the format we use in production, MIXED.
@@ -33,7 +31,7 @@ for dbenv in $DBENVS; do
   goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db/"
   echo "migrated ${db} database with ./sa/_db/"
 
-  if [[ "$APPLY_NEXT_MIGRATIONS" = true ]]; then
+  if [[ "$BOULDER_CONFIG_DIR" = "test/config-next" ]]; then
     nextDir="./sa/_db-next/"
 
     # Goose exits non-zero if there are no migrations to apply with the error

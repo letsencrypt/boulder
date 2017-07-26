@@ -10,6 +10,7 @@ service StorageAuthority {
         rpc GetRegistration(RegistrationID) returns (core.Registration) {}
         rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
         rpc GetAuthorization(AuthorizationID) returns (core.Authorization) {}
+        rpc GetPendingAuthorization(GetPendingAuthorizationRequest) returns (core.Authorization) {}
         rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
         rpc GetCertificate(Serial) returns (core.Certificate) {}
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
@@ -50,6 +51,14 @@ message JSONWebKey {
 
 message AuthorizationID {
         optional string id = 1;
+}
+
+message GetPendingAuthorizationRequest {
+        optional int64 registrationID = 1;
+        optional string identifierType = 2;
+        optional string identifierValue = 3;
+        // Result must be valid until at least this Unix timestamp (nanos)
+        optional int64 validUntil = 4;
 }
 
 message GetValidAuthorizationsRequest {

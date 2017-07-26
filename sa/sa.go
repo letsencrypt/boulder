@@ -547,7 +547,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	statusModel := statusObj.(*certStatusModel)
 	status = core.CertificateStatus{
 		Serial:                statusModel.Serial,
-		SubscriberApproved:    statusModel.SubscriberApproved,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
 		RevokedDate:           statusModel.RevokedDate,
@@ -556,7 +555,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		OCSPResponse:          statusModel.OCSPResponse,
 		NotAfter:              statusModel.NotAfter,
 		IsExpired:             statusModel.IsExpired,
-		LockCol:               statusModel.LockCol,
 	}
 
 	return status, nil
@@ -677,27 +675,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
 	var output core.Authorization
 
-	// Check if we can recycle an existing, pending authz.
-	if features.Enabled(features.ReusePendingAuthz) {
-		idJSON, err := json.Marshal(authz.Identifier)
-		if err != nil {
-			return output, err
-		}
-
-		pa, err := selectPendingAuthz(ssa.dbMap, "WHERE identifier = ? AND expires > ? LIMIT 1", idJSON, ssa.clk.Now().Add(time.Hour))
-		if err == sql.ErrNoRows {
-			// No existing authz found, proceed to create one.
-		} else if err == nil {
-			// We found an authz, but we still need to fetch its challenges. To
-			// simplify things, just call GetAuthorization, which takes care of that.
-			ssa.scope.Inc("reused_authz", 1)
-			return ssa.GetAuthorization(ctx, pa.ID)
-		} else {
-			// Any error other than ErrNoRows; return the error
-			return output, err
-		}
-	}
-
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return output, err
@@ -745,6 +722,52 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
 	return output, err
+}
+
+// GetPendingAuthorization returns the most recent Pending authorization
+// with the given identifier, if available.
+func (ssa *SQLStorageAuthority) GetPendingAuthorization(
+	ctx context.Context,
+	req *sapb.GetPendingAuthorizationRequest,
+) (*core.Authorization, error) {
+	identifierJSON, err := json.Marshal(core.AcmeIdentifier{
+		Type:  core.IdentifierType(*req.IdentifierType),
+		Value: *req.IdentifierValue,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: This will use the index on `registrationId`, `expires`, which should
+	// keep the amount of scanning to a minimum. That index does not include the
+	// identifier, so accounts with huge numbers of pending authzs may result in
+	// slow queries here.
+	pa, err := selectPendingAuthz(ssa.dbMap,
+		`WHERE registrationID = :regID
+			 AND identifier = :identifierJSON
+			 AND status = :status
+			 AND expires > :validUntil
+		 ORDER BY expires ASC
+		 LIMIT 1`,
+		map[string]interface{}{
+			"regID":          *req.RegistrationID,
+			"identifierJSON": identifierJSON,
+			"status":         string(core.StatusPending),
+			"validUntil":     time.Unix(0, *req.ValidUntil),
+		})
+	if err == sql.ErrNoRows {
+		return nil, berrors.NotFoundError("pending authz not found")
+	} else if err == nil {
+		// We found an authz, but we still need to fetch its challenges. To
+		// simplify things, just call GetAuthorization, which takes care of that.
+		ssa.scope.Inc("reused_authz", 1)
+		authz, err := ssa.GetAuthorization(ctx, pa.ID)
+		return &authz, err
+	} else {
+		// Any error other than ErrNoRows; return the error
+		return nil, err
+	}
+
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
@@ -890,20 +913,18 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	certStatusOb := &certStatusModel{
-		SubscriberApproved: false,
-		Status:             core.OCSPStatus("good"),
-		OCSPLastUpdated:    time.Time{},
-		OCSPResponse:       []byte{},
-		Serial:             serial,
-		RevokedDate:        time.Time{},
-		RevokedReason:      0,
-		LockCol:            0,
-		NotAfter:           parsedCertificate.NotAfter,
+	certStatus := &certStatusModel{
+		Status:          core.OCSPStatus("good"),
+		OCSPLastUpdated: time.Time{},
+		OCSPResponse:    []byte{},
+		Serial:          serial,
+		RevokedDate:     time.Time{},
+		RevokedReason:   0,
+		NotAfter:        parsedCertificate.NotAfter,
 	}
 	if len(ocspResponse) != 0 {
-		certStatusOb.OCSPResponse = ocspResponse
-		certStatusOb.OCSPLastUpdated = ssa.clk.Now()
+		certStatus.OCSPResponse = ocspResponse
+		certStatus.OCSPLastUpdated = ssa.clk.Now()
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -919,7 +940,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		return "", Rollback(tx, err)
 	}
 
-	err = tx.Insert(certStatusOb)
+	err = tx.Insert(certStatus)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}

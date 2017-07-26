@@ -260,20 +260,6 @@ func TestRecyclePendingEnabled(t *testing.T) {
 	pendingAuthzB, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, pendingAuthzB.ID != "", "ID shouldn't be blank")
-
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
-
-	authz.Challenges = nil
-	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
-
-	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(
-		t,
-		pendingAuthzA.ID == pendingAuthz2.ID || pendingAuthzB.ID == pendingAuthz2.ID,
-		fmt.Sprintf("unexpected pending authz ID, wanted: %q or %q, got: %q", pendingAuthzA.ID, pendingAuthzB.ID, pendingAuthz2.ID),
-	)
-	test.Assert(t, len(pendingAuthz2.Challenges) > 0, "no challenges")
-	test.AssertEquals(t, pendingAuthz2.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
@@ -518,7 +504,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
-	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
@@ -539,7 +524,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
-	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 

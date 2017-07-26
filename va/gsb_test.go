@@ -6,7 +6,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -29,7 +28,6 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("good.com").Return("", nil)
 	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
-	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		sbc,
@@ -67,15 +65,6 @@ func TestIsSafeDomain(t *testing.T) {
 	}
 	if resp != nil {
 		t.Errorf("errorful.com: want resp == nil, got %v", resp)
-	}
-
-	domain = "outofdate.com"
-	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
-	if err != nil {
-		t.Errorf("outofdate.com: want no error, got '%s'", err)
-	}
-	if !resp.GetIsSafe() {
-		t.Errorf("outofdate.com: IsSafeDomain should fail open on out of date hashes")
 	}
 }
 

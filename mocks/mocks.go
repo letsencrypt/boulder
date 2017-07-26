@@ -307,6 +307,10 @@ func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bo
 	return false, nil
 }
 
+func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	return nil, fmt.Errorf("GetPendingAuthorization not implemented")
+}
+
 // GetValidAuthorizations is a mock
 func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if regID == 1 {
