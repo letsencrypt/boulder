@@ -257,7 +257,8 @@ func TestIssueCertificate(t *testing.T) {
 	}{
 		{"IssueCertificate", issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
 		{"AllowNoCN", issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
-		{"ProfileSelection", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelection},
+		{"ProfileSelectionRSA", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
+		{"ProfileSelectionECDSA", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
 	}
 
 	for _, testCase := range testCases {
@@ -568,27 +569,36 @@ func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func issueCertificateSubTestProfileSelection(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
-	testCases := []struct {
-		CSR              []byte
-		ExpectedKeyUsage x509.KeyUsage
-	}{
-		{CNandSANCSR, x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment},
-		{ECDSACSR, x509.KeyUsageDigitalSignature},
-	}
+func issueCertificateSubTestProfileSelectionRSA(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+	// Certificates for RSA keys should be marked as usable for signatures and encryption.
+	expectedKeyUsage := x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 
-	for _, testCase := range testCases {
-		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: testCase.CSR, RegistrationID: &arbitraryRegID})
-		test.AssertNotError(t, err, "Failed to sign certificate")
+	// Sign CSR
+	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
+	test.AssertNotError(t, err, "Failed to sign certificate")
 
-		// Verify cert contents
-		cert, err := x509.ParseCertificate(issuedCert.DER)
-		test.AssertNotError(t, err, "Certificate failed to parse")
+	// Verify cert contents
+	cert, err := x509.ParseCertificate(issuedCert.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
 
-		t.Logf("expected key usage %v, got %v", testCase.ExpectedKeyUsage, cert.KeyUsage)
-		test.AssertEquals(t, cert.KeyUsage, testCase.ExpectedKeyUsage)
-	}
+	t.Logf("expected key usage %v, got %v", expectedKeyUsage, cert.KeyUsage)
+	test.AssertEquals(t, cert.KeyUsage, expectedKeyUsage)
+}
+
+func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+	// Certificates for ECDSA keys should be marked as usable for only signatures.
+	expectedKeyUsage := x509.KeyUsageDigitalSignature
+
+	// Sign CSR
+	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: &arbitraryRegID})
+	test.AssertNotError(t, err, "Failed to sign certificate")
+
+	// Verify cert contents
+	cert, err := x509.ParseCertificate(issuedCert.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+
+	t.Logf("expected key usage %v, got %v", expectedKeyUsage, cert.KeyUsage)
+	test.AssertEquals(t, cert.KeyUsage, expectedKeyUsage)
 }
 
 func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
