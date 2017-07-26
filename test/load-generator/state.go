@@ -161,7 +161,7 @@ func (s *State) Restore(filename string) error {
 		}
 		signer, err := jose.NewSigner(jose.SigningKey{
 			Key:       key,
-			Algorithm: jose.ES256,
+			Algorithm: jose.RS256,
 		}, &jose.SignerOptions{
 			NonceSource: &nonceSource{s: s},
 			EmbedJWK:    true,

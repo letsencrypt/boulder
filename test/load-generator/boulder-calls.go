@@ -55,7 +55,7 @@ func newRegistration(s *State, ctx *context) error {
 	signer, err := jose.NewSigner(
 		jose.SigningKey{
 			Key:       signKey,
-			Algorithm: jose.RS256,
+			Algorithm: jose.ES256,
 		},
 		&jose.SignerOptions{
 			NonceSource: &nonceSource{s: s},
