@@ -4,7 +4,6 @@ package va
 
 import (
 	safebrowsingv4 "github.com/google/safebrowsing"
-	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 	"golang.org/x/net/context"
 
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -44,11 +43,6 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 	list, err := va.safeBrowsing.IsListed(*req.Domain)
 	if err != nil {
 		stats.Inc("IsSafeDomain.Errors", 1)
-		if err == safebrowsing.ErrOutOfDateHashes {
-			stats.Inc("IsSafeDomain.OutOfDateHashErrors", 1)
-			status := true
-			return &vaPB.IsDomainSafe{IsSafe: &status}, nil
-		}
 		return nil, err
 	}
 	stats.Inc("IsSafeDomain.Successes", 1)

@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/va"
-	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 )
 
 const (
@@ -128,21 +127,4 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 		return nil, err
 	}
 	return gsbAdapter{sb}, nil
-}
-
-// newGoogleSafeBrowsing constructs a va.SafeBrowsing instance using the legacy
-// letsencrypt fork of the go-safebrowsing-api client.
-func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) (va.SafeBrowsing, error) {
-	// If there is no GSB configuration, don't create a client
-	if gsb == nil {
-		return nil, nil
-	}
-	if err := configCheck(gsb); err != nil {
-		return nil, err
-	}
-	sbc, err := safebrowsing.NewSafeBrowsing(gsb.APIKey, gsb.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	return sbc, nil
 }

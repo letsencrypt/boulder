@@ -86,15 +86,7 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	var sbc va.SafeBrowsing
-	// If the feature flag is set, use the Google safebrowsing library that
-	// implements the v4 api instead of the legacy letsencrypt fork of
-	// go-safebrowsing-api
-	if features.Enabled(features.GoogleSafeBrowsingV4) {
-		sbc, err = newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
-	} else {
-		sbc, err = newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-	}
+	sbc, err := newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
 	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
 
 	dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
