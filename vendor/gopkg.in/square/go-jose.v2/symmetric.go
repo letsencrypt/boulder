@@ -25,10 +25,11 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 
-	"gopkg.in/square/go-jose.v1/cipher"
+	"gopkg.in/square/go-jose.v2/cipher"
 )
 
 // Random reader (stubbed out in tests)
@@ -229,11 +230,12 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 			return recipientInfo{}, err
 		}
 
+		header := &rawHeader{}
+		header.set(headerIV, newBuffer(parts.iv))
+		header.set(headerTag, newBuffer(parts.tag))
+
 		return recipientInfo{
-			header: &rawHeader{
-				Iv:  newBuffer(parts.iv),
-				Tag: newBuffer(parts.tag),
-			},
+			header:       header,
 			encryptedKey: parts.ciphertext,
 		}, nil
 	case A128KW, A192KW, A256KW:
@@ -258,7 +260,7 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 
 // Decrypt the content encryption key.
 func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
-	switch KeyAlgorithm(headers.Alg) {
+	switch headers.getAlgorithm() {
 	case DIRECT:
 		cek := make([]byte, len(ctx.key))
 		copy(cek, ctx.key)
@@ -266,10 +268,19 @@ func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipien
 	case A128GCMKW, A192GCMKW, A256GCMKW:
 		aead := newAESGCM(len(ctx.key))
 
+		iv, err := headers.getIV()
+		if err != nil {
+			return nil, fmt.Errorf("square/go-jose: invalid IV: %v", err)
+		}
+		tag, err := headers.getTag()
+		if err != nil {
+			return nil, fmt.Errorf("square/go-jose: invalid tag: %v", err)
+		}
+
 		parts := &aeadParts{
-			iv:         headers.Iv.bytes(),
+			iv:         iv.bytes(),
 			ciphertext: recipient.encryptedKey,
-			tag:        headers.Tag.bytes(),
+			tag:        tag.bytes(),
 		}
 
 		cek, err := aead.decrypt(ctx.key, []byte{}, parts)

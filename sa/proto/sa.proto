@@ -8,7 +8,7 @@ import "core/proto/core.proto";
 service StorageAuthority {
         // Getters
         rpc GetRegistration(RegistrationID) returns (core.Registration) {}
-        rpc GetRegistrationByKey(JsonWebKey) returns (core.Registration) {}
+        rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
         rpc GetAuthorization(AuthorizationID) returns (core.Authorization) {}
         rpc GetPendingAuthorization(GetPendingAuthorizationRequest) returns (core.Authorization) {}
         rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
@@ -44,7 +44,7 @@ message RegistrationID {
         optional int64 id = 1;
 }
 
-message JsonWebKey {
+message JSONWebKey {
         optional bytes jwk = 1; 
 }
 

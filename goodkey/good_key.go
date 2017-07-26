@@ -66,7 +66,7 @@ func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
 // GoodKey returns true if the key is acceptable for both TLS use and account
 // key use (our requirements are the same for either one), according to basic
 // strength and algorithm checking.
-// TODO: Support JsonWebKeys once go-jose migration is done.
+// TODO: Support JSONWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 	switch t := key.(type) {
 	case rsa.PublicKey:

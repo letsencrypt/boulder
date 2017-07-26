@@ -7,7 +7,7 @@ import (
 
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
 // challenges.go
@@ -19,7 +19,7 @@ var accountKeyJSON = `{
 }`
 
 func TestChallenges(t *testing.T) {
-	var accountKey *jose.JsonWebKey
+	var accountKey *jose.JSONWebKey
 	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
 	if err != nil {
 		t.Errorf("Error unmarshaling JWK: %v", err)

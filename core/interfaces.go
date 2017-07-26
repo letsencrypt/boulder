@@ -2,13 +2,13 @@ package core
 
 import (
 	"crypto/x509"
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
 	"net"
 	"net/http"
 	"time"
 
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v1"
-
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -83,7 +83,7 @@ type RegistrationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
+	IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (Certificate, error)
 	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 
@@ -96,7 +96,7 @@ type PolicyAuthority interface {
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, regID int64) (Registration, error)
-	GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (Registration, error)
+	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (Registration, error)
 	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*Authorization, error)

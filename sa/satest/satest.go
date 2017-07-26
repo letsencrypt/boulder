@@ -9,7 +9,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 var theKey = `{
@@ -18,14 +18,14 @@ var theKey = `{
     "e": "AQAB"
 }`
 
-// GoodJWK returns a known-good JsonWebKey that is always the
+// GoodJWK returns a known-good JSONWebKey that is always the
 // same. This a hack to allow both the CA and SA tests to benefit
 // because the CA tests currently require a full-fledged
 // SQLSAImpl. Long term, when the CA tests no longer need
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
-func GoodJWK() *jose.JsonWebKey {
-	var jwk jose.JsonWebKey
+func GoodJWK() *jose.JSONWebKey {
+	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(theKey), &jwk)
 	if err != nil {
 		panic("known-good theKey is no longer known-good")

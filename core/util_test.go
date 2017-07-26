@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -69,7 +69,7 @@ const JWK2JSON = `{
 
 func TestKeyDigest(t *testing.T) {
 	// Test with JWK (value, reference, and direct)
-	var jwk jose.JsonWebKey
+	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestKeyDigest(t *testing.T) {
 }
 
 func TestKeyDigestEquals(t *testing.T) {
-	var jwk1, jwk2 jose.JsonWebKey
+	var jwk1, jwk2 jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk1)
 	if err != nil {
 		t.Fatal(err)

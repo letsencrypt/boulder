@@ -22,7 +22,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -267,13 +267,54 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-func signRequest(t *testing.T, req string, nonceService *nonce.NonceService) string {
-	accountKey, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+// loadPrivateKey loads a private key from PEM/DER-encoded data.
+// Duplicates functionality from jose v1's util.LoadPrivateKey function. It was
+// moved to the jose-util cmd's main packge in v2.
+func loadPrivateKey(t *testing.T, keyBytes []byte) interface{} {
+	// pem.Decode does not return an error as its 2nd arg, but instead the "rest"
+	// that was leftover from parsing the PEM block. We only care if the decoded
+	// PEM block was empty for this test function.
+	block, _ := pem.Decode(keyBytes)
+	if block == nil {
+		t.Fatal("Unable to decode private key PEM bytes")
+	}
 
-	signer, err := jose.NewSigner("RS256", accountKey)
+	var privKey interface{}
+	// Try decoding as an RSA private key
+	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err == nil {
+		return privKey
+	}
+
+	// Try decoding as a PKCS8 private key
+	privKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err == nil {
+		return privKey
+	}
+
+	// Try as an ECDSA private key
+	privKey, err = x509.ParseECPrivateKey(block.Bytes)
+	if err == nil {
+		return privKey
+	}
+
+	// Nothing worked! Fail hard.
+	t.Fatal(fmt.Sprintf("Unable to decode private key PEM bytes"))
+	// NOOP - the t.Fatal() call will abort before this return
+	return nil
+}
+
+func signRequest(t *testing.T, req string, nonceService *nonce.NonceService) string {
+	accountKey := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       accountKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(nonceService)
 	result, err := signer.Sign([]byte(req))
 	test.AssertNotError(t, err, "Failed to sign req")
 	ret := result.FullSerialize()
@@ -980,7 +1021,7 @@ func TestChallenge(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
-	var key jose.JsonWebKey
+	var key jose.JSONWebKey
 	err := json.Unmarshal([]byte(`
 		{
 			"e": "AQAB",
@@ -1042,11 +1083,17 @@ func TestChallenge(t *testing.T) {
 func TestBadNonce(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	// NOTE: We deliberately do not set the NonceSource in the jose.SignerOptions
+	// for this test in order to provoke a bad nonce error
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		EmbedJWK: true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	responseWriter := httptest.NewRecorder()
@@ -1061,14 +1108,17 @@ func TestNewECDSARegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// E1 always exists; E2 never exists
-	key, err := jose.LoadPrivateKey([]byte(testE2KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(testE2KeyPrivatePEM))
 	ecdsaKey, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
-	signer, err := jose.NewSigner("ES256", ecdsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       ecdsaKey,
+		Algorithm: jose.ES256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
-
 	responseWriter := httptest.NewRecorder()
 	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Failed to sign")
@@ -1084,13 +1134,18 @@ func TestNewECDSARegistration(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/0")
 
-	key, err = jose.LoadPrivateKey([]byte(testE1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key = loadPrivateKey(t, []byte(testE1KeyPrivatePEM))
 	ecdsaKey, ok = key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
-	signer, err = jose.NewSigner("ES256", ecdsaKey)
+
+	signer, err = jose.NewSigner(jose.SigningKey{
+		Key:       ecdsaKey,
+		Algorithm: jose.ES256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
@@ -1115,13 +1170,18 @@ func TestEmptyRegistration(t *testing.T) {
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
 	// return a populated registration for GetRegistrationByKey when test key 1 is
 	// used.
-	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 
 	emptyReg := `{"resource":"reg"}`
 	emptyBody, err := signer.Sign([]byte(emptyReg))
@@ -1150,13 +1210,17 @@ func TestEmptyRegistration(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 	fooBody, err := signer.Sign([]byte("foo"))
 	test.AssertNotError(t, err, "Unable to sign")
 
@@ -1255,13 +1319,17 @@ func TestNewRegistration(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/new-authz>;rel="next"`)
 
-	key, err = jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
 	rsaKey, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err = jose.NewSigner("RS256", rsaKey)
+	signer, err = jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
@@ -1313,31 +1381,36 @@ type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
 	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
+	wfe, fc := setupWFE(t)
+
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
 	test.AssertNotError(t, err, "Failed to load key")
-	key, err := jose.LoadPrivateKey(keyPemBytes)
+	key := loadPrivateKey(t, keyPemBytes)
 	test.AssertNotError(t, err, "Failed to load key")
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe, fc := setupWFE(t)
 	wfe.AcceptRevocationReason = true
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1346,13 +1419,20 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {
+	wfe, fc := setupWFE(t)
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
 	test.AssertNotError(t, err, "Failed to load key")
-	key, err := jose.LoadPrivateKey(keyPemBytes)
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, keyPemBytes)
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Valid reason
@@ -1360,13 +1440,11 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe, fc := setupWFE(t)
 	wfe.AcceptRevocationReason = true
 	ra := wfe.RA.(*MockRegistrationAuthority)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1379,7 +1457,6 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	revokeRequestJSON, err = makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ = signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1393,7 +1470,6 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ = signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1405,7 +1481,6 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	revokeRequestJSON, err = makeRevokeRequestJSON(&unsupported)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ = signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1422,13 +1497,18 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
-	test1JWK, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test1JWK := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	test1Key, ok := test1JWK.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	accountKeySigner, err := jose.NewSigner("RS256", test1Key)
+	accountKeySigner, err := jose.NewSigner(jose.SigningKey{
+		Key:       test1Key,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	accountKeySigner.SetNonceSource(wfe.nonceService)
 	result, _ := accountKeySigner.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1440,13 +1520,17 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
-	test2JWK, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	test2JWK := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
 	test2Key, ok := test2JWK.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	accountKeySigner2, err := jose.NewSigner("RS256", test2Key)
+	accountKeySigner2, err := jose.NewSigner(jose.SigningKey{
+		Key:       test2Key,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	accountKeySigner2.SetNonceSource(wfe.nonceService)
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
@@ -1460,13 +1544,19 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
+	wfe, fc := setupWFE(t)
 	keyPemBytes, err := ioutil.ReadFile("test/178.key")
 	test.AssertNotError(t, err, "Failed to load key")
-	key, err := jose.LoadPrivateKey(keyPemBytes)
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, keyPemBytes)
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	certPemBytes, err := ioutil.ReadFile("test/178.crt")
@@ -1484,12 +1574,10 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal request")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	wfe, fc := setupWFE(t)
 
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
-	signer.SetNonceSource(wfe.nonceService)
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1501,13 +1589,17 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 func TestRevokeCertificateWithAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
-	test4JWK, err := jose.LoadPrivateKey([]byte(test4KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	test4JWK := loadPrivateKey(t, []byte(test4KeyPrivatePEM))
 	test4Key, ok := test4JWK.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	accountKeySigner, err := jose.NewSigner("RS256", test4Key)
+	accountKeySigner, err := jose.NewSigner(jose.SigningKey{
+		Key:       test4Key,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	accountKeySigner.SetNonceSource(wfe.nonceService)
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
@@ -1657,15 +1749,19 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
-	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Test POST valid JSON but key is not registered
-	signer.SetNonceSource(wfe.nonceService)
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Unable to sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
@@ -1675,15 +1771,19 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:acme:error:unauthorized","detail":"No registration exists matching provided key","status":403}`)
 	responseWriter.Body.Reset()
 
-	key, err = jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
 	rsaKey, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err = jose.NewSigner("RS256", rsaKey)
+	signer, err = jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
-	signer.SetNonceSource(wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
 
 	// Test POST valid JSON with registration up in the mock
@@ -1896,9 +1996,9 @@ func TestLogPayload(t *testing.T) {
 	test.AssertEquals(t, event.Payload, payload)
 }
 
-func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)
-	var parsedKey jose.JsonWebKey
+	var parsedKey jose.JSONWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
 	if err != nil {
 		panic(err)
@@ -2001,22 +2101,25 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// create a signed request
-	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// requests that do not call sendError() have the requester header
-	signer.SetNonceSource(wfe.nonceService)
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	request := makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
 
 	// requests that do call sendError() also should have the requester header
-	signer.SetNonceSource(wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
 	test.AssertNotError(t, err, "Failed to signer.Sign")
 	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
@@ -2112,13 +2215,17 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "Status": "deactivated"
 		}`)
 
-	key, err := jose.LoadPrivateKey([]byte(test3KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test3KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 
 	result, err := signer.Sign([]byte(`{"resource":"reg","status":"deactivated"}`))
 	test.AssertNotError(t, err, "Unable to sign")
@@ -2143,13 +2250,17 @@ func TestKeyRollover(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
 	defer features.Reset()
 
-	key, err := jose.LoadPrivateKey([]byte(test3KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, []byte(test3KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Key:       rsaKey,
+		Algorithm: jose.RS256,
+	}, &jose.SignerOptions{
+		NonceSource: wfe.nonceService,
+		EmbedJWK:    true,
+	})
 	test.AssertNotError(t, err, "Failed to make signer")
-	signer.SetNonceSource(wfe.nonceService)
 
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
 	assertJSONEquals(t,

@@ -11,7 +11,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -78,7 +78,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 	}
 
 	keyJSON := []byte(test1KeyPublicJSON)
-	var parsedKey jose.JsonWebKey
+	var parsedKey jose.JSONWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
 	if err != nil {
 		return core.Registration{}, err
@@ -95,13 +95,13 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 }
 
 // GetRegistrationByKey is a mock
-func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JsonWebKey) (core.Registration, error) {
-	var test1KeyPublic jose.JsonWebKey
-	var test2KeyPublic jose.JsonWebKey
-	var test3KeyPublic jose.JsonWebKey
-	var test4KeyPublic jose.JsonWebKey
-	var testE1KeyPublic jose.JsonWebKey
-	var testE2KeyPublic jose.JsonWebKey
+func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	var test1KeyPublic jose.JSONWebKey
+	var test2KeyPublic jose.JSONWebKey
+	var test3KeyPublic jose.JSONWebKey
+	var test4KeyPublic jose.JSONWebKey
+	var testE1KeyPublic jose.JSONWebKey
+	var testE2KeyPublic jose.JSONWebKey
 	var err error
 	err = test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	if err != nil {

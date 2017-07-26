@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -42,13 +42,13 @@ func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
 	}, nil
 }
 
-func jwkToString(jwk *jose.JsonWebKey) (string, error) {
+func jwkToString(jwk *jose.JSONWebKey) (string, error) {
 	bytes, err := jwk.MarshalJSON()
 	return string(bytes), err
 }
 
-func stringToJWK(in string) (*jose.JsonWebKey, error) {
-	var jwk = new(jose.JsonWebKey)
+func stringToJWK(in string) (*jose.JSONWebKey, error) {
+	var jwk = new(jose.JSONWebKey)
 	err := jwk.UnmarshalJSON([]byte(in))
 	if err != nil {
 		return nil, err
@@ -309,7 +309,7 @@ func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
 }
 
 func pbToRegistration(pb *corepb.Registration) (core.Registration, error) {
-	var key jose.JsonWebKey
+	var key jose.JSONWebKey
 	err := key.UnmarshalJSON(pb.Key)
 	if err != nil {
 		return core.Registration{}, err

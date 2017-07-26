@@ -19,7 +19,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -73,21 +73,21 @@ var (
 		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
 		"e":"AQAB"
 	}`)
-	AccountKeyA = jose.JsonWebKey{}
+	AccountKeyA = jose.JSONWebKey{}
 
 	AccountKeyJSONB = []byte(`{
 		"kty":"RSA",
 		"n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
 		"e":"AQAB"
 	}`)
-	AccountKeyB = jose.JsonWebKey{}
+	AccountKeyB = jose.JSONWebKey{}
 
 	AccountKeyJSONC = []byte(`{
 		"kty":"RSA",
 		"n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
 		"e":"AQAB"
 	}`)
-	AccountKeyC = jose.JsonWebKey{}
+	AccountKeyC = jose.JSONWebKey{}
 
 	// These values we simulate from the client
 	AccountPrivateKeyJSON = []byte(`{
@@ -101,7 +101,7 @@ var (
 		"dq":"s9lAH9fggBsoFR8Oac2R_E2gw282rT2kGOAhvIllETE1efrA6huUUvMfBcMpn8lqeW6vzznYY5SSQF7pMdC_agI3nG8Ibp1BUb0JUiraRNqUfLhcQb_d9GF4Dh7e74WbRsobRonujTYN1xCaP6TO61jvWrX-L18txXw494Q_cgk",
 		"qi":"GyM_p6JrXySiz1toFgKbWV-JdI3jQ4ypu9rbMWx3rQJBfmt0FoYzgUIZEVFEcOqwemRN81zoDAaa-Bk0KWNGDjJHZDdDmFhW3AN7lI-puxk_mHZGJ11rxyR8O55XLSe3SPmRfKwZI6yU24ZxvQKFYItdldUKGzO6Ia6zTKhAVRU"
 	}`)
-	AccountPrivateKey = jose.JsonWebKey{}
+	AccountPrivateKey = jose.JSONWebKey{}
 
 	ShortKeyJSON = []byte(`{
 		"e": "AQAB",
@@ -109,7 +109,7 @@ var (
 		"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
 		}`)
 
-	ShortKey = jose.JsonWebKey{}
+	ShortKey = jose.JSONWebKey{}
 
 	AuthzRequest = core.Authorization{
 		Identifier: core.AcmeIdentifier{
@@ -460,7 +460,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 	reg := core.Registration{
 		Contact:   &[]string{mailto},
-		Key:       &jose.JsonWebKey{Key: testKey()},
+		Key:       &jose.JSONWebKey{Key: testKey()},
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
@@ -469,7 +469,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
 
 	// Create another registration for the same IPv4 address by changing the key
-	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.Key = &jose.JSONWebKey{Key: testKey()}
 
 	// There should be an error since a 2nd registration will exceed the
 	// RegistrationsPerIP rate limit
@@ -478,7 +478,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
 
 	// Create a registration for an IPv6 address
-	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.Key = &jose.JSONWebKey{Key: testKey()}
 	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
 
 	// There should be no errors - it is within the RegistrationsPerIP rate limit
@@ -486,7 +486,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
 
 	// Create a 2nd registration for the IPv6 address by changing the key
-	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.Key = &jose.JSONWebKey{Key: testKey()}
 
 	// There should be an error since a 2nd reg for the same IPv6 address will
 	// exceed the RegistrationsPerIP rate limit
@@ -495,7 +495,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
 
 	// Create a registration for an IPv6 address in the same /48
-	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.Key = &jose.JSONWebKey{Key: testKey()}
 	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
 
 	// There should be no errors since two IPv6 addresses in the same /48 is
@@ -504,7 +504,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
 
 	// Create a registration for yet another IPv6 address in the same /48
-	reg.Key = &jose.JsonWebKey{Key: testKey()}
+	reg.Key = &jose.JSONWebKey{Key: testKey()}
 	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9654")
 
 	// There should be an error since three registrations within the same IPv6
@@ -581,8 +581,6 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
 	test.AssertNotError(t, authz.Challenges[0].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
 	test.AssertNotError(t, authz.Challenges[1].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 1 returned an error")
-
-	t.Log("DONE TestNewAuthorization")
 }
 
 func TestReuseValidAuthorization(t *testing.T) {
@@ -842,8 +840,6 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-
-	t.Log("DONE TestUpdateAuthorization")
 }
 
 func TestUpdateAuthorizationExpired(t *testing.T) {
@@ -898,8 +894,6 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
-
-	t.Log("DONE TestUpdateAuthorizationNewRPC")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -931,8 +925,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
-
-	t.Log("DONE TestCertificateKeyNotEqualAccountKey")
 }
 
 func TestAuthorizationRequired(t *testing.T) {
@@ -952,8 +944,6 @@ func TestAuthorizationRequired(t *testing.T) {
 
 	_, err = ra.NewCertificate(ctx, certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
-
-	t.Log("DONE TestAuthorizationRequired")
 }
 
 func TestNewCertificate(t *testing.T) {
@@ -1406,7 +1396,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
 
-	rA, rB := core.Registration{Key: &jose.JsonWebKey{Key: oldKey}}, core.Registration{}
+	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
 	changed := mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
@@ -1422,7 +1412,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 
 	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	rB.Key = &jose.JsonWebKey{Key: newKey.Public()}
+	rB.Key = &jose.JSONWebKey{Key: newKey.Public()}
 
 	changed = mergeUpdate(&rA, rB)
 	if !changed {
