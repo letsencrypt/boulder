@@ -20,7 +20,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -419,7 +419,7 @@ const (
 	unknownKey = "No registration exists matching provided key"
 )
 
-func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JSONWebKey, *jose.JSONWebSignature, error) {
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
 		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
@@ -435,7 +435,7 @@ func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.
 		return nil, nil, errors.New("POST JWS not signed")
 	}
 
-	key := parsedJws.Signatures[0].Header.JsonWebKey
+	key := parsedJws.Signatures[0].Header.JSONWebKey
 	if key == nil {
 		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
 		return nil, nil, errors.New("No JWK in JWS header")
@@ -461,7 +461,7 @@ func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.
 // the key itself.  verifyPOST also appends its errors to requestEvent.Errors so
 // code calling it does not need to if they immediately return a response to the
 // user.
-func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, *probs.ProblemDetails) {
+func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JSONWebKey, core.Registration, *probs.ProblemDetails) {
 	// TODO: We should return a pointer to a registration, which can be nil,
 	// rather the a registration value with a sentinel value.
 	// https://github.com/letsencrypt/boulder/issues/877
@@ -501,7 +501,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		return nil, nil, reg, probs.Malformed(err.Error())
 	}
 
-	var key *jose.JsonWebKey
+	var key *jose.JSONWebKey
 	reg, err = wfe.SA.GetRegistrationByKey(ctx, submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
@@ -1518,7 +1518,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 		return
 	}
 	var rolloverRequest struct {
-		NewKey  jose.JsonWebKey
+		NewKey  jose.JSONWebKey
 		Account string
 	}
 	err = json.Unmarshal(payload, &rolloverRequest)

@@ -14,7 +14,7 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -139,7 +139,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JsonWebKey) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
 	const query = "WHERE jwk_sha256 = ?"
 	var model interface{}
 	var err error

@@ -5,10 +5,10 @@ import (
 	"crypto/rsa"
 	"fmt"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
-func algorithmForKey(key *jose.JsonWebKey) (string, error) {
+func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 	switch k := key.Key.(type) {
 	case *rsa.PublicKey:
 		return string(jose.RS256), nil
@@ -36,7 +36,7 @@ const (
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm. Precondition: parsedJws must have exactly one signature on
 // it. Returns stat name to increment if err is non-nil.
-func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (string, error) {
+func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) (string, error) {
 	algorithm, err := algorithmForKey(key)
 	if err != nil {
 		return noAlgorithmForKey, err

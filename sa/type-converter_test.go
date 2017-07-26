@@ -7,7 +7,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 const JWK1JSON = `{
@@ -38,10 +38,10 @@ func TestAcmeIdentifier(t *testing.T) {
 	test.AssertMarshaledEquals(t, ai, out)
 }
 
-func TestJsonWebKey(t *testing.T) {
+func TestJSONWebKey(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
-	var jwk, out jose.JsonWebKey
+	var jwk, out jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	if err != nil {
 		t.Fatal(err)

@@ -3,7 +3,7 @@ package core
 import (
 	"crypto/x509"
 	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 	"net"
 	"net/http"
 	"time"
@@ -96,7 +96,7 @@ type PolicyAuthority interface {
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, regID int64) (Registration, error)
-	GetRegistrationByKey(ctx context.Context, jwk *jose.JsonWebKey) (Registration, error)
+	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (Registration, error)
 	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)

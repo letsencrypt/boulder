@@ -21,7 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
 	"gopkg.in/go-gorp/gorp.v2"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -249,9 +249,9 @@ func TestFindExpiringCertificates(t *testing.T) {
 
 func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
-	var keyA jose.JsonWebKey
-	var keyB jose.JsonWebKey
-	var keyC jose.JsonWebKey
+	var keyA jose.JSONWebKey
+	var keyB jose.JSONWebKey
+	var keyC jose.JSONWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(jsonKeyB, &keyB)
@@ -570,7 +570,7 @@ func TestLifetimeOfACert(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 	defer testCtx.cleanUp()
 
-	var keyA jose.JsonWebKey
+	var keyA jose.JSONWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
@@ -668,7 +668,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	expiresIn := 24 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	var keyA jose.JsonWebKey
+	var keyA jose.JSONWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
@@ -721,7 +721,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	expiresIn := 96 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	var keyA jose.JsonWebKey
+	var keyA jose.JSONWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 

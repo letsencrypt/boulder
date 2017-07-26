@@ -29,11 +29,11 @@ import (
 	"reflect"
 	"strings"
 
-	"gopkg.in/square/go-jose.v1/json"
+	"gopkg.in/square/go-jose.v2/json"
 )
 
-// rawJsonWebKey represents a public or private key in JWK format, used for parsing/serializing.
-type rawJsonWebKey struct {
+// rawJSONWebKey represents a public or private key in JWK format, used for parsing/serializing.
+type rawJSONWebKey struct {
 	Use string      `json:"use,omitempty"`
 	Kty string      `json:"kty,omitempty"`
 	Kid string      `json:"kid,omitempty"`
@@ -58,8 +58,8 @@ type rawJsonWebKey struct {
 	X5c []string `json:"x5c,omitempty"`
 }
 
-// JsonWebKey represents a public or private key in JWK format.
-type JsonWebKey struct {
+// JSONWebKey represents a public or private key in JWK format.
+type JSONWebKey struct {
 	Key          interface{}
 	Certificates []*x509.Certificate
 	KeyID        string
@@ -68,8 +68,8 @@ type JsonWebKey struct {
 }
 
 // MarshalJSON serializes the given key to its JSON representation.
-func (k JsonWebKey) MarshalJSON() ([]byte, error) {
-	var raw *rawJsonWebKey
+func (k JSONWebKey) MarshalJSON() ([]byte, error) {
+	var raw *rawJSONWebKey
 	var err error
 
 	switch key := k.Key.(type) {
@@ -103,8 +103,8 @@ func (k JsonWebKey) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reads a key from its JSON representation.
-func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
-	var raw rawJsonWebKey
+func (k *JSONWebKey) UnmarshalJSON(data []byte) (err error) {
+	var raw rawJSONWebKey
 	err = json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
@@ -131,7 +131,7 @@ func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
 	}
 
 	if err == nil {
-		*k = JsonWebKey{Key: key, KeyID: raw.Kid, Algorithm: raw.Alg, Use: raw.Use}
+		*k = JSONWebKey{Key: key, KeyID: raw.Kid, Algorithm: raw.Alg, Use: raw.Use}
 	}
 
 	k.Certificates = make([]*x509.Certificate, len(raw.X5c))
@@ -149,17 +149,17 @@ func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-// JsonWebKeySet represents a JWK Set object.
-type JsonWebKeySet struct {
-	Keys []JsonWebKey `json:"keys"`
+// JSONWebKeySet represents a JWK Set object.
+type JSONWebKeySet struct {
+	Keys []JSONWebKey `json:"keys"`
 }
 
 // Key convenience method returns keys by key ID. Specification states
 // that a JWK Set "SHOULD" use distinct key IDs, but allows for some
 // cases where they are not distinct. Hence method returns a slice
-// of JsonWebKeys.
-func (s *JsonWebKeySet) Key(kid string) []JsonWebKey {
-	var keys []JsonWebKey
+// of JSONWebKeys.
+func (s *JSONWebKeySet) Key(kid string) []JSONWebKey {
+	var keys []JSONWebKey
 	for _, key := range s.Keys {
 		if key.KeyID == kid {
 			keys = append(keys, key)
@@ -192,7 +192,7 @@ func rsaThumbprintInput(n *big.Int, e int) (string, error) {
 
 // Thumbprint computes the JWK Thumbprint of a key using the
 // indicated hash algorithm.
-func (k *JsonWebKey) Thumbprint(hash crypto.Hash) ([]byte, error) {
+func (k *JSONWebKey) Thumbprint(hash crypto.Hash) ([]byte, error) {
 	var input string
 	var err error
 	switch key := k.Key.(type) {
@@ -218,7 +218,7 @@ func (k *JsonWebKey) Thumbprint(hash crypto.Hash) ([]byte, error) {
 }
 
 // IsPublic returns true if the JWK represents a public key (not symmetric, not private).
-func (k *JsonWebKey) IsPublic() bool {
+func (k *JSONWebKey) IsPublic() bool {
 	switch k.Key.(type) {
 	case *ecdsa.PublicKey, *rsa.PublicKey:
 		return true
@@ -228,7 +228,7 @@ func (k *JsonWebKey) IsPublic() bool {
 }
 
 // Valid checks that the key contains the expected parameters.
-func (k *JsonWebKey) Valid() bool {
+func (k *JSONWebKey) Valid() bool {
 	if k.Key == nil {
 		return false
 	}
@@ -255,7 +255,7 @@ func (k *JsonWebKey) Valid() bool {
 	return true
 }
 
-func (key rawJsonWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
+func (key rawJSONWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
 	if key.N == nil || key.E == nil {
 		return nil, fmt.Errorf("square/go-jose: invalid RSA key, missing n/e values")
 	}
@@ -266,15 +266,15 @@ func (key rawJsonWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
 	}, nil
 }
 
-func fromRsaPublicKey(pub *rsa.PublicKey) *rawJsonWebKey {
-	return &rawJsonWebKey{
+func fromRsaPublicKey(pub *rsa.PublicKey) *rawJSONWebKey {
+	return &rawJSONWebKey{
 		Kty: "RSA",
 		N:   newBuffer(pub.N.Bytes()),
 		E:   newBufferFromInt(uint64(pub.E)),
 	}
 }
 
-func (key rawJsonWebKey) ecPublicKey() (*ecdsa.PublicKey, error) {
+func (key rawJSONWebKey) ecPublicKey() (*ecdsa.PublicKey, error) {
 	var curve elliptic.Curve
 	switch key.Crv {
 	case "P-256":
@@ -305,7 +305,7 @@ func (key rawJsonWebKey) ecPublicKey() (*ecdsa.PublicKey, error) {
 	}, nil
 }
 
-func fromEcPublicKey(pub *ecdsa.PublicKey) (*rawJsonWebKey, error) {
+func fromEcPublicKey(pub *ecdsa.PublicKey) (*rawJSONWebKey, error) {
 	if pub == nil || pub.X == nil || pub.Y == nil {
 		return nil, fmt.Errorf("square/go-jose: invalid EC key (nil, or X/Y missing)")
 	}
@@ -324,7 +324,7 @@ func fromEcPublicKey(pub *ecdsa.PublicKey) (*rawJsonWebKey, error) {
 		return nil, fmt.Errorf("square/go-jose: invalid EC key (X/Y too large)")
 	}
 
-	key := &rawJsonWebKey{
+	key := &rawJSONWebKey{
 		Kty: "EC",
 		Crv: name,
 		X:   newFixedSizeBuffer(xBytes, size),
@@ -334,7 +334,7 @@ func fromEcPublicKey(pub *ecdsa.PublicKey) (*rawJsonWebKey, error) {
 	return key, nil
 }
 
-func (key rawJsonWebKey) rsaPrivateKey() (*rsa.PrivateKey, error) {
+func (key rawJSONWebKey) rsaPrivateKey() (*rsa.PrivateKey, error) {
 	var missing []string
 	switch {
 	case key.N == nil:
@@ -379,7 +379,7 @@ func (key rawJsonWebKey) rsaPrivateKey() (*rsa.PrivateKey, error) {
 	return rv, err
 }
 
-func fromRsaPrivateKey(rsa *rsa.PrivateKey) (*rawJsonWebKey, error) {
+func fromRsaPrivateKey(rsa *rsa.PrivateKey) (*rawJSONWebKey, error) {
 	if len(rsa.Primes) != 2 {
 		return nil, ErrUnsupportedKeyType
 	}
@@ -393,7 +393,7 @@ func fromRsaPrivateKey(rsa *rsa.PrivateKey) (*rawJsonWebKey, error) {
 	return raw, nil
 }
 
-func (key rawJsonWebKey) ecPrivateKey() (*ecdsa.PrivateKey, error) {
+func (key rawJSONWebKey) ecPrivateKey() (*ecdsa.PrivateKey, error) {
 	var curve elliptic.Curve
 	switch key.Crv {
 	case "P-256":
@@ -427,7 +427,7 @@ func (key rawJsonWebKey) ecPrivateKey() (*ecdsa.PrivateKey, error) {
 	}, nil
 }
 
-func fromEcPrivateKey(ec *ecdsa.PrivateKey) (*rawJsonWebKey, error) {
+func fromEcPrivateKey(ec *ecdsa.PrivateKey) (*rawJSONWebKey, error) {
 	raw, err := fromEcPublicKey(&ec.PublicKey)
 	if err != nil {
 		return nil, err
@@ -442,14 +442,14 @@ func fromEcPrivateKey(ec *ecdsa.PrivateKey) (*rawJsonWebKey, error) {
 	return raw, nil
 }
 
-func fromSymmetricKey(key []byte) (*rawJsonWebKey, error) {
-	return &rawJsonWebKey{
+func fromSymmetricKey(key []byte) (*rawJSONWebKey, error) {
+	return &rawJSONWebKey{
 		Kty: "oct",
 		K:   newBuffer(key),
 	}, nil
 }
 
-func (key rawJsonWebKey) symmetricKey() ([]byte, error) {
+func (key rawJSONWebKey) symmetricKey() ([]byte, error) {
 	if key.K == nil {
 		return nil, fmt.Errorf("square/go-jose: invalid OCT (symmetric) key, missing k value")
 	}
