@@ -546,7 +546,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	statusModel := statusObj.(*certStatusModel)
 	status = core.CertificateStatus{
 		Serial:                statusModel.Serial,
-		SubscriberApproved:    statusModel.SubscriberApproved,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
 		RevokedDate:           statusModel.RevokedDate,
@@ -555,7 +554,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		OCSPResponse:          statusModel.OCSPResponse,
 		NotAfter:              statusModel.NotAfter,
 		IsExpired:             statusModel.IsExpired,
-		LockCol:               statusModel.LockCol,
 	}
 
 	return status, nil
@@ -914,20 +912,18 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	certStatusOb := &certStatusModel{
-		SubscriberApproved: false,
-		Status:             core.OCSPStatus("good"),
-		OCSPLastUpdated:    time.Time{},
-		OCSPResponse:       []byte{},
-		Serial:             serial,
-		RevokedDate:        time.Time{},
-		RevokedReason:      0,
-		LockCol:            0,
-		NotAfter:           parsedCertificate.NotAfter,
+	certStatus := &certStatusModel{
+		Status:          core.OCSPStatus("good"),
+		OCSPLastUpdated: time.Time{},
+		OCSPResponse:    []byte{},
+		Serial:          serial,
+		RevokedDate:     time.Time{},
+		RevokedReason:   0,
+		NotAfter:        parsedCertificate.NotAfter,
 	}
 	if len(ocspResponse) != 0 {
-		certStatusOb.OCSPResponse = ocspResponse
-		certStatusOb.OCSPLastUpdated = ssa.clk.Now()
+		certStatus.OCSPResponse = ocspResponse
+		certStatus.OCSPLastUpdated = ssa.clk.Now()
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -943,7 +939,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		return "", Rollback(tx, err)
 	}
 
-	err = tx.Insert(certStatusOb)
+	err = tx.Insert(certStatus)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}

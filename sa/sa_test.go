@@ -504,7 +504,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
-	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
@@ -525,7 +524,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
-	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
