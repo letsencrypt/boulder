@@ -260,20 +260,6 @@ func TestRecyclePendingEnabled(t *testing.T) {
 	pendingAuthzB, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, pendingAuthzB.ID != "", "ID shouldn't be blank")
-
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
-
-	authz.Challenges = nil
-	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
-
-	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(
-		t,
-		pendingAuthzA.ID == pendingAuthz2.ID || pendingAuthzB.ID == pendingAuthz2.ID,
-		fmt.Sprintf("unexpected pending authz ID, wanted: %q or %q, got: %q", pendingAuthzA.ID, pendingAuthzB.ID, pendingAuthz2.ID),
-	)
-	test.Assert(t, len(pendingAuthz2.Challenges) > 0, "no challenges")
-	test.AssertEquals(t, pendingAuthz2.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {

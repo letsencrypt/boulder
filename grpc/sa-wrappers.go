@@ -264,6 +264,18 @@ func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.
 	return sac.inner.CountInvalidAuthorizations(ctx, request)
 }
 
+func (sac StorageAuthorityClientWrapper) GetPendingAuthorization(ctx context.Context, request *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	authzPB, err := sac.inner.GetPendingAuthorization(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	authz, err := pbToAuthz(authzPB)
+	if err != nil {
+		return nil, err
+	}
+	return &authz, nil
+}
+
 func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
 	response, err := sac.inner.GetSCTReceipt(ctx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
 	if err != nil {
@@ -670,6 +682,18 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations(ctx context.
 
 func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sas.inner.CountInvalidAuthorizations(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Context, request *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	authz, err := sas.inner.GetPendingAuthorization(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	authzPB, err := authzToPB(*authz)
+	if err != nil {
+		return nil, err
+	}
+	return authzPB, err
 }
 
 func (sas StorageAuthorityServerWrapper) GetSCTReceipt(ctx context.Context, request *sapb.GetSCTReceiptRequest) (*sapb.SignedCertificateTimestamp, error) {
