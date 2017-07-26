@@ -250,6 +250,25 @@ func TestFailNoSerial(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
+	testCases := []struct {
+		name    string
+		setup   func(t *testing.T) (*CertificateAuthorityImpl, *mockSA)
+		subTest func(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA)
+	}{
+		{"IssueCertificate", issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
+		{"AllowNoCN", issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
+		{"ProfileSelection", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelection},
+	}
+
+	for _, testCase := range testCases {
+		ca, sa := testCase.setup(t)
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.subTest(t, ca, sa)
+		})
+	}
+}
+
+func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -264,6 +283,10 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
 
+	return ca, sa
+}
+
+func issueCertificateSubTestIssueCertificate(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA) {
 	// Sign CSR
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to sign certificate")
@@ -295,7 +318,7 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 // Test issuing when multiple issuers are present.
-func TestIssueCertificateMultipleIssuers(t *testing.T) {
+func TestMultipleIssuers(t *testing.T) {
 	testCtx := setup(t)
 	// Load multiple issuers, and ensure the first one in the list is used.
 	newIssuerCert, err := core.LoadCert("../test/test-ca2.pem")
@@ -517,21 +540,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
 
-func TestAllowNoCN(t *testing.T) {
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
-		sa,
-		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
-		testCtx.issuers,
-		testCtx.keyPolicy,
-		testCtx.logger)
-	test.AssertNotError(t, err, "Couldn't create new CA")
-	ca.forceCNFromSAN = false
-
+func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA) {
 	issueReq := caPB.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID}
 	issuedCert, err := ca.IssueCertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to sign certificate")
@@ -559,20 +568,7 @@ func TestAllowNoCN(t *testing.T) {
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func TestProfileSelection(t *testing.T) {
-	testCtx := setup(t)
-	testCtx.caConfig.MaxNames = 3
-	sa := &mockSA{}
-	ca, _ := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
-		sa,
-		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
-		testCtx.issuers,
-		testCtx.keyPolicy,
-		testCtx.logger)
-
+func issueCertificateSubTestProfileSelection(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
 	testCases := []struct {
 		CSR              []byte
 		ExpectedKeyUsage x509.KeyUsage
