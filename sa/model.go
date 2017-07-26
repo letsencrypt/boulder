@@ -195,15 +195,15 @@ type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
 
-	Type   string          `db:"type"`
-	Status core.AcmeStatus `db:"status"`
-	Error  []byte          `db:"error"`
-	// This field is unused, but is kept temporarily to avoid a database migration.
-	// TODO(#1818): remove
-	Token            string `db:"token"`
-	KeyAuthorization string `db:"keyAuthorization"`
-	ValidationRecord []byte `db:"validationRecord"`
-	Validated        bool   `db:"validated"`
+	Type             string          `db:"type"`
+	Status           core.AcmeStatus `db:"status"`
+	Error            []byte          `db:"error"`
+	Token            string          `db:"token"`
+	KeyAuthorization string          `db:"keyAuthorization"`
+	ValidationRecord []byte          `db:"validationRecord"`
+
+	// TODO(#1818): Remove, this field is unused, but is kept temporarily to avoid a database migration.
+	Validated bool `db:"validated"`
 
 	LockCol int64
 }
