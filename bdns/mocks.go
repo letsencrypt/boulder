@@ -11,12 +11,12 @@ import (
 	"golang.org/x/net/context"
 )
 
-// MockDNSResolver is a mock
-type MockDNSResolver struct {
+// MockDNSClient is a mock
+type MockDNSClient struct {
 }
 
 // LookupTXT is a mock
-func (mock *MockDNSResolver) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
+func (mock *MockDNSClient) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, nil, fmt.Errorf("SERVFAIL")
 	}
@@ -59,7 +59,7 @@ func (t timeoutError) Timeout() bool {
 //
 // Note: see comments on LookupMX regarding email.only
 //
-func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
 	if hostname == "always.invalid" ||
 		hostname == "invalid.invalid" ||
 		hostname == "email.only" {
@@ -90,7 +90,7 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
+func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
@@ -158,7 +158,7 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 // all domains except for special cases, so MX-only domains must be
 // handled in both LookupHost and LookupMX.
 //
-func (mock *MockDNSResolver) LookupMX(_ context.Context, domain string) ([]string, error) {
+func (mock *MockDNSClient) LookupMX(_ context.Context, domain string) ([]string, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
 		fallthrough

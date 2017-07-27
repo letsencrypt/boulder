@@ -225,7 +225,7 @@ func newTestStats() metrics.Scope {
 var testStats = newTestStats()
 
 func TestDNSNoServers(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Hour, []string{}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Hour, []string{}, testStats, clock.NewFake(), 1)
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 
@@ -233,7 +233,7 @@ func TestDNSNoServers(t *testing.T) {
 }
 
 func TestDNSOneServer(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 
@@ -241,7 +241,7 @@ func TestDNSOneServer(t *testing.T) {
 }
 
 func TestDNSDuplicateServers(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 
@@ -249,7 +249,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 }
 
 func TestDNSLookupsNoServer(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{}, testStats, clock.NewFake(), 1)
 
 	_, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
@@ -262,7 +262,7 @@ func TestDNSLookupsNoServer(t *testing.T) {
 }
 
 func TestDNSServFail(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 	bad := "servfail.com"
 
 	_, _, err := obj.LookupTXT(context.Background(), bad)
@@ -290,7 +290,7 @@ func TestDNSServFail(t *testing.T) {
 }
 
 func TestDNSLookupTXT(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
@@ -304,7 +304,7 @@ func TestDNSLookupTXT(t *testing.T) {
 }
 
 func TestDNSLookupHost(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -371,7 +371,7 @@ func TestDNSLookupHost(t *testing.T) {
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err := obj.LookupHost(context.Background(), hostname)
@@ -388,7 +388,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 }
 
 func TestDNSLookupCAA(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	caas, err := obj.LookupCAA(context.Background(), "bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
@@ -404,7 +404,7 @@ func TestDNSLookupCAA(t *testing.T) {
 }
 
 func TestDNSTXTAuthorities(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	_, auths, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 
@@ -582,7 +582,7 @@ func TestRetry(t *testing.T) {
 	}
 
 	for i, tc := range tests {
-		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
+		dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
 		dr.dnsClient = tc.te
 		_, _, err := dr.LookupTXT(context.Background(), "example.com")
@@ -600,7 +600,7 @@ func TestRetry(t *testing.T) {
 		}
 	}
 
-	dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 3)
+	dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 3)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

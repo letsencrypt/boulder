@@ -866,8 +866,8 @@ func TestPerformValidationInvalid(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
@@ -881,8 +881,8 @@ func TestDNSValidationEmpty(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -900,8 +900,8 @@ func TestPerformValidationValid(t *testing.T) {
 	defer ctrl.Finish()
 	mockScope := mock_metrics.NewMockScope(ctrl)
 	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any()).Return(nil)
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any())
+	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -984,7 +984,7 @@ func TestDNSValidationServFail(t *testing.T) {
 
 func TestDNSValidationNoServer(t *testing.T) {
 	va, _ := setup(nil, 0)
-	va.dnsResolver = bdns.NewTestDNSResolverImpl(
+	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
 		metrics.NewNoopScope(),
@@ -1078,7 +1078,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
 		nil,
-		&bdns.MockDNSResolver{},
+		&bdns.MockDNSClient{},
 		nil,
 		maxRemoteFailures,
 		"user agent 1.0",
@@ -1192,6 +1192,48 @@ func TestAvailableAddresses(t *testing.T) {
 	}
 }
 
+// TestHTTP01DialerFallback tests the underlying dialer used by HTTP01
+// challenges. In particular it ensures that both the first IPv6 request and the
+// subsequent IPv4 request get a new dialer each.
+func TestHTTP01DialerFallback(t *testing.T) {
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	// Set the IPv6First feature flag
+	_ = features.Set(map[string]bool{"IPv6First": true})
+	defer features.Reset()
+
+	// Create a test VA
+	va, _ := setup(hs, 0)
+
+	// Create a test dialer for the dual homed host. There is only an IPv4 httpSrv
+	// so the IPv6 address returned in the AAAA record will always fail.
+	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
+
+	// Try to dial the dialer
+	_, dialProb := d.Dial("", "ipv4.and.ipv6.localhost")
+
+	// There shouldn't be a problem from this dial
+	test.AssertEquals(t, dialProb, nil)
+
+	// We should have constructed two inner dialers, one for each connection
+	test.AssertEquals(t, d.dialerCount, 2)
+
+	// We expect one validation record to be present
+	test.AssertNotNil(t, d.record, "there should be a non-nil validaiton record on the dialer")
+	// We expect that the address used was the IPv4 localhost address
+	test.AssertEquals(t, d.record.AddressUsed.String(), "127.0.0.1")
+	// We expect that one address was tried before the address used
+	test.AssertEquals(t, len(d.record.AddressesTried), 1)
+	// We expect that IPv6 address was tried before the address used
+	test.AssertEquals(t, d.record.AddressesTried[0].String(), "::1")
+}
+
 func TestFallbackDialer(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01()
@@ -1229,7 +1271,7 @@ func TestFallbackDialer(t *testing.T) {
 	va.stats = scope
 
 	// We expect the IPV4 Fallback stat to be incremented
-	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
 	// The validation is expected to succeed with IPv6First enabled even though
 	// the V6 server doesn't exist because we fallback to the IPv4 address.
@@ -1282,7 +1324,7 @@ func TestFallbackTLS(t *testing.T) {
 	va.stats = scope
 
 	// We expect the IPV4 Fallback stat to be incremented
-	scope.EXPECT().Inc("IPv4Fallback", int64(1)).Return(nil)
+	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
 	// The validation is expected to succeed now that IPv6First is enabled by the
 	// fallback to the IPv4 address that has a test server waiting
@@ -1484,17 +1526,37 @@ func TestPerformRemoteValidation(t *testing.T) {
 }
 
 func TestDetailedError(t *testing.T) {
-	err := &net.OpError{
-		Op:  "dial",
-		Net: "tcp",
-		Err: &os.SyscallError{
-			Syscall: "getsockopt",
-			Err:     syscall.ECONNREFUSED,
+	cases := []struct {
+		err      error
+		expected string
+	}{
+		{
+			&net.OpError{
+				Op:  "dial",
+				Net: "tcp",
+				Err: &os.SyscallError{
+					Syscall: "getsockopt",
+					Err:     syscall.ECONNREFUSED,
+				},
+			},
+			"Connection refused",
+		},
+		{
+			&net.OpError{
+				Op:  "dial",
+				Net: "tcp",
+				Err: &os.SyscallError{
+					Syscall: "getsockopt",
+					Err:     syscall.ECONNRESET,
+				},
+			},
+			"Connection reset by peer",
 		},
 	}
-	expected := "Connection refused"
-	actual := detailedError(err).Detail
-	if actual != expected {
-		t.Errorf("Wrong detail for connection refused. Got %q, expected %q", actual, expected)
+	for _, tc := range cases {
+		actual := detailedError(tc.err).Detail
+		if actual != tc.expected {
+			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
+		}
 	}
 }

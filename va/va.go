@@ -44,7 +44,11 @@ const (
 	maxResponseSize = 128
 )
 
-var validationTimeout = time.Second * 5
+// singleDialTimeout specifies how long an individual `Dial` operation may take
+// before timing out. This timeout ignores the base RPC timeout and is strictly
+// used for the Dial operations that take place during an
+// HTTP-01/TLS-SNI-[01|02] challenge validation.
+var singleDialTimeout = time.Second * 5
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -92,7 +96,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	log               blog.Logger
-	dnsResolver       bdns.DNSResolver
+	dnsClient         bdns.DNSClient
 	issuerDomain      string
 	safeBrowsing      SafeBrowsing
 	httpPort          int
@@ -111,7 +115,7 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
 	sbc SafeBrowsing,
-	resolver bdns.DNSResolver,
+	resolver bdns.DNSClient,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
 	userAgent string,
@@ -123,7 +127,7 @@ func NewValidationAuthorityImpl(
 
 	return &ValidationAuthorityImpl{
 		log:               logger,
-		dnsResolver:       resolver,
+		dnsClient:         resolver,
 		issuerDomain:      issuerDomain,
 		safeBrowsing:      sbc,
 		httpPort:          pc.HTTPPort,
@@ -155,7 +159,7 @@ type verificationRequestEvent struct {
 // resolved. This is the same choice made by the Go internal resolution library
 // used by net/http.
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
-	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
+	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		problem := probs.ConnectionFailure(err.Error())
@@ -173,13 +177,33 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 	return addr, addrs, nil
 }
 
-type dialer struct {
-	record core.ValidationRecord
-	stats  metrics.Scope
+// http01Dialer is a struct that exists to provide a dialer like object with
+// a `Dial` method that can be given to an http.Transport for HTTP-01
+// validation. The primary purpose of the http01Dialer's Dial method is to
+// circumvent traditional DNS lookup and to use the IP addresses provided in the
+// inner `record` member populated by the `resolveAndConstructDialer` function.
+type http01Dialer struct {
+	record      core.ValidationRecord
+	stats       metrics.Scope
+	dialerCount int
 }
 
-func (d *dialer) Dial(_, _ string) (net.Conn, error) {
-	realDialer := net.Dialer{Timeout: validationTimeout}
+// realDialer is used to create a true `net.Dialer` that can be used once an IP
+// address to connect to is determined. It increments the `dialerCount` integer
+// to track how many "fresh" dialer instances have been created during a `Dial`
+// for testing purposes.
+func (d *http01Dialer) realDialer() *net.Dialer {
+	// Record that we created a new instance of a real net.Dialer
+	d.dialerCount++
+	return &net.Dialer{Timeout: singleDialTimeout}
+}
+
+// Dial processes the IP addresses from the inner validation record, using
+// `realDialer` to make connections as required. If `features.IPv6First` is
+// enabled then for dual-homed hosts an initial IPv6 connection will be made
+// followed by a IPv4 connection if there is a failure with the IPv6 connection.
+func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
+	var realDialer *net.Dialer
 
 	// Split the available addresses into v4 and v6 addresses
 	v4, v6 := availableAddresses(d.record)
@@ -194,6 +218,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 		}
 		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
 		d.record.AddressUsed = addresses[0]
+		realDialer = d.realDialer()
 		return realDialer.Dial("tcp", address)
 	}
 
@@ -202,6 +227,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 	if features.Enabled(features.IPv6First) && len(v6) > 0 {
 		address := net.JoinHostPort(v6[0].String(), d.record.Port)
 		d.record.AddressUsed = v6[0]
+		realDialer = d.realDialer()
 		conn, err := realDialer.Dial("tcp", address)
 
 		// If there is no error, return immediately
@@ -230,6 +256,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 	// talking to the first IPv6 address, try the first IPv4 address
 	address := net.JoinHostPort(v4[0].String(), d.record.Port)
 	d.record.AddressUsed = v4[0]
+	realDialer = d.realDialer()
 	return realDialer.Dial("tcp", address)
 }
 
@@ -248,8 +275,8 @@ func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
 
 // resolveAndConstructDialer gets the preferred address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (dialer, *probs.ProblemDetails) {
-	d := dialer{
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (http01Dialer, *probs.ProblemDetails) {
+	d := http01Dialer{
 		record: core.ValidationRecord{
 			Hostname: name,
 			Port:     strconv.Itoa(port),
@@ -379,7 +406,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	client := http.Client{
 		Transport:     tr,
 		CheckRedirect: logRedirect,
-		Timeout:       validationTimeout,
+		Timeout:       singleDialTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
 	// Append a validation record now that we have dialed the dialer
@@ -565,7 +592,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Contex
 
 func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: singleDialTimeout}, "tcp", hostPort, &tls.Config{
 		ServerName:         zName,
 		InsecureSkipVerify: true,
 	})
@@ -681,6 +708,9 @@ func detailedError(err error) *probs.ProblemDetails {
 		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
 			syscallErr.Err == syscall.ECONNREFUSED {
 			return probs.ConnectionFailure("Connection refused")
+		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
+			syscallErr.Err == syscall.ECONNRESET {
+			return probs.ConnectionFailure("Connection reset by peer")
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -703,7 +733,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, authorities, err := va.dnsResolver.LookupTXT(ctx, challengeSubdomain)
+	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
@@ -1004,7 +1034,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.dnsResolver.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname, va.dnsClient.LookupCAA)
 	return parseResults(results)
 }
 

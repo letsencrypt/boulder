@@ -26,8 +26,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const clientName = "CA"
-
 type config struct {
 	CA cmd.CAConfig
 
@@ -139,7 +137,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 

@@ -17,8 +17,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 	"gopkg.in/go-gorp/gorp.v2"
 	"gopkg.in/square/go-jose.v1"
 
@@ -26,7 +27,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -102,7 +102,6 @@ var (
 )
 
 func TestSendNags(t *testing.T) {
-	stats := metrics.NewNoopScope()
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
@@ -110,7 +109,6 @@ func TestSendNags(t *testing.T) {
 	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
 
 	m := mailer{
-		stats:         stats,
 		log:           log,
 		mailer:        &mc,
 		emailTemplate: tmpl,
@@ -118,6 +116,7 @@ func TestSendNags(t *testing.T) {
 		subjectTemplate: staticTmpl,
 		rs:              rs,
 		clk:             fc,
+		stats:           initStats(metrics.NewNoopScope()),
 	}
 
 	cert := &x509.Certificate{
@@ -313,12 +312,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	certStatusA := &core.CertificateStatus{
-		Serial:                serial1String,
-		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
-		Status:                core.OCSPStatusGood,
-		NotAfter:              rawCertA.NotAfter,
-	}
 
 	// Expires in 3d, already sent 4d nag at 4.5d
 	rawCertB := x509.Certificate{
@@ -335,12 +328,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
-	}
-	certStatusB := &core.CertificateStatus{
-		Serial:                serial2String,
-		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
-		Status:                core.OCSPStatusGood,
-		NotAfter:              rawCertB.NotAfter,
 	}
 
 	// Expires in 7d and change, no nag sent at all yet
@@ -359,11 +346,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	certStatusC := &core.CertificateStatus{
-		Serial:   serial3String,
-		Status:   core.OCSPStatusGood,
-		NotAfter: rawCertC.NotAfter,
-	}
 
 	// Expires in 3d, renewed
 	rawCertD := x509.Certificate{
@@ -380,11 +362,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Serial:         serial4String,
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
-	}
-	certStatusD := &core.CertificateStatus{
-		Serial:   serial4String,
-		Status:   core.OCSPStatusGood,
-		NotAfter: rawCertD.NotAfter,
 	}
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: []byte("hash of D"),
@@ -408,19 +385,28 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Couldn't add certC")
 	err = setupDBMap.Insert(certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
-	err = setupDBMap.Insert(certStatusA)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial1String, ctx.fc.Now().AddDate(0, 0, -3), string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	err = setupDBMap.Insert(certStatusB)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial2String, ctx.fc.Now().Add(-36*time.Hour), string(core.OCSPStatusGood), rawCertB.NotAfter, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
-	err = setupDBMap.Insert(certStatusC)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial3String, string(core.OCSPStatusGood), rawCertC.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusC")
-	err = setupDBMap.Insert(certStatusD)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial4String, string(core.OCSPStatusGood), rawCertD.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusD")
 	err = setupDBMap.Insert(fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
 	err = setupDBMap.Insert(fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
 	return []core.Certificate{*certA, *certB, *certC, *certD}
+}
+
+func countGroupsAtCapacity(group string, counter *prometheus.CounterVec) int {
+	ch := make(chan prometheus.Metric, 10)
+	counter.With(prometheus.Labels{"nagGroup": group}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
 }
 
 func TestFindCertsAtCapacity(t *testing.T) {
@@ -430,30 +416,18 @@ func TestFindCertsAtCapacity(t *testing.T) {
 
 	log.Clear()
 
-	// Override the mailer `stats` with a mock
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	statter := mock_metrics.NewMockScope(ctrl)
-	testCtx.m.stats = statter
-
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
-
-	// The mock statter should have had the "48h0m0s" nag capacity stat incremented once.
-	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
-	// * 24 to setup() for the nag duration. This is because all of the nags are
-	// offset by defaultNagCheckInterval, which is 24hrs.
-	statter.EXPECT().Inc("Errors.Nag-48h0m0s.AtCapacity", int64(1))
-
-	// findExpiringCertificates() ends up invoking sendNags which calls
-	// TimingDuration so we need to EXPECT that with the mock
-	statter.EXPECT().TimingDuration("SendLatency", time.Duration(0))
-	// Similarly, findExpiringCertificates() sends its latency as well
-	statter.EXPECT().TimingDuration("ProcessingCertificatesLatency", time.Duration(0))
 
 	err := testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 1)
+
+	// The "48h0m0s" nag group should have its prometheus stat incremented once.
+	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
+	// * 24 to setup() for the nag duration. This is because all of the nags are
+	// offset by defaultNagCheckInterval, which is 24hrs.
+	test.AssertEquals(t, countGroupsAtCapacity("48h0m0s", testCtx.m.stats.nagsAtCapacity), 1)
 
 	// A consecutive run shouldn't find anything - similarly we do not EXPECT()
 	// anything on statter to be called, and if it is then we have a test failure
@@ -565,10 +539,6 @@ func TestCertIsRenewed(t *testing.T) {
 			Expires:        testData.NotAfter,
 			DER:            certDer,
 		}
-		certStatus := &core.CertificateStatus{
-			Serial: testData.stringSerial,
-			Status: core.OCSPStatusGood,
-		}
 		fqdnStatus := &core.FQDNSet{
 			SetHash: testData.FQDNHash,
 			Serial:  testData.stringSerial,
@@ -578,7 +548,7 @@ func TestCertIsRenewed(t *testing.T) {
 
 		err = setupDBMap.Insert(cert)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
-		err = setupDBMap.Insert(certStatus)
+		_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?)", fmt.Sprintf("%x", testData.Serial.Bytes()), string(core.OCSPStatusGood), time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add certStatus %s", testData.stringSerial))
 		err = setupDBMap.Insert(fqdnStatus)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add fqdnStatus %s", testData.stringSerial))
@@ -633,16 +603,10 @@ func TestLifetimeOfACert(t *testing.T) {
 		DER:            certDerA,
 	}
 
-	certStatusA := &core.CertificateStatus{
-		Serial:   serial1String,
-		Status:   core.OCSPStatusGood,
-		NotAfter: rawCertA.NotAfter,
-	}
-
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	err = setupDBMap.Insert(certStatusA)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	type lifeTest struct {
@@ -739,15 +703,10 @@ func TestDontFindRevokedCert(t *testing.T) {
 		DER:            certDerA,
 	}
 
-	certStatusA := &core.CertificateStatus{
-		Serial: serial1String,
-		Status: core.OCSPStatusRevoked,
-	}
-
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	err = setupDBMap.Insert(certStatusA)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial,status, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusRevoked), time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	err = testCtx.m.findExpiringCertificates()
@@ -791,12 +750,6 @@ func TestDedupOnRegistration(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	certStatusA := &core.CertificateStatus{
-		Serial:                serial1String,
-		LastExpirationNagSent: time.Unix(0, 0),
-		Status:                core.OCSPStatusGood,
-		NotAfter:              rawCertA.NotAfter,
-	}
 
 	rawCertB := newX509Cert("happy B",
 		testCtx.fc.Now().Add(48*time.Hour),
@@ -810,21 +763,15 @@ func TestDedupOnRegistration(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	certStatusB := &core.CertificateStatus{
-		Serial:                serial2String,
-		LastExpirationNagSent: time.Unix(0, 0),
-		Status:                core.OCSPStatusGood,
-		NotAfter:              rawCertB.NotAfter,
-	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	err = setupDBMap.Insert(certStatusA)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial1String, time.Unix(0, 0), string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	err = setupDBMap.Insert(certStatusB)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial2String, time.Unix(0, 0), string(core.OCSPStatusGood), rawCertB.NotAfter, time.Time{}, time.Time{}, 0, 0, false)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
 
 	err = testCtx.m.findExpiringCertificates()
@@ -871,7 +818,6 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 
-	stats := metrics.NewNoopScope()
 	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))
@@ -881,7 +827,6 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 
 	m := &mailer{
 		log:             log,
-		stats:           stats,
 		mailer:          mc,
 		emailTemplate:   tmpl,
 		subjectTemplate: subjTmpl,
@@ -890,6 +835,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		nagTimes:        offsetNags,
 		limit:           100,
 		clk:             fc,
+		stats:           initStats(metrics.NewNoopScope()),
 	}
 	return &testCtx{
 		dbMap:   dbMap,

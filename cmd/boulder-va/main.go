@@ -15,8 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/va"
 )
 
-const clientName = "VA"
-
 type config struct {
 	VA struct {
 		cmd.ServiceConfig
@@ -71,7 +69,7 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString(clientName))
+	logger.Info(cmd.VersionString())
 
 	pc := &cmd.PortConfig{
 		HTTPPort:  80,
@@ -108,9 +106,9 @@ func main() {
 	clk := clock.Default()
 	caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
 	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
-	var resolver bdns.DNSResolver
+	var resolver bdns.DNSClient
 	if !c.Common.DNSAllowLoopbackAddresses {
-		r := bdns.NewDNSResolverImpl(
+		r := bdns.NewDNSClientImpl(
 			dnsTimeout,
 			[]string{c.Common.DNSResolver},
 			caaSERVFAILExceptions,
@@ -119,7 +117,7 @@ func main() {
 			dnsTries)
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
+		r := bdns.NewTestDNSClientImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
 		resolver = r
 	}
 
