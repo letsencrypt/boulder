@@ -17,6 +17,9 @@ const (
 	BadNonceProblem           = ProblemType("urn:acme:error:badNonce")
 	InvalidEmailProblem       = ProblemType("urn:acme:error:invalidEmail")
 	RejectedIdentifierProblem = ProblemType("urn:acme:error:rejectedIdentifier")
+
+	v2ErrorNS                  = "urn:ietf:params:acme:error:"
+	AccountDoesNotExistProblem = ProblemType(v2ErrorNS + "accountDoesNotExist")
 )
 
 // ProblemType defines the error types in the ACME protocol
@@ -48,7 +51,15 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return prob.HTTPStatus
 	}
 	switch prob.Type {
-	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem, RejectedIdentifierProblem:
+	case
+		ConnectionProblem,
+		MalformedProblem,
+		TLSProblem,
+		UnknownHostProblem,
+		BadNonceProblem,
+		InvalidEmailProblem,
+		RejectedIdentifierProblem,
+		AccountDoesNotExistProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
@@ -196,6 +207,16 @@ func RateLimited(detail string) *ProblemDetails {
 func TLSError(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       TLSProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// AccountDoesNotExist returns a ProblemDetails representing an
+// AccountDoesNotExistProblem error
+func AccountDoesNotExist(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AccountDoesNotExistProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

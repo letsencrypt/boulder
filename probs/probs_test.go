@@ -34,6 +34,7 @@ func TestProblemDetailsToStatusCode(t *testing.T) {
 		{&ProblemDetails{Type: "foo"}, http.StatusInternalServerError},
 		{&ProblemDetails{Type: "foo", HTTPStatus: 200}, 200},
 		{&ProblemDetails{Type: ConnectionProblem, HTTPStatus: 200}, 200},
+		{&ProblemDetails{Type: AccountDoesNotExistProblem}, http.StatusBadRequest},
 	}
 
 	for _, c := range testCases {
@@ -61,6 +62,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		{BadNonce("bad nonce detail"), BadNonceProblem, http.StatusBadRequest, "bad nonce detail"},
 		{TLSError("TLS error detail"), TLSProblem, http.StatusBadRequest, "TLS error detail"},
 		{RejectedIdentifier("rejected identifier detail"), RejectedIdentifierProblem, http.StatusBadRequest, "rejected identifier detail"},
+		{AccountDoesNotExist("no account detail"), AccountDoesNotExistProblem, http.StatusBadRequest, "no account detail"},
 	}
 
 	for _, c := range testCases {
