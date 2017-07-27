@@ -299,6 +299,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	combinations := make([][]int, len(challenges))
 
 	pa.rngMu.Lock()
+	defer pa.rngMu.Unlock()
 	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
 		shuffled[i] = challenges[challIdx]
 		combinations[i] = []int{i}
@@ -308,7 +309,6 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	for i, comboIdx := range pa.pseudoRNG.Perm(len(combinations)) {
 		shuffledCombos[i] = combinations[comboIdx]
 	}
-	pa.rngMu.Unlock()
 
 	return shuffled, shuffledCombos
 }
