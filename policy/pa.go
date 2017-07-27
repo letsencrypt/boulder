@@ -31,6 +31,7 @@ type AuthorityImpl struct {
 
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
+	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -297,6 +298,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	shuffled := make([]core.Challenge, len(challenges))
 	combinations := make([][]int, len(challenges))
 
+	pa.rngMu.Lock()
 	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
 		shuffled[i] = challenges[challIdx]
 		combinations[i] = []int{i}
@@ -306,6 +308,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	for i, comboIdx := range pa.pseudoRNG.Perm(len(combinations)) {
 		shuffledCombos[i] = combinations[comboIdx]
 	}
+	pa.rngMu.Unlock()
 
 	return shuffled, shuffledCombos
 }
