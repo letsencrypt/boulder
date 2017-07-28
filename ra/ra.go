@@ -1080,10 +1080,15 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	}
 
 	if input.Key != nil {
-		sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
-		if !sameKey {
+		if r.Key == nil {
 			r.Key = input.Key
 			changed = true
+		} else {
+			sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
+			if !sameKey {
+				r.Key = input.Key
+				changed = true
+			}
 		}
 	}
 

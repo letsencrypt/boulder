@@ -385,7 +385,6 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
 	test.Assert(t, mailto == (*result.Contact)[0], "Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
-
 	reg, err := sa.GetRegistration(ctx, result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
@@ -410,14 +409,15 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 
-	id := result.ID
-	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
-		ID:  33,
-		Key: &ShortKey,
-	})
-	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
-	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
+	// TODO: By removing UpdateRegistration call, I don't see any value in any of the following lines
+	// id := result.ID
+	// result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
+	// 	ID:  33,
+	// 	Key: &ShortKey,
+	// })
+	// test.AssertNotError(t, err, "Could not update registration")
+	// test.Assert(t, result2.ID != 23, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
+	// test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -1375,11 +1375,6 @@ func TestRegistrationContactUpdate(t *testing.T) {
 	var contactSameUpdate core.Registration
 	contactSameJSON := []byte(`
 	{
-		"key": {
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
-		},
 		"id": 1,
 		"agreement": "totally!"
 	}

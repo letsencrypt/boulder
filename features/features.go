@@ -33,10 +33,12 @@ var features = map[FeatureFlag]bool{
 	UseAIAIssuerURL:        false,
 	AllowTLS02Challenges:   false,
 	GenerateOCSPEarly:      false,
+	ReusePendingAuthz:      false,
 	CountCertificatesExact: false,
 	RandomDirectoryEntry:   false,
 	IPv6First:              false,
 	DirectoryMeta:          false,
+	AllowRenewalFirstRL:    false,
 }
 
 var fMu = new(sync.RWMutex)
