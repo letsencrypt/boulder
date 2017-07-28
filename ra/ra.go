@@ -1348,7 +1348,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
-// NewOrder asd
+// NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	expires := ra.clk.Now().Add(ra.orderValidity).Unix()
 	order := &corepb.Order{

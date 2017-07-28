@@ -182,6 +182,17 @@ func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(
 	return nil
 }
 
+func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
+	resp, err := ras.inner.NewOrder(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Id == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
 // RegistrationAuthorityServerWrapper is the gRPC version of a core.RegistrationAuthority server
 type RegistrationAuthorityServerWrapper struct {
 	inner core.RegistrationAuthority
