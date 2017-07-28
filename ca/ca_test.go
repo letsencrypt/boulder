@@ -113,6 +113,11 @@ var (
 
 	// OIDExtensionCTPoison is defined in RFC 6962 s3.1.
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
+
+	issuanceModes = []IssuanceMode{
+		{"non-precertificate", false},
+		{"precertificate", true},
+	}
 )
 
 // CFSSL config
@@ -173,6 +178,11 @@ func setup(t *testing.T) *testCtx {
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
+	allowedExtensions := []cfsslConfig.OID{
+		cfsslConfig.OID(oidTLSFeature),
+		cfsslConfig.OID(OIDExtensionCTPoison),
+	}
+
 	// Create a CA
 	caConfig := cmd.CAConfig{
 		RSAProfile:   rsaProfileName,
@@ -203,9 +213,7 @@ func setup(t *testing.T) *testCtx {
 							SignatureAlgorithm: true,
 						},
 						ClientProvidesSerialNumbers: true,
-						AllowedExtensions: []cfsslConfig.OID{
-							cfsslConfig.OID(oidTLSFeature),
-						},
+						AllowedExtensions:           allowedExtensions,
 					},
 					ecdsaProfileName: {
 						Usage:     []string{"digital signature", "server auth"},
@@ -226,6 +234,7 @@ func setup(t *testing.T) *testCtx {
 							SignatureAlgorithm: true,
 						},
 						ClientProvidesSerialNumbers: true,
+						AllowedExtensions:           allowedExtensions,
 					},
 				},
 				Default: &cfsslConfig.SigningProfile{
@@ -276,8 +285,14 @@ type TestCertificateIssuance struct {
 	ca      *CertificateAuthorityImpl
 	sa      *mockSA
 	req     *x509.CertificateRequest
+	mode    IssuanceMode
 	certDER []byte
 	cert    *x509.Certificate
+}
+
+type IssuanceMode struct {
+	name                 string
+	isPrecertificateFlow bool
 }
 
 func TestIssueCertificate(t *testing.T) {
@@ -300,27 +315,45 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		ca, sa := testCase.setup(t)
-		t.Run(testCase.name, func(t *testing.T) {
-			req, err := x509.ParseCertificateRequest(testCase.csr)
-			test.AssertNotError(t, err, "Certificate request failed to parse")
+		for _, mode := range issuanceModes {
+			ca, sa := testCase.setup(t)
+			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
+				req, err := x509.ParseCertificateRequest(testCase.csr)
+				test.AssertNotError(t, err, "Certificate request failed to parse")
 
-			coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID})
-			test.AssertNotError(t, err, "Failed to issue certificate")
+				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
-			cert, err := x509.ParseCertificate(coreCert.DER)
-			test.AssertNotError(t, err, "Certificate failed to parse")
+				certDER := []byte{}
+				if !mode.isPrecertificateFlow {
+					coreCert, err := ca.IssueCertificate(ctx, issueReq)
+					test.AssertNotError(t, err, "Failed to issue certificate")
+					certDER = coreCert.DER
 
-			i := TestCertificateIssuance{
-				ca:      ca,
-				sa:      sa,
-				req:     req,
-				certDER: coreCert.DER,
-				cert:    cert,
-			}
+					// Verify that the cert got stored in the DB
+					test.Assert(t, bytes.Equal(certDER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
+				} else {
+					response, err := ca.IssuePrecertificate(ctx, issueReq)
+					test.AssertNotError(t, err, "Failed to issue precertificate")
+					certDER = response.Precert.Der
+				}
 
-			testCase.subTest(t, &i)
-		})
+				cert, err := x509.ParseCertificate(certDER)
+				test.AssertNotError(t, err, "Certificate failed to parse")
+
+				test.AssertEquals(t, mode.isPrecertificateFlow, extensionPresent(cert.Extensions, OIDExtensionCTPoison))
+
+				i := TestCertificateIssuance{
+					ca:      ca,
+					sa:      sa,
+					req:     req,
+					mode:    mode,
+					certDER: certDER,
+					cert:    cert,
+				}
+
+				testCase.subTest(t, &i)
+			})
+		}
 	}
 }
 
@@ -359,12 +392,10 @@ func issueCertificateSubTestIssueCertificate(t *testing.T, i *TestCertificateIss
 		t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
 	}
 
-	// Verify that the cert got stored in the DB
 	serialString := core.SerialToString(cert.SerialNumber)
 	if cert.Subject.SerialNumber != serialString {
 		t.Errorf("SerialNumber: want %#v, got %#v", serialString, cert.Subject.SerialNumber)
 	}
-	test.Assert(t, bytes.Equal(i.certDER, i.sa.certificate.DER), "Retrieved cert not equal to issued cert.")
 }
 
 // Test issuing when multiple issuers are present.
@@ -694,15 +725,20 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
-	test.AssertEquals(t, len(i.cert.Extensions), 9)
+	expectedExtensionCount := 9
+	if i.mode.isPrecertificateFlow {
+		expectedExtensionCount += 1
+	}
+	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
 }
 
 func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIssuance) {
 	// The CT poison extension in the CSR should be silently ignored like an
-	// unknown extension, whether it has a valid or invalid value.
+	// unknown extension, whether it has a valid or invalid value. The check
+	// for whether or not the poison extension is present in the issued
+	// certificate/precertificate is done in the caller.
 	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
-	test.Assert(t, !extensionPresent(i.cert.Extensions, OIDExtensionCTPoison), "CT poison extension is present")
 }
 
 func extensionPresent(extensions []pkix.Extension, id asn1.ObjectIdentifier) bool {
