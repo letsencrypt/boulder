@@ -509,20 +509,20 @@ func TestInvalidCSRs(t *testing.T) {
 		{"TLSFeatureUnknown", "./testdata/tls_feature_unknown.der.csr", issueCertificateSubTestTLSFeatureUnknown, "Issued a certificate based on a CSR with an empty TLS feature extension."},
 	}
 
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
-		sa,
-		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
-		testCtx.issuers,
-		testCtx.keyPolicy,
-		testCtx.logger)
-	test.AssertNotError(t, err, "Failed to create CA")
-
 	for _, testCase := range testCases {
+		testCtx := setup(t)
+		sa := &mockSA{}
+		ca, err := NewCertificateAuthorityImpl(
+			testCtx.caConfig,
+			sa,
+			testCtx.pa,
+			testCtx.fc,
+			testCtx.stats,
+			testCtx.issuers,
+			testCtx.keyPolicy,
+			testCtx.logger)
+		test.AssertNotError(t, err, "Failed to create CA")
+
 		t.Run(testCase.name, func(t *testing.T) {
 			serializedCSR := mustRead(testCase.csrPath)
 			_, err = ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID})
