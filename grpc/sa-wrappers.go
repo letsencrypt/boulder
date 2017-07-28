@@ -698,7 +698,7 @@ func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	authzPB, err := authzToPB(*authz)
+	authzPB, err := AuthzToPB(*authz)
 	if err != nil {
 		return nil, err
 	}
