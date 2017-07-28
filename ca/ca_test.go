@@ -581,29 +581,36 @@ func TestInvalidCSRs(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		testCtx := setup(t)
-		sa := &mockSA{}
-		ca, err := NewCertificateAuthorityImpl(
-			testCtx.caConfig,
-			sa,
-			testCtx.pa,
-			testCtx.fc,
-			testCtx.stats,
-			testCtx.issuers,
-			testCtx.keyPolicy,
-			testCtx.logger)
-		test.AssertNotError(t, err, "Failed to create CA")
+		for _, mode := range issuanceModes {
+			testCtx := setup(t)
+			sa := &mockSA{}
+			ca, err := NewCertificateAuthorityImpl(
+				testCtx.caConfig,
+				sa,
+				testCtx.pa,
+				testCtx.fc,
+				testCtx.stats,
+				testCtx.issuers,
+				testCtx.keyPolicy,
+				testCtx.logger)
+			test.AssertNotError(t, err, "Failed to create CA")
 
-		t.Run(testCase.name, func(t *testing.T) {
-			serializedCSR := mustRead(testCase.csrPath)
-			_, err = ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID})
-			test.AssertError(t, err, testCase.errorMessage)
-			test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
-			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
-			if testCase.check != nil {
-				testCase.check(t, ca, sa)
-			}
-		})
+			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
+				serializedCSR := mustRead(testCase.csrPath)
+				issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
+				if !mode.isPrecertificateFlow {
+					_, err = ca.IssueCertificate(ctx, issueReq)
+				} else {
+					_, err = ca.IssuePrecertificate(ctx, issueReq)
+				}
+				test.AssertError(t, err, testCase.errorMessage)
+				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
+				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
+				if testCase.check != nil {
+					testCase.check(t, ca, sa)
+				}
+			})
+		}
 	}
 }
 
