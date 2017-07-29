@@ -471,8 +471,9 @@ func TestMissingReceiptsTick(t *testing.T) {
 	err = updater.missingReceiptsTick(ctx, 5)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 
-	// We have three logs configured from setup, and with the
-	// ResubmitMissingSCTsOnly feature flag disabled we expect that we submitted
+	// TODO: This test shouldn't be here anymore, as ResubmitMissingSCTsOnly is gone. Not sure how to proceed.
+	// We have three logs configured from setup, but with the
+	// ResubmitMissingSCTsOnly feature flag abled we expect that we submitted
 	// to all three logs.
 	logIDs, err := updater.getSubmittedReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get submitted receipts for serial 00")
@@ -510,10 +511,6 @@ func TestMissingOnlyReceiptsTick(t *testing.T) {
 	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
 	test.AssertNotError(t, err, "Failed to retrieve serials")
 	test.AssertEquals(t, len(serials), 1)
-
-	// Enable the ResubmitMissingSCTsOnly feature flag for this test run
-	_ = features.Set(map[string]bool{"ResubmitMissingSCTsOnly": true})
-	defer features.Reset()
 
 	// Use a mock publisher so we can EXPECT specific calls
 	ctrl := gomock.NewController(t)

@@ -12,7 +12,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	ResubmitMissingSCTsOnly
 	UseAIAIssuerURL
 	AllowTLS02Challenges
 	GenerateOCSPEarly
@@ -28,17 +27,16 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                  false,
-	ResubmitMissingSCTsOnly: false,
-	UseAIAIssuerURL:         false,
-	AllowTLS02Challenges:    false,
-	GenerateOCSPEarly:       false,
-	ReusePendingAuthz:       false,
-	CountCertificatesExact:  false,
-	RandomDirectoryEntry:    false,
-	IPv6First:               false,
-	DirectoryMeta:           false,
-	AllowRenewalFirstRL:     false,
+	unused:                 false,
+	UseAIAIssuerURL:        false,
+	AllowTLS02Challenges:   false,
+	GenerateOCSPEarly:      false,
+	ReusePendingAuthz:      false,
+	CountCertificatesExact: false,
+	RandomDirectoryEntry:   false,
+	IPv6First:              false,
+	DirectoryMeta:          false,
+	AllowRenewalFirstRL:    false,
 }
 
 var fMu = new(sync.RWMutex)
