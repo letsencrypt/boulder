@@ -37,8 +37,8 @@ func TestCheckpointIntervalOK(t *testing.T) {
 	// Test a number of intervals known to be invalid, ensure that the produced
 	// error has the expected message.
 	failureCases := []struct {
-		testInterval  interval
-		expectedError string
+		testInterval interval
+		expectedErr  string
 	}{
 		{interval{start: -1}, "interval start (-1) and end (0) must both be positive integers"},
 		{interval{end: -1}, "interval start (0) and end (-1) must both be positive integers"},
@@ -46,14 +46,14 @@ func TestCheckpointIntervalOK(t *testing.T) {
 		{interval{start: 999, end: 10}, "interval start value (999) is greater than end value (10)"},
 	}
 	for _, tc := range failureCases {
-		t.Run(fmt.Sprintf("error case %v", tc.expectedError), func(t *testing.T) {
+		t.Run(fmt.Sprintf("error case %v", tc.expectedErr), func(t *testing.T) {
 			err := tc.testInterval.ok()
 			if err == nil {
 				t.Errorf("Invalid interval %#v was ok", tc.testInterval)
 			}
 			// NOTE: If err is unexpectedly `nil`, this is going to throw a runtime error
-			if err.Error() != tc.expectedError {
-				t.Errorf("Expected %v, got %v", tc.expectedError, err.Error())
+			if err.Error() != tc.expectedErr {
+				t.Errorf("Expected %v, got %v", tc.expectedErr, err.Error())
 			}
 		})
 	}

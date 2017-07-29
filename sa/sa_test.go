@@ -1097,6 +1097,7 @@ func TestReverseName(t *testing.T) {
 }
 
 type fqdnTestcase struct {
+	Description  string
 	Serial       string
 	Names        []string
 	ExpectedHash setHash
@@ -1114,37 +1115,33 @@ func setupFQDNSets(t *testing.T, db *gorp.DbMap, fc clock.FakeClock) map[string]
 
 	now := fc.Now()
 
-	testcases := map[string]fqdnTestcase{
-		// One test case with serial "a" issued now and expiring in two hours for
-		// namesA
+	testCases := map[string]fqdnTestcase{
 		"a": fqdnTestcase{
+			Description:  "One test case with serial 'a' issued now and expiring in two hours for namesA",
 			Serial:       "a",
 			Names:        namesA,
 			ExpectedHash: expectedHashA,
 			Issued:       now,
 			Expires:      now.Add(time.Hour * 2).UTC(),
 		},
-		// One test case with serial "b", issued one hour from now and expiring in
-		// two hours, also for namesA
 		"b": fqdnTestcase{
+			Description:  "One test case with serial 'b', issued one hour from now and expiring in two hours, also for namesA",
 			Serial:       "b",
 			Names:        namesA,
 			ExpectedHash: expectedHashA,
 			Issued:       now.Add(time.Hour),
 			Expires:      now.Add(time.Hour * 2).UTC(),
 		},
-		// One test case with serial "c", issued one hour from now and expiring in
-		// two hours, for namesB
 		"c": fqdnTestcase{
+			Description:  "One test case with serial 'c', issued one hour from now and expiring in two hours, for namesB",
 			Serial:       "c",
 			Names:        namesB,
 			ExpectedHash: expectedHashB,
 			Issued:       now.Add(time.Hour),
 			Expires:      now.Add(time.Hour * 2).UTC(),
 		},
-		// One test case with serial "d", issued five hours in the past and expiring
-		// in two hours from now, with namesC
 		"d": fqdnTestcase{
+			Description:  "One test case with serial 'd', issued five hours in the past and expiring in two hours from now, with namesC",
 			Serial:       "d",
 			Names:        namesC,
 			ExpectedHash: expectedHashC,
@@ -1153,15 +1150,17 @@ func setupFQDNSets(t *testing.T, db *gorp.DbMap, fc clock.FakeClock) map[string]
 		},
 	}
 
-	for _, tc := range testcases {
-		tx, err := db.Begin()
-		test.AssertNotError(t, err, "Failed to open transaction")
-		err = addFQDNSet(tx, tc.Names, tc.Serial, tc.Issued, tc.Expires)
-		test.AssertNotError(t, err, fmt.Sprintf("Failed to add fqdnSet for %#v", tc))
-		test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+	for _, tc := range testCases {
+		t.Run(tc.Description, func(t *testing.T) {
+			tx, err := db.Begin()
+			test.AssertNotError(t, err, "Failed to open transaction")
+			err = addFQDNSet(tx, tc.Names, tc.Serial, tc.Issued, tc.Expires)
+			test.AssertNotError(t, err, fmt.Sprintf("Failed to add fqdnSet for %#v", tc))
+			test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+		})
 	}
 
-	return testcases
+	return testCases
 }
 
 func TestGetFQDNSetsBySerials(t *testing.T) {

@@ -12,44 +12,43 @@ import (
 
 // TestConfigCheck tests that configCheck() does what it says on the tin
 func TestConfigCheck(t *testing.T) {
-	testcases := []struct {
+	testCases := []struct {
 		conf     *cmd.GoogleSafeBrowsingConfig
 		expected error
 	}{
 		{
-			conf:     nil,
-			expected: NilConfigErr,
+			nil, NilConfigErr,
 		},
 		{
-			conf: &cmd.GoogleSafeBrowsingConfig{
+			&cmd.GoogleSafeBrowsingConfig{
 				APIKey: "",
 			},
-			expected: EmptyAPIKeyErr,
+			EmptyAPIKeyErr,
 		},
 		{
-			conf: &cmd.GoogleSafeBrowsingConfig{
+			&cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "",
 			},
-			expected: EmptyDataDirErr,
+			EmptyDataDirErr,
 		},
 		{
-			conf: &cmd.GoogleSafeBrowsingConfig{
+			&cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "/distrust/everything/i/say/i/am/telling/the/truth",
 			},
-			expected: MissingDataDirErr,
+			MissingDataDirErr,
 		},
 		{
-			conf: &cmd.GoogleSafeBrowsingConfig{
+			&cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "./",
 			},
-			expected: nil,
+			nil,
 		},
 	}
 
-	for _, tc := range testcases {
+	for _, tc := range testCases {
 		var description string
 		if tc.expected == nil {
 			description = "nil"
