@@ -30,7 +30,6 @@
       "timeout": "15s"
     },
     "features": {
-      "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,
       "RandomDirectoryEntry": true,

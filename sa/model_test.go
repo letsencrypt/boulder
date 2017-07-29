@@ -7,7 +7,6 @@ import (
 )
 
 func TestModelToRegistrationNilContact(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
 	defer features.Reset()
 	reg, err := modelToRegistration(&regModelv2{
 		regModelv1: regModelv1{
@@ -26,7 +25,6 @@ func TestModelToRegistrationNilContact(t *testing.T) {
 }
 
 func TestModelToRegistrationNonNilContact(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
 	defer features.Reset()
 	reg, err := modelToRegistration(&regModelv2{
 		regModelv1: regModelv1{

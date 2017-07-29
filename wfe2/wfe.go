@@ -1034,7 +1034,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != "" && update.Status != currReg.Status) {
+	if update.Status != "" && update.Status != currReg.Status {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
