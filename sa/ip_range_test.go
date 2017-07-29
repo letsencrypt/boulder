@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"fmt"
 	"net"
 	"testing"
 )
@@ -22,13 +23,15 @@ func TestIncrementIP(t *testing.T) {
 		{"ffff:ffff:ffff::", 48, "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"},
 	}
 	for _, tc := range testCases {
-		ip := net.ParseIP(tc.ip).To16()
-		actual := incrementIP(ip, tc.index)
-		expectedIP := net.ParseIP(tc.expected)
-		if !actual.Equal(expectedIP) {
-			t.Errorf("Expected incrementIP(%s, %d) to be %s, instead got %s",
-				tc.ip, tc.index, expectedIP, actual.String())
-		}
+		t.Run(fmt.Sprintf("IP %v", tc.ip), func(t *testing.T) {
+			ip := net.ParseIP(tc.ip).To16()
+			actual := incrementIP(ip, tc.index)
+			expectedIP := net.ParseIP(tc.expected)
+			if !actual.Equal(expectedIP) {
+				t.Errorf("Expected incrementIP(%s, %d) to be %s, instead got %s",
+					tc.ip, tc.index, expectedIP, actual.String())
+			}
+		})
 	}
 }
 
@@ -42,13 +45,15 @@ func TestIPRange(t *testing.T) {
 		{"2002:1001:4008::", "2002:1001:4008::", "2002:1001:4009::"},
 	}
 	for _, tc := range testCases {
-		ip := net.ParseIP(tc.ip)
-		expectedBegin := net.ParseIP(tc.expectedBegin)
-		expectedEnd := net.ParseIP(tc.expectedEnd)
-		actualBegin, actualEnd := ipRange(ip)
-		if !expectedBegin.Equal(actualBegin) || !expectedEnd.Equal(actualEnd) {
-			t.Errorf("Expected ipRange(%s) to be (%s, %s), got (%s, %s)",
-				tc.ip, tc.expectedBegin, tc.expectedEnd, actualBegin, actualEnd)
-		}
+		t.Run(fmt.Sprintf("IP %v", tc.ip), func(t *testing.T) {
+			ip := net.ParseIP(tc.ip)
+			expectedBegin := net.ParseIP(tc.expectedBegin)
+			expectedEnd := net.ParseIP(tc.expectedEnd)
+			actualBegin, actualEnd := ipRange(ip)
+			if !expectedBegin.Equal(actualBegin) || !expectedEnd.Equal(actualEnd) {
+				t.Errorf("Expected ipRange(%s) to be (%s, %s), got (%s, %s)",
+					tc.ip, tc.expectedBegin, tc.expectedEnd, actualBegin, actualEnd)
+			}
+		})
 	}
 }

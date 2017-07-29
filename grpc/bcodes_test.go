@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"fmt"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestErrors(t *testing.T) {
-	testcases := []struct {
+	testCases := []struct {
 		err          error
 		expectedCode codes.Code
 	}{
@@ -28,10 +29,14 @@ func TestErrors(t *testing.T) {
 		{&probs.ProblemDetails{Type: probs.ConnectionProblem, Detail: "testing..."}, ProblemDetails},
 	}
 
-	for _, tc := range testcases {
-		wrappedErr := wrapError(nil, tc.err)
-		test.AssertEquals(t, grpc.Code(wrappedErr), tc.expectedCode)
-		test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Error %v", tc.err.Error()), func(t *testing.T) {
+			wrappedErr := wrapError(nil, tc.err)
+			if grpc.Code(wrappedErr) != tc.expectedCode {
+				t.Errorf("Expected code %v, got %v", tc.expectedCode, grpc.Code(wrappedErr))
+			}
+			test.AssertDeepEquals(t, tc.err, unwrapError(wrappedErr, nil))
+		})
 	}
 
 	test.AssertEquals(t, wrapError(nil, nil), nil)

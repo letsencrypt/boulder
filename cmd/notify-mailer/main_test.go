@@ -26,9 +26,12 @@ func TestCheckpointIntervalOK(t *testing.T) {
 		{interval{end: 10}},
 		{interval{start: 10, end: 15}},
 	}
-	for _, testcase := range okCases {
-		err := testcase.testInterval.ok()
-		test.AssertNotError(t, err, "valid interval produced ok() error")
+	for _, tc := range okCases {
+		t.Run(fmt.Sprintf("interval %v", tc.testInterval), func(t *testing.T) {
+			err := tc.testInterval.ok()
+			// NOTE: Do we need subtests in cases where there are only assertions?
+			test.AssertNotError(t, err, "valid interval produced ok() error")
+		})
 	}
 
 	// Test a number of intervals known to be invalid, ensure that the produced
@@ -42,10 +45,17 @@ func TestCheckpointIntervalOK(t *testing.T) {
 		{interval{start: -1, end: -1}, "interval start (-1) and end (-1) must both be positive integers"},
 		{interval{start: 999, end: 10}, "interval start value (999) is greater than end value (10)"},
 	}
-	for _, testcase := range failureCases {
-		err := testcase.testInterval.ok()
-		test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was ok", testcase.testInterval))
-		test.AssertEquals(t, err.Error(), testcase.expectedError)
+	for _, tc := range failureCases {
+		t.Run(fmt.Sprintf("error case %v", tc.expectedError), func(t *testing.T) {
+			err := tc.testInterval.ok()
+			if err == nil {
+				t.Errorf("Invalid interval %#v was ok", tc.testInterval)
+			}
+			// NOTE: If err is unexpectedly `nil`, this is going to throw a runtime error
+			if err.Error() != tc.expectedError {
+				t.Errorf("Expected %v, got %v", tc.expectedError, err.Error())
+			}
+		})
 	}
 }
 

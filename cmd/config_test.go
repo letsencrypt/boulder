@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -9,44 +10,54 @@ import (
 )
 
 func TestDBConfigURL(t *testing.T) {
-	tests := []struct {
-		conf     DBConfig
-		expected string
+	testCases := []struct {
+		description string
+		conf        DBConfig
+		expected    string
 	}{
 		{
-			// Test with one config file that has no trailing newline
-			conf:     DBConfig{DBConnectFile: "testdata/test_dburl"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			"Test with one config file that has no trailing newline",
+			DBConfig{DBConnectFile: "testdata/test_dburl"},
+			"mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
-			// Test with a config file that *has* a trailing newline
-			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			"Test with a config file that *has* a trailing newline",
+			DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
+			"mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 	}
 
-	for _, tc := range tests {
-		url, err := tc.conf.URL()
-		test.AssertNotError(t, err, "Failed calling URL() on DBConfig")
-		test.AssertEquals(t, url, tc.expected)
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			url, err := tc.conf.URL()
+			test.AssertNotError(t, err, "Failed calling URL() on DBConfig")
+			test.AssertEquals(t, url, tc.expected)
+			if url != tc.expected {
+				t.Errorf("Expected %v, got %v", tc.expected, url)
+			}
+		})
 	}
 }
 
 func TestPasswordConfig(t *testing.T) {
-	tests := []struct {
-		pc       PasswordConfig
-		expected string
+	testCases := []struct {
+		passwordConfig PasswordConfig
+		expected       string
 	}{
-		{pc: PasswordConfig{}, expected: ""},
-		{pc: PasswordConfig{Password: "config"}, expected: "config"},
-		{pc: PasswordConfig{Password: "config", PasswordFile: "testdata/test_secret"}, expected: "secret"},
-		{pc: PasswordConfig{PasswordFile: "testdata/test_secret"}, expected: "secret"},
+		{PasswordConfig{}, ""},
+		{PasswordConfig{Password: "config"}, "config"},
+		{PasswordConfig{Password: "config", PasswordFile: "testdata/test_secret"}, "secret"},
+		{PasswordConfig{PasswordFile: "testdata/test_secret"}, "secret"},
 	}
 
-	for _, tc := range tests {
-		password, err := tc.pc.Pass()
-		test.AssertNotError(t, err, "Failed to retrieve password")
-		test.AssertEquals(t, password, tc.expected)
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Password config %v", tc.passwordConfig), func(t *testing.T) {
+			password, err := tc.passwordConfig.Pass()
+			test.AssertNotError(t, err, "Failed to retrieve password")
+			if password != tc.expected {
+				t.Errorf("Expected %v, got %v", tc.expected, password)
+			}
+		})
 	}
 }
 

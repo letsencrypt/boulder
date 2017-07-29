@@ -1076,8 +1076,7 @@ func TestDeactivateAccount(t *testing.T) {
 
 func TestReverseName(t *testing.T) {
 	testCases := []struct {
-		inputDomain   string
-		inputReversed string
+		input, inputReversed string
 	}{
 		{"", ""},
 		{"...", "..."},
@@ -1088,8 +1087,12 @@ func TestReverseName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		output := ReverseName(tc.inputDomain)
-		test.AssertEquals(t, output, tc.inputReversed)
+		t.Run(tc.input, func(t *testing.T) {
+			output := ReverseName(tc.input)
+			if output != tc.inputReversed {
+				t.Errorf("Expected %v, got %v", tc.inputReversed, output)
+			}
+		})
 	}
 }
 

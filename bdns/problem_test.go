@@ -2,6 +2,7 @@ package bdns
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 
@@ -32,8 +33,10 @@ func TestDNSError(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		if tc.err.Error() != tc.expected {
-			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
-		}
+		t.Run(fmt.Sprintf("Error case: \"%q\"", tc.expected), func(t *testing.T) {
+			if tc.err.Error() != tc.expected {
+				t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
+			}
+		})
 	}
 }

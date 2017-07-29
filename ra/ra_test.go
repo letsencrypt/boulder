@@ -329,8 +329,7 @@ func TestValidateContacts(t *testing.T) {
 
 func TestValidateEmail(t *testing.T) {
 	testFailures := []struct {
-		input    string
-		expected string
+		input, expected string
 	}{
 		{"an email`", unparseableEmailError.Error()},
 		{"a@always.invalid", emptyDNSResponseError.Error()},
@@ -347,22 +346,26 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, tc := range testFailures {
-		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSClient{})
-		if !berrors.Is(err, berrors.InvalidEmail) {
-			t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
-		}
+		t.Run(fmt.Sprintf("Case: %s", tc.input), func(t *testing.T) {
+			err := validateEmail(context.Background(), tc.input, &bdns.MockDNSClient{})
+			if !berrors.Is(err, berrors.InvalidEmail) {
+				t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
+			}
 
-		if err.Error() != tc.expected {
-			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, err.Error(), tc.expected)
-		}
+			if err.Error() != tc.expected {
+				t.Errorf("validateEmail(%q): got %#v, expected %#v",
+					tc.input, err.Error(), tc.expected)
+			}
+		})
 	}
 
 	for _, addr := range testSuccesses {
-		if err := validateEmail(context.Background(), addr, &bdns.MockDNSClient{}); err != nil {
-			t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
-				addr, err)
-		}
+		t.Run(fmt.Sprintf("Case: %v", addr), func(t *testing.T) {
+			if err := validateEmail(context.Background(), addr, &bdns.MockDNSClient{}); err != nil {
+				t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
+					addr, err)
+			}
+		})
 	}
 }
 

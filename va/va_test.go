@@ -1113,51 +1113,51 @@ func TestAvailableAddresses(t *testing.T) {
 	v4a := net.ParseIP("127.0.0.1")
 	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
 
-	testcases := []struct {
-		input core.ValidationRecord
-		v4    []net.IP
-		v6    []net.IP
+	testCases := []struct {
+		description string
+		input       core.ValidationRecord
+		v4, v6      []net.IP
 	}{
-		// An empty validation record
 		{
+			"An empty validation record",
 			core.ValidationRecord{},
 			[]net.IP{},
 			[]net.IP{},
 		},
-		// A validation record with one IPv4 address
 		{
+			"A validation record with one IPv4 address",
 			core.ValidationRecord{
 				AddressesResolved: []net.IP{v4a},
 			},
 			[]net.IP{v4a},
 			[]net.IP{},
 		},
-		// A dual homed record with an IPv4 and IPv6 address
 		{
+			"A dual homed record with an IPv4 and IPv6 address",
 			core.ValidationRecord{
 				AddressesResolved: []net.IP{v4a, v6a},
 			},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
-		// The same as above but with the v4/v6 order flipped
 		{
+			"The same as above but with the v4/v6 order flipped",
 			core.ValidationRecord{
 				AddressesResolved: []net.IP{v6a, v4a},
 			},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
-		// A validation record with just IPv6 addresses
 		{
+			"A validation record with just IPv6 addresses",
 			core.ValidationRecord{
 				AddressesResolved: []net.IP{v6a, v6b},
 			},
 			[]net.IP{},
 			[]net.IP{v6a, v6b},
 		},
-		// A validation record with interleaved IPv4/IPv6 records
 		{
+			"A validation record with interleaved IPv4/IPv6 records",
 			core.ValidationRecord{
 				AddressesResolved: []net.IP{v6a, v4a, v6b, v4b},
 			},
@@ -1166,29 +1166,35 @@ func TestAvailableAddresses(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testcases {
-		// Split the input record into v4/v6 addresses
-		v4result, v6result := availableAddresses(tc.input)
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			// Split the input record into v4/v6 addresses
+			v4result, v6result := availableAddresses(tc.input)
 
-		// Test that we got the right number of v4 results
-		test.Assert(t, len(tc.v4) == len(v4result),
-			fmt.Sprintf("Wrong # of IPv4 results: expected %d, got %d", len(tc.v4), len(v4result)))
+			// Test that we got the right number of v4 results
+			if len(tc.v4) != len(v4result) {
+				t.Errorf("Wrong # of IPv4 results: expected %d, got %d", len(tc.v4), len(v4result))
+			}
 
-		// Check that all of the v4 results match expected values
-		for i, v4addr := range tc.v4 {
-			test.Assert(t, v4addr.String() == v4result[i].String(),
-				fmt.Sprintf("Wrong v4 result index %d: expected %q got %q", i, v4addr.String(), v4result[i].String()))
-		}
+			// Check that all of the v4 results match expected values
+			for i, v4addr := range tc.v4 {
+				if v4addr.String() != v4result[i].String() {
+					t.Errorf("Wrong v4 result index %d: expected %q got %q", i, v4addr.String(), v4result[i].String())
+				}
+			}
 
-		// Test that we got the right number of v6 results
-		test.Assert(t, len(tc.v6) == len(v6result),
-			fmt.Sprintf("Wrong # of IPv6 results: expected %d, got %d", len(tc.v6), len(v6result)))
+			// Test that we got the right number of v6 results
+			if len(tc.v6) != len(v6result) {
+				t.Errorf("Wrong # of IPv6 results: expected %d, got %d", len(tc.v6), len(v6result))
+			}
 
-		// Check that all of the v6 results match expected values
-		for i, v6addr := range tc.v6 {
-			test.Assert(t, v6addr.String() == v6result[i].String(),
-				fmt.Sprintf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String()))
-		}
+			// Check that all of the v6 results match expected values
+			for i, v6addr := range tc.v6 {
+				if v6addr.String() != v6result[i].String() {
+					t.Errorf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String())
+				}
+			}
+		})
 	}
 }
 
@@ -1526,7 +1532,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 }
 
 func TestDetailedError(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		err      error
 		expected string
 	}{
@@ -1553,10 +1559,12 @@ func TestDetailedError(t *testing.T) {
 			"Connection reset by peer",
 		},
 	}
-	for _, tc := range cases {
-		actual := detailedError(tc.err).Detail
-		if actual != tc.expected {
-			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Error %v", tc.expected), func(t *testing.T) {
+			actual := detailedError(tc.err).Detail
+			if actual != tc.expected {
+				t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
+			}
+		})
 	}
 }
