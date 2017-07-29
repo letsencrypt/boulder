@@ -12,7 +12,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	IDNASupport
 	AllowAccountDeactivation
 	AllowKeyRollover
 	ResubmitMissingSCTsOnly
@@ -31,8 +30,7 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	IDNASupport:              false,
+	unused: false,
 	AllowAccountDeactivation: false,
 	AllowKeyRollover:         false,
 	ResubmitMissingSCTsOnly:  false,
