@@ -2,12 +2,9 @@ package sa
 
 import (
 	"testing"
-
-	"github.com/letsencrypt/boulder/features"
 )
 
 func TestModelToRegistrationNilContact(t *testing.T) {
-	defer features.Reset()
 	reg, err := modelToRegistration(&regModelv2{
 		regModelv1: regModelv1{
 			Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
@@ -25,7 +22,6 @@ func TestModelToRegistrationNilContact(t *testing.T) {
 }
 
 func TestModelToRegistrationNonNilContact(t *testing.T) {
-	defer features.Reset()
 	reg, err := modelToRegistration(&regModelv2{
 		regModelv1: regModelv1{
 			Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),

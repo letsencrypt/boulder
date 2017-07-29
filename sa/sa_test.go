@@ -1059,7 +1059,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAccount(t *testing.T) {
-	defer features.Reset()
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
