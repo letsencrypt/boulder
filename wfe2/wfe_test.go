@@ -649,8 +649,6 @@ func TestDirectory(t *testing.T) {
 	// This tests to ensure the `Host` in the following `http.Request` is not
 	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
 	// and expecting `localhost` in the JSON result.
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
@@ -758,8 +756,6 @@ func TestRandomDirectoryKey(t *testing.T) {
 }
 
 func TestRelativeDirectory(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1715,8 +1711,6 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()

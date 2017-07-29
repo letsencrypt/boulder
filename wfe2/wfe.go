@@ -303,9 +303,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
-	if features.Enabled(features.AllowKeyRollover) {
-		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
-	}
+	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -375,7 +373,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	// encounter a directory containing elements they don't expect so we gate
 	// adding new directory fields for clients matching this UA.
 	clientDirChangeIntolerant := strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient")
-	if features.Enabled(features.AllowKeyRollover) && !clientDirChangeIntolerant {
+	if !clientDirChangeIntolerant {
 		directoryEndpoints["key-change"] = rolloverPath
 	}
 	if features.Enabled(features.RandomDirectoryEntry) && !clientDirChangeIntolerant {

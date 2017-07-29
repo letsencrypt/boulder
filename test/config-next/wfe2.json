@@ -30,7 +30,6 @@
       "timeout": "15s"
     },
     "features": {
-      "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,
       "RandomDirectoryEntry": true,
       "DirectoryMeta": true
