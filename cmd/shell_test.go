@@ -164,10 +164,10 @@ func TestLoadCert(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%v usage", tc.ExpectedKeyUsage), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Path \"%v\"", tc.path), func(t *testing.T) {
 			_, err := LoadCert(tc.path)
 			test.AssertError(t, err, fmt.Sprintf("LoadCert(%q) did not error", tc.path))
-			if err.Error() == tc.expectedErr {
+			if err.Error() != tc.expectedErr {
 				t.Errorf("Expected error %v, got %v", err.Error(), tc.expectedErr)
 			}
 		})

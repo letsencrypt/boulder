@@ -67,7 +67,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("Detail ", tc.detail), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Detail %v", tc.detail), func(t *testing.T) {
 			if tc.problem.Type != tc.expectedType {
 				t.Errorf("Incorrect problem type. Expected %s got %s", tc.expectedType, tc.problem.Type)
 			}

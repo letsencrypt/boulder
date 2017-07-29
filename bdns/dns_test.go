@@ -473,131 +473,133 @@ func TestRetry(t *testing.T) {
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
+		description   string
 		maxTries      int
-		te            *testExchanger
+		testExchanger *testExchanger
 		expected      error
 		expectedCount int
 	}
-	tests := []*testCase{
-		// The success on first try case
+	testCases := []*testCase{
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"The success on first try case",
+			3,
+			&testExchanger{
 				errs: []error{nil},
 			},
-			expected:      nil,
-			expectedCount: 1,
+			nil,
+			1,
 		},
-		// Immediate non-OpError, error returns immediately
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Immediate non-OpError, error returns immediately",
+			3,
+			&testExchanger{
 				errs: []error{errors.New("nope")},
 			},
-			expected:      servFailError,
-			expectedCount: 1,
+			servFailError,
+			1,
 		},
-		// Temporary err, then non-OpError stops at two tries
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Temporary err, then non-OpError stops at two tries",
+			3,
+			&testExchanger{
 				errs: []error{isTempErr, errors.New("nope")},
 			},
-			expected:      servFailError,
-			expectedCount: 2,
+			servFailError,
+			2,
 		},
-		// Temporary error given always
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Temporary error given always",
+			3,
+			&testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					isTempErr,
 				},
 			},
-			expected:      netError,
-			expectedCount: 3,
+			netError,
+			3,
 		},
-		// Even with maxTries at 0, we should still let a single request go
-		// through
 		{
-			maxTries: 0,
-			te: &testExchanger{
+			"Even with maxTries at 0, we should still let a single request go through",
+			0,
+			&testExchanger{
 				errs: []error{nil},
 			},
-			expected:      nil,
-			expectedCount: 1,
+			nil,
+			1,
 		},
-		// Temporary error given just once causes two tries
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Temporary error given just once causes two tries",
+			3,
+			&testExchanger{
 				errs: []error{
 					isTempErr,
 					nil,
 				},
 			},
-			expected:      nil,
-			expectedCount: 2,
+			nil,
+			2,
 		},
-		// Temporary error given twice causes three tries
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Temporary error given twice causes three tries",
+			3,
+			&testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					nil,
 				},
 			},
-			expected:      nil,
-			expectedCount: 3,
+			nil,
+			3,
 		},
-		// Temporary error given thrice causes three tries and fails
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"Temporary error given thrice causes three tries and fails",
+			3,
+			&testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					isTempErr,
 				},
 			},
-			expected:      netError,
-			expectedCount: 3,
+			netError,
+			3,
 		},
-		// temporary then non-Temporary error causes two retries
 		{
-			maxTries: 3,
-			te: &testExchanger{
+			"temporary then non-Temporary error causes two retries",
+			3,
+			&testExchanger{
 				errs: []error{
 					isTempErr,
 					nonTempErr,
 				},
 			},
-			expected:      netError,
-			expectedCount: 2,
+			netError,
+			2,
 		},
 	}
 
-	for i, tc := range tests {
-		dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
-		dr.dnsClient = tc.te
-		_, _, err := dr.LookupTXT(context.Background(), "example.com")
-		if err == errTooManyRequests {
-			t.Errorf("#%d, sent more requests than the test case handles", i)
-		}
-		expectedErr := tc.expected
-		if (expectedErr == nil && err != nil) ||
-			(expectedErr != nil && err == nil) ||
-			(expectedErr != nil && expectedErr.Error() != err.Error()) {
-			t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
-		}
-		if tc.expectedCount != tc.te.count {
-			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
-		}
+			dr.dnsClient = tc.testExchanger
+			_, _, err := dr.LookupTXT(context.Background(), "example.com")
+			if err == errTooManyRequests {
+				t.Error("sent more requests than the test case handles")
+			}
+			expectedErr := tc.expected
+			if (expectedErr == nil && err != nil) ||
+				(expectedErr != nil && err == nil) ||
+				(expectedErr != nil && expectedErr.Error() != err.Error()) {
+				t.Errorf("Expected %v, got %v", expectedErr, err)
+			}
+			if tc.expectedCount != tc.testExchanger.count {
+				t.Errorf("ExpectedCount %v, got %v", tc.expectedCount, tc.testExchanger.count)
+			}
+		})
 	}
 
 	dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 3)

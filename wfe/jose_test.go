@@ -128,7 +128,7 @@ func TestCheckAlgorithm(t *testing.T) {
 		t.Run(fmt.Sprintf("stat %v usage", tc.expectedStat), func(t *testing.T) {
 			stat, err := checkAlgorithm(&tc.key, &tc.jws)
 			if tc.expectedErr != "" && err.Error() != tc.expectedErr {
-				t.Errorf("TestCheckAlgorithm %d: Expected '%s', got '%s'", tc.expectedErr, err)
+				t.Errorf("Expected '%s', got '%s'", tc.expectedErr, err)
 			}
 			if tc.expectedStat != "" && stat != tc.expectedStat {
 				t.Errorf("Expected stat '%s', got '%s'", tc.expectedStat, stat)
