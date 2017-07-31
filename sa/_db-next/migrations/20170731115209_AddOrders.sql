@@ -2,7 +2,7 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
 CREATE TABLE orders (
-       id bigint(20) NOT NULL,
+       id bigint(20) NOT NULL AUTO_INCREMENT,
        registrationID bigint(20) NOT NULL,
        expires datetime NOT NULL,
        csr mediumblob NOT NULL,

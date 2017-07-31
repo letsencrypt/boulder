@@ -1278,7 +1278,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
 	order := &orderModel{
 		RegistrationID:    *req.RegistrationID,
-		Expires:           *req.Expires,
+		Expires:           time.Unix(0, *req.Expires),
 		CSR:               req.Csr,
 		Error:             req.Error,
 		CertificateSerial: *req.CertificateSerial,

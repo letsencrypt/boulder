@@ -39,6 +39,8 @@ GRANT INSERT ON ocspResponses TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
+GRANT SELECT,INSERT on orders TO 'sa'@'localhost';
+GRANT SELECT,INSERT on orderToAuthz TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';

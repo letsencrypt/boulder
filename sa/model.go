@@ -350,7 +350,7 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 type orderModel struct {
 	ID                int64
 	RegistrationID    int64
-	Expires           int64
+	Expires           time.Time
 	CSR               []byte
 	Error             []byte
 	CertificateSerial string
