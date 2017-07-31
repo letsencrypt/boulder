@@ -24,7 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
 var (
@@ -176,10 +176,10 @@ func (c testCtx) addRegistrations(t *testing.T) {
   "e":"AQAB"
 }`)
 
-	var keyA jose.JsonWebKey
-	var keyB jose.JsonWebKey
-	var keyC jose.JsonWebKey
-	var keyD jose.JsonWebKey
+	var keyA jose.JSONWebKey
+	var keyB jose.JSONWebKey
+	var keyC jose.JSONWebKey
+	var keyD jose.JSONWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(jsonKeyB, &keyB)

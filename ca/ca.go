@@ -26,6 +26,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"golang.org/x/net/context"
 
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -100,8 +101,8 @@ type CertificateAuthorityImpl struct {
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer     *internalIssuer
-	SA                certificateStorage
-	PA                core.PolicyAuthority
+	sa                certificateStorage
+	pa                core.PolicyAuthority
 	keyPolicy         goodkey.KeyPolicy
 	clk               clock.Clock
 	log               blog.Logger
@@ -171,6 +172,8 @@ func makeInternalIssuers(
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
 	config cmd.CAConfig,
+	sa certificateStorage,
+	pa core.PolicyAuthority,
 	clk clock.Clock,
 	stats metrics.Scope,
 	issuers []Issuer,
@@ -233,6 +236,8 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
+		sa:                sa,
+		pa:                pa,
 		issuers:           internalIssuers,
 		defaultIssuer:     defaultIssuer,
 		rsaProfile:        rsaProfile,
@@ -383,14 +388,23 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
+	if issueReq.RegistrationID == nil {
+		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
+	}
+	regID := *issueReq.RegistrationID
+
+	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
+	if err != nil {
+		return emptyCert, err
+	}
 	if err := csrlib.VerifyCSR(
-		&csr,
+		csr,
 		ca.maxNames,
 		&ca.keyPolicy,
-		ca.PA,
+		ca.pa,
 		ca.forceCNFromSAN,
 		regID,
 	); err != nil {
@@ -398,7 +412,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
-	requestedExtensions, err := ca.extensionsFromCSR(&csr)
+	requestedExtensions, err := ca.extensionsFromCSR(csr)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -510,7 +524,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(ctx, certDER, regID, ocspResp)
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any

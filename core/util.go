@@ -22,7 +22,7 @@ import (
 	"time"
 	"unicode"
 
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -132,12 +132,12 @@ func Fingerprint256(data []byte) string {
 // provided public key.
 func KeyDigest(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
-	case *jose.JsonWebKey:
+	case *jose.JSONWebKey:
 		if t == nil {
 			return "", fmt.Errorf("Cannot compute digest of nil key")
 		}
 		return KeyDigest(t.Key)
-	case jose.JsonWebKey:
+	case jose.JSONWebKey:
 		return KeyDigest(t.Key)
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)

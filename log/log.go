@@ -146,7 +146,7 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)", msg, err)
+		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)\n", msg, err)
 	}
 
 	var reset string

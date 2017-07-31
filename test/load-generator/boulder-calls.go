@@ -21,7 +21,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
 var (
@@ -52,12 +52,18 @@ func newRegistration(s *State, ctx *context) error {
 	if err != nil {
 		return err
 	}
-	signer, err := jose.NewSigner(jose.ES256, signKey)
+	signer, err := jose.NewSigner(
+		jose.SigningKey{
+			Key:       signKey,
+			Algorithm: jose.ES256,
+		},
+		&jose.SignerOptions{
+			NonceSource: &nonceSource{s: s},
+			EmbedJWK:    true,
+		})
 	if err != nil {
 		return err
 	}
-	ctx.ns = &nonceSource{s: s}
-	signer.SetNonceSource(ctx.ns)
 
 	// create the registration object
 	var regStr []byte
@@ -218,7 +224,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 		return errors.New("no http-01 challenges to complete")
 	}
 
-	jwk := &jose.JsonWebKey{Key: &ctx.reg.key.PublicKey}
+	jwk := &jose.JSONWebKey{Key: &ctx.reg.key.PublicKey}
 	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return err
@@ -303,7 +309,7 @@ func solveTLSOne(s *State, ctx *context) error {
 		return errors.New("no http-01 challenges to complete")
 	}
 
-	jwk := &jose.JsonWebKey{Key: &ctx.reg.key.PublicKey}
+	jwk := &jose.JSONWebKey{Key: &ctx.reg.key.PublicKey}
 	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return err

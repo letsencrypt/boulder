@@ -19,7 +19,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	gorp "gopkg.in/go-gorp/gorp.v2"
-	jose "gopkg.in/square/go-jose.v1"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -113,7 +113,7 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	var anotherJWK jose.JsonWebKey
+	var anotherJWK jose.JSONWebKey
 	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
 	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
 	_, err = sa.GetRegistrationByKey(ctx, &anotherJWK)
@@ -260,20 +260,6 @@ func TestRecyclePendingEnabled(t *testing.T) {
 	pendingAuthzB, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, pendingAuthzB.ID != "", "ID shouldn't be blank")
-
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
-
-	authz.Challenges = nil
-	pendingAuthz2, err := sa.NewPendingAuthorization(ctx, authz)
-
-	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(
-		t,
-		pendingAuthzA.ID == pendingAuthz2.ID || pendingAuthzB.ID == pendingAuthz2.ID,
-		fmt.Sprintf("unexpected pending authz ID, wanted: %q or %q, got: %q", pendingAuthzA.ID, pendingAuthzB.ID, pendingAuthz2.ID),
-	)
-	test.Assert(t, len(pendingAuthz2.Challenges) > 0, "no challenges")
-	test.AssertEquals(t, pendingAuthz2.Challenges[0].Token, "abc")
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
@@ -352,7 +338,7 @@ func TestCountInvalidAuthorizations(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
-	key2 := new(jose.JsonWebKey)
+	key2 := new(jose.JSONWebKey)
 	key2.Key = &rsa.PublicKey{N: big.NewInt(1), E: 3}
 	reg2, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       key2,
@@ -518,7 +504,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
-	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
@@ -539,7 +524,6 @@ func TestAddCertificate(t *testing.T) {
 
 	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
-	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
@@ -760,20 +744,20 @@ func TestCountRegistrationsByIP(t *testing.T) {
 
 	// Create one IPv4 registration
 	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	// Create two IPv6 registrations, both within the same /48
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})
@@ -817,20 +801,20 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 
 	// Create one IPv4 registration
 	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	// Create two IPv6 registrations, both within the same /48
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
 		Contact:   &[]string{contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
 	})

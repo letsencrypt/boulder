@@ -7,15 +7,15 @@ import (
 	"net"
 	"testing"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestExpectedKeyAuthorization(t *testing.T) {
 	ch := Challenge{Token: "hi"}
-	jwk1 := &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1234), E: 1234}}
-	jwk2 := &jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(5678), E: 5678}}
+	jwk1 := &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1234), E: 1234}}
+	jwk2 := &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(5678), E: 5678}}
 
 	ka1, err := ch.ExpectedKeyAuthorization(jwk1)
 	test.AssertNotError(t, err, "Failed to calculate expected key authorization 1")
@@ -49,7 +49,7 @@ func TestRecordSanityCheckOnUnsupportChallengeType(t *testing.T) {
 
 func TestChallengeSanityCheck(t *testing.T) {
 	// Make a temporary account key
-	var accountKey *jose.JsonWebKey
+	var accountKey *jose.JSONWebKey
 	err := json.Unmarshal([]byte(`{
     "kty":"RSA",
     "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
