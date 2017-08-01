@@ -30,7 +30,7 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
+	unused: false,
 	AllowAccountDeactivation: false,
 	AllowKeyRollover:         false,
 	ResubmitMissingSCTsOnly:  false,
