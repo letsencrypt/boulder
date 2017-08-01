@@ -34,9 +34,7 @@
       "serverAddresses": ["ca.boulder:19096"],
       "timeout": "15s"
     },
-    "features": {
-      "ResubmitMissingSCTsOnly": true
-    }
+    "features": {}
   },
 
   "syslog": {

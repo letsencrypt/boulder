@@ -24,7 +24,6 @@
       ]
     },
     "features": {
-      "AllowAccountDeactivation": true,
       "AllowRenewalFirstRL": true
     }
   },

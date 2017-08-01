@@ -183,9 +183,6 @@ def test_ct_submission():
     if (int(submissions_a) < expected_a_submissions or
         int(submissions_a) > 2 * expected_a_submissions):
         raise Exception("Expected %d CT submissions to boulder:4500, found %s" % (expected_a_submissions, submissions_a))
-    # Only test when ResubmitMissingSCTsOnly is enabled
-    if not default_config_dir.startswith("test/config-next"):
-        return
     for _ in range(0, 10):
         submissions_a = urllib2.urlopen(url_a).read()
         submissions_b = urllib2.urlopen(url_b).read()

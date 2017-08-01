@@ -303,9 +303,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
-	if features.Enabled(features.AllowKeyRollover) {
-		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
-	}
+	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -375,7 +373,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	// encounter a directory containing elements they don't expect so we gate
 	// adding new directory fields for clients matching this UA.
 	clientDirChangeIntolerant := strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient")
-	if features.Enabled(features.AllowKeyRollover) && !clientDirChangeIntolerant {
+	if !clientDirChangeIntolerant {
 		directoryEndpoints["key-change"] = rolloverPath
 	}
 	if features.Enabled(features.RandomDirectoryEntry) && !clientDirChangeIntolerant {
@@ -1034,7 +1032,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != "" && update.Status != currReg.Status) {
+	if update.Status != "" && update.Status != currReg.Status {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
