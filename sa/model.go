@@ -10,7 +10,6 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -241,23 +240,16 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		return &regModelv2{
-			regModelv1: rm,
-			Status:     string(r.Status),
-		}, nil
-	}
-	return &rm, nil
+	return &regModelv2{
+		regModelv1: rm,
+		Status:     string(r.Status),
+	}, nil
 }
 
 func modelToRegistration(ri interface{}) (core.Registration, error) {
 	var rm *regModelv1
-	if features.Enabled(features.AllowAccountDeactivation) {
-		r2 := ri.(*regModelv2)
-		rm = &r2.regModelv1
-	} else {
-		rm = ri.(*regModelv1)
-	}
+	r2 := ri.(*regModelv2)
+	rm = &r2.regModelv1
 	k := &jose.JSONWebKey{}
 	err := json.Unmarshal(rm.Key, k)
 	if err != nil {
@@ -281,10 +273,7 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		r2 := ri.(*regModelv2)
-		r.Status = core.AcmeStatus(r2.Status)
-	}
+	r.Status = core.AcmeStatus(r2.Status)
 	return r, nil
 }
 

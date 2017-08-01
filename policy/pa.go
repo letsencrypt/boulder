@@ -216,17 +216,13 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		}
 
 		if punycodeRegexp.MatchString(label) {
-			if features.Enabled(features.IDNASupport) {
-				// We don't care about script usage, if a name is resolvable it was
-				// registered with a higher power and they should be enforcing their
-				// own policy. As long as it was properly encoded that is enough
-				// for us.
-				_, err := idna.ToUnicode(label)
-				if err != nil {
-					return errMalformedIDN
-				}
-			} else {
-				return errIDNNotSupported
+			// We don't care about script usage, if a name is resolvable it was
+			// registered with a higher power and they should be enforcing their
+			// own policy. As long as it was properly encoded that is enough
+			// for us.
+			_, err := idna.ToUnicode(label)
+			if err != nil {
+				return errMalformedIDN
 			}
 		}
 	}

@@ -41,8 +41,6 @@
       ]
     },
     "features": {
-      "IDNASupport": true,
-      "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
       "ReusePendingAuthz": true

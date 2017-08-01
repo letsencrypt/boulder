@@ -10,12 +10,11 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
-
-	"gopkg.in/square/go-jose.v2"
 )
 
 // signatureValidationError indicates that the user's signature could not
@@ -192,7 +191,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 	}
 
 	// Only check for validity if we are actually checking the registration
-	if regCheck && features.Enabled(features.AllowAccountDeactivation) && reg.Status != core.StatusValid {
+	if regCheck && reg.Status != core.StatusValid {
 		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
