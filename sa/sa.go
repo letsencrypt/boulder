@@ -1208,6 +1208,8 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 			continue
 		}
 
+		processedSetHashes[key] = true
+
 		// If the issued date is before our earliest cutoff then skip it
 		if result.Issued.Before(earliest) {
 			continue
@@ -1215,7 +1217,6 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 
 		// Otherwise note the issuance and mark the set hash as processed
 		issuanceCount++
-		processedSetHashes[key] = true
 	}
 
 	// Return the count of how many non-renewal issuances there were
