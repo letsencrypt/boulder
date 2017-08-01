@@ -379,8 +379,8 @@ func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) e
 }
 
 // NewOrder is a mock
-func (sa *StorageAuthority) NewOrder(_ context.Context, _ *corepb.Order) (*corepb.Order, error) {
-	return nil, nil
+func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
+	return order, nil
 }
 
 // Publisher is a mock

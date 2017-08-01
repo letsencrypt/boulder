@@ -72,7 +72,7 @@ type RegistrationAuthorityImpl struct {
 	maxNames              int
 	forceCNFromSAN        bool
 	reuseValidAuthz       bool
-	orderValidity         time.Duration
+	orderLifetime         time.Duration
 
 	regByIPStats         metrics.Scope
 	regByIPRangeStats    metrics.Scope
@@ -94,6 +94,7 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc core.Publisher,
+	orderLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
@@ -114,6 +115,7 @@ func NewRegistrationAuthorityImpl(
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
+		orderLifetime:                orderLifetime,
 	}
 	return ra
 }
@@ -1350,7 +1352,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
-	expires := ra.clk.Now().Add(ra.orderValidity).Unix()
+	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Expires:        &expires,

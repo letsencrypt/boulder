@@ -843,6 +843,7 @@ func TestIssueCertificate(t *testing.T) {
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
+		0,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{

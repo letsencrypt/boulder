@@ -1277,11 +1277,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 // NewOrder adds a new v2 style order to the database
 func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
 	order := &orderModel{
-		RegistrationID:    *req.RegistrationID,
-		Expires:           time.Unix(0, *req.Expires),
-		CSR:               req.Csr,
-		Error:             req.Error,
-		CertificateSerial: *req.CertificateSerial,
+		RegistrationID: *req.RegistrationID,
+		Expires:        time.Unix(0, *req.Expires),
+		CSR:            req.Csr,
+		Error:          req.Error,
 	}
 
 	tx, err := ssa.dbMap.Begin()

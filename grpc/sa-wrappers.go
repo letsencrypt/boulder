@@ -473,7 +473,7 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.CertificateSerial == nil || resp.Authorizations == nil {
+	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -916,7 +916,7 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization(ctx context.Con
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	if request == nil || request.RegistrationID == nil || request.Expires == nil || request.Csr == nil || request.CertificateSerial == nil || request.Authorizations == nil {
+	if request == nil || request.RegistrationID == nil || request.Expires == nil || request.Csr == nil || request.Authorizations == nil {
 		return nil, errIncompleteRequest
 	}
 
