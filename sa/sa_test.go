@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -1280,6 +1281,12 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
