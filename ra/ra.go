@@ -1353,10 +1353,12 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
+	status := string(core.StatusPending)
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Expires:        &expires,
 		Csr:            req.Csr,
+		Status:         &status,
 	}
 	parsedCSR, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {

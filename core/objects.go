@@ -574,4 +574,5 @@ type Order struct {
 	Error             error
 	CertificateSerial string
 	Authorizations    []Authorization
+	Status            AcmeStatus
 }

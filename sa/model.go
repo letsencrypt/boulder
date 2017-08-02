@@ -354,6 +354,7 @@ type orderModel struct {
 	CSR               []byte
 	Error             []byte
 	CertificateSerial string
+	Status            core.AcmeStatus
 }
 
 type orderToAuthzModel struct {

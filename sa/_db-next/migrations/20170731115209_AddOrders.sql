@@ -8,6 +8,7 @@ CREATE TABLE orders (
        csr mediumblob NOT NULL,
        error blob DEFAULT NULL,
        certificateSerial varchar(255) DEFAULT NULL,
+       status varchar(255) NOT NULL,
        PRIMARY KEY(id),
        KEY reg_expires (registrationID, expires)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

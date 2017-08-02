@@ -1293,6 +1293,7 @@ func TestNewOrder(t *testing.T) {
 	i := int64(1337)
 	serial := "serial"
 	a, b, c := "a", "b", "c"
+	status := string(core.StatusPending)
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:    &i,
 		Expires:           &i,
@@ -1303,6 +1304,7 @@ func TestNewOrder(t *testing.T) {
 			&corepb.Authorization{Id: &b},
 			&corepb.Authorization{Id: &c},
 		},
+		Status: &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 

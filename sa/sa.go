@@ -1280,7 +1280,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		RegistrationID: *req.RegistrationID,
 		Expires:        time.Unix(0, *req.Expires),
 		CSR:            req.Csr,
-		Error:          req.Error,
+		Status:         core.AcmeStatus(*req.Status),
 	}
 
 	tx, err := ssa.dbMap.Begin()

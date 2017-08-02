@@ -187,7 +187,7 @@ func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Id == nil {
+	if resp == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Id == nil || resp.Status == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil

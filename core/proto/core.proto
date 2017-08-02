@@ -72,6 +72,7 @@ message Order {
         optional bytes error = 5;
         optional string certificateSerial = 6;
         repeated Authorization authorizations = 7;
+        optional string status = 8;
 }
 
 message Empty {}
