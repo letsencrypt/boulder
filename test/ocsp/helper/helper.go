@@ -122,6 +122,9 @@ func Req(fileName string) (*ocsp.Response, error) {
 	http.DefaultClient.Timeout = 5 * time.Second
 
 	httpResp, err := sendHTTPRequest(req, ocspURL)
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("HTTP %d\n", httpResp.StatusCode)
 	for k, v := range httpResp.Header {
 		for _, vv := range v {
