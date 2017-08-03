@@ -19,6 +19,114 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
+// sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
+// testing object if the sig alg is unknown.
+func sigAlgForKey(t *testing.T, key interface{}) jose.SignatureAlgorithm {
+	sigAlg, err := sigAlgorithmForKey(key)
+	test.Assert(t, err == nil, fmt.Sprintf("Error getting signature algorithm for key %#v", key))
+	return sigAlg
+}
+
+// keyAlgForKey returns a JWK key algorithm based on the provided private key.
+// Only ECDSA and RSA private keys are supported.
+func keyAlgForKey(t *testing.T, key interface{}) string {
+	switch key.(type) {
+	case *rsa.PrivateKey, rsa.PrivateKey:
+		return "RSA"
+	case *ecdsa.PrivateKey, ecdsa.PrivateKey:
+		return "ECDSA"
+	}
+	t.Fatalf("Can't figure out keyAlgForKey: %#v", key)
+	return ""
+}
+
+// signRequestEmbed creates a JWS for aa given request body with an embedded JWK
+// corresponding to the private key provided. The URL and nonce extra headers
+// are set based on the additional arguments. A computed JWS, the corresponding
+// embedded JWK and the JWS in serialized string form are returned.
+func signRequestEmbed(
+	t *testing.T,
+	privateKey interface{},
+	url string,
+	req string,
+	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
+	// if no key is provided default to test1KeyPrivatePEM
+	if privateKey == nil {
+		privateKey = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	}
+
+	signerKey := jose.SigningKey{
+		Key:       privateKey,
+		Algorithm: sigAlgForKey(t, privateKey),
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: nonceService,
+		EmbedJWK:    true,
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	jws, err := signer.Sign([]byte(req))
+	test.AssertNotError(t, err, "Failed to sign req")
+
+	body := jws.FullSerialize()
+	parsedJWS, err := jose.ParseSigned(body)
+	test.AssertNotError(t, err, "Failed to parse generated JWS")
+
+	return parsedJWS, parsedJWS.Signatures[0].Header.JSONWebKey, body
+}
+
+// signRequestKeyID creates a JWS for a given request body with key ID specified
+// based on the ID number provided. The URL and nonce extra headers
+// are set based on the additional arguments. A computed JWS, the corresponding
+// embedded JWK and the JWS in serialized string form are returned.
+func signRequestKeyID(
+	t *testing.T,
+	keyID int64,
+	privateKey interface{},
+	url string,
+	req string,
+	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
+	// if no key is provided default to test1KeyPrivatePEM
+	if privateKey == nil {
+		privateKey = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	}
+
+	jwk := &jose.JSONWebKey{
+		Key:       privateKey,
+		Algorithm: keyAlgForKey(t, privateKey),
+		KeyID:     fmt.Sprintf("%d", keyID),
+	}
+
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: nonceService,
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(t, err, "Failed to make signer")
+	jws, err := signer.Sign([]byte(req))
+	test.AssertNotError(t, err, "Failed to sign req")
+
+	body := jws.FullSerialize()
+	parsedJWS, err := jose.ParseSigned(body)
+	test.AssertNotError(t, err, "Failed to parse generated JWS")
+
+	return parsedJWS, jwk, body
+}
+
 func TestRejectsNone(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_, _, _, prob := wfe.validSelfAuthenticatedPOST(makePostRequest(`
@@ -571,21 +679,6 @@ func TestParseJWS(t *testing.T) {
 	_, _, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
 	validJWSRequest := makePostRequestWithPath("test-path", validJWSBody)
 
-	/*
-	   	missingSigsJWSBody := `
-	   {
-	     "header": {
-	       "alg": "RS256",
-	       "jwk": {
-	         "e": "AQAB",
-	         "kty": "RSA",
-	         "n": "ppbqGaMFnnq9TeMUryR6WW4Lr5WMgp46KlBXZkNaGDNQoifWt6LheeR5j9MgYkIFU7Z8Jw5-bpJzuBeEVwb-yHGh4Umwo_qKtvAJd44iLjBmhBSxq-OSe6P5hX1LGCByEZlYCyoy98zOtio8VK_XyS5VoOXqchCzBXYf32ksVUTrtH1jSlamKHGz0Q0pRKIsA2fLqkE_MD3jP6wUDD6ExMw_tKYLx21lGcK41WSrRpDH-kcZo1QdgCy2ceNzaliBX1eHmKG0-H8tY4tPQudk-oHQmWTdvUIiHO6gSKMGDZNWv6bq74VTCsRfUEAkuWhqUhgRSGzlvlZ24wjHv5Qdlw"
-	       }
-	     },
-	     "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ",
-	     "payload": "Zm9v",
-	   }`
-	*/
 	missingSigsJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ"}`
 	missingSigsJWSRequest := makePostRequestWithPath("test-path", missingSigsJWSBody)
 

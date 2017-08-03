@@ -20,21 +20,31 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
-func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
-	switch k := key.Key.(type) {
-	case *rsa.PublicKey, rsa.PublicKey:
-		return jose.RS256, nil
-	case *ecdsa.PublicKey:
-		switch k.Params().Name {
-		case "P-256":
-			return jose.ES256, nil
-		case "P-384":
-			return jose.ES384, nil
-		case "P-521":
-			return jose.ES512, nil
-		}
+const sigAlgErr = "no signature algorithms suitable for given key type"
+
+func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, error) {
+	params := key.Params()
+	switch params.Name {
+	case "P-256":
+		return jose.ES256, nil
+	case "P-384":
+		return jose.ES384, nil
+	case "P-521":
+		return jose.ES512, nil
 	}
-	return "", fmt.Errorf("no signature algorithms suitable for given key type")
+	return "", fmt.Errorf(sigAlgErr)
+}
+
+func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
+	switch k := key.(type) {
+	case *rsa.PublicKey, rsa.PublicKey, *rsa.PrivateKey, rsa.PrivateKey:
+		return jose.RS256, nil
+	case *ecdsa.PublicKey, ecdsa.PublicKey:
+		return sigAlgorithmForECDSAKey(k.(*ecdsa.PublicKey))
+	case *ecdsa.PrivateKey, ecdsa.PrivateKey:
+		return sigAlgorithmForECDSAKey(&(k.(*ecdsa.PrivateKey).PublicKey))
+	}
+	return "", fmt.Errorf(sigAlgErr)
 }
 
 const (
@@ -49,7 +59,7 @@ const (
 // that algorithm. Precondition: parsedJws must have exactly one signature on
 // it. Returns stat name to increment if err is non-nil.
 func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) (string, error) {
-	algorithm, err := sigAlgorithmForKey(key)
+	algorithm, err := sigAlgorithmForKey(key.Key)
 	if err != nil {
 		return noAlgorithmForKeyStat, err
 	}
