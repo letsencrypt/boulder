@@ -396,7 +396,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	}
 	regID := *issueReq.RegistrationID
 
-	notAfter, serialBigInt, serialHex, err := ca.generateNotAfterAndSerialNumber()
+	notAfter, serialBigInt, err := ca.generateNotAfterAndSerialNumber()
 	if err != nil {
 		return emptyCert, err
 	}
@@ -418,7 +418,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		})
 		if err != nil {
 			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err))
+			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
 			// Ignore errors here to avoid orphaning the certificate. The
 			// ocsp-updater will look for certs with a zero ocspLastUpdated
 			// and generate the initial response in this case.
@@ -433,7 +433,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(
 			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
-			serialHex,
+			core.SerialToString(serialBigInt),
 			hex.EncodeToString(certDER),
 			err,
 			regID,
@@ -444,7 +444,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	return cert, nil
 }
 
-func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, string, error) {
+func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, error) {
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
@@ -455,13 +455,12 @@ func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
-		return time.Time{}, nil, "", err
+		return time.Time{}, nil, err
 	}
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
-	serialHex := core.SerialToString(serialBigInt)
 
-	return notAfter, serialBigInt, serialHex, nil
+	return notAfter, serialBigInt, nil
 }
 
 func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, notAfter time.Time, serialBigInt *big.Int, certType string) ([]byte, error) {
