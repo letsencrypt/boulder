@@ -351,19 +351,21 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Try to find the account for this account ID
 	account, err := wfe.SA.GetRegistration(ctx, accountID)
-	// If there was an error and it isn't a "Not Found" error, return
-	// a ServerInternal problem since this is unexpected.
-	if err != nil && !berrors.Is(err, berrors.NotFound) {
+	if err != nil {
+		// If the account isn't found, return a suitable problem
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.stats.Inc("Errors.KeyIDNotFound", 1)
+			logEvent.AddError(fmt.Sprintf("Account %q not found", accountURL))
+			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
+				"Account %q not found", accountURL))
+		}
+
+		// If there was an error and it isn't a "Not Found" error, return
+		// a ServerInternal problem since this is unexpected.
 		wfe.stats.Inc("Errors.UnableToGetAccountByID", 1)
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
 			"Error retreiving account %q", accountURL))
-	} else if berrors.Is(err, berrors.NotFound) {
-		// If the account isn't found, return a suitable problem
-		wfe.stats.Inc("Errors.KeyIDNotFound", 1)
-		logEvent.AddError(fmt.Sprintf("Account %q not found", accountURL))
-		return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
-			"Account %q not found", accountURL))
 	}
 
 	// Verify the account is not deactivated
