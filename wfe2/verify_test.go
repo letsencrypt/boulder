@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -829,10 +828,6 @@ func signRequestBadKeyID(t *testing.T, nonceService jose.NonceSource) (*jose.JSO
 func TestLookupJWK(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	// Enable Account Deactivation to test that LookupJWK rejects a deactivated
-	// account
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-
 	embeddedJWS, _, embeddedJWSBody := signRequestEmbed(t, nil, "", "", wfe.nonceService)
 	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestBadKeyID(t, wfe.nonceService)
 	// ID 100 is mocked to return a non-missing error from sa.GetRegistration
@@ -1061,10 +1056,6 @@ func TestValidJWSForKey(t *testing.T) {
 
 func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-
-	// Enable Account Deactivation to test that LookupJWK rejects a deactivated
-	// account
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
 
 	_, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
 	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)

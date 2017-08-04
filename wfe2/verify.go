@@ -14,7 +14,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 
 	"gopkg.in/square/go-jose.v2"
@@ -369,7 +368,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	}
 
 	// Verify the account is not deactivated
-	if features.Enabled(features.AllowAccountDeactivation) && account.Status != core.StatusValid {
+	if account.Status != core.StatusValid {
 		wfe.stats.Inc("Errors.AccountIsNotValid", 1)
 		logEvent.AddError(fmt.Sprintf("Account %q has status %q", accountURL, account.Status))
 		return nil, nil, probs.Unauthorized(
