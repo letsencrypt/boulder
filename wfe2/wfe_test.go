@@ -264,10 +264,11 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-// loadPrivateKey loads a private key from PEM/DER-encoded data.
-// Duplicates functionality from jose v1's util.LoadPrivateKey function. It was
+// loadKeys loads a private key from PEM/DER-encoded data and returns both the
+// private key and corresponding public key.
+// Originally duplicated from from jose v1's util.LoadPrivateKey function. It was
 // moved to the jose-util cmd's main packge in v2.
-func loadPrivateKey(t *testing.T, keyBytes []byte) interface{} {
+func loadKeys(t *testing.T, keyBytes []byte) (interface{}, interface{}) {
 	// pem.Decode does not return an error as its 2nd arg, but instead the "rest"
 	// that was leftover from parsing the PEM block. We only care if the decoded
 	// PEM block was empty for this test function.
@@ -276,29 +277,20 @@ func loadPrivateKey(t *testing.T, keyBytes []byte) interface{} {
 		t.Fatal("Unable to decode private key PEM bytes")
 	}
 
-	var privKey interface{}
 	// Try decoding as an RSA private key
-	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err == nil {
-		return privKey
-	}
-
-	// Try decoding as a PKCS8 private key
-	privKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err == nil {
-		return privKey
+	if rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return rsaKey, rsaKey.PublicKey
 	}
 
 	// Try as an ECDSA private key
-	privKey, err = x509.ParseECPrivateKey(block.Bytes)
-	if err == nil {
-		return privKey
+	if ecdsaKey, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		return ecdsaKey, ecdsaKey.PublicKey
 	}
 
 	// Nothing worked! Fail hard.
 	t.Fatal(fmt.Sprintf("Unable to decode private key PEM bytes"))
 	// NOOP - the t.Fatal() call will abort before this return
-	return nil
+	return nil, nil
 }
 
 var testKeyPolicy = goodkey.KeyPolicy{
@@ -1075,7 +1067,7 @@ func TestChallenge(t *testing.T) {
 func TestBadNonce(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test2KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 	// NOTE: We deliberately do not set the NonceSource in the jose.SignerOptions
@@ -1100,7 +1092,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// E1 always exists; E2 never exists
-	key := loadPrivateKey(t, []byte(testE2KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
@@ -1124,7 +1116,7 @@ func TestNewECDSARegistration(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/0")
 
-	key = loadPrivateKey(t, []byte(testE1KeyPrivatePEM))
+	key, _ = loadKeys(t, []byte(testE1KeyPrivatePEM))
 	_, ok = key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
@@ -1152,7 +1144,7 @@ func TestEmptyRegistration(t *testing.T) {
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
 	// return a populated registration for GetRegistrationByKey when test key 1 is
 	// used.
-	key := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test1KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1186,7 +1178,7 @@ func TestEmptyRegistration(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test2 key")
 
@@ -1285,7 +1277,7 @@ func TestNewRegistration(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/new-authz>;rel="next"`)
 
-	key = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	key, _ = loadKeys(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test1 key")
 
@@ -1465,7 +1457,7 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
-	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1483,7 +1475,7 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
-	key = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	key, _ = loadKeys(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1755,7 +1747,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
 
-	key := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test1KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Failed to load test 1 RSA key")
 
@@ -1884,7 +1876,7 @@ func TestDeactivateRegistration(t *testing.T) {
 		}`)
 
 	responseWriter.Body.Reset()
-	key := loadPrivateKey(t, []byte(test3KeyPrivatePEM))
+	key, _ := loadKeys(t, []byte(test3KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test3 RSA key")
 

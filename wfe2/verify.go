@@ -36,12 +36,10 @@ func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, err
 
 func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
 	switch k := key.(type) {
-	case *rsa.PublicKey, rsa.PublicKey, *rsa.PrivateKey, rsa.PrivateKey:
+	case *rsa.PublicKey:
 		return jose.RS256, nil
-	case *ecdsa.PublicKey, ecdsa.PublicKey:
-		return sigAlgorithmForECDSAKey(k.(*ecdsa.PublicKey))
-	case *ecdsa.PrivateKey, ecdsa.PrivateKey:
-		return sigAlgorithmForECDSAKey(&(k.(*ecdsa.PrivateKey).PublicKey))
+	case *ecdsa.PublicKey:
+		return sigAlgorithmForECDSAKey(k)
 	}
 	return "", fmt.Errorf(sigAlgErr)
 }
