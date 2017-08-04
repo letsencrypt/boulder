@@ -127,8 +127,7 @@ func signRequestKeyID(
 }
 
 func TestRejectsNone(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	_, _, _, prob := wfe.validSelfAuthenticatedPOST(makePostRequest(`
+	noneJWSBody := `
 		{
 			"header": {
 				"alg": "none",
@@ -141,18 +140,24 @@ func TestRejectsNone(t *testing.T) {
 			"payload": "aGkK",
   		"signature": "ghTIjrhiRl2pQ09vAkUUBbF5KziJdhzOTB-okM9SPRzU8Hyj0W1H5JA1Zoc-A-LuJGNAtYYHWqMw1SeZbT0l9FHcbMPeWDaJNkHS9jz5_g_Oyol8vcrWur2GDtB2Jgw6APtZKrbuGATbrF7g41Wijk6Kk9GXDoCnlfOQOhHhsrFFcWlCPLG-03TtKD6EBBoVBhmlp8DRLs7YguWRZ6jWNaEX-1WiRntBmhLqoqQFtvZxCBw_PRuaRw_RZBd1x2_BNYqEdOmVNC43UHMSJg3y_3yrPo905ur09aUTscf-C_m4Sa4M0FuDKn3bQ_pFrtz-aCCq6rcTIyxYpDqNvHMT2Q"
 		}
-	`), newRequestEvent())
-	if prob == nil {
+	`
+	noneJWS, err := jose.ParseSigned(noneJWSBody)
+	if err != nil {
+		t.Fatal("Unable to parse noneJWS")
+	}
+	noneJWK := noneJWS.Signatures[0].Header.JSONWebKey
+
+	_, err = checkAlgorithm(noneJWK, noneJWS)
+	if err == nil {
 		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'none'")
 	}
-	if prob.Detail != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
-		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: %#v", prob)
+	if err.Error() != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
+		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: %#v", err)
 	}
 }
 
 func TestRejectsHS256(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	_, _, _, prob := wfe.validSelfAuthenticatedPOST(makePostRequest(`
+	hs256JWSBody := `
 		{
 			"header": {
 				"alg": "HS256",
@@ -165,13 +170,21 @@ func TestRejectsHS256(t *testing.T) {
 			"payload": "aGkK",
   		"signature": "ghTIjrhiRl2pQ09vAkUUBbF5KziJdhzOTB-okM9SPRzU8Hyj0W1H5JA1Zoc-A-LuJGNAtYYHWqMw1SeZbT0l9FHcbMPeWDaJNkHS9jz5_g_Oyol8vcrWur2GDtB2Jgw6APtZKrbuGATbrF7g41Wijk6Kk9GXDoCnlfOQOhHhsrFFcWlCPLG-03TtKD6EBBoVBhmlp8DRLs7YguWRZ6jWNaEX-1WiRntBmhLqoqQFtvZxCBw_PRuaRw_RZBd1x2_BNYqEdOmVNC43UHMSJg3y_3yrPo905ur09aUTscf-C_m4Sa4M0FuDKn3bQ_pFrtz-aCCq6rcTIyxYpDqNvHMT2Q"
 		}
-	`), newRequestEvent())
-	if prob == nil {
+	`
+
+	hs256JWS, err := jose.ParseSigned(hs256JWSBody)
+	if err != nil {
+		t.Fatal("Unable to parse hs256JWSBody")
+	}
+	hs256JWK := hs256JWS.Signatures[0].Header.JSONWebKey
+
+	_, err = checkAlgorithm(hs256JWK, hs256JWS)
+	if err == nil {
 		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'HS256'")
 	}
 	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
-	if prob.Detail != expected {
-		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", prob, expected)
+	if err.Error() != expected {
+		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", err.Error(), expected)
 	}
 }
 
@@ -400,7 +413,6 @@ func TestEnforceJWSAuthType(t *testing.T) {
 
 	conflictJWS, err := jose.ParseSigned(conflictJWSBody)
 	if err != nil {
-		fmt.Printf("err was: %#v\n", err)
 		t.Fatal("Unable to parse conflict JWS")
 	}
 

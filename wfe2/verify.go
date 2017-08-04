@@ -401,13 +401,6 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 		return nil, probs.Malformed(err.Error())
 	}
 
-	// If the key doesn't meet the GoodKey policy return a problem immediately
-	if err := wfe.keyPolicy.GoodKey(jwk.Key); err != nil {
-		wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
-		logEvent.AddError("JWK rejected by GoodKey: %s", err.Error())
-		return nil, probs.Malformed(err.Error())
-	}
-
 	// Verify the JWS signature with the public key.
 	// NOTE: It might seem insecure for the WFE to be trusted to verify
 	// client requests, i.e., that the verification should be done at the
@@ -513,6 +506,13 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	pubKey, prob := wfe.extractJWK(jws, logEvent)
 	if prob != nil {
 		return nil, nil, nil, prob
+	}
+
+	// If the key doesn't meet the GoodKey policy return a problem immediately
+	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
+		wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
+		logEvent.AddError("JWK rejected by GoodKey: %s", err.Error())
+		return nil, nil, nil, probs.Malformed(err.Error())
 	}
 
 	// Verify the JWS with the embedded JWK
