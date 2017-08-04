@@ -140,13 +140,10 @@ func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 // validPOSTRequest checks a *http.Request to ensure it has the headers
 // a well-formed ACME POST request has, and to ensure there is a body to
 // process.
-func (wfe *WebFrontEndImpl) validPOSTRequest(
-	request *http.Request,
-	logEvent *requestEvent) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.ProblemDetails {
 	// All POSTs should have an accompanying Content-Length header
 	if _, present := request.Header["Content-Length"]; !present {
 		wfe.stats.Inc("HTTP.ClientErrors.LengthRequiredError", 1)
-		logEvent.AddError("missing Content-Length header on POST")
 		return probs.ContentLengthRequired()
 	}
 
@@ -154,14 +151,12 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(
 	// the HTTP request, it needs to be part of the signed JWS request body
 	if _, present := request.Header["Replay-Nonce"]; present {
 		wfe.stats.Inc("HTTP.ClientErrors.ReplayNonceOutsideJWSError", 1)
-		logEvent.AddError("Replay-Nonce header included outside of JWS body")
 		return probs.Malformed("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
 	}
 
 	// All POSTs should have a non-nil body
 	if request.Body == nil {
 		wfe.stats.Inc("HTTP.ClientErrors.NoPOSTBody", 1)
-		logEvent.AddError("no body on POST")
 		return probs.Malformed("No body on POST")
 	}
 
@@ -170,9 +165,9 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(
 
 // validNonce checks a JWS' Nonce header to ensure it is one that the
 // nonceService knows about, otherwise a bad nonce problem is returned. The
-// provided logEvent is mutated to set the observed RequestNonce and any
-// associated errors. NOTE: this function assumes the JWS has already been
-// verified with the correct public key.
+// provided logEvent is mutated to set the observed RequestNonce.
+// NOTE: this function assumes the JWS has already been verified with the
+// correct public key.
 func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *requestEvent) *probs.ProblemDetails {
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
@@ -181,11 +176,9 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *req
 	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
 		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
-		logEvent.AddError("JWS is missing an anti-replay nonce")
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
-		logEvent.AddError("JWS has an invalid anti-replay nonce: %q", nonce)
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonce))
 	}
 	return nil
@@ -193,12 +186,10 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *req
 
 // validPOSTURL checks the JWS' URL header against the expected URL based on the
 // HTTP request. This prevents a JWS intended for one endpoint being replayed
-// against a different endpoint. It mutates the provided logEvent to capture any
-// errors.
+// against a different endpoint.
 func (wfe *WebFrontEndImpl) validPOSTURL(
 	request *http.Request,
-	jws *jose.JSONWebSignature,
-	logEvent *requestEvent) *probs.ProblemDetails {
+	jws *jose.JSONWebSignature) *probs.ProblemDetails {
 	// validPOSTURL is called after parseJWS() which defends against the incorrect
 	// number of signatures.
 	header := jws.Signatures[0].Header
@@ -206,14 +197,12 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	// Check that there is at least one Extra Header
 	if len(extraHeaders) == 0 {
 		wfe.stats.Inc("Errors.MissingURLinJWS", 1)
-		logEvent.AddError("JWS header parameter 'url' missing")
 		return probs.Malformed("JWS header parameter 'url' required")
 	}
 	// Try to read a 'url' Extra Header as a string
 	headerURL, ok := extraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(headerURL) == 0 {
 		wfe.stats.Inc("Errors.MissingURLinJWS", 1)
-		logEvent.AddError("JWS header parameter 'url' missing")
 		return probs.Malformed("JWS header parameter 'url' required")
 	}
 	// Compute the URL we expect to be in the JWS based on the HTTP request
@@ -233,15 +222,13 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 }
 
 // parseJWS extracts a JSONWebSignature from an HTTP POST request's body. If
-// there is an error reading the JWS or if it has too few or too many
-// signatures, a problem is returned and the requestEvent is mutated to contain
-// the error.
-func (wfe *WebFrontEndImpl) parseJWS(
-	request *http.Request,
-	logEvent *requestEvent) (*jose.JSONWebSignature, string, *probs.ProblemDetails) {
+// there is an error reading the JWS or it is unacceptable (e.g. too many/too
+// few signatures, presence of unprotected headers) a problem is returned,
+// otherwise the parsed *JSONWebSignature is returned.
+func (wfe *WebFrontEndImpl) parseJWS(request *http.Request) (*jose.JSONWebSignature, *probs.ProblemDetails) {
 	// Verify that the POST request has the expected headers
-	if prob := wfe.validPOSTRequest(request, logEvent); prob != nil {
-		return nil, "", prob
+	if prob := wfe.validPOSTRequest(request); prob != nil {
+		return nil, prob
 	}
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
@@ -249,8 +236,7 @@ func (wfe *WebFrontEndImpl) parseJWS(
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
-		logEvent.AddError("unable to read request body")
-		return nil, "", probs.ServerInternal("unable to read request body")
+		return nil, probs.ServerInternal("unable to read request body")
 	}
 
 	// Parse the raw JWS JSON to check that the unprotected Header field is not
@@ -261,17 +247,15 @@ func (wfe *WebFrontEndImpl) parseJWS(
 	}
 	if err := json.Unmarshal(bodyBytes, &unprotected); err != nil {
 		wfe.stats.Inc("Errors.JWSParseError", 1)
-		logEvent.AddError("Parse error reading JWS from POST body")
-		return nil, "", probs.Malformed("Parse error reading JWS")
+		return nil, probs.Malformed("Parse error reading JWS")
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
 		wfe.stats.Inc("Errors.JWSUnprotectedHeaders", 1)
-		errMsg := "Unprotected headers included in JWS"
-		logEvent.AddError(errMsg)
-		return nil, "", probs.Malformed(errMsg)
+		return nil, probs.Malformed(
+			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
 
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
@@ -280,40 +264,33 @@ func (wfe *WebFrontEndImpl) parseJWS(
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
 		wfe.stats.Inc("Errors.JWSParseError", 1)
-		logEvent.AddError("Parse error reading JWS from POST body")
-		return nil, "", probs.Malformed("Parse error reading JWS")
+		return nil, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
 		wfe.stats.Inc("Errors.TooManySignaturesInJWS", 1)
-		logEvent.AddError("Too many signatures in POST body JWS")
-		return nil, "", probs.Malformed("Too many signatures in POST body")
+		return nil, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJWS.Signatures) == 0 {
 		wfe.stats.Inc("Errors.NoSignaturesInJWS", 1)
-		logEvent.AddError("POST JWS not signed")
-		return nil, "", probs.Malformed("POST JWS not signed")
+		return nil, probs.Malformed("POST JWS not signed")
 	}
 	if len(parsedJWS.Signatures) == 1 && len(parsedJWS.Signatures[0].Signature) == 0 {
 		wfe.stats.Inc("Errors.EmptySignatureInJWS", 1)
-		logEvent.AddError("POST JWS not signed")
-		return nil, "", probs.Malformed("POST JWS not signed")
+		return nil, probs.Malformed("POST JWS not signed")
 	}
 
-	return parsedJWS, body, nil
+	return parsedJWS, nil
 }
 
 // extractJWK extracts a JWK from a provided JWS or returns a problem. It
 // expects that the JWS is using the embedded JWK style of authentication and
 // does not contain an embedded Key ID. Callers should have acquired the
 // provided JWS from parseJWS to ensure it has the correct number of signatures
-// present. The provided logEvent is mutated to add any observed errors.
-func (wfe *WebFrontEndImpl) extractJWK(
-	jws *jose.JSONWebSignature,
-	logEvent *requestEvent) (*jose.JSONWebKey, *probs.ProblemDetails) {
+// present.
+func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWebKey, *probs.ProblemDetails) {
 	// extractJWK expects the request to be using an embedded JWK auth type and
 	// to not contain the mutually exclusive KeyID.
 	if prob := wfe.enforceJWSAuthType(jws, embeddedJWK); prob != nil {
-		logEvent.AddError("JWS auth type was not expected embeddedJWK auth")
 		return nil, prob
 	}
 
@@ -327,7 +304,6 @@ func (wfe *WebFrontEndImpl) extractJWK(
 	// If the key isn't considered valid by go-jose return a problem immediately
 	if !key.Valid() {
 		wfe.stats.Inc("Errors.InvalidJWK", 1)
-		logEvent.AddError("JWK in request was invalid")
 		return nil, probs.Malformed("Invalid JWK in JWS header")
 	}
 
@@ -339,7 +315,7 @@ func (wfe *WebFrontEndImpl) extractJWK(
 // expects that the JWS is using the embedded Key ID style of authentication
 // and does not contain an embedded JWK. Callers should have acquired the
 // provided JWS from parseJWS to ensure it has the correct number of signatures
-// present. The provided logEvent is mutated to add any observed errors.
+// present.
 func (wfe *WebFrontEndImpl) lookupJWK(
 	jws *jose.JSONWebSignature,
 	ctx context.Context,
@@ -348,7 +324,6 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
 	if prob := wfe.enforceJWSAuthType(jws, embeddedKeyID); prob != nil {
-		logEvent.AddError("JWS auth type was not expected embeddedKeyID auth")
 		return nil, nil, prob
 	}
 
@@ -363,7 +338,6 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
 		wfe.stats.Inc("Errors.InvalidKeyID", 1)
-		logEvent.AddError("JWS key ID was invalid int64")
 		return nil, nil, probs.Malformed(fmt.Sprintf("Malformed account ID in KeyID header"))
 	}
 
@@ -373,7 +347,6 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// If the account isn't found, return a suitable problem
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.stats.Inc("Errors.KeyIDNotFound", 1)
-			logEvent.AddError(fmt.Sprintf("Account %q not found", accountURL))
 			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
 				"Account %q not found", accountURL))
 		}
@@ -381,6 +354,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// If there was an error and it isn't a "Not Found" error, return
 		// a ServerInternal problem since this is unexpected.
 		wfe.stats.Inc("Errors.UnableToGetAccountByID", 1)
+		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
 			"Error retreiving account %q", accountURL))
@@ -389,7 +363,6 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	// Verify the account is not deactivated
 	if account.Status != core.StatusValid {
 		wfe.stats.Inc("Errors.AccountIsNotValid", 1)
-		logEvent.AddError(fmt.Sprintf("Account %q has status %q", accountURL, account.Status))
 		return nil, nil, probs.Unauthorized(
 			fmt.Sprintf("Account is not valid, has status %q", account.Status))
 	}
@@ -409,14 +382,12 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 func (wfe *WebFrontEndImpl) validJWSForKey(
 	jws *jose.JSONWebSignature,
 	jwk *jose.JSONWebKey,
-	body string,
 	request *http.Request,
 	logEvent *requestEvent) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
 	if statName, err := checkAlgorithm(jwk, jws); err != nil {
 		wfe.stats.Inc(statName, 1)
-		logEvent.AddError("checkAlgorithm failed: %q", err.Error())
 		return nil, probs.Malformed(err.Error())
 	}
 
@@ -427,15 +398,8 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	payload, err := jws.Verify(jwk)
-	// If the signature verification fails, then return an error immediately with
-	// a small bit of context from the JWS body
 	if err != nil {
-		n := len(body)
-		if n > 100 {
-			n = 100
-		}
 		wfe.stats.Inc("Errors.JWSVerificationFailed", 1)
-		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
 		return nil, probs.Malformed("JWS verification error")
 	}
 	// Store the verified payload in the logEvent
@@ -447,7 +411,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	}
 
 	// Check that the HTTP request URL matches the URL in the signed JWS
-	if prob := wfe.validPOSTURL(request, jws, logEvent); prob != nil {
+	if prob := wfe.validPOSTURL(request, jws); prob != nil {
 		return nil, prob
 	}
 
@@ -459,7 +423,6 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	var parsedBody struct{}
 	if err := json.Unmarshal(payload, &parsedBody); err != nil {
 		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
-		logEvent.AddError("POST JWS Body is invalid JSON: %q", err.Error())
 		return nil, probs.Malformed("Request payload did not parse as JSON")
 	}
 
@@ -479,7 +442,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	ctx context.Context,
 	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
-	jws, body, prob := wfe.parseJWS(request, logEvent)
+	jws, prob := wfe.parseJWS(request)
 	if prob != nil {
 		return nil, nil, nil, nil, prob
 	}
@@ -491,7 +454,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	}
 
 	// Verify the JWS with the JWK from the SA
-	payload, prob := wfe.validJWSForKey(jws, pubKey, body, request, logEvent)
+	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
 	if prob != nil {
 		return nil, nil, nil, nil, prob
 	}
@@ -516,13 +479,13 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *jose.JSONWebSignature, *probs.ProblemDetails) {
 
 	// Parse the JWS from the POST request
-	jws, body, prob := wfe.parseJWS(request, logEvent)
+	jws, prob := wfe.parseJWS(request)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}
 
 	// Extract the embedded JWK from the parsed JWS
-	pubKey, prob := wfe.extractJWK(jws, logEvent)
+	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}
@@ -530,12 +493,11 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
 		wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
-		logEvent.AddError("JWK rejected by GoodKey: %s", err.Error())
 		return nil, nil, nil, probs.Malformed(err.Error())
 	}
 
 	// Verify the JWS with the embedded JWK
-	payload, prob := wfe.validJWSForKey(jws, pubKey, body, request, logEvent)
+	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}

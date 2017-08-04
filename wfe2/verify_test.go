@@ -408,7 +408,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Header: tc.Headers,
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			prob := wfe.validPOSTRequest(input, newRequestEvent())
+			prob := wfe.validPOSTRequest(input)
 			test.Assert(t, prob != nil, "No error returned for invalid POST")
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 			test.AssertEquals(t, prob.HTTPStatus, tc.HTTPStatus)
@@ -669,7 +669,7 @@ func TestValidPOSTURL(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			prob := wfe.validPOSTURL(tc.Request, tc.JWS, newRequestEvent())
+			prob := wfe.validPOSTURL(tc.Request, tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
 			} else {
@@ -737,7 +737,6 @@ func TestParseJWS(t *testing.T) {
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
-		ExpectedJSON    string
 		ExpectedProblem *probs.ProblemDetails
 	}{
 		{
@@ -785,7 +784,7 @@ func TestParseJWS(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", unprotectedHeadersJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
-				Detail:     "Unprotected headers included in JWS",
+				Detail:     "JWS \"header\" field not allowed. All headers must be in \"protected\" field",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
@@ -793,17 +792,14 @@ func TestParseJWS(t *testing.T) {
 			Name:            "Valid JWS in POST request",
 			Request:         validJWSRequest,
 			ExpectedProblem: nil,
-			ExpectedJSON:    validJWSBody,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, body, prob := wfe.parseJWS(tc.Request, newRequestEvent())
+			_, prob := wfe.parseJWS(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
-			} else if tc.ExpectedProblem == nil {
-				test.AssertMarshaledEquals(t, string(body), tc.ExpectedJSON)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -841,7 +837,7 @@ func TestExtractJWK(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			jwk, prob := wfe.extractJWK(tc.JWS, newRequestEvent())
+			jwk, prob := wfe.extractJWK(tc.JWS)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else if tc.ExpectedProblem == nil {
@@ -995,7 +991,7 @@ func TestValidJWSForKey(t *testing.T) {
 
 	payload := `{ "test": "payload" }`
 	testURL := "http://localhost/test"
-	goodJWS, goodJWK, goodJWSBody := signRequestEmbed(t, nil, testURL, payload, wfe.nonceService)
+	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, testURL, payload, wfe.nonceService)
 
 	// badSigJWSBody is a JWS that has had the payload changed by 1 byte to break the signature
 	badSigJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`
@@ -1023,10 +1019,10 @@ func TestValidJWSForKey(t *testing.T) {
 	wrongURLHeaders := map[jose.HeaderKey]interface{}{
 		"url": "foobar",
 	}
-	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
+	wrongURLHeaderJWS, _ := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
 
 	// badJSONJWS has a valid signature over a body that is not valid JSON
-	badJSONJWS, _, badJSONJWSBody := signRequestEmbed(t, nil, testURL, `{`, wfe.nonceService)
+	badJSONJWS, _, _ := signRequestEmbed(t, nil, testURL, `{`, wfe.nonceService)
 
 	testCases := []struct {
 		Name            string
@@ -1039,7 +1035,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "JWS with an invalid algorithm",
 			JWS:  wrongAlgJWS,
 			JWK:  goodJWK,
-			Body: "", // Not used
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
 				Detail:     "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
@@ -1050,7 +1045,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "JWS with an invalid nonce",
 			JWS:  invalidNonceJWS,
 			JWK:  goodJWK,
-			Body: "", // Not used
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
@@ -1061,7 +1055,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "JWS with broken signature",
 			JWS:  badJWS,
 			JWK:  badJWS.Signatures[0].Header.JSONWebKey,
-			Body: badSigJWSBody,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
 				Detail:     "JWS verification error",
@@ -1072,7 +1065,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "JWS with incorrect URL",
 			JWS:  wrongURLHeaderJWS,
 			JWK:  wrongURLHeaderJWS.Signatures[0].Header.JSONWebKey,
-			Body: wrongURLHeaderJWSBody,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
 				Detail:     "JWS header parameter 'url' incorrect. Expected \"http://localhost/test\" got \"foobar\"",
@@ -1083,7 +1075,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "Valid JWS with invalid JSON in the protected body",
 			JWS:  badJSONJWS,
 			JWK:  goodJWK,
-			Body: badJSONJWSBody,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
 				Detail:     "Request payload did not parse as JSON",
@@ -1094,7 +1085,6 @@ func TestValidJWSForKey(t *testing.T) {
 			Name: "Good JWS and JWK",
 			JWS:  goodJWS,
 			JWK:  goodJWK,
-			Body: goodJWSBody,
 		},
 	}
 
@@ -1102,7 +1092,7 @@ func TestValidJWSForKey(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(tc.JWS, tc.JWK, tc.Body, request, inputLogEvent)
+			outPayload, prob := wfe.validJWSForKey(tc.JWS, tc.JWK, request, inputLogEvent)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
