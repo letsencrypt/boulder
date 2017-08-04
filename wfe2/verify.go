@@ -253,9 +253,30 @@ func (wfe *WebFrontEndImpl) parseJWS(
 		return nil, "", probs.ServerInternal("unable to read request body")
 	}
 
-	body := string(bodyBytes)
+	// Parse the raw JWS JSON to check that the unprotected Header field is not
+	// being used for a key ID or a JWK. This must be done prior to
+	// `jose.parseSigned` since it will strip away these headers.
+	var unprotected struct {
+		Header map[string]string
+	}
+	if err := json.Unmarshal(bodyBytes, &unprotected); err != nil {
+		wfe.stats.Inc("Errors.JWSParseError", 1)
+		logEvent.AddError("Parse error reading JWS from POST body")
+		return nil, "", probs.Malformed("Parse error reading JWS")
+	}
 
-	// Attempt to parse the JWS from the POST body's bytes
+	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
+	// include unprotected headers.
+	if unprotected.Header != nil {
+		wfe.stats.Inc("Errors.JWSUnprotectedHeaders", 1)
+		errMsg := "Unprotected headers included in JWS"
+		logEvent.AddError(errMsg)
+		return nil, "", probs.Malformed(errMsg)
+	}
+
+	// Parse the JWS using go-jose and enforce that the expected one non-empty
+	// signature is present in the parsed JWS.
+	body := string(bodyBytes)
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
 		wfe.stats.Inc("Errors.JWSParseError", 1)
