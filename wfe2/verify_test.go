@@ -61,7 +61,7 @@ func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
 	case *ecdsa.PrivateKey:
 		return k.PublicKey
 	}
-	t.Fatal("Unable to get public key for private key %#v", privKey)
+	t.Fatal(fmt.Sprintf("Unable to get public key for private key %#v", privKey))
 	return nil
 }
 
