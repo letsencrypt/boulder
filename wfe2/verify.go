@@ -243,8 +243,7 @@ func (wfe *WebFrontEndImpl) parseJWS(
 	request *http.Request,
 	logEvent *requestEvent) (*jose.JSONWebSignature, string, *probs.ProblemDetails) {
 	// Verify that the POST request has the expected headers
-	prob := wfe.validPOSTRequest(request, logEvent)
-	if prob != nil {
+	if prob := wfe.validPOSTRequest(request, logEvent); prob != nil {
 		return nil, "", prob
 	}
 
@@ -295,8 +294,7 @@ func (wfe *WebFrontEndImpl) extractJWK(
 	logEvent *requestEvent) (*jose.JSONWebKey, *probs.ProblemDetails) {
 	// extractJWK expects the request to be using an embedded JWK auth type and
 	// to not contain the mutually exclusive KeyID.
-	prob := wfe.enforceJWSAuthType(jws, embeddedJWK)
-	if prob != nil {
+	if prob := wfe.enforceJWSAuthType(jws, embeddedJWK); prob != nil {
 		logEvent.AddError("JWS auth type was not expected embeddedJWK auth")
 		return nil, prob
 	}
@@ -331,8 +329,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	logEvent *requestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
-	prob := wfe.enforceJWSAuthType(jws, embeddedKeyID)
-	if prob != nil {
+	if prob := wfe.enforceJWSAuthType(jws, embeddedKeyID); prob != nil {
 		logEvent.AddError("JWS auth type was not expected embeddedKeyID auth")
 		return nil, nil, prob
 	}
@@ -432,14 +429,12 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	logEvent.Payload = string(payload)
 
 	// Check that the JWS contains a correct Nonce header
-	prob := wfe.validNonce(jws, logEvent)
-	if prob != nil {
+	if prob := wfe.validNonce(jws, logEvent); prob != nil {
 		return nil, prob
 	}
 
 	// Check that the HTTP request URL matches the URL in the signed JWS
-	prob = wfe.validPOSTURL(request, jws, logEvent)
-	if prob != nil {
+	if prob := wfe.validPOSTURL(request, jws, logEvent); prob != nil {
 		return nil, prob
 	}
 
@@ -449,8 +444,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// unmarshal the payload as part of the verification and failing early if it
 	// isn't JSON.
 	var parsedBody struct{}
-	err = json.Unmarshal(payload, &parsedBody)
-	if err != nil {
+	if err := json.Unmarshal(payload, &parsedBody); err != nil {
 		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
 		logEvent.AddError("POST JWS Body is invalid JSON: %q", err.Error())
 		return nil, probs.Malformed("Request payload did not parse as JSON")
