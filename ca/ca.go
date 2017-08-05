@@ -108,20 +108,21 @@ type CertificateAuthorityImpl struct {
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
-	defaultIssuer     *internalIssuer
-	sa                certificateStorage
-	pa                core.PolicyAuthority
-	keyPolicy         goodkey.KeyPolicy
-	clk               clock.Clock
-	log               blog.Logger
-	stats             metrics.Scope
-	prefix            int // Prepended to the serial number
-	validityPeriod    time.Duration
-	maxNames          int
-	forceCNFromSAN    bool
-	enableMustStaple  bool
-	signatureCount    *prometheus.CounterVec
-	csrExtensionCount *prometheus.CounterVec
+	defaultIssuer            *internalIssuer
+	sa                       certificateStorage
+	pa                       core.PolicyAuthority
+	keyPolicy                goodkey.KeyPolicy
+	clk                      clock.Clock
+	log                      blog.Logger
+	stats                    metrics.Scope
+	prefix                   int // Prepended to the serial number
+	validityPeriod           time.Duration
+	maxNames                 int
+	forceCNFromSAN           bool
+	enableMustStaple         bool
+	enablePrecertificateFlow bool
+	signatureCount           *prometheus.CounterVec
+	csrExtensionCount        *prometheus.CounterVec
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -244,21 +245,22 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
-		sa:                sa,
-		pa:                pa,
-		issuers:           internalIssuers,
-		defaultIssuer:     defaultIssuer,
-		rsaProfile:        rsaProfile,
-		ecdsaProfile:      ecdsaProfile,
-		prefix:            config.SerialPrefix,
-		clk:               clk,
-		log:               logger,
-		stats:             stats,
-		keyPolicy:         keyPolicy,
-		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple:  config.EnableMustStaple,
-		signatureCount:    signatureCount,
-		csrExtensionCount: csrExtensionCount,
+		sa:                       sa,
+		pa:                       pa,
+		issuers:                  internalIssuers,
+		defaultIssuer:            defaultIssuer,
+		rsaProfile:               rsaProfile,
+		ecdsaProfile:             ecdsaProfile,
+		prefix:                   config.SerialPrefix,
+		clk:                      clk,
+		log:                      logger,
+		stats:                    stats,
+		keyPolicy:                keyPolicy,
+		forceCNFromSAN:           !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple:         config.EnableMustStaple,
+		enablePrecertificateFlow: config.EnablePrecertificateFlow,
+		signatureCount:           signatureCount,
+		csrExtensionCount:        csrExtensionCount,
 	}
 
 	if config.Expiry == "" {
@@ -453,6 +455,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	if !ca.enablePrecertificateFlow {
+		return nil, berrors.NotSupportedError("Precertificate flow is disabled")
+	}
+
 	if issueReq.RegistrationID == nil {
 		return nil, berrors.InternalServerError("RegistrationID is nil")
 	}

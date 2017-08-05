@@ -115,8 +115,9 @@ var (
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
 	issuanceModes = []IssuanceMode{
-		{"non-precertificate", false},
-		{"precertificate", true},
+		{"non-precertificate", false, false},
+		{"precertificate", true, true},
+		{"precertificate-disabled", true, false},
 	}
 )
 
@@ -291,8 +292,9 @@ type TestCertificateIssuance struct {
 }
 
 type IssuanceMode struct {
-	name                 string
-	isPrecertificateFlow bool
+	name                     string
+	usePrecertificateFlow    bool
+	enablePrecertificateFlow bool
 }
 
 func TestIssueCertificate(t *testing.T) {
@@ -317,6 +319,8 @@ func TestIssueCertificate(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, mode := range issuanceModes {
 			ca, sa := testCase.setup(t)
+			ca.enablePrecertificateFlow = mode.enablePrecertificateFlow
+
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
 				test.AssertNotError(t, err, "Certificate request failed to parse")
@@ -324,7 +328,7 @@ func TestIssueCertificate(t *testing.T) {
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
 				certDER := []byte{}
-				if !mode.isPrecertificateFlow {
+				if !mode.usePrecertificateFlow {
 					coreCert, err := ca.IssueCertificate(ctx, issueReq)
 					test.AssertNotError(t, err, "Failed to issue certificate")
 					certDER = coreCert.DER
@@ -333,6 +337,12 @@ func TestIssueCertificate(t *testing.T) {
 					test.Assert(t, bytes.Equal(certDER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
 				} else {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
+
+					if !mode.enablePrecertificateFlow {
+						test.AssertError(t, err, "Precertificate flow not disabled as expected")
+						return
+					}
+
 					test.AssertNotError(t, err, "Failed to issue precertificate")
 					certDER = response.Precert.Der
 				}
@@ -340,7 +350,7 @@ func TestIssueCertificate(t *testing.T) {
 				cert, err := x509.ParseCertificate(certDER)
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
-				test.AssertEquals(t, mode.isPrecertificateFlow, extensionPresent(cert.Extensions, OIDExtensionCTPoison))
+				test.AssertEquals(t, mode.usePrecertificateFlow, extensionPresent(cert.Extensions, OIDExtensionCTPoison))
 
 				i := TestCertificateIssuance{
 					ca:      ca,
@@ -594,20 +604,27 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.keyPolicy,
 				testCtx.logger)
 			test.AssertNotError(t, err, "Failed to create CA")
+			ca.enablePrecertificateFlow = mode.usePrecertificateFlow
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				serializedCSR := mustRead(testCase.csrPath)
 				issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
-				if !mode.isPrecertificateFlow {
+				if !mode.usePrecertificateFlow {
 					_, err = ca.IssueCertificate(ctx, issueReq)
 				} else {
 					_, err = ca.IssuePrecertificate(ctx, issueReq)
 				}
-				test.AssertError(t, err, testCase.errorMessage)
+
 				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
-				if testCase.check != nil {
-					testCase.check(t, ca, sa)
+
+				if mode.usePrecertificateFlow == mode.enablePrecertificateFlow {
+					test.AssertError(t, err, testCase.errorMessage)
+					if testCase.check != nil {
+						testCase.check(t, ca, sa)
+					}
+				} else {
+					test.AssertError(t, err, "Precertificate flow not disabled as expected")
 				}
 			})
 		}
@@ -733,7 +750,7 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
 	expectedExtensionCount := 9
-	if i.mode.isPrecertificateFlow {
+	if i.mode.usePrecertificateFlow {
 		expectedExtensionCount += 1
 	}
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
