@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -259,14 +260,15 @@ func TestExtractDomainIANASuffix_Valid(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		got, err := extractDomainIANASuffix(tc.domain)
-		if err != nil {
-			t.Errorf("%q: returned error", tc.domain)
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("%q: got %q, want %q", tc.domain, got, tc.want)
-		}
+		t.Run(fmt.Sprintf("Case: %v", tc.domain), func(t *testing.T) {
+			got, err := extractDomainIANASuffix(tc.domain)
+			if err != nil {
+				t.Errorf("%q: returned error", tc.domain)
+			}
+			if got != tc.want {
+				t.Errorf("%q: got %q, want %q", tc.domain, got, tc.want)
+			}
+		})
 	}
 }
 

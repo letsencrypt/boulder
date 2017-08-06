@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -60,13 +61,13 @@ func TestVerifyCSR(t *testing.T) {
 	*signedReqWithIPAddress = *signedReq
 	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
 
-	cases := []struct {
-		csr           *x509.CertificateRequest
-		maxNames      int
-		keyPolicy     *goodkey.KeyPolicy
-		pa            core.PolicyAuthority
-		regID         int64
-		expectedError error
+	testCases := []struct {
+		csr         *x509.CertificateRequest
+		maxNames    int
+		keyPolicy   *goodkey.KeyPolicy
+		pa          core.PolicyAuthority
+		regID       int64
+		expectedErr error
 	}{
 		{
 			&x509.CertificateRequest{},
@@ -142,14 +143,18 @@ func TestVerifyCSR(t *testing.T) {
 		},
 	}
 
-	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, false, c.regID)
-		test.AssertDeepEquals(t, c.expectedError, err)
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Error case: %v", tc.expectedErr), func(t *testing.T) {
+			err := VerifyCSR(tc.csr, tc.maxNames, tc.keyPolicy, tc.pa, false, tc.regID)
+			if err.Error() != tc.expectedErr.Error() {
+				t.Errorf("Expected error %v, got %v", tc.expectedErr.Error(), err.Error())
+			}
+		})
 	}
 }
 
 func TestNormalizeCSR(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		csr           *x509.CertificateRequest
 		forceCN       bool
 		expectedCN    string
@@ -186,9 +191,13 @@ func TestNormalizeCSR(t *testing.T) {
 			[]string{"a.com", "b.com"},
 		},
 	}
-	for _, c := range cases {
-		normalizeCSR(c.csr, c.forceCN)
-		test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
-		test.AssertDeepEquals(t, c.expectedNames, c.expectedNames)
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Cert name %v", tc.expectedCN), func(t *testing.T) {
+			normalizeCSR(tc.csr, tc.forceCN)
+			if tc.csr.Subject.CommonName != tc.expectedCN {
+				t.Errorf("Expected %v, got %v", tc.expectedCN, tc.csr.Subject.CommonName)
+			}
+			test.AssertDeepEquals(t, tc.expectedNames, tc.expectedNames)
+		})
 	}
 }

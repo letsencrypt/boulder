@@ -12,7 +12,7 @@ import (
 
 // TestConfigCheck tests that configCheck() does what it says on the tin
 func TestConfigCheck(t *testing.T) {
-	testcases := []struct {
+	testCases := []struct {
 		conf     *cmd.GoogleSafeBrowsingConfig
 		expected error
 	}{
@@ -49,9 +49,22 @@ func TestConfigCheck(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testcases {
-		result := configCheck(tc.conf)
-		test.AssertEquals(t, result, tc.expected)
+	for _, tc := range testCases {
+		var description string
+		if tc.expected == nil {
+			description = "nil"
+		} else {
+			description = tc.expected.Error()
+		}
+		t.Run(fmt.Sprintf("Error case: \"%q\"", description), func(t *testing.T) {
+			result := configCheck(tc.conf)
+			if result != tc.expected {
+				// NOTE: These should probably look more like `tc.expected.Error()`,
+				//  but if we use that and one of the values is `nil`, the test fails
+				//  AND we get a runtime error.
+				t.Errorf("Expected %v, but got %v", tc.expected, result)
+			}
+		})
 	}
 }
 

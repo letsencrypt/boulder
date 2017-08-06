@@ -549,7 +549,7 @@ func TestInvalidCSRs(t *testing.T) {
 		{"TLSFeatureUnknown", "./testdata/tls_feature_unknown.der.csr", issueCertificateSubTestTLSFeatureUnknown, "Issued a certificate based on a CSR with an empty TLS feature extension."},
 	}
 
-	for _, testCase := range testCases {
+	for _, tc := range testCases {
 		testCtx := setup(t)
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
@@ -563,14 +563,14 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.logger)
 		test.AssertNotError(t, err, "Failed to create CA")
 
-		t.Run(testCase.name, func(t *testing.T) {
-			serializedCSR := mustRead(testCase.csrPath)
+		t.Run(tc.name, func(t *testing.T) {
+			serializedCSR := mustRead(tc.csrPath)
 			_, err = ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID})
-			test.AssertError(t, err, testCase.errorMessage)
+			test.AssertError(t, err, tc.errorMessage)
 			test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
-			if testCase.check != nil {
-				testCase.check(t, ca, sa)
+			if tc.check != nil {
+				tc.check(t, ca, sa)
 			}
 		})
 	}

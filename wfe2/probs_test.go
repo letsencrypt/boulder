@@ -52,17 +52,19 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
-	for _, c := range testCases {
-		p := problemDetailsForError(c.err, errMsg)
-		if p.HTTPStatus != c.statusCode {
-			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, p.HTTPStatus)
-		}
-		if probs.ProblemType(p.Type) != c.problem {
-			t.Errorf("Expected problem urn %#v, got %#v", c.problem, p.Type)
-		}
-		if p.Detail != c.detail {
-			t.Errorf("Expected detailed message %q, got %q", c.detail, p.Detail)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Error %v", tc.err), func(t *testing.T) {
+			problem := problemDetailsForError(tc.err, errMsg)
+			if problem.HTTPStatus != tc.statusCode {
+				t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(tc.err).Name(), tc.statusCode, problem.HTTPStatus)
+			}
+			if probs.ProblemType(problem.Type) != tc.problem {
+				t.Errorf("Expected problem urn %#v, got %#v", tc.problem, problem.Type)
+			}
+			if problem.Detail != tc.detail {
+				t.Errorf("Expected detailed message %q, got %q", tc.detail, problem.Detail)
+			}
+		})
 	}
 
 	expected := &probs.ProblemDetails{

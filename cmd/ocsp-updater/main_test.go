@@ -773,81 +773,92 @@ func TestMissingLogs(t *testing.T) {
 	}
 
 	testCases := []struct {
-		Logs                []*ctLog
-		GivenIDs            []string
-		ExpectedMissingLogs []*ctLog
+		description         string
+		logs                []*ctLog
+		givenIDs            []string
+		expectedMissingLogs []*ctLog
 	}{
-		// With `nil` logs, no log IDs are ever missing
 		{
-			Logs:                nil,
-			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []*ctLog{},
+			description:         "With `nil` logs, no log IDs are ever missing",
+			logs:                nil,
+			givenIDs:            []string{testLogAID, testLogBID},
+			expectedMissingLogs: []*ctLog{},
 		},
-		// No configured logs, no log IDs are ever missing
 		{
-			Logs:                noLogs,
-			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []*ctLog{},
+			description:         "No configured logs, no log IDs are ever missing",
+			logs:                noLogs,
+			givenIDs:            []string{testLogAID, testLogBID},
+			expectedMissingLogs: []*ctLog{},
 		},
-		// One configured log, given no log IDs, one is missing
 		{
-			Logs:                oneLog,
-			GivenIDs:            []string{},
-			ExpectedMissingLogs: []*ctLog{oneLog[0]},
+			description:         "One configured log, given no log IDs, one is missing",
+			logs:                oneLog,
+			givenIDs:            []string{},
+			expectedMissingLogs: []*ctLog{oneLog[0]},
 		},
-		// One configured log, given `nil` log IDs, one is missing
 		{
-			Logs:                oneLog,
-			GivenIDs:            nil,
-			ExpectedMissingLogs: []*ctLog{oneLog[0]},
+			description:         "One configured log, given `nil` log IDs, one is missing",
+			logs:                oneLog,
+			givenIDs:            nil,
+			expectedMissingLogs: []*ctLog{oneLog[0]},
 		},
-		// One configured log, given that log ID, none are missing
 		{
-			Logs:                oneLog,
-			GivenIDs:            []string{testLogAID},
-			ExpectedMissingLogs: []*ctLog{},
+			description:         "One configured log, given that log ID, none are missing",
+			logs:                oneLog,
+			givenIDs:            []string{testLogAID},
+			expectedMissingLogs: []*ctLog{},
 		},
-		// Two configured logs, given one log ID, one is missing
 		{
-			Logs:                twoLogs,
-			GivenIDs:            []string{testLogAID},
-			ExpectedMissingLogs: []*ctLog{twoLogs[1]},
+			description:         "Two configured logs, given one log ID, one is missing",
+			logs:                twoLogs,
+			givenIDs:            []string{testLogAID},
+			expectedMissingLogs: []*ctLog{twoLogs[1]},
 		},
-		// Two configured logs, given no log IDs, two are missing
 		{
-			Logs:                twoLogs,
-			GivenIDs:            []string{},
-			ExpectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
+			description:         "Two configured logs, given no log IDs, two are missing",
+			logs:                twoLogs,
+			givenIDs:            []string{},
+			expectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
 		},
-		// Two configured logs, given two matching log IDs, none are missing
 		{
-			Logs:                twoLogs,
-			GivenIDs:            []string{testLogAID, testLogBID},
-			ExpectedMissingLogs: []*ctLog{},
+			description:         "Two configured logs, given two matching log IDs, none are missing",
+			logs:                twoLogs,
+			givenIDs:            []string{testLogAID, testLogBID},
+			expectedMissingLogs: []*ctLog{},
 		},
-		// Two configured logs, given unknown log, two are missing
 		{
-			Logs:                twoLogs,
-			GivenIDs:            []string{"wha?"},
-			ExpectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
+			description:         "Two configured logs, given unknown log, two are missing",
+			logs:                twoLogs,
+			givenIDs:            []string{"wha?"},
+			expectedMissingLogs: []*ctLog{twoLogs[0], twoLogs[1]},
 		},
-		// Two configured logs, given one unknown log, one known, one is missing
 		{
-			Logs:                twoLogs,
-			GivenIDs:            []string{"wha?", testLogBID},
-			ExpectedMissingLogs: []*ctLog{twoLogs[0]},
+			description:         "Two configured logs, given one unknown log, one known, one is missing",
+			logs:                twoLogs,
+			givenIDs:            []string{"wha?", testLogBID},
+			expectedMissingLogs: []*ctLog{twoLogs[0]},
 		},
 	}
 
 	for _, tc := range testCases {
-		updater.logs = tc.Logs
-		missingLogs := updater.missingLogs(tc.GivenIDs)
-		test.AssertEquals(t, len(missingLogs), len(tc.ExpectedMissingLogs))
-		for i, expectedLog := range tc.ExpectedMissingLogs {
-			test.AssertEquals(t, missingLogs[i].uri, expectedLog.uri)
-			test.AssertEquals(t, missingLogs[i].key, expectedLog.key)
-			test.AssertEquals(t, missingLogs[i].logID, expectedLog.logID)
-		}
+		t.Run(tc.description, func(t *testing.T) {
+			updater.logs = tc.logs
+			missingLogs := updater.missingLogs(tc.givenIDs)
+			if len(missingLogs) != len(tc.expectedMissingLogs) {
+				t.Errorf("Expected missingLogs of length %v, got %v", len(tc.expectedMissingLogs), len(missingLogs))
+			}
+			for i, expectedLog := range tc.expectedMissingLogs {
+				if missingLogs[i].uri != expectedLog.uri {
+					t.Errorf("Expected missingLog URI %v, got %v", expectedLog.uri, missingLogs[i].uri)
+				}
+				if missingLogs[i].key != expectedLog.key {
+					t.Errorf("Expected missingLog key %v, got %v", expectedLog.key, missingLogs[i].key)
+				}
+				if missingLogs[i].logID != expectedLog.logID {
+					t.Errorf("Expected missingLog logID %v, got %v", expectedLog.logID, missingLogs[i].logID)
+				}
+			}
+		})
 	}
 }
 

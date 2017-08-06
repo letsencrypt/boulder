@@ -764,41 +764,60 @@ func TestRelativeDirectory(t *testing.T) {
 	mux := wfe.Handler()
 
 	dirTests := []struct {
-		host        string
-		protoHeader string
-		result      string
+		description, host, protoHeader, result string
 	}{
-		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
-		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
-		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
-		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
-		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{
+			"Test '' (No host header) with no proto header",
+			"", "",
+			`{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`,
+		},
+		{
+			"Test localhost:4300 with no proto header",
+			"localhost:4300", "",
+			`{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`,
+		},
+		{
+			"Test 127.0.0.1:4300 with no proto header",
+			"127.0.0.1:4300",
+			"",
+			`{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`,
+		},
+		{
+			"Test localhost:4300 with HTTP proto header",
+			"localhost:4300",
+			"http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`,
+		},
+		{
+			"Test localhost:4300 with HTTPS proto header",
+			"localhost:4300",
+			"https",
+			`{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`,
+		},
 	}
 
-	for _, tt := range dirTests {
-		var headers map[string][]string
-		responseWriter := httptest.NewRecorder()
+	for _, tc := range dirTests {
+		t.Run(tc.description, func(t *testing.T) {
+			var headers map[string][]string
+			responseWriter := httptest.NewRecorder()
 
-		if tt.protoHeader != "" {
-			headers = map[string][]string{
-				"X-Forwarded-Proto": {tt.protoHeader},
+			if tc.protoHeader != "" {
+				headers = map[string][]string{"X-Forwarded-Proto": {tc.protoHeader}}
 			}
-		}
 
-		mux.ServeHTTP(responseWriter, &http.Request{
-			Method: "GET",
-			Host:   tt.host,
-			URL:    mustParseURL(directoryPath),
-			Header: headers,
+			mux.ServeHTTP(responseWriter, &http.Request{
+				Method: "GET",
+				Host:   tc.host,
+				URL:    mustParseURL(directoryPath),
+				Header: headers,
+			})
+			if responseWriter.Header().Get("Content-Type") != "application/json" {
+				t.Errorf("Expected content-type 'application/json', got %v", responseWriter.Header().Get("Content-Type"))
+			}
+			if responseWriter.Code != http.StatusOK {
+				t.Errorf("Expected status code %v, got %v", http.StatusOK, responseWriter.Code)
+			}
+			assertJSONEquals(t, responseWriter.Body.String(), tc.result)
 		})
-		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-		assertJSONEquals(t, responseWriter.Body.String(), tt.result)
 	}
 }
 

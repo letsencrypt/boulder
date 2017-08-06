@@ -53,30 +53,32 @@ func TestHTTPCount(t *testing.T) {
 		{From: "c", To: "b"},
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		URL   string
-		Count int
+		count int
 	}{
-		{URL: "/count", Count: 5},
-		{URL: "/count?to=b", Count: 3},
-		{URL: "/count?to=c", Count: 1},
+		{"/count", 5},
+		{"/count?to=b", 3},
+		{"/count?to=c", 1},
 	}
 
 	var buf bytes.Buffer
-	for _, test := range tests {
-		w, r := reqAndRecorder(t, "GET", test.URL, nil)
-		buf.Reset()
-		w.Body = &buf
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("URL %v", tc.URL), func(t *testing.T) {
+			w, r := reqAndRecorder(t, "GET", tc.URL, nil)
+			buf.Reset()
+			w.Body = &buf
 
-		srv.httpCount(w, r)
-		if w.Code != 200 {
-			t.Errorf("%s: expected 200, got %d", test.URL, w.Code)
-		}
-		n, err := strconv.Atoi(strings.TrimSpace(buf.String()))
-		if err != nil {
-			t.Errorf("%s: expected a number, got '%s'", test.URL, buf.String())
-		} else if n != test.Count {
-			t.Errorf("%s: expected %d, got %d", test.URL, test.Count, n)
-		}
+			srv.httpCount(w, r)
+			if w.Code != 200 {
+				t.Errorf("%s: expected 200, got %d", tc.URL, w.Code)
+			}
+			n, err := strconv.Atoi(strings.TrimSpace(buf.String()))
+			if err != nil {
+				t.Errorf("%s: expected a number, got '%s'", tc.URL, buf.String())
+			} else if n != tc.count {
+				t.Errorf("%s: expected %d, got %d", tc.URL, tc.count, n)
+			}
+		})
 	}
 }

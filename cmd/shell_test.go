@@ -79,13 +79,19 @@ func TestMysqlLogger(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		// mysqlLogger proxies blog.AuditLogger to provide a Print() method
-		mLog.Print(tc.args...)
-		logged := log.GetAll()
-		// Calling Print should produce the expected output
-		test.AssertEquals(t, len(logged), 1)
-		test.AssertEquals(t, logged[0], tc.expected)
-		log.Clear()
+		t.Run(fmt.Sprintf("Case: %v", tc.expected), func(t *testing.T) {
+			// mysqlLogger proxies blog.AuditLogger to provide a Print() method
+			mLog.Print(tc.args...)
+			logged := log.GetAll()
+			// Calling Print should produce the expected output
+			if len(logged) != 1 {
+				t.Errorf("Expected 'logged' to be length 1, got length %v", len(logged))
+			}
+			if logged[0] != tc.expected {
+				t.Errorf("Expected log %v, got %v", tc.expected, logged[0])
+			}
+			log.Clear()
+		})
 	}
 }
 
@@ -107,17 +113,24 @@ func TestCfsslLogger(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		// cfsslLogger proxies blog.AuditLogger to provide Crit() and Emerg()
-		// methods that are expected by CFSSL's logger
-		cLog.Crit(tc.msg)
-		cLog.Emerg(tc.msg)
-		logged := log.GetAll()
-		// Calling Crit and Emerg should produce two AuditErr outputs matching the
-		// testCase expected output
-		test.AssertEquals(t, len(logged), 2)
-		test.AssertEquals(t, logged[0], tc.expected)
-		test.AssertEquals(t, logged[1], tc.expected)
-		log.Clear()
+		t.Run(fmt.Sprintf("Case: %v", tc.expected), func(t *testing.T) {
+			// cfsslLogger proxies blog.AuditLogger to provide Crit() and Emerg()
+			// methods that are expected by CFSSL's logger
+			cLog.Crit(tc.msg)
+			cLog.Emerg(tc.msg)
+			logged := log.GetAll()
+			// Calling Crit and Emerg should produce two AuditErr outputs matching the
+			// testCase expected output
+			if len(logged) != 2 {
+				t.Errorf("Expected 'logged' to be length 2, got length %v", len(logged))
+			}
+			for _, log := range logged {
+				if log != tc.expected {
+					t.Errorf("Expected log %v, got %v", tc.expected, log)
+				}
+			}
+			log.Clear()
+		})
 	}
 }
 
@@ -151,9 +164,13 @@ func TestLoadCert(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		_, err := LoadCert(tc.path)
-		test.AssertError(t, err, fmt.Sprintf("LoadCert(%q) did not error", tc.path))
-		test.AssertEquals(t, err.Error(), tc.expectedErr)
+		t.Run(fmt.Sprintf("Path \"%v\"", tc.path), func(t *testing.T) {
+			_, err := LoadCert(tc.path)
+			test.AssertError(t, err, fmt.Sprintf("LoadCert(%q) did not error", tc.path))
+			if err.Error() != tc.expectedErr {
+				t.Errorf("Expected error %v, got %v", err.Error(), tc.expectedErr)
+			}
+		})
 	}
 
 	bytes, err := LoadCert("../test/test-ca.pem")

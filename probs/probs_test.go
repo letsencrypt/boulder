@@ -1,6 +1,7 @@
 package probs
 
 import (
+	"fmt"
 	"testing"
 
 	"net/http"
@@ -19,7 +20,7 @@ func TestProblemDetails(t *testing.T) {
 
 func TestProblemDetailsToStatusCode(t *testing.T) {
 	testCases := []struct {
-		pb         *ProblemDetails
+		problem    *ProblemDetails
 		statusCode int
 	}{
 		{&ProblemDetails{Type: ConnectionProblem}, http.StatusBadRequest},
@@ -36,17 +37,19 @@ func TestProblemDetailsToStatusCode(t *testing.T) {
 		{&ProblemDetails{Type: ConnectionProblem, HTTPStatus: 200}, 200},
 	}
 
-	for _, c := range testCases {
-		p := ProblemDetailsToStatusCode(c.pb)
-		if c.statusCode != p {
-			t.Errorf("Incorrect status code for %s. Expected %d, got %d", c.pb.Type, c.statusCode, p)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Case: %v", tc.problem.Type), func(t *testing.T) {
+			result := ProblemDetailsToStatusCode(tc.problem)
+			if tc.statusCode != result {
+				t.Errorf("Expected status code %d, got %d", tc.statusCode, result)
+			}
+		})
 	}
 }
 
 func TestProblemDetailsConvenience(t *testing.T) {
 	testCases := []struct {
-		pb           *ProblemDetails
+		problem      *ProblemDetails
 		expectedType ProblemType
 		statusCode   int
 		detail       string
@@ -63,17 +66,19 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		{RejectedIdentifier("rejected identifier detail"), RejectedIdentifierProblem, http.StatusBadRequest, "rejected identifier detail"},
 	}
 
-	for _, c := range testCases {
-		if c.pb.Type != c.expectedType {
-			t.Errorf("Incorrect problem type. Expected %s got %s", c.expectedType, c.pb.Type)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Detail %v", tc.detail), func(t *testing.T) {
+			if tc.problem.Type != tc.expectedType {
+				t.Errorf("Incorrect problem type. Expected %s got %s", tc.expectedType, tc.problem.Type)
+			}
 
-		if c.pb.HTTPStatus != c.statusCode {
-			t.Errorf("Incorrect HTTP Status. Expected %d got %d", c.statusCode, c.pb.HTTPStatus)
-		}
+			if tc.problem.HTTPStatus != tc.statusCode {
+				t.Errorf("Incorrect HTTP Status. Expected %d got %d", tc.statusCode, tc.problem.HTTPStatus)
+			}
 
-		if c.pb.Detail != c.detail {
-			t.Errorf("Incorrect detail message. Expected %s got %s", c.detail, c.pb.Detail)
-		}
+			if tc.problem.Detail != tc.detail {
+				t.Errorf("Incorrect detail message. Expected %s got %s", tc.detail, tc.problem.Detail)
+			}
+		})
 	}
 }

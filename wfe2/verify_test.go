@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"fmt"
 	"testing"
 
 	"gopkg.in/square/go-jose.v2"
@@ -60,10 +61,9 @@ func TestRejectsHS256(t *testing.T) {
 
 func TestCheckAlgorithm(t *testing.T) {
 	testCases := []struct {
-		key          jose.JSONWebKey
-		jws          jose.JSONWebSignature
-		expectedErr  string
-		expectedStat string
+		key                       jose.JSONWebKey
+		jws                       jose.JSONWebSignature
+		expectedErr, expectedStat string
 	}{
 		{
 			jose.JSONWebKey{
@@ -124,14 +124,16 @@ func TestCheckAlgorithm(t *testing.T) {
 			"WFE.Errors.InvalidAlgorithmOnKey",
 		},
 	}
-	for i, tc := range testCases {
-		stat, err := checkAlgorithm(&tc.key, &tc.jws)
-		if tc.expectedErr != "" && err.Error() != tc.expectedErr {
-			t.Errorf("TestCheckAlgorithm %d: Expected '%s', got '%s'", i, tc.expectedErr, err)
-		}
-		if tc.expectedStat != "" && stat != tc.expectedStat {
-			t.Errorf("TestCheckAlgorithm %d: Expected stat '%s', got '%s'", i, tc.expectedStat, stat)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("stat %v usage", tc.expectedStat), func(t *testing.T) {
+			stat, err := checkAlgorithm(&tc.key, &tc.jws)
+			if tc.expectedErr != "" && err.Error() != tc.expectedErr {
+				t.Errorf("Expected '%s', got '%s'", tc.expectedErr, err)
+			}
+			if tc.expectedStat != "" && stat != tc.expectedStat {
+				t.Errorf("TExpected stat '%s', got '%s'", tc.expectedStat, stat)
+			}
+		})
 	}
 }
 
