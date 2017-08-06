@@ -17,34 +17,35 @@ func TestConfigCheck(t *testing.T) {
 		expected error
 	}{
 		{
-			nil, NilConfigErr,
+			conf:     nil,
+			expected: NilConfigErr,
 		},
 		{
-			&cmd.GoogleSafeBrowsingConfig{
+			conf: &cmd.GoogleSafeBrowsingConfig{
 				APIKey: "",
 			},
-			EmptyAPIKeyErr,
+			expected: EmptyAPIKeyErr,
 		},
 		{
-			&cmd.GoogleSafeBrowsingConfig{
+			conf: &cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "",
 			},
-			EmptyDataDirErr,
+			expected: EmptyDataDirErr,
 		},
 		{
-			&cmd.GoogleSafeBrowsingConfig{
+			conf: &cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "/distrust/everything/i/say/i/am/telling/the/truth",
 			},
-			MissingDataDirErr,
+			expected: MissingDataDirErr,
 		},
 		{
-			&cmd.GoogleSafeBrowsingConfig{
+			conf: &cmd.GoogleSafeBrowsingConfig{
 				APIKey:  "you are the keymaster!",
 				DataDir: "./",
 			},
-			nil,
+			expected: nil,
 		},
 	}
 

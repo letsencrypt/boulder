@@ -481,103 +481,103 @@ func TestRetry(t *testing.T) {
 	}
 	testCases := []*testCase{
 		{
-			"The success on first try case",
-			3,
-			&testExchanger{
+			description: "The success on first try case",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{nil},
 			},
-			nil,
-			1,
+			expected:      nil,
+			expectedCount: 1,
 		},
 		{
-			"Immediate non-OpError, error returns immediately",
-			3,
-			&testExchanger{
+			description: "Immediate non-OpError, error returns immediately",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{errors.New("nope")},
 			},
-			servFailError,
-			1,
+			expected:      servFailError,
+			expectedCount: 1,
 		},
 		{
-			"Temporary err, then non-OpError stops at two tries",
-			3,
-			&testExchanger{
+			description: "Temporary err, then non-OpError stops at two tries",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{isTempErr, errors.New("nope")},
 			},
-			servFailError,
-			2,
+			expected:      servFailError,
+			expectedCount: 2,
 		},
 		{
-			"Temporary error given always",
-			3,
-			&testExchanger{
+			description: "Temporary error given always",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					isTempErr,
 				},
 			},
-			netError,
-			3,
+			expected:      netError,
+			expectedCount: 3,
 		},
 		{
-			"Even with maxTries at 0, we should still let a single request go through",
-			0,
-			&testExchanger{
+			description: "Even with maxTries at 0, we should still let a single request go through",
+			maxTries:    0,
+			testExchanger: &testExchanger{
 				errs: []error{nil},
 			},
-			nil,
-			1,
+			expected:      nil,
+			expectedCount: 1,
 		},
 		{
-			"Temporary error given just once causes two tries",
-			3,
-			&testExchanger{
+			description: "Temporary error given just once causes two tries",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{
 					isTempErr,
 					nil,
 				},
 			},
-			nil,
-			2,
+			expected:      nil,
+			expectedCount: 2,
 		},
 		{
-			"Temporary error given twice causes three tries",
-			3,
-			&testExchanger{
+			description: "Temporary error given twice causes three tries",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					nil,
 				},
 			},
-			nil,
-			3,
+			expected:      nil,
+			expectedCount: 3,
 		},
 		{
-			"Temporary error given thrice causes three tries and fails",
-			3,
-			&testExchanger{
+			description: "Temporary error given thrice causes three tries and fails",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{
 					isTempErr,
 					isTempErr,
 					isTempErr,
 				},
 			},
-			netError,
-			3,
+			expected:      netError,
+			expectedCount: 3,
 		},
 		{
-			"temporary then non-Temporary error causes two retries",
-			3,
-			&testExchanger{
+			description: "temporary then non-Temporary error causes two retries",
+			maxTries:    3,
+			testExchanger: &testExchanger{
 				errs: []error{
 					isTempErr,
 					nonTempErr,
 				},
 			},
-			netError,
-			2,
+			expected:      netError,
+			expectedCount: 2,
 		},
 	}
 

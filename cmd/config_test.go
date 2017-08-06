@@ -31,7 +31,6 @@ func TestDBConfigURL(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			url, err := tc.conf.URL()
 			test.AssertNotError(t, err, "Failed calling URL() on DBConfig")
-			test.AssertEquals(t, url, tc.expected)
 			if url != tc.expected {
 				t.Errorf("Expected %v, got %v", tc.expected, url)
 			}
