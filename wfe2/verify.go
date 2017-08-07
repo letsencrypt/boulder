@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -19,7 +20,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
-const sigAlgErr = "no signature algorithms suitable for given key type"
+var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
 
 func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, error) {
 	params := key.Params()
@@ -31,7 +32,7 @@ func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, err
 	case "P-521":
 		return jose.ES512, nil
 	}
-	return "", fmt.Errorf(sigAlgErr)
+	return "", sigAlgErr
 }
 
 func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
@@ -41,7 +42,7 @@ func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
 	case *ecdsa.PublicKey:
 		return sigAlgorithmForECDSAKey(k)
 	}
-	return "", fmt.Errorf(sigAlgErr)
+	return "", sigAlgErr
 }
 
 const (
