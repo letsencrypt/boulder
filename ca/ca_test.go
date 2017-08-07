@@ -350,7 +350,12 @@ func TestIssueCertificate(t *testing.T) {
 				cert, err := x509.ParseCertificate(certDER)
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
-				test.AssertEquals(t, mode.usePrecertificateFlow, extensionPresent(cert.Extensions, OIDExtensionCTPoison))
+				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
+				test.AssertEquals(t, mode.usePrecertificateFlow, poisonExtension != nil)
+				if poisonExtension != nil {
+					test.AssertEquals(t, poisonExtension.Critical, true)
+					test.AssertEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
+				}
 
 				i := TestCertificateIssuance{
 					ca:      ca,
@@ -765,13 +770,13 @@ func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIs
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 }
 
-func extensionPresent(extensions []pkix.Extension, id asn1.ObjectIdentifier) bool {
+func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
 	for _, ext := range extensions {
 		if ext.Id.Equal(id) {
-			return true
+			return &ext
 		}
 	}
-	return false
+	return nil
 }
 
 func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
