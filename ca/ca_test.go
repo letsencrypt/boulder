@@ -354,7 +354,7 @@ func TestIssueCertificate(t *testing.T) {
 				test.AssertEquals(t, mode.usePrecertificateFlow, poisonExtension != nil)
 				if poisonExtension != nil {
 					test.AssertEquals(t, poisonExtension.Critical, true)
-					test.AssertEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
+					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
 				}
 
 				i := TestCertificateIssuance{
