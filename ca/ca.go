@@ -476,7 +476,6 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		Precert:           &corePB.Precertificate{Der: precertDER},
 		SctFetchingConfig: &corePB.SCTFetchingConfig{},
 	}, nil
-
 }
 
 func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, error) {
