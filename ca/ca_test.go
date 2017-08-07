@@ -272,28 +272,54 @@ func TestFailNoSerial(t *testing.T) {
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
+type TestCertificateIssuance struct {
+	ca      *CertificateAuthorityImpl
+	sa      *mockSA
+	req     *x509.CertificateRequest
+	certDER []byte
+	cert    *x509.Certificate
+}
+
 func TestIssueCertificate(t *testing.T) {
 	testCases := []struct {
 		name    string
+		csr     []byte
 		setup   func(t *testing.T) (*CertificateAuthorityImpl, *mockSA)
-		subTest func(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA)
+		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
-		{"IssueCertificate", issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
-		{"AllowNoCN", issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
-		{"ProfileSelectionRSA", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
-		{"ProfileSelectionECDSA", issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
-		{"MustStapleWhenDisabled", issueCertificateSubTestMustStapleDisabledSetup, issueCertificateSubTestMustStapleWhenDisabled},
-		{"MustStapleWhenEnabled", issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestMustStapleWhenEnabled},
-		{"MustStapleDuplicate", issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestDuplicateMustStaple},
-		{"UnknownExtension", issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestUnknownExtension},
-		{"CTPoisonExtension", issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtension},
-		{"CTPoisonExtensionEmpty", issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtensionEmpty},
+		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
+		{"AllowNoCN", NoCNCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
+		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
+		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
+		{"MustStapleWhenDisabled", MustStapleCSR, issueCertificateSubTestMustStapleDisabledSetup, issueCertificateSubTestMustStapleWhenDisabled},
+		{"MustStapleWhenEnabled", MustStapleCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestMustStapleWhenEnabled},
+		{"MustStapleDuplicate", DuplicateMustStapleCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestMustStapleWhenEnabled},
+		{"UnknownExtension", UnsupportedExtensionCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestUnknownExtension},
+		{"CTPoisonExtension", CTPoisonExtensionCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtension},
+		{"CTPoisonExtensionEmpty", CTPoisonExtensionEmptyCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtension},
 	}
 
 	for _, testCase := range testCases {
 		ca, sa := testCase.setup(t)
 		t.Run(testCase.name, func(t *testing.T) {
-			testCase.subTest(t, ca, sa)
+			req, err := x509.ParseCertificateRequest(testCase.csr)
+			test.AssertNotError(t, err, "Certificate request failed to parse")
+
+			coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID})
+			test.AssertNotError(t, err, "Failed to issue certificate")
+
+			cert, err := x509.ParseCertificate(coreCert.DER)
+			test.AssertNotError(t, err, "Certificate failed to parse")
+
+			i := TestCertificateIssuance{
+				ca:      ca,
+				sa:      sa,
+				req:     req,
+				certDER: coreCert.DER,
+				cert:    cert,
+			}
+
+			testCase.subTest(t, &i)
 		})
 	}
 }
@@ -316,14 +342,8 @@ func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImp
 	return ca, sa
 }
 
-func issueCertificateSubTestIssueCertificate(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA) {
-	// Sign CSR
-	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to sign certificate")
-
-	// Verify cert contents
-	cert, err := x509.ParseCertificate(issuedCert.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
+func issueCertificateSubTestIssueCertificate(t *testing.T, i *TestCertificateIssuance) {
+	cert := i.cert
 
 	test.AssertEquals(t, cert.Subject.CommonName, "not-example.com")
 
@@ -344,7 +364,7 @@ func issueCertificateSubTestIssueCertificate(t *testing.T, ca *CertificateAuthor
 	if cert.Subject.SerialNumber != serialString {
 		t.Errorf("SerialNumber: want %#v, got %#v", serialString, cert.Subject.SerialNumber)
 	}
-	test.Assert(t, bytes.Equal(issuedCert.DER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
+	test.Assert(t, bytes.Equal(i.certDER, i.sa.certificate.DER), "Retrieved cert not equal to issued cert.")
 }
 
 // Test issuing when multiple issuers are present.
@@ -376,7 +396,7 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to sign certificate")
+	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
@@ -581,12 +601,9 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
 
-func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA) {
-	issueReq := caPB.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID}
-	issuedCert, err := ca.IssueCertificate(ctx, &issueReq)
-	test.AssertNotError(t, err, "Failed to sign certificate")
-	cert, err := x509.ParseCertificate(issuedCert.DER)
-	test.AssertNotError(t, err, fmt.Sprintf("unable to parse no CN cert: %s", err))
+func issueCertificateSubTestAllowNoCN(t *testing.T, i *TestCertificateIssuance) {
+	cert := i.cert
+
 	if cert.Subject.CommonName != "" {
 		t.Errorf("want no CommonName, got %#v", cert.Subject.CommonName)
 	}
@@ -595,9 +612,8 @@ func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl
 		t.Errorf("SerialNumber: want %#v, got %#v", serial, cert.Subject.SerialNumber)
 	}
 
-	parsedCSR, _ := x509.ParseCertificateRequest(issueReq.Csr)
 	expected := []string{}
-	for _, name := range parsedCSR.DNSNames {
+	for _, name := range i.req.DNSNames {
 		expected = append(expected, name)
 	}
 	sort.Strings(expected)
@@ -609,36 +625,18 @@ func issueCertificateSubTestAllowNoCN(t *testing.T, ca *CertificateAuthorityImpl
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func issueCertificateSubTestProfileSelectionRSA(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestProfileSelectionRSA(t *testing.T, i *TestCertificateIssuance) {
 	// Certificates for RSA keys should be marked as usable for signatures and encryption.
 	expectedKeyUsage := x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
-
-	// Sign CSR
-	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to sign certificate")
-
-	// Verify cert contents
-	cert, err := x509.ParseCertificate(issuedCert.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-
-	t.Logf("expected key usage %v, got %v", expectedKeyUsage, cert.KeyUsage)
-	test.AssertEquals(t, cert.KeyUsage, expectedKeyUsage)
+	t.Logf("expected key usage %v, got %v", expectedKeyUsage, i.cert.KeyUsage)
+	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
 }
 
-func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, i *TestCertificateIssuance) {
 	// Certificates for ECDSA keys should be marked as usable for only signatures.
 	expectedKeyUsage := x509.KeyUsageDigitalSignature
-
-	// Sign CSR
-	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to sign certificate")
-
-	// Verify cert contents
-	cert, err := x509.ParseCertificate(issuedCert.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-
-	t.Logf("expected key usage %v, got %v", expectedKeyUsage, cert.KeyUsage)
-	test.AssertEquals(t, cert.KeyUsage, expectedKeyUsage)
+	t.Logf("expected key usage %v, got %v", expectedKeyUsage, i.cert.KeyUsage)
+	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
 }
 
 func issueCertificateSubTestMustStapleDisabledSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
@@ -665,48 +663,23 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 	return count
 }
 
-func issueCertificateSubTestMustStapleWhenDisabled(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestMustStapleWhenDisabled(t *testing.T, i *TestCertificateIssuance) {
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: MustStapleCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
-	test.AssertEquals(t, countMustStaple(t, cert), 0)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
+	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
+	test.AssertEquals(t, countMustStaple(t, i.cert), 0)
 }
 
-func issueCertificateSubTestMustStapleWhenEnabled(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestMustStapleWhenEnabled(t *testing.T, i *TestCertificateIssuance) {
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
-	// extension into the cert.
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: MustStapleCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
-	test.AssertEquals(t, countMustStaple(t, cert), 1)
-}
-
-func issueCertificateSubTestDuplicateMustStaple(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
-	// Even if there are multiple TLS Feature extensions, only one extension should be included
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: DuplicateMustStapleCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 0)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
-	test.AssertEquals(t, countMustStaple(t, cert), 1)
+	// extension into the cert. Even if there are multiple TLS Feature extensions, only
+	// one extension should be included.
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
+	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
+	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
 }
 
 func issueCertificateSubTestTLSFeatureUnknown(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
@@ -714,50 +687,22 @@ func issueCertificateSubTestTLSFeatureUnknown(t *testing.T, ca *CertificateAutho
 	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 1)
 }
 
-func issueCertificateSubTestUnknownExtension(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
 	// Unsupported extensions in the CSR should be silently ignored.
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: UnsupportedExtensionCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
-	test.AssertEquals(t, len(cert.Extensions), 9)
+	test.AssertEquals(t, len(i.cert.Extensions), 9)
 }
 
-func issueCertificateSubTestCTPoisonExtension(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
+func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIssuance) {
 	// The CT poison extension in the CSR should be silently ignored like an
-	// unknown extension.
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CTPoisonExtensionCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
-
-	test.Assert(t, !extensionPresent(cert.Extensions, OIDExtensionCTPoison), "CT poison extension is present")
-}
-
-func issueCertificateSubTestCTPoisonExtensionEmpty(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
-	// The CT poison extension in the CSR should be silently ignored like an
-	// unknown extension, even if it has an invalid value.
-
-	coreCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CTPoisonExtensionEmptyCSR, RegistrationID: &arbitraryRegID})
-	test.AssertNotError(t, err, "Failed to issue")
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 1)
-
-	test.Assert(t, !extensionPresent(cert.Extensions, OIDExtensionCTPoison), "CT poison extension is present")
+	// unknown extension, whether it has a valid or invalid value.
+	test.AssertEquals(t, count(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
+	test.Assert(t, !extensionPresent(i.cert.Extensions, OIDExtensionCTPoison), "CT poison extension is present")
 }
 
 func extensionPresent(extensions []pkix.Extension, id asn1.ObjectIdentifier) bool {
