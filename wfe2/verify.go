@@ -406,11 +406,11 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 		return nil, prob
 	}
 
-	// Previously the check for the request URL required unmarshalling the payload JSON
-	// to check the "resource" field of the protected JWS body. This caught
-	// invalid JSON early and so we preserve this check by explicitly trying to
-	// unmarshal the payload as part of the verification and failing early if it
-	// isn't JSON.
+	// In the WFE1 package the check for the request URL required unmarshalling
+	// the payload JSON to check the "resource" field of the protected JWS body.
+	// This caught invalid JSON early and so we preserve this check by explicitly
+	// trying to unmarshal the payload as part of the verification and failing
+	// early if it isn't valid JSON.
 	var parsedBody struct{}
 	if err := json.Unmarshal(payload, &parsedBody); err != nil {
 		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
