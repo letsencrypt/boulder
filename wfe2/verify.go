@@ -45,36 +45,27 @@ func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
 	return "", sigAlgErr
 }
 
-const (
-	noAlgorithmForKeyStat     = "WFE.Errors.NoAlgorithmForKey"
-	invalidJWSAlgorithmStat   = "WFE.Errors.InvalidJWSAlgorithm"
-	invalidAlgorithmOnKeyStat = "WFE.Errors.InvalidAlgorithmOnKey"
-)
-
 // Check that (1) there is a suitable algorithm for the provided key based on its
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm. Precondition: parsedJws must have exactly one signature on
-// it. Returns stat name to increment if err is non-nil.
-func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) (string, error) {
+// it.
+func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) error {
 	algorithm, err := sigAlgorithmForKey(key.Key)
 	if err != nil {
-		return noAlgorithmForKeyStat, err
+		return err
 	}
 	jwsAlgorithm := parsedJWS.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != string(algorithm) {
-		return invalidJWSAlgorithmStat, fmt.Errorf(
+		return fmt.Errorf(
 			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 			jwsAlgorithm,
 		)
 	}
 	if key.Algorithm != "" && key.Algorithm != string(algorithm) {
-		return invalidAlgorithmOnKeyStat, fmt.Errorf(
-			"algorithm '%s' on JWK is unacceptable",
-			key.Algorithm,
-		)
+		return fmt.Errorf("algorithm '%s' on JWK is unacceptable", key.Algorithm)
 	}
-	return "", nil
+	return nil
 }
 
 // jwsAuthType represents whether a given POST request is authenticated using
@@ -387,8 +378,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	logEvent *requestEvent) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
-	if statName, err := checkAlgorithm(jwk, jws); err != nil {
-		wfe.stats.Inc(statName, 1)
+	if err := checkAlgorithm(jwk, jws); err != nil {
 		return nil, probs.Malformed(err.Error())
 	}
 

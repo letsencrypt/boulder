@@ -176,7 +176,7 @@ func TestRejectsNone(t *testing.T) {
 	}
 	noneJWK := noneJWS.Signatures[0].Header.JSONWebKey
 
-	_, err = checkAlgorithm(noneJWK, noneJWS)
+	err = checkAlgorithm(noneJWK, noneJWS)
 	if err == nil {
 		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'none'")
 	}
@@ -207,7 +207,7 @@ func TestRejectsHS256(t *testing.T) {
 	}
 	hs256JWK := hs256JWS.Signatures[0].Header.JSONWebKey
 
-	_, err = checkAlgorithm(hs256JWK, hs256JWS)
+	err = checkAlgorithm(hs256JWK, hs256JWS)
 	if err == nil {
 		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'HS256'")
 	}
@@ -219,10 +219,9 @@ func TestRejectsHS256(t *testing.T) {
 
 func TestCheckAlgorithm(t *testing.T) {
 	testCases := []struct {
-		key          jose.JSONWebKey
-		jws          jose.JSONWebSignature
-		expectedErr  string
-		expectedStat string
+		key         jose.JSONWebKey
+		jws         jose.JSONWebSignature
+		expectedErr string
 	}{
 		{
 			jose.JSONWebKey{
@@ -230,7 +229,6 @@ func TestCheckAlgorithm(t *testing.T) {
 			},
 			jose.JSONWebSignature{},
 			"no signature algorithms suitable for given key type",
-			"WFE.Errors.NoAlgorithmForKey",
 		},
 		{
 			jose.JSONWebKey{
@@ -246,7 +244,6 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			"WFE.Errors.InvalidJWSAlgorithm",
 		},
 		{
 			jose.JSONWebKey{
@@ -263,7 +260,6 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			"WFE.Errors.InvalidJWSAlgorithm",
 		},
 		{
 			jose.JSONWebKey{
@@ -280,22 +276,18 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"algorithm 'HS256' on JWK is unacceptable",
-			"WFE.Errors.InvalidAlgorithmOnKey",
 		},
 	}
 	for i, tc := range testCases {
-		stat, err := checkAlgorithm(&tc.key, &tc.jws)
+		err := checkAlgorithm(&tc.key, &tc.jws)
 		if tc.expectedErr != "" && err.Error() != tc.expectedErr {
 			t.Errorf("TestCheckAlgorithm %d: Expected '%s', got '%s'", i, tc.expectedErr, err)
-		}
-		if tc.expectedStat != "" && stat != tc.expectedStat {
-			t.Errorf("TestCheckAlgorithm %d: Expected stat '%s', got '%s'", i, tc.expectedStat, stat)
 		}
 	}
 }
 
 func TestCheckAlgorithmSuccess(t *testing.T) {
-	_, err := checkAlgorithm(&jose.JSONWebKey{
+	err := checkAlgorithm(&jose.JSONWebKey{
 		Algorithm: "RS256",
 		Key:       &rsa.PublicKey{},
 	}, &jose.JSONWebSignature{
@@ -310,7 +302,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 	if err != nil {
 		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
 	}
-	_, err = checkAlgorithm(&jose.JSONWebKey{
+	err = checkAlgorithm(&jose.JSONWebKey{
 		Key: &rsa.PublicKey{},
 	}, &jose.JSONWebSignature{
 		Signatures: []jose.Signature{
@@ -325,7 +317,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
 	}
 
-	_, err = checkAlgorithm(&jose.JSONWebKey{
+	err = checkAlgorithm(&jose.JSONWebKey{
 		Algorithm: "ES256",
 		Key: &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
@@ -343,7 +335,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
 	}
 
-	_, err = checkAlgorithm(&jose.JSONWebKey{
+	err = checkAlgorithm(&jose.JSONWebKey{
 		Key: &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 		},
