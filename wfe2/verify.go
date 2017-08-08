@@ -2,6 +2,7 @@ package wfe2
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/json"
@@ -35,7 +36,7 @@ func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, err
 	return "", sigAlgErr
 }
 
-func sigAlgorithmForKey(key interface{}) (jose.SignatureAlgorithm, error) {
+func sigAlgorithmForKey(key crypto.PublicKey) (jose.SignatureAlgorithm, error) {
 	switch k := key.(type) {
 	case *rsa.PublicKey:
 		return jose.RS256, nil
