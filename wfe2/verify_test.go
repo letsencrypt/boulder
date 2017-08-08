@@ -178,10 +178,10 @@ func TestRejectsNone(t *testing.T) {
 
 	err = checkAlgorithm(noneJWK, noneJWS)
 	if err == nil {
-		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'none'")
+		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'none'")
 	}
 	if err.Error() != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
-		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: %#v", err)
+		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: %#v", err)
 	}
 }
 
@@ -209,11 +209,11 @@ func TestRejectsHS256(t *testing.T) {
 
 	err = checkAlgorithm(hs256JWK, hs256JWS)
 	if err == nil {
-		t.Fatalf("validSelfAuthenticatedPOST did not reject JWS with alg: 'HS256'")
+		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'HS256'")
 	}
 	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
 	if err.Error() != expected {
-		t.Fatalf("validSelfAuthenticatedPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", err.Error(), expected)
+		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", err.Error(), expected)
 	}
 }
 
@@ -1101,7 +1101,7 @@ func TestValidJWSForKey(t *testing.T) {
 func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	_, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
 	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)
 
 	// ID 102 is mocked to return missing
@@ -1118,7 +1118,6 @@ func TestValidPOSTForAccount(t *testing.T) {
 		Request         *http.Request
 		ExpectedProblem *probs.ProblemDetails
 		ExpectedPayload string
-		ExpectedJWK     *jose.JSONWebKey
 		ExpectedAcct    *core.Registration
 	}{
 		{
@@ -1161,7 +1160,6 @@ func TestValidPOSTForAccount(t *testing.T) {
 			Name:            "Valid JWS for account",
 			Request:         makePostRequestWithPath("test", validJWSBody),
 			ExpectedPayload: `{"test":"passed"}`,
-			ExpectedJWK:     validKey,
 			ExpectedAcct:    &validAccount,
 		},
 	}
@@ -1170,15 +1168,11 @@ func TestValidPOSTForAccount(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 
-			outPayload, jwk, _, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
+			outPayload, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else if tc.ExpectedProblem == nil {
-
-				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
-				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
-				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
@@ -1221,7 +1215,7 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	// Ensure that ValidPOSTForAccount produces an error since the
 	// mockSADifferentStoredKey will return a different key than the one we used to
 	// sign the request
-	_, _, _, _, prob := wfe.validPOSTForAccount(request, ctx, event)
+	_, _, prob := wfe.validPOSTForAccount(request, ctx, event)
 	test.Assert(t, prob != nil, "No error returned for request signed by wrong key")
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 	test.AssertEquals(t, prob.Detail, "JWS verification error")
@@ -1271,7 +1265,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 
-			outPayload, jwk, _, prob := wfe.validSelfAuthenticatedPOST(tc.Request, inputLogEvent)
+			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(tc.Request, inputLogEvent)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))

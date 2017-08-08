@@ -425,32 +425,31 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 // specified by the JWS key ID. If the request is valid (e.g. the JWS is well
 // formed, verifies with the JWK stored for the specified key ID, specifies the
 // correct URL, and has a valid nonce) then `validPOSTForAccount` returns the
-// validated JWS body, the JWK used to validate the JWS, the JWS that was
-// validated and a pointer to the JWK's associated account. If any of these
-// conditions are not met or an error occurs only a problem is returned.
+// validated JWS body and a pointer to the JWK's associated account. If any of
+// these conditions are not met or an error occurs only a problem is returned.
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
+	logEvent *requestEvent) ([]byte, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWS(request)
 	if prob != nil {
-		return nil, nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
 	if prob != nil {
-		return nil, nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
 	// Verify the JWS with the JWK from the SA
 	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
 	if prob != nil {
-		return nil, nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
-	return payload, pubKey, jws, account, nil
+	return payload, account, nil
 }
 
 // validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
@@ -461,37 +460,36 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 // request should be validated using `validPOSTforAccount`. If the POST request
 // validates (e.g. the JWS is well formed, verifies with the JWK embedded in it,
 // the JWK meets policy/algorithm requirements, has the correct URL and includes a
-// valid nonce) then `validSelfAuthenticatedPOST` returns the JWK that was
-// embedded in the JWK and the JWS that was validated with the JWK. Otherwise if
-// the valid JWS conditions are not met or an error occurs only a problem is
-// returned.
+// valid nonce) then `validSelfAuthenticatedPOST` returns the validated JWS body
+// and the JWK that was embedded in the JWS. Otherwise if the valid JWS
+// conditions are not met or an error occurs only a problem is returned.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *jose.JSONWebSignature, *probs.ProblemDetails) {
+	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWS(request)
 	if prob != nil {
-		return nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
 	// Extract the embedded JWK from the parsed JWS
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
-		return nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
 		wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
-		return nil, nil, nil, probs.Malformed(err.Error())
+		return nil, nil, probs.Malformed(err.Error())
 	}
 
 	// Verify the JWS with the embedded JWK
 	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
 	if prob != nil {
-		return nil, nil, nil, prob
+		return nil, nil, prob
 	}
 
-	return payload, pubKey, jws, nil
+	return payload, pubKey, nil
 }

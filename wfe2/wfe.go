@@ -457,7 +457,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	// NewRegistration uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
 	// until after it is created!
-	body, key, _, prob := wfe.validSelfAuthenticatedPOST(request, logEvent)
+	body, key, prob := wfe.validSelfAuthenticatedPOST(request, logEvent)
 	if prob != nil {
 		// validSelfAuthenticatedPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -527,7 +527,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 
 // NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTforAccount handles its own setting of logEvent.Errors
@@ -616,7 +616,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -845,7 +845,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *requestEvent) {
-	body, _, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -910,7 +910,7 @@ func (wfe *WebFrontEndImpl) Registration(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, _, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -1012,7 +1012,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) bool {
-	body, _, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
