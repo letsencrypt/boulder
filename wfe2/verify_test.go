@@ -78,7 +78,9 @@ func signRequestEmbed(
 	// if no key is provided default to test1KeyPrivatePEM
 	var publicKey interface{}
 	if privateKey == nil {
-		privateKey, publicKey = loadKeys(t, []byte(test1KeyPrivatePEM))
+		signer := loadKeys(t, []byte(test1KeyPrivatePEM))
+		privateKey = signer
+		publicKey = signer.Public()
 	} else {
 		publicKey = pubKeyForKey(t, privateKey)
 	}
@@ -122,7 +124,7 @@ func signRequestKeyID(
 	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
 	if privateKey == nil {
-		privateKey, _ = loadKeys(t, []byte(test1KeyPrivatePEM))
+		privateKey = loadKeys(t, []byte(test1KeyPrivatePEM))
 	}
 
 	jwk := &jose.JSONWebKey{
@@ -565,11 +567,11 @@ func signExtraHeaders(
 	t *testing.T,
 	headers map[jose.HeaderKey]interface{},
 	nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey, pubKey := loadKeys(t, []byte(test1KeyPrivatePEM))
+	privateKey := loadKeys(t, []byte(test1KeyPrivatePEM))
 
 	signerKey := jose.SigningKey{
 		Key:       privateKey,
-		Algorithm: sigAlgForKey(t, pubKey),
+		Algorithm: sigAlgForKey(t, privateKey.Public()),
 	}
 
 	opts := &jose.SignerOptions{
@@ -672,17 +674,17 @@ func TestValidPOSTURL(t *testing.T) {
 }
 
 func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKeyA, pubKeyA := loadKeys(t, []byte(test1KeyPrivatePEM))
-	privateKeyB, pubKeyB := loadKeys(t, []byte(test2KeyPrivatePEM))
+	privateKeyA := loadKeys(t, []byte(test1KeyPrivatePEM))
+	privateKeyB := loadKeys(t, []byte(test2KeyPrivatePEM))
 
 	signerKeyA := jose.SigningKey{
 		Key:       privateKeyA,
-		Algorithm: sigAlgForKey(t, pubKeyA),
+		Algorithm: sigAlgForKey(t, privateKeyA.Public()),
 	}
 
 	signerKeyB := jose.SigningKey{
 		Key:       privateKeyB,
-		Algorithm: sigAlgForKey(t, pubKeyB),
+		Algorithm: sigAlgForKey(t, privateKeyB.Public()),
 	}
 
 	opts := &jose.SignerOptions{
@@ -842,7 +844,7 @@ func TestExtractJWK(t *testing.T) {
 }
 
 func signRequestBadKeyID(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey, _ := loadKeys(t, []byte(test1KeyPrivatePEM))
+	privateKey := loadKeys(t, []byte(test1KeyPrivatePEM))
 
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
@@ -1108,7 +1110,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
 
 	// ID 3 is mocked to return deactivated
-	key3, _ := loadKeys(t, []byte(test3KeyPrivatePEM))
+	key3 := loadKeys(t, []byte(test3KeyPrivatePEM))
 	_, _, deactivatedJWSBody := signRequestKeyID(t, 3, key3, "http://localhost/test", "{}", wfe.nonceService)
 
 	_, _, embeddedJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
