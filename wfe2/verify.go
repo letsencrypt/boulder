@@ -83,7 +83,7 @@ const (
 // checkJWSAuthType examines a JWS' protected headers to determine if
 // the request being authenticated by the JWS is identified using an embedded
 // JWK or an embedded key ID. If no signatures are present, or mutually
-// exclusive authentication types are specified at the same time a problem is
+// exclusive authentication types are specified at the same time, a problem is
 // returned. checkJWSAuthType is separate from enforceJWSAuthType so that
 // endpoints that need to handle both embedded JWK and embedded key ID requests
 // can determine which type of request they have and act accordingly (e.g.
