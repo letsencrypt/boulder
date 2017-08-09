@@ -75,7 +75,7 @@ var (
 		Value:    hex.EncodeToString(mustStapleFeatureValue),
 	}
 
-	// https://tools.ietf.org/html/rfc6962#section-3.1.
+	// https://tools.ietf.org/html/rfc6962#section-3.1
 	ctPoisonExtension = signer.Extension{
 		ID:       cfsslConfig.OID(signer.CTPoisonOID),
 		Critical: true,
