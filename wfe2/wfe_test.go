@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -357,17 +356,6 @@ func addHeadIfGet(s []string) []string {
 	return s
 }
 
-func assertJSONEquals(t *testing.T, got, expected string) {
-	var gotMap, expectedMap map[string]interface{}
-	err := json.Unmarshal([]byte(got), &gotMap)
-	test.AssertNotError(t, err, "failed to parse received JSON")
-	err = json.Unmarshal([]byte(expected), &expectedMap)
-	test.AssertNotError(t, err, "failed to parse expected JSON")
-	if !reflect.DeepEqual(gotMap, expectedMap) {
-		t.Fatalf("JSON response differed from expected:\n Got: %s, Expected: %s", got, expected)
-	}
-}
-
 func TestHandleFunc(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	var mux *http.ServeMux
@@ -407,7 +395,7 @@ func TestHandleFunc(t *testing.T) {
 		} else {
 			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
-			assertJSONEquals(t,
+			test.AssertUnmarshaledEquals(t,
 				rw.Body.String(),
 				`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 		}
@@ -420,7 +408,7 @@ func TestHandleFunc(t *testing.T) {
 	// Disallowed method returns error JSON in body
 	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
@@ -434,7 +422,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -636,7 +624,7 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
 	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
 	// the correct terms-of-service URL.
@@ -650,7 +638,7 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
 	// Even with the DirectoryMeta flag enabled, if the UA is
 	// LetsEncryptPythonClient we expect to *not* see the meta entry.
@@ -667,7 +655,7 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 }
 
 func TestRandomDirectoryKey(t *testing.T) {
@@ -769,7 +757,7 @@ func TestRelativeDirectory(t *testing.T) {
 		})
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-		assertJSONEquals(t, responseWriter.Body.String(), tt.result)
+		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tt.result)
 	}
 }
 
@@ -822,7 +810,7 @@ func TestIssueCertificate(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(newCertPath),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
@@ -834,14 +822,14 @@ func TestIssueCertificate(t *testing.T) {
 			"Content-Length": {"0"},
 		},
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
@@ -854,7 +842,7 @@ func TestIssueCertificate(t *testing.T) {
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, "foo", wfe.nonceService)
 	request := makePostRequestWithPath(targetPath, body)
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
@@ -863,7 +851,7 @@ func TestIssueCertificate(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
 	request = makePostRequestWithPath(targetPath, body)
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
 
@@ -878,7 +866,7 @@ func TestIssueCertificate(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(targetPath, body)
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
 
@@ -893,7 +881,7 @@ func TestIssueCertificate(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(targetPath, body)
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
@@ -952,7 +940,7 @@ func TestIssueCertificate(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(targetPath, body)
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 }
@@ -986,7 +974,7 @@ func TestGetChallenge(t *testing.T) {
 		// be discarded by HandleFunc() anyway, so it doesn't
 		// matter what Challenge() writes to it.
 		if method == "GET" {
-			assertJSONEquals(
+			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
 				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
@@ -1021,7 +1009,7 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/authz/valid>;rel="up"`)
-	assertJSONEquals(
+	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
 		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 
@@ -1033,7 +1021,7 @@ func TestChallenge(t *testing.T) {
 	request = makePostRequestWithPath(challengePath, body)
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
 
 	// Challenge Not found
@@ -1044,7 +1032,7 @@ func TestChallenge(t *testing.T) {
 	request = makePostRequestWithPath(challengePath, body)
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`)
 
 	// Unspecified database error
@@ -1055,7 +1043,7 @@ func TestChallenge(t *testing.T) {
 	request = makePostRequestWithPath(errorPath, body)
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`)
 
 }
@@ -1081,7 +1069,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSARegistration(t *testing.T) {
@@ -1124,7 +1112,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	// POST, Valid JSON, Key already in use
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
 	responseBody = responseWriter.Body.String()
-	assertJSONEquals(t, responseBody, `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
+	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
@@ -1242,7 +1230,7 @@ func TestNewRegistration(t *testing.T) {
 	for _, rt := range regErrTests {
 		responseWriter := httptest.NewRecorder()
 		mux.ServeHTTP(responseWriter, rt.r)
-		assertJSONEquals(t, responseWriter.Body.String(), rt.respBody)
+		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), rt.respBody)
 	}
 
 	responseWriter := httptest.NewRecorder()
@@ -1285,7 +1273,7 @@ func TestNewRegistration(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(
@@ -1330,7 +1318,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(newAuthzPath),
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -1340,12 +1328,12 @@ func TestAuthorization(t *testing.T) {
 			"Content-Length": {"0"},
 		},
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
 	signedURL := fmt.Sprintf("http://localhost%s", authzPath)
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
@@ -1354,7 +1342,7 @@ func TestAuthorization(t *testing.T) {
 
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
@@ -1364,7 +1352,7 @@ func TestAuthorization(t *testing.T) {
 	request = makePostRequestWithPath(authzPath,
 		`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImtpZCI6IjEiLCJub25jZSI6ImdMTE90QlJCeXl4V3Y2RExQRUJFUERsS05DV294NzdjYzBRLXdTSVdYY1UiLCJ1cmwiOiJodHRwOi8vbG9jYWxob3N0L2FjbWUvYXV0aHovIn0","signature":"Xn2yTyn1eIgbv1HOnl8_OuDMrHRlacje_fhAYyOlVmFGrb9vzTTYQ-TXdXpjrtQzcIRX7z0v1Wv3DJJryMAMwm-I9DN-Gmd_h1HG6KXK61vHIqMWlUen2WoBBNdeE00S5UI0iP-zY5E_jfW0ByLzAqoZeMN_vTJG40Ji9hfvaPaQBGLEcz6xw0Mc7EgacY6m_JGPBkCDvrDstHTTqIu5tZ3Dw7tif33aakONDKXVE0WOHjfHNP-jW4tkeCrlIDajWpU074AGmCMyBDXK5ii6Pv6tztcMPqg8SvL9_I7RyCsjQGCymNCr_XoJkRwS6GBoaKS5Jqmb-qt-O_-rcpq-Fw"}`)
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`)
 
@@ -1382,7 +1370,7 @@ func TestAuthorization(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/new-cert>;rel="next"`)
 
-	assertJSONEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
@@ -1396,7 +1384,7 @@ func TestAuthorization(t *testing.T) {
 		URL:    mustParseURL(authzURL),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
 	responseWriter.Body.Reset()
 
@@ -1405,7 +1393,7 @@ func TestAuthorization(t *testing.T) {
 		URL:    mustParseURL("/a/bunch/of/garbage/valid"),
 		Method: "GET",
 	})
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Unable to find authorization","status":404}`)
 }
 
@@ -1431,7 +1419,7 @@ func TestRegistration(t *testing.T) {
 		URL:    mustParseURL(regPath),
 		Body:   makeBody("invalid"),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
@@ -1441,14 +1429,14 @@ func TestRegistration(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(regPath),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
@@ -1466,7 +1454,7 @@ func TestRegistration(t *testing.T) {
 
 	// Test POST valid JSON but key is not registered
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"102\" not found","status":400}`)
 	responseWriter.Body.Reset()
@@ -1483,7 +1471,7 @@ func TestRegistration(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
 	responseWriter.Body.Reset()
@@ -1609,7 +1597,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
 
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
@@ -1621,7 +1609,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1629,7 +1617,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
 }
 
 func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
@@ -1683,7 +1671,7 @@ func TestBadKeyCSR(t *testing.T) {
 	//   -subj /CN=foo.com | base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
 
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
@@ -1778,7 +1766,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	request := makePostRequestWithPath(path, body)
 
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "urn:acme:error:malformed","detail": "Invalid status value","status": 400}`)
 
@@ -1788,7 +1776,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "identifier": {
@@ -1820,7 +1808,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	request := makePostRequestWithPath(path, body)
 
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "urn:acme:error:malformed","detail": "Invalid value provided for status field","status": 400}`)
 
@@ -1830,7 +1818,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "id": 1,
@@ -1853,7 +1841,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "id": 1,
@@ -1884,7 +1872,7 @@ func TestDeactivateRegistration(t *testing.T) {
 
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
 
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "type": "urn:acme:error:unauthorized",
