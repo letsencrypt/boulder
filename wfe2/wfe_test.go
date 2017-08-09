@@ -315,22 +315,19 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	return wfe, fc
 }
 
-// makePostRequest creates an http.Request with method POST, the provided body,
-// and the correct Content-Length.
-func makePostRequest(body string) *http.Request {
-	return &http.Request{
+// makePostRequestWithPath creates an http.Request for localhost with method
+// POST, the provided body, and the correct Content-Length. The path provided
+// will be parsed as a URL and used to populate the request URL and RequestURI
+func makePostRequestWithPath(path string, body string) *http.Request {
+	request := &http.Request{
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
 			"Content-Length": {fmt.Sprintf("%d", len(body))},
 		},
 		Body: makeBody(body),
+		Host: "localhost",
 	}
-}
-
-func makePostRequestWithPath(path string, body string) *http.Request {
-	request := makePostRequest(body)
-	request.Host = "localhost"
 	url := mustParseURL(path)
 	request.URL = url
 	request.RequestURI = url.Path
@@ -843,7 +840,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
@@ -1083,7 +1080,7 @@ func TestBadNonce(t *testing.T) {
 	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(result.FullSerialize()))
+		makePostRequestWithPath("nonce", result.FullSerialize()))
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
@@ -1347,7 +1344,7 @@ func TestAuthorization(t *testing.T) {
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
+	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
 	signedURL := fmt.Sprintf("http://localhost%s", authzPath)
