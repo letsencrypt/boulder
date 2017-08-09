@@ -31,6 +31,7 @@ type AuthorityImpl struct {
 
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
+	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -138,9 +139,7 @@ var (
 	errTooFewLabels        = berrors.MalformedError("DNS name does not have enough labels")
 	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
 	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
-	// TODO(@cpu): Delete `errIDNNotSupported` when IDNASupport feature flag is removed.
-	errIDNNotSupported = berrors.MalformedError("Internationalized domain names (starting with xn--) not yet supported")
-	errMalformedIDN    = berrors.MalformedError("DNS label contains malformed punycode")
+	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -215,17 +214,13 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		}
 
 		if punycodeRegexp.MatchString(label) {
-			if features.Enabled(features.IDNASupport) {
-				// We don't care about script usage, if a name is resolvable it was
-				// registered with a higher power and they should be enforcing their
-				// own policy. As long as it was properly encoded that is enough
-				// for us.
-				_, err := idna.ToUnicode(label)
-				if err != nil {
-					return errMalformedIDN
-				}
-			} else {
-				return errIDNNotSupported
+			// We don't care about script usage, if a name is resolvable it was
+			// registered with a higher power and they should be enforcing their
+			// own policy. As long as it was properly encoded that is enough
+			// for us.
+			_, err := idna.ToUnicode(label)
+			if err != nil {
+				return errMalformedIDN
 			}
 		}
 	}
@@ -297,6 +292,8 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	shuffled := make([]core.Challenge, len(challenges))
 	combinations := make([][]int, len(challenges))
 
+	pa.rngMu.Lock()
+	defer pa.rngMu.Unlock()
 	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
 		shuffled[i] = challenges[challIdx]
 		combinations[i] = []int{i}

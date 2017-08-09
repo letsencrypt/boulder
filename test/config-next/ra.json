@@ -6,7 +6,7 @@
     "dnsTries": 3,
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
-    "maxNames": 1000,
+    "maxNames": 100,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 60,
@@ -42,7 +42,6 @@
       ]
     },
     "features": {
-      "IDNASupport": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,

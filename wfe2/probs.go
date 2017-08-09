@@ -50,8 +50,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return e
 	case *berrors.BoulderError:
 		return problemDetailsForBoulderError(e, msg)
-	case signatureValidationError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.MalformedRequestError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.NotSupportedError:

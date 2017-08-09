@@ -77,12 +77,41 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		// Tag meaning "Malformed"
 		return core.Registration{}, nil
 	}
+	if id == 102 {
+		// Tag meaning "Not Found"
+		return core.Registration{}, berrors.NotFoundError("Dave's not here man")
+	}
 
 	keyJSON := []byte(test1KeyPublicJSON)
 	var parsedKey jose.JSONWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
 	if err != nil {
 		return core.Registration{}, err
+	}
+
+	// Return a populated registration with contacts for ID == 1
+	contacts := []string{"mailto:person@mail.com"}
+	if id == 1 {
+		return core.Registration{
+			ID:        1,
+			Key:       &parsedKey,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusValid,
+		}, nil
+	}
+
+	var test3KeyPublic jose.JSONWebKey
+	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
+	if id == 3 {
+		// deactivated registration
+		return core.Registration{
+			ID:        3,
+			Key:       &test3KeyPublic,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusDeactivated,
+		}, nil
 	}
 
 	return core.Registration{
