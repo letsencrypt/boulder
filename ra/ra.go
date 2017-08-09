@@ -1370,6 +1370,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
+	// TODO(#2955): Replace this with the batched methods
 	for _, name := range parsedCSR.DNSNames {
 		authz, err := ra.NewAuthorization(ctx, core.Authorization{
 			Identifier: core.AcmeIdentifier{

@@ -2,21 +2,22 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
 CREATE TABLE orders (
-       id bigint(20) NOT NULL AUTO_INCREMENT,
-       registrationID bigint(20) NOT NULL,
-       expires datetime NOT NULL,
-       csr mediumblob NOT NULL,
-       error blob DEFAULT NULL,
-       certificateSerial varchar(255) DEFAULT NULL,
-       status varchar(255) NOT NULL,
+       id BIGINT(20) NOT NULL AUTO_INCREMENT,
+       registrationID BIGINT(20) NOT NULL,
+       expires DATETIME NOT NULL,
+       csr MEDIUMBLOB NOT NULL,
+       error MEDIUMBLOB DEFAULT NULL,
+       certificateSerial VARCHAR(255) DEFAULT NULL,
+       status VARCHAR(255) NOT NULL,
        PRIMARY KEY(id),
        KEY reg_expires (registrationID, expires)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE orderToAuthz (
-       orderID bigint(20) NOT NULL,
-       authzID varchar(255) NOT NULL,
-       PRIMARY KEY order_authz (orderID, authzID)
+       orderID BIGINT(20) NOT NULL,
+       authzID VARCHAR(255) NOT NULL,
+       PRIMARY KEY order_authz (orderID, authzID),
+       KEY authzID (authzID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
