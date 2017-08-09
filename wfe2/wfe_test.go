@@ -603,116 +603,163 @@ func TestIndex(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
 }
 
+// randomDirectoryKeyPresent unmarshals the given buf of JSON and returns true
+// if `randomDirKeyExplanationLink` appears as the value of a key in the directory
+// object.
+func randomDirectoryKeyPresent(t *testing.T, buf []byte) bool {
+	var dir map[string]interface{}
+	if err := json.Unmarshal(buf, &dir); err != nil {
+		t.Errorf("Failed to unmarshal directory: %s", err)
+	}
+	for _, v := range dir {
+		if v == randomDirKeyExplanationLink {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDirectory(t *testing.T) {
-	// Note: using `wfe.BaseURL` to test the non-relative /directory behaviour
-	// This tests to ensure the `Host` in the following `http.Request` is not
-	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
-	// and expecting `localhost` in the JSON result.
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
+	// Note: `TestDirectory` sets the `wfe.BaseURL` specifically to test the
+	// that it overrides the relative /directory behaviour.
+	// This ensures the `Host` value of `127.0.0.1` in the following
+	// `http.Request` is not used in the response URLs that are tested against
+	// `http://localhost:4300`
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
 
-	responseWriter := httptest.NewRecorder()
+	const (
+		oldUA = "LetsEncryptPythonClient"
+	)
 
-	url, _ := url.Parse("/directory")
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "127.0.0.1:4300",
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	// Directory with a key change endpoint but no meta endpoint or random entry
+	noMetaJSONWithKeyChange := `{
+		"key-change": "http://localhost:4300/acme/key-change",
+		"new-authz": "http://localhost:4300/acme/new-authz",
+		"new-cert": "http://localhost:4300/acme/new-cert",
+		"new-reg": "http://localhost:4300/acme/new-reg",
+		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`
 
-	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
-	// the correct terms-of-service URL.
-	_ = features.Set(map[string]bool{"DirectoryMeta": true})
-	responseWriter.Body.Reset()
-	url, _ = url.Parse("/directory")
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "127.0.0.1:4300",
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	// Directory without a key change endpoint or a random entry
+	noMetaJSONWithoutKeyChange := `{
+		"new-authz": "http://localhost:4300/acme/new-authz",
+		"new-cert": "http://localhost:4300/acme/new-cert",
+		"new-reg": "http://localhost:4300/acme/new-reg",
+		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`
 
-	// Even with the DirectoryMeta flag enabled, if the UA is
-	// LetsEncryptPythonClient we expect to *not* see the meta entry.
-	responseWriter.Body.Reset()
-	url, _ = url.Parse("/directory")
-	headers := map[string][]string{
-		"User-Agent": {"LetsEncryptPythonClient"},
+	// Directory with a key change endpoint and a meta entry
+	metaJSON := `{
+  "key-change": "http://localhost:4300/acme/key-change",
+  "meta": {
+    "terms-of-service": "http://example.invalid/terms"
+  },
+  "new-authz": "http://localhost:4300/acme/new-authz",
+  "new-cert": "http://localhost:4300/acme/new-cert",
+  "new-reg": "http://localhost:4300/acme/new-reg",
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`
+
+	// Directory with a meta entry but no key change endpoint
+	metaNoKeyChangeJSON := `{
+  "meta": {
+    "terms-of-service": "http://example.invalid/terms"
+  },
+  "new-authz": "http://localhost:4300/acme/new-authz",
+  "new-cert": "http://localhost:4300/acme/new-cert",
+  "new-reg": "http://localhost:4300/acme/new-reg",
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`
+
+	testCases := []struct {
+		Name         string
+		UserAgent    string
+		SetFeatures  []string
+		ExpectedJSON string
+		RandomEntry  bool
+	}{
+		{
+			Name:         "No meta feature enabled, no explicit user-agent",
+			ExpectedJSON: noMetaJSONWithoutKeyChange,
+		},
+		{
+			Name:         "Key change feature enabled, no explicit user-agent",
+			SetFeatures:  []string{"AllowKeyRollover"},
+			ExpectedJSON: noMetaJSONWithKeyChange,
+		},
+		{
+			Name:         "DirectoryMeta feature enabled, no explicit user-agent",
+			SetFeatures:  []string{"DirectoryMeta"},
+			ExpectedJSON: metaNoKeyChangeJSON,
+		},
+		{
+			Name:         "DirectoryMeta feature enabled, no key change enabled, explicit old Let's Encrypt user-agent",
+			SetFeatures:  []string{"DirectoryMeta"},
+			UserAgent:    oldUA,
+			ExpectedJSON: noMetaJSONWithoutKeyChange,
+		},
+		{
+			Name:         "DirectoryMeta feature enabled, key change enabled, explicit old Let's Encrypt user-agent",
+			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
+			UserAgent:    oldUA,
+			ExpectedJSON: noMetaJSONWithoutKeyChange,
+		},
+		{
+			Name:         "DirectoryMeta feature enabled, key change enabled, no explicit user-agent",
+			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
+			ExpectedJSON: metaJSON,
+		},
+		{
+			Name:        "RandomDirectoryEntry feature enabled, no explicit user-agent",
+			SetFeatures: []string{"RandomDirectoryEntry"},
+			RandomEntry: true,
+		},
+		{
+			Name:        "RandomDirectoryEntry feature enabled, explicit old Let's Encrypt user-agent",
+			UserAgent:   oldUA,
+			SetFeatures: []string{"RandomDirectoryEntry"},
+			RandomEntry: false,
+		},
 	}
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "127.0.0.1:4300",
-		Header: headers,
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
-}
 
-func TestRandomDirectoryKey(t *testing.T) {
-	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
-	defer features.Reset()
-	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
-
-	responseWriter := httptest.NewRecorder()
-	url, _ := url.Parse("/directory")
-	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "127.0.0.1:4300",
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	var dir map[string]interface{}
-	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
-		t.Errorf("Failed to unmarshal directory: %s", err)
-	}
-	found := false
-	for _, v := range dir {
-		if v == randomDirKeyExplanationLink {
-			found = true
-			break
+	for _, tc := range testCases {
+		// Each test case will set zero or more feature flags
+		for _, feature := range tc.SetFeatures {
+			_ = features.Set(map[string]bool{feature: true})
 		}
-	}
-	if !found {
-		t.Errorf("Failed to find random entry in directory: %s", responseWriter.Body.String())
-	}
-
-	responseWriter.Body.Reset()
-	headers := map[string][]string{
-		"User-Agent": {"LetsEncryptPythonClient"},
-	}
-	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "127.0.0.1:4300",
-		Header: headers,
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	dir = map[string]interface{}{}
-	if err := json.Unmarshal(responseWriter.Body.Bytes(), &dir); err != nil {
-		t.Errorf("Failed to unmarshal directory: %s", err)
-	}
-	found = false
-	for _, v := range dir {
-		if v == randomDirKeyExplanationLink {
-			found = true
-			break
-		}
-	}
-	if found {
-		t.Error("Found random entry in directory with 'LetsEncryptPythonClient' UA")
+		t.Run(tc.Name, func(t *testing.T) {
+			// NOTE: the req.URL will be modified and must be constructed per
+			// testcase or things will break and you will be confused and sad.
+			url, _ := url.Parse("/directory")
+			req := &http.Request{
+				Method: "GET",
+				URL:    url,
+				Host:   "127.0.0.1:4300",
+			}
+			// Set an explicit User-Agent header as directed by the test case
+			if tc.UserAgent != "" {
+				req.Header = map[string][]string{"User-Agent": []string{tc.UserAgent}}
+			}
+			// Serve the /directory response for this request into a recorder
+			responseWriter := httptest.NewRecorder()
+			mux.ServeHTTP(responseWriter, req)
+			// We expect all directory requests to return a json object with a good HTTP status
+			test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+			// If the test case specifies exact JSON it expects, test that it matches
+			if tc.ExpectedJSON != "" {
+				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedJSON)
+			}
+			// Check if there is a random directory key present and if so, that it is
+			// expected to be present
+			test.AssertEquals(t,
+				randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+				tc.RandomEntry)
+		})
+		// Reset the feature flags between test cases to get a blank slate
+		features.Reset()
 	}
 }
 
