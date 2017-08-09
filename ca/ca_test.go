@@ -115,9 +115,9 @@ var (
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
 	issuanceModes = []IssuanceMode{
-		{"non-precertificate", false, false},
-		{"precertificate", true, true},
-		{"precertificate-disabled", true, false},
+		{name: "non-precertificate", usePrecertificateFlow: false, enablePrecertificateFlow: false},
+		{name: "precertificate", usePrecertificateFlow: true, enablePrecertificateFlow: true},
+		{name: "precertificate-disabled", usePrecertificateFlow: true, enablePrecertificateFlow: false},
 	}
 )
 
