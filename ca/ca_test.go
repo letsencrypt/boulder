@@ -115,9 +115,9 @@ var (
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
 	issuanceModes = []IssuanceMode{
-		{name: "non-precertificate", usePrecertificateFlow: false, enablePrecertificateFlow: false},
-		{name: "precertificate", usePrecertificateFlow: true, enablePrecertificateFlow: true},
-		{name: "precertificate-disabled", usePrecertificateFlow: true, enablePrecertificateFlow: false},
+		{name: "non-precertificate", issuePrecertificate: false, enablePrecertificateFlow: false},
+		{name: "precertificate", issuePrecertificate: true, enablePrecertificateFlow: true},
+		{name: "precertificate-disabled", issuePrecertificate: true, enablePrecertificateFlow: false},
 	}
 )
 
@@ -293,7 +293,7 @@ type TestCertificateIssuance struct {
 
 type IssuanceMode struct {
 	name                     string
-	usePrecertificateFlow    bool
+	issuePrecertificate      bool
 	enablePrecertificateFlow bool
 }
 
@@ -328,7 +328,7 @@ func TestIssueCertificate(t *testing.T) {
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
 				certDER := []byte{}
-				if mode.usePrecertificateFlow {
+				if mode.issuePrecertificate {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
 
 					if !mode.enablePrecertificateFlow {
@@ -351,7 +351,7 @@ func TestIssueCertificate(t *testing.T) {
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
 				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
-				test.AssertEquals(t, mode.usePrecertificateFlow, poisonExtension != nil)
+				test.AssertEquals(t, mode.issuePrecertificate, poisonExtension != nil)
 				if poisonExtension != nil {
 					test.AssertEquals(t, poisonExtension.Critical, true)
 					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
@@ -616,12 +616,12 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.keyPolicy,
 				testCtx.logger)
 			test.AssertNotError(t, err, "Failed to create CA")
-			ca.enablePrecertificateFlow = mode.usePrecertificateFlow
+			ca.enablePrecertificateFlow = mode.issuePrecertificate
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				serializedCSR := mustRead(testCase.csrPath)
 				issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
-				if !mode.usePrecertificateFlow {
+				if !mode.issuePrecertificate {
 					_, err = ca.IssueCertificate(ctx, issueReq)
 				} else {
 					_, err = ca.IssuePrecertificate(ctx, issueReq)
@@ -630,7 +630,7 @@ func TestInvalidCSRs(t *testing.T) {
 				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 
-				if mode.usePrecertificateFlow == mode.enablePrecertificateFlow {
+				if mode.issuePrecertificate == mode.enablePrecertificateFlow {
 					test.AssertError(t, err, testCase.errorMessage)
 					if testCase.check != nil {
 						testCase.check(t, ca, sa)
@@ -762,7 +762,7 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
 	expectedExtensionCount := 9
-	if i.mode.usePrecertificateFlow {
+	if i.mode.issuePrecertificate {
 		expectedExtensionCount += 1
 	}
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
