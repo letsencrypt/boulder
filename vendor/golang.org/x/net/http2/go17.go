@@ -39,6 +39,13 @@ type clientTrace httptrace.ClientTrace
 
 func reqContext(r *http.Request) context.Context { return r.Context() }
 
+func (t *Transport) idleConnTimeout() time.Duration {
+	if t.t1 != nil {
+		return t.t1.IdleConnTimeout
+	}
+	return 0
+}
+
 func setResponseUncompressed(res *http.Response) { res.Uncompressed = true }
 
 func traceGotConn(req *http.Request, cc *ClientConn) {

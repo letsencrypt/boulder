@@ -91,6 +91,7 @@ func TestWillingToIssue(t *testing.T) {
 		{`example.internal`, errNonPublic},
 		// All-numeric final label not okay.
 		{`www.zombo.163`, errNonPublic},
+		{`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`, errMalformedIDN}, // Not in Unicode NFC
 	}
 
 	shouldBeTLDError := []string{
