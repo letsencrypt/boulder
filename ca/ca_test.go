@@ -328,14 +328,7 @@ func TestIssueCertificate(t *testing.T) {
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
 				certDER := []byte{}
-				if !mode.usePrecertificateFlow {
-					coreCert, err := ca.IssueCertificate(ctx, issueReq)
-					test.AssertNotError(t, err, "Failed to issue certificate")
-					certDER = coreCert.DER
-
-					// Verify that the cert got stored in the DB
-					test.Assert(t, bytes.Equal(certDER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
-				} else {
+				if mode.usePrecertificateFlow {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
 
 					if !mode.enablePrecertificateFlow {
@@ -345,6 +338,13 @@ func TestIssueCertificate(t *testing.T) {
 
 					test.AssertNotError(t, err, "Failed to issue precertificate")
 					certDER = response.Precert.Der
+				} else {
+					coreCert, err := ca.IssueCertificate(ctx, issueReq)
+					test.AssertNotError(t, err, "Failed to issue certificate")
+					certDER = coreCert.DER
+
+					// Verify that the cert got stored in the DB
+					test.Assert(t, bytes.Equal(certDER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
 				}
 
 				cert, err := x509.ParseCertificate(certDER)
