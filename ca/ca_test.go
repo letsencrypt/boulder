@@ -115,9 +115,11 @@ var (
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
 	issuanceModes = []IssuanceMode{
-		{name: "non-precertificate", issuePrecertificate: false, enablePrecertificateFlow: false},
-		{name: "precertificate", issuePrecertificate: true, enablePrecertificateFlow: true},
-		{name: "precertificate-disabled", issuePrecertificate: true, enablePrecertificateFlow: false},
+		{name: "non-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
+		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: true},
+		{name: "precertificate-disabled", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
+		{name: "certificate-for-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: true},
+		{name: "certificate-for-precertificate-disabled", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: false},
 	}
 )
 
@@ -292,9 +294,10 @@ type TestCertificateIssuance struct {
 }
 
 type IssuanceMode struct {
-	name                     string
-	issuePrecertificate      bool
-	enablePrecertificateFlow bool
+	name                              string
+	issuePrecertificate               bool
+	issueCertificateForPrecertificate bool
+	enablePrecertificateFlow          bool
 }
 
 func TestIssueCertificate(t *testing.T) {
@@ -317,6 +320,8 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		precertDER := []byte{}
+
 		for _, mode := range issuanceModes {
 			ca, sa := testCase.setup(t)
 			ca.enablePrecertificateFlow = mode.enablePrecertificateFlow
@@ -338,8 +343,23 @@ func TestIssueCertificate(t *testing.T) {
 
 					test.AssertNotError(t, err, "Failed to issue precertificate")
 					certDER = response.Precert.Der
+					precertDER = certDER
 				} else {
-					coreCert, err := ca.IssueCertificate(ctx, issueReq)
+					coreCert := core.Certificate{}
+					if mode.issueCertificateForPrecertificate {
+						coreCert, err = ca.IssueCertificateForPrecertificate(ctx,
+							&caPB.IssueCertificateForPrecertificateRequest{
+								IssueReq:   issueReq,
+								PrecertDER: precertDER,
+							})
+
+						if true { // TODO(briansmith): !mode.enablePrecertificateFlow
+							test.AssertError(t, err, "Precertificate flow not disabled as expected")
+							return
+						}
+					} else {
+						coreCert, err = ca.IssueCertificate(ctx, issueReq)
+					}
 					test.AssertNotError(t, err, "Failed to issue certificate")
 					certDER = coreCert.DER
 
