@@ -32,6 +32,8 @@ type AuthorityImpl struct {
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
 	rngMu             sync.Mutex
+
+	punycodeProfile *idna.Profile
 }
 
 // New constructs a Policy Authority.
@@ -41,7 +43,8 @@ func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
 		log:               blog.Get(),
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
-		pseudoRNG: rand.New(rand.NewSource(99)),
+		pseudoRNG:       rand.New(rand.NewSource(99)),
+		punycodeProfile: idna.New(idna.ValidateLabels(true)),
 	}
 
 	return &pa, nil
@@ -218,7 +221,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 			// registered with a higher power and they should be enforcing their
 			// own policy. As long as it was properly encoded that is enough
 			// for us.
-			_, err := idna.ToUnicode(label)
+			_, err := pa.punycodeProfile.ToUnicode(label)
 			if err != nil {
 				return errMalformedIDN
 			}
