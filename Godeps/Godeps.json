@@ -292,6 +292,22 @@
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
 		},
 		{
+			"ImportPath": "golang.org/x/text/secure/bidirule",
+			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
+		},
+		{
+			"ImportPath": "golang.org/x/text/transform",
+			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/bidi",
+			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/norm",
+			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
+		},
+		{
 			"ImportPath": "google.golang.org/grpc",
 			"Comment": "v1.2.0-18-g7fc29d0",
 			"Rev": "7fc29d0caa400efc53212b222356f99efe87d7d5"
@@ -374,22 +390,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "golang.org/x/text/secure/bidirule",
-			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
-		},
-		{
-			"ImportPath": "golang.org/x/text/unicode/norm",
-			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
-		},
-		{
-			"ImportPath": "golang.org/x/text/transform",
-			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
-		},
-		{
-			"ImportPath": "golang.org/x/text/unicode/bidi",
-			"Rev": "9e2f80a6ba7ed4ba13e0cd4b1f094bf916875735"
 		}
 	]
 }
