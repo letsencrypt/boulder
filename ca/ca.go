@@ -583,7 +583,6 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(ctx context.
 		}
 	}
 
-	// Store the cert with the certificate authority, if provided
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
