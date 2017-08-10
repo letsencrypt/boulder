@@ -30,6 +30,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/revocation"
@@ -332,6 +333,15 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 	request.URL = url
 	request.RequestURI = url.Path
 	return request
+}
+
+// signAndPost constructs a JWS signed by the given account ID, over the given
+// payload, with the protected URL set to the provided signedURL. An HTTP
+// request constructed to the provided path with the encoded JWS body as the
+// POST body is returned.
+func signAndPost(t *testing.T, path, signedURL, payload string, accountID int64, ns *nonce.NonceService) *http.Request {
+	_, _, body := signRequestKeyID(t, accountID, nil, signedURL, payload, ns)
+	return makePostRequestWithPath(path, body)
 }
 
 func mustParseURL(s string) *url.URL {
@@ -942,8 +952,6 @@ func TestHTTPMethods(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
-	defer features.Reset()
 	wfe, fc := setupWFE(t)
 	mockLog := wfe.log.(*blog.Mock)
 
@@ -980,137 +988,169 @@ func TestIssueCertificate(t *testing.T) {
 	}
 	ra.PA = &mockPA{}
 	wfe.RA = ra
-	responseWriter := httptest.NewRecorder()
-
-	// POST, but no body.
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "POST",
-		Header: map[string][]string{
-			"Content-Length": {"0"},
-		},
-	})
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
-
-	// POST, but body that isn't valid JWS
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
 	targetHost := "localhost"
 	targetPath := "new-cert"
 	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
 
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	responseWriter.Body.Reset()
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, "foo", wfe.nonceService)
-	request := makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
-
-	// Valid, signed JWS body, payload is '{}'
-	responseWriter.Body.Reset()
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
-
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=foo.com | \
 	// sed 's/foo.com/fob.com/' | b64url
-	responseWriter.Body.Reset()
-	payload := `{
+	brokenCSRSignaturePayload := `{
       "csr": "MIICVzCCAT8CAQAwEjEQMA4GA1UEAwwHZm9iLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKzHhqcMSTVjBu61vufGVmIYM4mMbWXgndHOUWnIqSKcNtFtPQ465tcZRT5ITIZWXGjsmgDrj31qvG3t5qLwyaF5hsTvFHK72nLMAQhdgM6481Qe9yaoaulWpkGr_9LVz4jQ9pGAaLVamXGpSxV-ipTOo79Sev4aZE8ksD9atEfWtcOD9w8_zj74vpWjTAHN49Q88chlChVqakn0zSfHPfS-jF8g0UTddBuF0Ti3sZChjxzbo6LwZ4182xX7XPnOLav3AGj0Su7j5XMl3OpenOrlWulWJeZIHq5itGW321j306XiGdbrdWH4K7JygICFds6oolwQRGBY6yinAtCgkTcCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxPiHOtKuBxtvecMNtLkTSuTyEkusQGnjoFDaKe5oqwGYQgy0YBii2-BbaPmqS4ZaDc-vDz_RLeKH5ZiH-NliYR1V_CRtpFLQi18g_2pLQnZLVO3ENs-SM37nU_nBGn9O93t2bkssoM3fZmtgp3R2W7I_wvx7Z8oWKa4boTeBAg_q9Gmi6QskZBddK7A4S_vOR0frU6QSPK_ksPhvovp9fwb6CVKrlJWf556UwRPWgbkW39hvTxK2KHhrUEg3oawNkWde2jZtnZ9e-9zpw8-_5O0X7-YN0ucbFTfQybce_ReuLlGepiHT5bvVavBZoIvqw1XOgSMvGgZFU8tAWMBlj"
     }`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	payload = `{
+	noAuthorizationsCSRPayload := `{
 			"resource":"new-cert",
 			"csr": "MIICWDCCAUACAQAwEzERMA8GA1UEAwwIbWVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5-UED2bFRL1MsyBdbmCF_-pu3i-ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1_TBOwTAuFkHePmkNT63uPm9My_hNzsSm1o-Q519Cf7ry-JQmOVgz_jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoXRUlQjXXkNTj23OxxdT_cVLcLJjytyG6e5izME2R2aCkDBWIc1a4_sRJ0R396auPXG6KhJ7o_AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEALu046p76aKgvoAEHFINkMTgKokPXf9mZ4IZx_BKz-qs1MPMxVtPIrQDVweBH6tYT7Hfj2naLry6SpZ3vUNP_FYeTFWgW1V03LiqacX-QQgbEYtn99Dt3ScGyzb7EH833ztb3vDJ_-ha_CJplIrg-kHBBrlLFWXhh-I9K1qLRTNpbhZ18ooFde4Sbhkw9o9fKivGhx9aYr7ZbjRsNtKit_DsG1nwEXz53TMJ2vB9IQY29coJv_n5NFLkvBfzbG5faRNiFcimPYBO2jFdaA2mWzfxltLtwMF_dBwzTXDpMo3TVT9zEdV8YpsWqr63igqGDZVpKenlkqvRTeGJVayVuMA"
 		}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
-	assertCsrLogged(t, mockLog)
 
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	payload = `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	assertCsrLogged(t, mockLog)
-	cert, err := core.LoadCert("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load cert")
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		string(cert.Raw))
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/issuer-cert>;rel="up"`)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Content-Type"),
-		"application/pkix-cert")
-	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
-	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
-
-	mockLog.Clear()
-	responseWriter.HeaderMap = http.Header{}
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
-	payload = `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
-
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	payload = `{
+	// CSR from an < 1.0.2 OpenSSL
+	oldOpenSSLCSRPayload := `{
       "resource": "new-cert",
       "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
     }`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(targetPath, body)
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
+
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	// a valid CSR with authorizations for all of its names
+	goodCertCSRPayload := `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`
+
+	cert, err := core.LoadCert("test/not-an-example.com.crt")
+	test.AssertNotError(t, err, "Could not load cert")
+
+	goodCertHeaders := map[string]string{
+		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
+		"Link":         `<http://localhost/acme/issuer-cert>;rel="up"`,
+		"Content-Type": "application/pkix-cert",
+	}
+	// NOTE(@cpu): Unlike the test case above this case expects
+	// `localhost:4000` in the Link header value since the AIAIssuer flag
+	// will have been true. The WFE will also promote it from HTTP to HTTPS.
+	goodCertAIAHeaders := map[string]string{
+		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
+		"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
+		"Content-Type": "application/pkix-cert",
+	}
+	goodCertLogParts := []string{
+		`INFO: `,
+		`[AUDIT] `,
+		`"CommonName":"not-an-example.com",`,
+	}
+
+	testCases := []struct {
+		Name             string
+		Request          *http.Request
+		ExpectedProblem  string
+		ExpectedCert     string
+		AssertCSRLogged  bool
+		ExpectedHeaders  map[string]string
+		ExpectedLogParts []string
+		UseAIAIssuer     bool
+	}{
+		{
+			Name: "POST, but no body",
+			Request: &http.Request{
+				Method: "POST",
+				Header: map[string][]string{
+					"Content-Length": {"0"},
+				},
+			},
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
+		},
+		{
+			Name:            "POST, with an invalid JWS body",
+			Request:         makePostRequestWithPath("hi", "hi"),
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, payload isn't valid",
+			Request:         signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, trivial JSON payload",
+			Request:         signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, broken signature on CSR",
+			Request:         signAndPost(t, targetPath, signedURL, brokenCSRSignaturePayload, 1, wfe.nonceService),
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, CSR from an old OpenSSL",
+			Request:         signAndPost(t, targetPath, signedURL, oldOpenSSLCSRPayload, 1, wfe.nonceService),
+			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, no authorizations for names in CSR",
+			Request:         signAndPost(t, targetPath, signedURL, noAuthorizationsCSRPayload, 1, wfe.nonceService),
+			ExpectedProblem: `{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`,
+			AssertCSRLogged: true,
+		},
+		{
+			Name:             "POST, properly signed JWS, authorizations for all names in CSR",
+			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedCert:     string(cert.Raw),
+			AssertCSRLogged:  true,
+			ExpectedHeaders:  goodCertHeaders,
+			ExpectedLogParts: goodCertLogParts,
+		},
+		{
+			Name:             "POST, properly signed JWS, authorizations for all names in CSR, using AIAIssuer",
+			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedCert:     string(cert.Raw),
+			AssertCSRLogged:  true,
+			UseAIAIssuer:     true,
+			ExpectedHeaders:  goodCertAIAHeaders,
+			ExpectedLogParts: goodCertLogParts,
+		},
+	}
+
+	responseWriter := httptest.NewRecorder()
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter.Body.Reset()
+			responseWriter.HeaderMap = http.Header{}
+			mockLog.Clear()
+
+			if tc.UseAIAIssuer {
+				_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
+			}
+
+			wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, tc.Request)
+			if len(tc.ExpectedProblem) > 0 {
+				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedProblem)
+			} else if len(tc.ExpectedCert) > 0 {
+				test.AssertEquals(t, responseWriter.Body.String(), tc.ExpectedCert)
+			}
+
+			if tc.AssertCSRLogged {
+				assertCsrLogged(t, mockLog)
+			}
+
+			headers := responseWriter.Header()
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(k), v)
+			}
+
+			if len(tc.ExpectedLogParts) > 0 {
+				reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
+				test.AssertEquals(t, len(reqlogs), 1)
+				for _, msg := range tc.ExpectedLogParts {
+					test.AssertContains(t, reqlogs[0], msg)
+				}
+			}
+			features.Reset()
+		})
+	}
 }
 
 func TestGetChallenge(t *testing.T) {
