@@ -33,6 +33,11 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, _ *caPB.IssueCertificate
 	}, nil
 }
 
+// IssuePrecertificate is a mock
+func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	return nil, fmt.Errorf("MockCA does not implement IssuePrecertificate")
+}
+
 // GenerateOCSP is a mock
 func (ca *MockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	return

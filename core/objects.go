@@ -427,6 +427,12 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
+// Precertificate objects are entirely internal to the server.  The only
+// thing exposed on the wire is the precertificate itself.
+type Precertificate struct {
+	DER []byte `db:"der"`
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {

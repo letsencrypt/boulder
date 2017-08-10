@@ -34,6 +34,18 @@ message ProblemDetails {
 	optional int32 httpStatus = 3;
 }
 
+message Precertificate {
+  optional bytes der = 1;
+}
+
+message SCTFetchingConfig {
+    repeated SCTFetchingLogSet logSets = 1;
+}
+
+message SCTFetchingLogSet {
+    repeated string logURLs = 1;
+}
+
 message Certificate {
   optional int64 registrationID = 1;
   optional string serial = 2;
