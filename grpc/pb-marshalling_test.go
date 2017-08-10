@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -49,7 +49,7 @@ func TestAuthzMeta(t *testing.T) {
 const JWK1JSON = `{"kty":"RSA","n":"vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ","e":"AQAB"}`
 
 func TestJWK(t *testing.T) {
-	var jwk jose.JsonWebKey
+	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 
@@ -95,7 +95,7 @@ func TestProblemDetails(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
-	var jwk jose.JsonWebKey
+	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	chall := core.Challenge{
@@ -198,7 +198,7 @@ func TestValidationResult(t *testing.T) {
 }
 
 func TestPerformValidationReq(t *testing.T) {
-	var jwk jose.JsonWebKey
+	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	domain := "example.com"
@@ -224,7 +224,7 @@ func TestPerformValidationReq(t *testing.T) {
 
 func TestRegistration(t *testing.T) {
 	contacts := []string{"email"}
-	var key jose.JsonWebKey
+	var key jose.JSONWebKey
 	err := json.Unmarshal([]byte(`
 		{
 			"e": "AQAB",

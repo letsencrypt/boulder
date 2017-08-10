@@ -12,11 +12,9 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	IDNASupport
 	AllowAccountDeactivation
 	AllowKeyRollover
 	ResubmitMissingSCTsOnly
-	GoogleSafeBrowsingV4
 	UseAIAIssuerURL
 	AllowTLS02Challenges
 	GenerateOCSPEarly
@@ -32,12 +30,10 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	IDNASupport:              false,
+	unused: false,
 	AllowAccountDeactivation: false,
 	AllowKeyRollover:         false,
 	ResubmitMissingSCTsOnly:  false,
-	GoogleSafeBrowsingV4:     false,
 	UseAIAIssuerURL:          false,
 	AllowTLS02Challenges:     false,
 	GenerateOCSPEarly:        false,

@@ -28,7 +28,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"gopkg.in/square/go-jose.v1/cipher"
+	"gopkg.in/square/go-jose.v2/cipher"
+	"gopkg.in/square/go-jose.v2/json"
 )
 
 // A generic RSA-based encrypter/verifier
@@ -94,7 +95,7 @@ func newRSASigner(sigAlg SignatureAlgorithm, privateKey *rsa.PrivateKey) (recipi
 
 	return recipientSigInfo{
 		sigAlg: sigAlg,
-		publicKey: &JsonWebKey{
+		publicKey: &JSONWebKey{
 			Key: &privateKey.PublicKey,
 		},
 		signer: &rsaDecrypterSigner{
@@ -139,7 +140,7 @@ func newECDSASigner(sigAlg SignatureAlgorithm, privateKey *ecdsa.PrivateKey) (re
 
 	return recipientSigInfo{
 		sigAlg: sigAlg,
-		publicKey: &JsonWebKey{
+		publicKey: &JSONWebKey{
 			Key: &privateKey.PublicKey,
 		},
 		signer: &ecDecrypterSigner{
@@ -178,7 +179,7 @@ func (ctx rsaEncrypterVerifier) encrypt(cek []byte, alg KeyAlgorithm) ([]byte, e
 
 // Decrypt the given payload and return the content encryption key.
 func (ctx rsaDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
-	return ctx.decrypt(recipient.encryptedKey, KeyAlgorithm(headers.Alg), generator)
+	return ctx.decrypt(recipient.encryptedKey, headers.getAlgorithm(), generator)
 }
 
 // Decrypt the given payload. Based on the key encryption algorithm,
@@ -366,10 +367,15 @@ func (ctx ecKeyGenerator) genKey() ([]byte, rawHeader, error) {
 
 	out := josecipher.DeriveECDHES(ctx.algID, []byte{}, []byte{}, priv, ctx.publicKey, ctx.size)
 
+	b, err := json.Marshal(&JSONWebKey{
+		Key: &priv.PublicKey,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
 	headers := rawHeader{
-		Epk: &JsonWebKey{
-			Key: &priv.PublicKey,
-		},
+		headerEPK: makeRawMessage(b),
 	}
 
 	return out, headers, nil
@@ -377,11 +383,15 @@ func (ctx ecKeyGenerator) genKey() ([]byte, rawHeader, error) {
 
 // Decrypt the given payload and return the content encryption key.
 func (ctx ecDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
-	if headers.Epk == nil {
+	epk, err := headers.getEPK()
+	if err != nil {
+		return nil, errors.New("square/go-jose: invalid epk header")
+	}
+	if epk == nil {
 		return nil, errors.New("square/go-jose: missing epk header")
 	}
 
-	publicKey, ok := headers.Epk.Key.(*ecdsa.PublicKey)
+	publicKey, ok := epk.Key.(*ecdsa.PublicKey)
 	if publicKey == nil || !ok {
 		return nil, errors.New("square/go-jose: invalid epk header")
 	}
@@ -390,19 +400,26 @@ func (ctx ecDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientI
 		return nil, errors.New("square/go-jose: invalid public key in epk header")
 	}
 
-	apuData := headers.Apu.bytes()
-	apvData := headers.Apv.bytes()
+	apuData, err := headers.getAPU()
+	if err != nil {
+		return nil, errors.New("square/go-jose: invalid apu header")
+	}
+	apvData, err := headers.getAPV()
+	if err != nil {
+		return nil, errors.New("square/go-jose: invalid apv header")
+	}
 
 	deriveKey := func(algID string, size int) []byte {
-		return josecipher.DeriveECDHES(algID, apuData, apvData, ctx.privateKey, publicKey, size)
+		return josecipher.DeriveECDHES(algID, apuData.bytes(), apvData.bytes(), ctx.privateKey, publicKey, size)
 	}
 
 	var keySize int
 
-	switch KeyAlgorithm(headers.Alg) {
+	algorithm := headers.getAlgorithm()
+	switch algorithm {
 	case ECDH_ES:
 		// ECDH-ES uses direct key agreement, no key unwrapping necessary.
-		return deriveKey(string(headers.Enc), generator.keySize()), nil
+		return deriveKey(string(headers.getEncryption()), generator.keySize()), nil
 	case ECDH_ES_A128KW:
 		keySize = 16
 	case ECDH_ES_A192KW:
@@ -413,7 +430,7 @@ func (ctx ecDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientI
 		return nil, ErrUnsupportedAlgorithm
 	}
 
-	key := deriveKey(headers.Alg, keySize)
+	key := deriveKey(string(algorithm), keySize)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -457,7 +474,7 @@ func (ctx ecDecrypterSigner) signPayload(payload []byte, alg SignatureAlgorithm)
 
 	keyBytes := curveBits / 8
 	if curveBits%8 > 0 {
-		keyBytes += 1
+		keyBytes++
 	}
 
 	// We serialize the outpus (r and s) into big-endian byte arrays and pad

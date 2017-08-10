@@ -21,28 +21,13 @@ import (
 	"compress/flate"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"math/big"
 	"regexp"
-	"strings"
-
-	"gopkg.in/square/go-jose.v1/json"
 )
 
 var stripWhitespaceRegex = regexp.MustCompile("\\s")
-
-// Url-safe base64 encode that strips padding
-func base64URLEncode(data []byte) string {
-	var result = base64.URLEncoding.EncodeToString(data)
-	return strings.TrimRight(result, "=")
-}
-
-// Url-safe base64 decoder that adds padding
-func base64URLDecode(data string) ([]byte, error) {
-	var missing = (4 - len(data)%4) % 4
-	data += strings.Repeat("=", missing)
-	return base64.URLEncoding.DecodeString(data)
-}
 
 // Helper function to serialize known-good objects.
 // Precondition: value is not a nil pointer.
@@ -162,7 +147,7 @@ func (b *byteBuffer) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	decoded, err := base64URLDecode(encoded)
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return err
 	}
@@ -173,7 +158,7 @@ func (b *byteBuffer) UnmarshalJSON(data []byte) error {
 }
 
 func (b *byteBuffer) base64() string {
-	return base64URLEncode(b.data)
+	return base64.RawURLEncoding.EncodeToString(b.data)
 }
 
 func (b *byteBuffer) bytes() []byte {

@@ -156,16 +156,6 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	cai, err := ca.NewCertificateAuthorityImpl(
-		c.CA,
-		clock.Default(),
-		scope,
-		issuers,
-		kp,
-		logger)
-	cmd.FailOnError(err, "Failed to create CA impl")
-	cai.PA = pa
-
 	var tls *tls.Config
 	if c.CA.TLS.CertFile != nil {
 		tls, err = c.CA.TLS.Load()
@@ -174,7 +164,18 @@ func main() {
 
 	conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	cai.SA = bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+
+	cai, err := ca.NewCertificateAuthorityImpl(
+		c.CA,
+		sa,
+		pa,
+		clock.Default(),
+		scope,
+		issuers,
+		kp,
+		logger)
+	cmd.FailOnError(err, "Failed to create CA impl")
 
 	var caSrv *grpc.Server
 	if c.CA.GRPCCA != nil {

@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -520,8 +521,28 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			}
 		}
 	}
+	if features.Enabled(features.ReusePendingAuthz) {
+		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
+		identifierTypeString := string(identifier.Type)
+		pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
+			RegistrationID:  &regID,
+			IdentifierType:  &identifierTypeString,
+			IdentifierValue: &identifier.Value,
+			ValidUntil:      &nowishNano,
+		})
+		if err != nil && !berrors.Is(err, berrors.NotFound) {
+			return authz, berrors.InternalServerError(
+				"unable to get pending authorization for regID: %d, identifier: %s: %s",
+				regID,
+				identifier.Value,
+				err)
+		} else if err == nil {
+			return *pendingAuth, nil
+		}
+		// Fall through to normal creation flow.
+	}
 
-	// Create validations. The WFE will  update them with URIs before sending them out.
+	// Create challenges. The WFE will  update them with URIs before sending them out.
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
@@ -736,7 +757,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(ctx, *csr, regID); err != nil {
+	issueReq := &caPB.IssueCertificateRequest{
+		Csr:            csr.Raw,
+		RegistrationID: &regID,
+	}
+	if cert, err = ra.CA.IssueCertificate(ctx, issueReq); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}

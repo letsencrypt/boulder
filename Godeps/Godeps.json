@@ -170,11 +170,6 @@
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
-			"Comment": "2.0.0-10-ga109a23",
-			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
-		},
-		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
 			"Comment": "v1.0.0",
 			"Rev": "c47dab18ddd8c4d4267661870d3ba331cddc57c9"
@@ -362,19 +357,19 @@
 			"Rev": "4deece61034873cb5b5416e81abe4cea7bd0da72"
 		},
 		{
-			"ImportPath": "gopkg.in/square/go-jose.v1",
-			"Comment": "v1.1.0",
-			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
+			"ImportPath": "gopkg.in/square/go-jose.v2",
+			"Comment": "v2.1.0",
+			"Rev": "d5683d954d08cd430460c651e2a2fff4f3b39f86"
 		},
 		{
-			"ImportPath": "gopkg.in/square/go-jose.v1/cipher",
-			"Comment": "v1.1.0",
-			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
+			"ImportPath": "gopkg.in/square/go-jose.v2/cipher",
+			"Comment": "v2.1.0",
+			"Rev": "d5683d954d08cd430460c651e2a2fff4f3b39f86"
 		},
 		{
-			"ImportPath": "gopkg.in/square/go-jose.v1/json",
-			"Comment": "v1.1.0",
-			"Rev": "aa2e30fdd1fe9dd3394119af66451ae790d50e0d"
+			"ImportPath": "gopkg.in/square/go-jose.v2/json",
+			"Comment": "v2.1.0",
+			"Rev": "d5683d954d08cd430460c651e2a2fff4f3b39f86"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
