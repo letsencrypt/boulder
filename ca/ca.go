@@ -404,7 +404,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	if issueReq.RegistrationID == nil {
 		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
 	}
-	regID := *issueReq.RegistrationID
 
 	notAfter, serialBigInt, err := ca.generateNotAfterAndSerialNumber()
 	if err != nil {
@@ -416,42 +415,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	cert := core.Certificate{
-		DER: certDER,
-	}
-
-	var ocspResp []byte
-	if features.Enabled(features.GenerateOCSPEarly) {
-		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-			CertDER: certDER,
-			Status:  "good",
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
-			// Ignore errors here to avoid orphaning the certificate. The
-			// ocsp-updater will look for certs with a zero ocspLastUpdated
-			// and generate the initial response in this case.
-		}
-	}
-
-	// Store the cert with the certificate authority, if provided
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		// Note: This log line is parsed by cmd/orphan-finder. If you make any
-		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
-			core.SerialToString(serialBigInt),
-			hex.EncodeToString(certDER),
-			err,
-			regID,
-		))
-		return emptyCert, err
-	}
-
-	return cert, nil
+	return ca.generateOCSPAndStoreCertificate(ctx, *issueReq.RegistrationID, serialBigInt, certDER)
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
@@ -600,4 +564,40 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		hex.EncodeToString(certDER)))
 
 	return certDER, nil
+}
+
+func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(ctx context.Context, regID int64, serialBigInt *big.Int, certDER []byte) (core.Certificate, error) {
+	var ocspResp []byte
+	var err error
+	if features.Enabled(features.GenerateOCSPEarly) {
+		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: certDER,
+			Status:  "good",
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
+			// Ignore errors here to avoid orphaning the certificate. The
+			// ocsp-updater will look for certs with a zero ocspLastUpdated
+			// and generate the initial response in this case.
+		}
+	}
+
+	// Store the cert with the certificate authority, if provided
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
+	if err != nil {
+		err = berrors.InternalServerError(err.Error())
+		// Note: This log line is parsed by cmd/orphan-finder. If you make any
+		// changes here, you should make sure they are reflected in orphan-finder.
+		ca.log.AuditErr(fmt.Sprintf(
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
+			core.SerialToString(serialBigInt),
+			hex.EncodeToString(certDER),
+			err,
+			regID,
+		))
+		return core.Certificate{}, err
+	}
+
+	return core.Certificate{DER: certDER}, nil
 }
