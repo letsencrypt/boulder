@@ -339,7 +339,7 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, r
 	if request.Method != "GET" {
 		logEvent.AddError("Bad method")
 		response.Header().Set("Allow", "GET")
-		response.WriteHeader(http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
 

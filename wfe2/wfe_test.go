@@ -30,6 +30,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
@@ -553,17 +554,6 @@ func TestHandleFunc(t *testing.T) {
 	}
 }
 
-func TestIndexPOST(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-	url, _ := url.Parse("/")
-	wfe.Index(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "POST",
-		URL:    url,
-	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusMethodNotAllowed)
-}
-
 func TestPOST404(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
@@ -808,13 +798,153 @@ func TestRelativeDirectory(t *testing.T) {
 	}
 }
 
+func TestHTTPMethods(t *testing.T) {
+	// Always allow key rollover to test the rolloverPath
+	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
+	defer features.Reset()
+
+	wfe, _ := setupWFE(t)
+	mux := wfe.Handler()
+
+	// NOTE: Boulder's muxer treats HEAD as implicitly allowed if GET is specified
+	// so we include both here in `getOnly`
+	getOnly := map[string]bool{http.MethodGet: true, http.MethodHead: true}
+	postOnly := map[string]bool{http.MethodPost: true}
+	getOrPost := map[string]bool{http.MethodGet: true, http.MethodHead: true, http.MethodPost: true}
+
+	testCases := []struct {
+		Name    string
+		Path    string
+		Allowed map[string]bool
+	}{
+		{
+			Name:    "Index path should be GET only",
+			Path:    "/",
+			Allowed: getOnly,
+		},
+		{
+			Name:    "Directory path should be GET only",
+			Path:    directoryPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "NewReg path should be POST only",
+			Path:    newRegPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "NewAuthz path should be POST only",
+			Path:    newAuthzPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "NewReg path should be POST only",
+			Path:    newRegPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "Reg path should be POST only",
+			Path:    regPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "Authz path should be GET or POST only",
+			Path:    authzPath,
+			Allowed: getOrPost,
+		},
+		{
+			Name:    "Challenge path should be GET or POST only",
+			Path:    challengePath,
+			Allowed: getOrPost,
+		},
+		{
+			Name:    "Certificate path should be GET only",
+			Path:    certPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "RevokeCert path should be POST only",
+			Path:    revokeCertPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "Terms path should be GET only",
+			Path:    termsPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "Issuer path should be GET only",
+			Path:    issuerPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "Build ID path should be GET only",
+			Path:    buildIDPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "Rollover path should be POST only",
+			Path:    rolloverPath,
+			Allowed: postOnly,
+		},
+	}
+
+	// NOTE: We omit http.MethodOptions because all requests with this method are
+	// redirected to a special endpoint for CORS headers
+	allMethods := []string{
+		http.MethodGet,
+		http.MethodHead,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodConnect,
+		http.MethodTrace,
+	}
+
+	responseWriter := httptest.NewRecorder()
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// For every possible HTTP method check what the mux serves for the test
+			// case path
+			for _, method := range allMethods {
+				responseWriter.Body.Reset()
+				mux.ServeHTTP(responseWriter, &http.Request{
+					Method: method,
+					URL:    mustParseURL(tc.Path),
+				})
+				// If the method isn't one that is intended to be allowed by the path,
+				// check that the response was the not allowed response
+				if _, ok := tc.Allowed[method]; !ok {
+					var prob probs.ProblemDetails
+					// Unmarshal the body into a problem
+					body := responseWriter.Body.String()
+					err := json.Unmarshal([]byte(body), &prob)
+					test.AssertNotError(t, err, fmt.Sprintf("Error unmarshalling resp body: %q", body))
+					// TODO(@cpu): It seems like the mux should be returning
+					// http.StatusMethodNotAllowed here, but instead it returns StatusOK
+					// with a problem that has a StatusMethodNotAllowed HTTPStatus. Is
+					// this a bug?
+					test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+					test.AssertEquals(t, prob.HTTPStatus, http.StatusMethodNotAllowed)
+					test.AssertEquals(t, prob.Detail, "Method not allowed")
+				} else {
+					// Otherwise if it was an allowed method, ensure that the response was
+					// *not* StatusMethodNotAllowed
+					test.AssertNotEquals(t, responseWriter.Code, http.StatusMethodNotAllowed)
+				}
+			}
+		})
+	}
+}
+
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
 	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
 	defer features.Reset()
 	wfe, fc := setupWFE(t)
-	mux := wfe.Handler()
 	mockLog := wfe.log.(*blog.Mock)
 
 	// The mock CA we use always returns the same test certificate, with a Not
@@ -851,15 +981,6 @@ func TestIssueCertificate(t *testing.T) {
 	ra.PA = &mockPA{}
 	wfe.RA = ra
 	responseWriter := httptest.NewRecorder()
-
-	// GET instead of POST should be rejected
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(newCertPath),
-	})
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -1229,15 +1350,6 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	regErrTests := []newRegErrorTest{
-		// GET instead of POST should be rejected
-		{
-			&http.Request{
-				Method: "GET",
-				URL:    mustParseURL(newRegPath),
-			},
-			`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`,
-		},
-
 		// POST, but no body.
 		{
 			&http.Request{
@@ -1356,16 +1468,8 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 
 func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
-
-	// GET instead of POST should be rejected
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(newAuthzPath),
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -1459,17 +1563,6 @@ func TestRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
-
-	// Test invalid method
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "MAKE-COFFEE",
-		URL:    mustParseURL(regPath),
-		Body:   makeBody("invalid"),
-	})
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
-	responseWriter.Body.Reset()
 
 	// Test GET proper entry returns 405
 	mux.ServeHTTP(responseWriter, &http.Request{
