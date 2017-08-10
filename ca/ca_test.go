@@ -374,6 +374,13 @@ func TestIssueCertificate(t *testing.T) {
 
 func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
+
+	// Although the CA generally uses its own clock (ca.clk) to generate
+	// timestamps, the notBefore date is set based on the current system time.
+	// That's wrong, but work around it for now by syncing the fake clock with
+	// the system clock.
+	testCtx.fc.Set(clock.New().Now())
+
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
