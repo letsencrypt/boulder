@@ -196,7 +196,11 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   # Run godep save and do a diff, to ensure that the version we got from
   # `godep restore` matched what was in the remote repo.
   cp Godeps/Godeps.json Godeps/Godeps.json.head
-  run_and_expect_silence godep save ./...
+  # Don't use run_and_expect_silence since godep tries to parse files which
+  # are only built using a different golang version
+  # TODO(2965): Revert to using run_and_expect_silence once godep is fixed or we
+  # switch to golang 1.9
+  godep save ./...
   run_and_expect_silence diff <(sed /GodepVersion/d Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
   run_and_expect_silence git diff --exit-code -- ./vendor/
   end_context #godep-restore
