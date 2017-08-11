@@ -52,13 +52,15 @@ func newRegistration(s *State, ctx *context) error {
 	if err != nil {
 		return err
 	}
+	ns := &nonceSource{s: s}
+	ctx.ns = ns
 	signer, err := jose.NewSigner(
 		jose.SigningKey{
 			Key:       signKey,
 			Algorithm: jose.ES256,
 		},
 		&jose.SignerOptions{
-			NonceSource: &nonceSource{s: s},
+			NonceSource: ns,
 			EmbedJWK:    true,
 		})
 	if err != nil {
