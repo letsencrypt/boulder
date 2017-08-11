@@ -58,13 +58,15 @@ func TestIsSafeDomain(t *testing.T) {
 		t.Errorf("bad.com: want false, got %t", resp.GetIsSafe())
 	}
 
+	// If there is an error looking up a domain (e.g. because of a GSB outage),
+	// then we expect the VA to allow the authz to be created without error.
 	domain = "errorful.com"
 	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
-	if err == nil {
-		t.Errorf("errorful.com: want error, got none")
+	if err != nil {
+		t.Errorf("errorful.com: want no error, got %v", resp)
 	}
-	if resp != nil {
-		t.Errorf("errorful.com: want resp == nil, got %v", resp)
+	if !resp.GetIsSafe() {
+		t.Errorf("errorful.com: want true, got %t", resp.GetIsSafe())
 	}
 }
 
