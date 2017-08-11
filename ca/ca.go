@@ -32,7 +32,6 @@ import (
 	corePB "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -567,20 +566,16 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 }
 
 func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(ctx context.Context, regID int64, serialBigInt *big.Int, certDER []byte) (core.Certificate, error) {
-	var ocspResp []byte
-	var err error
-	if features.Enabled(features.GenerateOCSPEarly) {
-		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-			CertDER: certDER,
-			Status:  "good",
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
-			// Ignore errors here to avoid orphaning the certificate. The
-			// ocsp-updater will look for certs with a zero ocspLastUpdated
-			// and generate the initial response in this case.
-		}
+	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+		CertDER: certDER,
+		Status:  "good",
+	})
+	if err != nil {
+		err = berrors.InternalServerError(err.Error())
+		ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
+		// Ignore errors here to avoid orphaning the certificate. The
+		// ocsp-updater will look for certs with a zero ocspLastUpdated
+		// and generate the initial response in this case.
 	}
 
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
