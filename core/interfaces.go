@@ -90,6 +90,10 @@ type RegistrationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (Certificate, error)
+
+	// [RegistrationAuthority]
+	IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error)
+
 	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 

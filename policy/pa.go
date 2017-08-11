@@ -13,6 +13,7 @@ import (
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/idna"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -218,8 +219,11 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 			// registered with a higher power and they should be enforcing their
 			// own policy. As long as it was properly encoded that is enough
 			// for us.
-			_, err := idna.ToUnicode(label)
+			ulabel, err := idna.ToUnicode(label)
 			if err != nil {
+				return errMalformedIDN
+			}
+			if !norm.NFKC.IsNormalString(ulabel) {
 				return errMalformedIDN
 			}
 		}
