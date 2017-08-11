@@ -14,6 +14,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -404,6 +405,11 @@ func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string)
 // DeactivateRegistration is a mock
 func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
 	return nil
+}
+
+// NewOrder is a mock
+func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
+	return order, nil
 }
 
 // Publisher is a mock

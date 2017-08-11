@@ -25,6 +25,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -33,6 +34,7 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/ra"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -250,6 +252,10 @@ func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context
 
 func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ core.Registration) error {
 	return nil
+}
+
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOrderRequest) (*corepb.Order, error) {
+	return nil, nil
 }
 
 type mockPA struct{}
@@ -981,6 +987,7 @@ func TestIssueCertificate(t *testing.T) {
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
+		0,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{

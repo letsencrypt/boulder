@@ -72,6 +72,8 @@ type config struct {
 		// hashes of known easily enumerable keys.
 		WeakKeyFile string
 
+		OrderLifetime cmd.ConfigDuration
+
 		Features map[string]bool
 	}
 
@@ -171,7 +173,9 @@ func main() {
 		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
-		pubc)
+		pubc,
+		c.RA.OrderLifetime.Duration,
+	)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")

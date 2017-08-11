@@ -50,14 +50,16 @@ for dbenv in $DBENVS; do
   # With MYSQL_CONTAINER, patch the GRANT statements to
   # use 127.0.0.1, not localhost, as MySQL may interpret
   # 'username'@'localhost' to mean only users for UNIX
-  # socket connections.
+  # socket connections. Use '-f' to ignore errors while
+  # we have migrations that haven't been applied but
+  # add new tables (TODO(#2931): remove -f).
   USERS_SQL=test/sa_db_users.sql
   if [[ ${MYSQL_CONTAINER} ]]; then
     sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
-      mysql $dbconn -D $db || die "unable to add users to ${db}"
+      mysql $dbconn -D $db -f || die "unable to add users to ${db}"
   else
     sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-      mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
+      mysql $dbconn -D $db -f < $USERS_SQL || die "unable to add users to ${db}"
   fi
   echo "added users to ${db}"
   ) &
