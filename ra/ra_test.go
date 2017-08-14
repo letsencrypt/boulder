@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -32,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -257,7 +259,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, 0)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -1676,6 +1678,39 @@ func TestDeactivateRegistration(t *testing.T) {
 	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+}
+
+func TestNewOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
+
+	req := &x509.CertificateRequest{
+		Subject:  pkix.Name{CommonName: "a.com"},
+		DNSNames: []string{"b.com", "c.com"},
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, req, key)
+	test.AssertNotError(t, err, "Failed to generate test CSR")
+
+	id := int64(1)
+	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Csr:            csr,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, *order.RegistrationID, int64(1))
+	test.AssertEquals(t, *order.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertByteEquals(t, order.Csr, csr)
+	test.AssertEquals(t, *order.Id, int64(1))
+	test.AssertEquals(t, len(order.Authorizations), 3)
 }
 
 var CAkeyPEM = `

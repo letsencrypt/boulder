@@ -344,7 +344,7 @@ func pbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 	}, nil
 }
 
-func authzToPB(authz core.Authorization) (*corepb.Authorization, error) {
+func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	challs := make([]*corepb.Challenge, len(authz.Challenges))
 	for i, c := range authz.Challenges {
 		pbChall, err := challengeToPB(c)

@@ -112,6 +112,10 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
+	// EnablePrecertificateFlow governs whether precertificate-based issuance
+	// is enabled.
+	EnablePrecertificateFlow bool
+
 	// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
 	// hashes of known easily enumerable keys.
 	WeakKeyFile string

@@ -34,6 +34,18 @@ message ProblemDetails {
 	optional int32 httpStatus = 3;
 }
 
+message Precertificate {
+  optional bytes der = 1;
+}
+
+message SCTFetchingConfig {
+    repeated SCTFetchingLogSet logSets = 1;
+}
+
+message SCTFetchingLogSet {
+    repeated string logURLs = 1;
+}
+
 message Certificate {
   optional int64 registrationID = 1;
   optional string serial = 2;
@@ -62,6 +74,17 @@ message Authorization {
         optional int64 expires = 5; // Unix timestamp (nanoseconds)
         repeated core.Challenge challenges = 6;
         optional bytes combinations = 7;
+}
+
+message Order {
+        optional int64 id = 1;
+        optional int64 registrationID = 2;
+        optional int64 expires = 3;
+        optional bytes csr = 4;
+        optional bytes error = 5;
+        optional string certificateSerial = 6;
+        repeated Authorization authorizations = 7;
+        optional string status = 8;
 }
 
 message Empty {}
