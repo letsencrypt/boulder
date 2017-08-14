@@ -38,6 +38,7 @@ service StorageAuthority {
         rpc RevokeAuthorizationsByDomain(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
+        rpc NewOrder(core.Order) returns (core.Order) {}
 }
 
 message RegistrationID {

@@ -14,6 +14,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -76,12 +77,41 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		// Tag meaning "Malformed"
 		return core.Registration{}, nil
 	}
+	if id == 102 {
+		// Tag meaning "Not Found"
+		return core.Registration{}, berrors.NotFoundError("Dave's not here man")
+	}
 
 	keyJSON := []byte(test1KeyPublicJSON)
 	var parsedKey jose.JSONWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
 	if err != nil {
 		return core.Registration{}, err
+	}
+
+	// Return a populated registration with contacts for ID == 1
+	contacts := []string{"mailto:person@mail.com"}
+	if id == 1 {
+		return core.Registration{
+			ID:        1,
+			Key:       &parsedKey,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusValid,
+		}, nil
+	}
+
+	var test3KeyPublic jose.JSONWebKey
+	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
+	if id == 3 {
+		// deactivated registration
+		return core.Registration{
+			ID:        3,
+			Key:       &test3KeyPublic,
+			Agreement: agreementURL,
+			Contact:   &contacts,
+			Status:    core.StatusDeactivated,
+		}, nil
 	}
 
 	return core.Registration{
@@ -375,6 +405,11 @@ func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string)
 // DeactivateRegistration is a mock
 func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
 	return nil
+}
+
+// NewOrder is a mock
+func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
+	return order, nil
 }
 
 // Publisher is a mock

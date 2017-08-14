@@ -352,7 +352,7 @@ func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context,
 }
 
 func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	authPB, err := authzToPB(authz)
+	authPB, err := AuthzToPB(authz)
 	if err != nil {
 		return core.Authorization{}, err
 	}
@@ -370,7 +370,7 @@ func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Con
 }
 
 func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
-	authPB, err := authzToPB(authz)
+	authPB, err := AuthzToPB(authz)
 	if err != nil {
 		return err
 	}
@@ -384,7 +384,7 @@ func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.
 }
 
 func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
-	authPB, err := authzToPB(authz)
+	authPB, err := AuthzToPB(authz)
 	if err != nil {
 		return err
 	}
@@ -468,6 +468,17 @@ func (sac StorageAuthorityClientWrapper) DeactivateAuthorization(ctx context.Con
 	return nil
 }
 
+func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
+	resp, err := sas.inner.NewOrder(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	inner *sa.SQLStorageAuthority
@@ -519,7 +530,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorization(ctx context.Context, r
 		return nil, err
 	}
 
-	return authzToPB(authz)
+	return AuthzToPB(authz)
 }
 
 func (sas StorageAuthorityServerWrapper) GetValidAuthorizations(ctx context.Context, request *sapb.GetValidAuthorizationsRequest) (*sapb.ValidAuthorizations, error) {
@@ -534,7 +545,7 @@ func (sas StorageAuthorityServerWrapper) GetValidAuthorizations(ctx context.Cont
 
 	resp := &sapb.ValidAuthorizations{}
 	for k, v := range valid {
-		authzPB, err := authzToPB(*v)
+		authzPB, err := AuthzToPB(*v)
 		if err != nil {
 			return nil, err
 		}
@@ -687,7 +698,7 @@ func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	authzPB, err := authzToPB(*authz)
+	authzPB, err := AuthzToPB(*authz)
 	if err != nil {
 		return nil, err
 	}
@@ -787,7 +798,7 @@ func (sas StorageAuthorityServerWrapper) NewPendingAuthorization(ctx context.Con
 		return nil, err
 	}
 
-	return authzToPB(newAuthz)
+	return AuthzToPB(newAuthz)
 }
 
 func (sas StorageAuthorityServerWrapper) UpdatePendingAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {
@@ -902,4 +913,12 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization(ctx context.Con
 	}
 
 	return &corepb.Empty{}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
+	if request == nil || request.RegistrationID == nil || request.Expires == nil || request.Csr == nil || request.Authorizations == nil || request.Status == nil {
+		return nil, errIncompleteRequest
+	}
+
+	return sas.inner.NewOrder(ctx, request)
 }

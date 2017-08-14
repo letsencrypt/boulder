@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1276,4 +1278,41 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d with adjusted earliest")
 	test.AssertEquals(t, count, 2)
+}
+
+func TestNewOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := int64(1337)
+	serial := "serial"
+	a, b, c := "a", "b", "c"
+	status := string(core.StatusPending)
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:    &i,
+		Expires:           &i,
+		Csr:               []byte{0, 1, 2},
+		CertificateSerial: &serial,
+		Authorizations: []*corepb.Authorization{
+			&corepb.Authorization{Id: &a},
+			&corepb.Authorization{Id: &b},
+			&corepb.Authorization{Id: &c},
+		},
+		Status: &status,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	test.AssertEquals(t, *order.Id, int64(1))
+
+	var authzIDs []string
+	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz WHERE orderID = 1;")
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(authzIDs), 3)
+	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
 }

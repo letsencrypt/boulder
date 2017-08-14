@@ -81,6 +81,18 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 	}
 }
 
+// AssertUnmarshaledEquals unmarshals two JSON strings (one and two) to
+// a map[string]interface{} and then uses reflect.DeepEqual to check they are
+// the same
+func AssertUnmarshaledEquals(t *testing.T, one, two string) {
+	var oneMap, twoMap map[string]interface{}
+	err := json.Unmarshal([]byte(one), &oneMap)
+	AssertNotError(t, err, "Could not unmarshal 1st argument")
+	err = json.Unmarshal([]byte(two), &twoMap)
+	AssertNotError(t, err, "Could not unmarshal 2nd argument")
+	AssertDeepEquals(t, oneMap, twoMap)
+}
+
 // AssertNotEquals uses the equality operator to measure that one and two
 // are different
 func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {

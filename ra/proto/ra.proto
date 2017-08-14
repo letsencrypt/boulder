@@ -15,6 +15,7 @@ service RegistrationAuthority {
         rpc DeactivateRegistration(core.Registration) returns (core.Empty) {}
         rpc DeactivateAuthorization(core.Authorization) returns (core.Empty) {}
         rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (core.Empty) {}
+        rpc NewOrder(NewOrderRequest) returns (core.Order) {}
 }
 
 message NewAuthorizationRequest {
@@ -48,4 +49,9 @@ message AdministrativelyRevokeCertificateRequest {
         optional bytes cert = 1;
         optional int64 code = 2;
         optional string adminName = 3;
+}
+
+message NewOrderRequest {
+        optional int64 registrationID = 1;
+        optional bytes csr = 2;
 }
