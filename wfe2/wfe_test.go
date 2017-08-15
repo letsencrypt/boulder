@@ -1745,8 +1745,6 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
-	//_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
-	//defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
