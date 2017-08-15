@@ -35,6 +35,7 @@ message IssueCertificateForPrecertificateRequest {
   optional IssueCertificateRequest issueReq = 1;
   optional bytes precertDER = 2;
   repeated bytes SCTs = 3;
+  optional int64 orderID = 4;
 }
 
 message GenerateOCSPRequest {

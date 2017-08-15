@@ -369,7 +369,7 @@ func TestIssueCertificate(t *testing.T) {
 								PrecertDER: precertDER,
 							})
 
-						if true { // TODO(briansmith): !mode.enablePrecertificateFlow
+						if !mode.enablePrecertificateFlow {
 							test.AssertError(t, err, "Precertificate flow not disabled as expected")
 							return
 						}
