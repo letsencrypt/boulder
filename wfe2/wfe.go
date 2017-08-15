@@ -1334,7 +1334,7 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires),
+		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
