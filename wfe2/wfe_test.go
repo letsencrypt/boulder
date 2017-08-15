@@ -2150,7 +2150,6 @@ func TestNewOrder(t *testing.T) {
 	request := makePostRequestWithPath(newOrderPath, body)
 
 	wfe.NewOrder(ctx, newRequestEvent(), responseWriter, request)
-	fmt.Println("HEY", responseWriter.Body.String())
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
