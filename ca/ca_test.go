@@ -202,6 +202,7 @@ func setup(t *testing.T) *testCtx {
 		ECDSAProfile: ecdsaProfileName,
 		SerialPrefix: 17,
 		Expiry:       "8760h",
+		Backdate:     "1h",
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
 		CFSSL: cfsslConfig.Config{
@@ -318,6 +319,7 @@ func TestIssueCertificate(t *testing.T) {
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
 		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
+		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestValidityUsesCAClock},
 		{"AllowNoCN", NoCNCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
 		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
@@ -451,6 +453,11 @@ func issueCertificateSubTestIssueCertificate(t *testing.T, i *TestCertificateIss
 	if cert.Subject.SerialNumber != serialString {
 		t.Errorf("SerialNumber: want %#v, got %#v", serialString, cert.Subject.SerialNumber)
 	}
+}
+
+func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
+	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
+	test.AssertEquals(t, i.cert.NotAfter, i.cert.NotBefore.Add(i.ca.validityPeriod))
 }
 
 // Test issuing when multiple issuers are present.
