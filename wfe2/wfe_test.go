@@ -254,8 +254,21 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOrderRequest) (*corepb.Order, error) {
-	return nil, nil
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	one := int64(1)
+	status := string(core.StatusPending)
+	zero := int64(0)
+	id := "hello"
+	return &corepb.Order{
+		Id:             &one,
+		RegistrationID: req.RegistrationID,
+		Expires:        &zero,
+		Csr:            req.Csr,
+		Status:         &status,
+		Authorizations: []*corepb.Authorization{
+			{Id: &id},
+		},
+	}, nil
 }
 
 type mockPA struct{}
@@ -2122,4 +2135,30 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "detail": "Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
+}
+
+func TestNewOrder(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
+	payload := `{
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+}`
+	signedURL := fmt.Sprintf("http://localhost%s", newOrderPath)
+	// Sign a request using test1key
+	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	request := makePostRequestWithPath(newOrderPath, body)
+
+	wfe.NewOrder(ctx, newRequestEvent(), responseWriter, request)
+	fmt.Println("HEY", responseWriter.Body.String())
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{
+  "Status": "pending",
+  "Expires": "1969-12-31T16:00:00-08:00",
+  "CSR": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo",
+  "Authorizations": [
+    "http://localhost/acme/authz/hello"
+  ]
+}`)
 }
