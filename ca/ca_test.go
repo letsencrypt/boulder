@@ -114,6 +114,17 @@ var (
 	// OIDExtensionCTPoison is defined in RFC 6962 s3.1.
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
+	// The "certificate-for-precertificate" tests use the precertificate from a
+	// previous "precertificate" test, in order to verify that the CA is
+	// stateless with respect to these two operations, since a separate CA
+	// object instance will be used for generating each. Consequently, the
+	// "precertificate" tests must be before the "certificate-for-precertificate"
+	// tests in this list, and we cannot run these sub-tests concurrently.
+	//
+	// In order to test the case where the same CA object is used for issuing
+	// both the precertificate and the certificate, we'd need to contort
+	// |TestIssueCertificate| quite a bit, and since it isn't clear that that
+	// would be useful, we've avoided adding that case, at least for now.
 	issuanceModes = []IssuanceMode{
 		{name: "non-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
 		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: true},
@@ -320,8 +331,11 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// The loop through |issuanceModes| must be inside the loop through
+		// |testCases| because the "certificate-for-precertificate" tests use
+		// the precertificates previously generated from the preceding
+		// "precertificate" test. See also the comment above |issuanceModes|.
 		precertDER := []byte{}
-
 		for _, mode := range issuanceModes {
 			ca, sa := testCase.setup(t)
 			ca.enablePrecertificateFlow = mode.enablePrecertificateFlow
