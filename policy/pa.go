@@ -142,7 +142,7 @@ var (
 	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
 	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
 	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
-	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains is a R-LDH label")
+	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
