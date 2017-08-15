@@ -104,6 +104,7 @@ const (
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
+var idnReservedRegexp = regexp.MustCompile("^[a-z0-9]{2}--")
 
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
@@ -141,6 +142,7 @@ var (
 	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
 	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
 	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
+	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains is a R-LDH label")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -226,6 +228,8 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 			if !norm.NFKC.IsNormalString(ulabel) {
 				return errMalformedIDN
 			}
+		} else if idnReservedRegexp.MatchString(label) {
+			return errInvalidRLDH
 		}
 	}
 
