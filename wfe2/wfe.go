@@ -19,7 +19,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -272,7 +271,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
-		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
+		if v == randomDirKeyExplanationLink {
 			relativeDir[k] = v
 			continue
 		}
@@ -311,9 +310,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
-	if features.Enabled(features.AllowKeyRollover) {
-		wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
-	}
+	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -380,26 +377,18 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		"revoke-cert": revokeCertPath,
 	}
 
-	// Versions of Certbot pre-0.6.0 (named LetsEncryptPythonClient at the time) break when they
-	// encounter a directory containing elements they don't expect so we gate
-	// adding new directory fields for clients matching this UA.
-	clientDirChangeIntolerant := strings.HasPrefix(request.UserAgent(), "LetsEncryptPythonClient")
-	if features.Enabled(features.AllowKeyRollover) && !clientDirChangeIntolerant {
-		directoryEndpoints["key-change"] = rolloverPath
-	}
-	if features.Enabled(features.RandomDirectoryEntry) && !clientDirChangeIntolerant {
-		// Add a random key to the directory in order to make sure that clients don't hardcode an
-		// expected set of keys. This ensures that we can properly extend the directory when we
-		// need to add a new endpoint or meta element.
-		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
-	}
-	if features.Enabled(features.DirectoryMeta) && !clientDirChangeIntolerant {
-		// ACME since draft-02 describes an optional "meta" directory entry. The
-		// meta entry may optionally contain a "terms-of-service" URI for the
-		// current ToS.
-		directoryEndpoints["meta"] = map[string]string{
-			"terms-of-service": wfe.SubscriberAgreementURL,
-		}
+	directoryEndpoints["key-change"] = rolloverPath
+
+	// Add a random key to the directory in order to make sure that clients don't hardcode an
+	// expected set of keys. This ensures that we can properly extend the directory when we
+	// need to add a new endpoint or meta element.
+	directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
+
+	// ACME since draft-02 describes an optional "meta" directory entry. The
+	// meta entry may optionally contain a "terms-of-service" URI for the
+	// current ToS.
+	directoryEndpoints["meta"] = map[string]string{
+		"terms-of-service": wfe.SubscriberAgreementURL,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -711,15 +700,10 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	if features.Enabled(features.UseAIAIssuerURL) {
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+		return
 	}
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
@@ -957,7 +941,7 @@ func (wfe *WebFrontEndImpl) Registration(
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if features.Enabled(features.AllowAccountDeactivation) && (update.Status != "" && update.Status != currReg.Status) {
+	if update.Status != "" && update.Status != currReg.Status {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
@@ -1131,22 +1115,18 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	if features.Enabled(features.UseAIAIssuerURL) {
-		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-		if err != nil {
-			logEvent.AddError("unable to parse certificate: %s", err)
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
-			return
-		}
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		logEvent.AddError("unable to parse certificate: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
+		return
 	}
+	if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
+		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
+		return
+	}
+
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
 		logEvent.AddError(err.Error())

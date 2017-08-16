@@ -114,10 +114,23 @@ var (
 	// OIDExtensionCTPoison is defined in RFC 6962 s3.1.
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
+	// The "certificate-for-precertificate" tests use the precertificate from a
+	// previous "precertificate" test, in order to verify that the CA is
+	// stateless with respect to these two operations, since a separate CA
+	// object instance will be used for generating each. Consequently, the
+	// "precertificate" tests must be before the "certificate-for-precertificate"
+	// tests in this list, and we cannot run these sub-tests concurrently.
+	//
+	// In order to test the case where the same CA object is used for issuing
+	// both the precertificate and the certificate, we'd need to contort
+	// |TestIssueCertificate| quite a bit, and since it isn't clear that that
+	// would be useful, we've avoided adding that case, at least for now.
 	issuanceModes = []IssuanceMode{
-		{name: "non-precertificate", usePrecertificateFlow: false, enablePrecertificateFlow: false},
-		{name: "precertificate", usePrecertificateFlow: true, enablePrecertificateFlow: true},
-		{name: "precertificate-disabled", usePrecertificateFlow: true, enablePrecertificateFlow: false},
+		{name: "non-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
+		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: true},
+		{name: "precertificate-disabled", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
+		{name: "certificate-for-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: true},
+		{name: "certificate-for-precertificate-disabled", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: false},
 	}
 )
 
@@ -292,9 +305,10 @@ type TestCertificateIssuance struct {
 }
 
 type IssuanceMode struct {
-	name                     string
-	usePrecertificateFlow    bool
-	enablePrecertificateFlow bool
+	name                              string
+	issuePrecertificate               bool
+	issueCertificateForPrecertificate bool
+	enablePrecertificateFlow          bool
 }
 
 func TestIssueCertificate(t *testing.T) {
@@ -317,6 +331,11 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// The loop through |issuanceModes| must be inside the loop through
+		// |testCases| because the "certificate-for-precertificate" tests use
+		// the precertificates previously generated from the preceding
+		// "precertificate" test. See also the comment above |issuanceModes|.
+		precertDER := []byte{}
 		for _, mode := range issuanceModes {
 			ca, sa := testCase.setup(t)
 			ca.enablePrecertificateFlow = mode.enablePrecertificateFlow
@@ -328,7 +347,7 @@ func TestIssueCertificate(t *testing.T) {
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
 				certDER := []byte{}
-				if mode.usePrecertificateFlow {
+				if mode.issuePrecertificate {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
 
 					if !mode.enablePrecertificateFlow {
@@ -338,8 +357,23 @@ func TestIssueCertificate(t *testing.T) {
 
 					test.AssertNotError(t, err, "Failed to issue precertificate")
 					certDER = response.Precert.Der
+					precertDER = certDER
 				} else {
-					coreCert, err := ca.IssueCertificate(ctx, issueReq)
+					coreCert := core.Certificate{}
+					if mode.issueCertificateForPrecertificate {
+						coreCert, err = ca.IssueCertificateForPrecertificate(ctx,
+							&caPB.IssueCertificateForPrecertificateRequest{
+								IssueReq:   issueReq,
+								PrecertDER: precertDER,
+							})
+
+						if true { // TODO(briansmith): !mode.enablePrecertificateFlow
+							test.AssertError(t, err, "Precertificate flow not disabled as expected")
+							return
+						}
+					} else {
+						coreCert, err = ca.IssueCertificate(ctx, issueReq)
+					}
 					test.AssertNotError(t, err, "Failed to issue certificate")
 					certDER = coreCert.DER
 
@@ -351,7 +385,7 @@ func TestIssueCertificate(t *testing.T) {
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
 				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
-				test.AssertEquals(t, mode.usePrecertificateFlow, poisonExtension != nil)
+				test.AssertEquals(t, mode.issuePrecertificate, poisonExtension != nil)
 				if poisonExtension != nil {
 					test.AssertEquals(t, poisonExtension.Critical, true)
 					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
@@ -616,12 +650,12 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.keyPolicy,
 				testCtx.logger)
 			test.AssertNotError(t, err, "Failed to create CA")
-			ca.enablePrecertificateFlow = mode.usePrecertificateFlow
+			ca.enablePrecertificateFlow = mode.issuePrecertificate
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				serializedCSR := mustRead(testCase.csrPath)
 				issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
-				if !mode.usePrecertificateFlow {
+				if !mode.issuePrecertificate {
 					_, err = ca.IssueCertificate(ctx, issueReq)
 				} else {
 					_, err = ca.IssuePrecertificate(ctx, issueReq)
@@ -630,7 +664,7 @@ func TestInvalidCSRs(t *testing.T) {
 				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 
-				if mode.usePrecertificateFlow == mode.enablePrecertificateFlow {
+				if mode.issuePrecertificate == mode.enablePrecertificateFlow {
 					test.AssertError(t, err, testCase.errorMessage)
 					if testCase.check != nil {
 						testCase.check(t, ca, sa)
@@ -762,7 +796,7 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
 	expectedExtensionCount := 9
-	if i.mode.usePrecertificateFlow {
+	if i.mode.issuePrecertificate {
 		expectedExtensionCount += 1
 	}
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)

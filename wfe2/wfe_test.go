@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -637,6 +637,12 @@ func randomDirectoryKeyPresent(t *testing.T, buf []byte) bool {
 	return false
 }
 
+type fakeRand struct{}
+
+func (fr fakeRand) Read(p []byte) (int, error) {
+	return len(p), nil
+}
+
 func TestDirectory(t *testing.T) {
 	// Note: `TestDirectory` sets the `wfe.BaseURL` specifically to test the
 	// that it overrides the relative /directory behaviour.
@@ -646,27 +652,8 @@ func TestDirectory(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
-
-	const (
-		oldUA = "LetsEncryptPythonClient"
-	)
-
-	// Directory with a key change endpoint but no meta endpoint or random entry
-	noMetaJSONWithKeyChange := `{
-		"key-change": "http://localhost:4300/acme/key-change",
-		"new-authz": "http://localhost:4300/acme/new-authz",
-		"new-cert": "http://localhost:4300/acme/new-cert",
-		"new-reg": "http://localhost:4300/acme/new-reg",
-		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
-
-	// Directory without a key change endpoint or a random entry
-	noMetaJSONWithoutKeyChange := `{
-		"new-authz": "http://localhost:4300/acme/new-authz",
-		"new-cert": "http://localhost:4300/acme/new-cert",
-		"new-reg": "http://localhost:4300/acme/new-reg",
-		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
+	core.RandReader = fakeRand{}
+	defer func() { core.RandReader = rand.Reader }()
 
 	// Directory with a key change endpoint and a meta entry
 	metaJSON := `{
@@ -677,115 +664,37 @@ func TestDirectory(t *testing.T) {
   "new-authz": "http://localhost:4300/acme/new-authz",
   "new-cert": "http://localhost:4300/acme/new-cert",
   "new-reg": "http://localhost:4300/acme/new-reg",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert",
+  "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`
 
-	// Directory with a meta entry but no key change endpoint
-	metaNoKeyChangeJSON := `{
-  "meta": {
-    "terms-of-service": "http://example.invalid/terms"
-  },
-  "new-authz": "http://localhost:4300/acme/new-authz",
-  "new-cert": "http://localhost:4300/acme/new-cert",
-  "new-reg": "http://localhost:4300/acme/new-reg",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
-
-	testCases := []struct {
-		Name         string
-		UserAgent    string
-		SetFeatures  []string
-		ExpectedJSON string
-		RandomEntry  bool
-	}{
-		{
-			Name:         "No meta feature enabled, no explicit user-agent",
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "Key change feature enabled, no explicit user-agent",
-			SetFeatures:  []string{"AllowKeyRollover"},
-			ExpectedJSON: noMetaJSONWithKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, no explicit user-agent",
-			SetFeatures:  []string{"DirectoryMeta"},
-			ExpectedJSON: metaNoKeyChangeJSON,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, no key change enabled, explicit old Let's Encrypt user-agent",
-			SetFeatures:  []string{"DirectoryMeta"},
-			UserAgent:    oldUA,
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, key change enabled, explicit old Let's Encrypt user-agent",
-			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
-			UserAgent:    oldUA,
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, key change enabled, no explicit user-agent",
-			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
-			ExpectedJSON: metaJSON,
-		},
-		{
-			Name:        "RandomDirectoryEntry feature enabled, no explicit user-agent",
-			SetFeatures: []string{"RandomDirectoryEntry"},
-			RandomEntry: true,
-		},
-		{
-			Name:        "RandomDirectoryEntry feature enabled, explicit old Let's Encrypt user-agent",
-			UserAgent:   oldUA,
-			SetFeatures: []string{"RandomDirectoryEntry"},
-			RandomEntry: false,
-		},
+	// NOTE: the req.URL will be modified and must be constructed per
+	// testcase or things will break and you will be confused and sad.
+	url, _ := url.Parse("/directory")
+	req := &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
 	}
-
-	for _, tc := range testCases {
-		// Each test case will set zero or more feature flags
-		for _, feature := range tc.SetFeatures {
-			_ = features.Set(map[string]bool{feature: true})
-		}
-		t.Run(tc.Name, func(t *testing.T) {
-			// NOTE: the req.URL will be modified and must be constructed per
-			// testcase or things will break and you will be confused and sad.
-			url, _ := url.Parse("/directory")
-			req := &http.Request{
-				Method: "GET",
-				URL:    url,
-				Host:   "127.0.0.1:4300",
-			}
-			// Set an explicit User-Agent header as directed by the test case
-			if tc.UserAgent != "" {
-				req.Header = map[string][]string{"User-Agent": []string{tc.UserAgent}}
-			}
-			// Serve the /directory response for this request into a recorder
-			responseWriter := httptest.NewRecorder()
-			mux.ServeHTTP(responseWriter, req)
-			// We expect all directory requests to return a json object with a good HTTP status
-			test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-			// If the test case specifies exact JSON it expects, test that it matches
-			if tc.ExpectedJSON != "" {
-				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedJSON)
-			}
-			// Check if there is a random directory key present and if so, that it is
-			// expected to be present
-			test.AssertEquals(t,
-				randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
-				tc.RandomEntry)
-		})
-		// Reset the feature flags between test cases to get a blank slate
-		features.Reset()
-	}
+	// Serve the /directory response for this request into a recorder
+	responseWriter := httptest.NewRecorder()
+	mux.ServeHTTP(responseWriter, req)
+	// We expect all directory requests to return a json object with a good HTTP status
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
+	// Check if there is a random directory key present and if so, that it is
+	// expected to be present
+	test.AssertEquals(t,
+		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+		true)
 }
 
 func TestRelativeDirectory(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
+	core.RandReader = fakeRand{}
+	defer func() { core.RandReader = rand.Reader }()
 
 	dirTests := []struct {
 		host        string
@@ -793,15 +702,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 	}
 
 	for _, tt := range dirTests {
@@ -827,10 +736,6 @@ func TestRelativeDirectory(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	// Always allow key rollover to test the rolloverPath
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1048,14 +953,6 @@ func TestIssueCertificate(t *testing.T) {
 	cert, err := core.LoadCert("test/not-an-example.com.crt")
 	test.AssertNotError(t, err, "Could not load cert")
 
-	goodCertHeaders := map[string]string{
-		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
-		"Link":         `<http://localhost/acme/issuer-cert>;rel="up"`,
-		"Content-Type": "application/pkix-cert",
-	}
-	// NOTE(@cpu): Unlike the test case above this case expects
-	// `localhost:4000` in the Link header value since the AIAIssuer flag
-	// will have been true. The WFE will also promote it from HTTP to HTTPS.
 	goodCertAIAHeaders := map[string]string{
 		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
 		"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
@@ -1075,7 +972,6 @@ func TestIssueCertificate(t *testing.T) {
 		AssertCSRLogged  bool
 		ExpectedHeaders  map[string]string
 		ExpectedLogParts []string
-		UseAIAIssuer     bool
 	}{
 		{
 			Name: "POST, but no body",
@@ -1119,19 +1015,10 @@ func TestIssueCertificate(t *testing.T) {
 			AssertCSRLogged: true,
 		},
 		{
-			Name:             "POST, properly signed JWS, authorizations for all names in CSR",
-			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedCert:     string(cert.Raw),
-			AssertCSRLogged:  true,
-			ExpectedHeaders:  goodCertHeaders,
-			ExpectedLogParts: goodCertLogParts,
-		},
-		{
 			Name:             "POST, properly signed JWS, authorizations for all names in CSR, using AIAIssuer",
 			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedCert:     string(cert.Raw),
 			AssertCSRLogged:  true,
-			UseAIAIssuer:     true,
 			ExpectedHeaders:  goodCertAIAHeaders,
 			ExpectedLogParts: goodCertLogParts,
 		},
@@ -1144,10 +1031,6 @@ func TestIssueCertificate(t *testing.T) {
 			responseWriter.Body.Reset()
 			responseWriter.HeaderMap = http.Header{}
 			mockLog.Clear()
-
-			if tc.UseAIAIssuer {
-				_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
-			}
 
 			wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, tc.Request)
 			if len(tc.ExpectedProblem) > 0 {
@@ -1172,7 +1055,6 @@ func TestIssueCertificate(t *testing.T) {
 					test.AssertContains(t, reqlogs[0], msg)
 				}
 			}
-			features.Reset()
 		})
 	}
 }
@@ -1635,8 +1517,6 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
@@ -1786,25 +1666,12 @@ func TestGetCertificate(t *testing.T) {
 		ExpectedCert    []byte
 	}{
 		{
-			Name:           "Valid serial, cached",
-			Path:           goodSerial,
-			ExpectedStatus: http.StatusOK,
-			ExpectedHeaders: map[string]string{
-				"Content-Type": pkixContent,
-				"Link":         `<http://localhost/acme/issuer-cert>;rel="up"`,
-			},
-			ExpectedCert: certBlock.Bytes,
-		},
-		{
 			Name:           "Valid serial, UseAIAIssuer feature enabled",
 			Path:           goodSerial,
-			Features:       []string{"UseAIAIssuerURL"},
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
-				// NOTE(@cpu): Unlike the test case above we expect the AIA Issuer
-				// feature to result in a Link header value with the port included.
-				"Link": `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
+				"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
 			},
 			ExpectedCert: certBlock.Bytes,
 		},
@@ -1830,9 +1697,6 @@ func TestGetCertificate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			for _, feature := range tc.Features {
-				_ = features.Set(map[string]bool{feature: true})
-			}
 			responseWriter := httptest.NewRecorder()
 			mockLog := wfe.log.(*blog.Mock)
 			mockLog.Clear()
@@ -1873,9 +1737,6 @@ func TestGetCertificate(t *testing.T) {
 				test.AssertEquals(t, len(reqlogs), 1)
 				test.AssertContains(t, reqlogs[0], `INFO: `)
 			}
-
-			/// Reset any features that were set
-			features.Reset()
 		})
 	}
 }
@@ -2057,8 +1918,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 func TestDeactivateRegistration(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 
 	responseWriter.Body.Reset()
 	payload := `{"status":"asd"}`
