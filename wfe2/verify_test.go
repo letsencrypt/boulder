@@ -728,6 +728,14 @@ func TestParseJWS(t *testing.T) {
 }
 `
 
+	wrongSignaturesFieldJWSBody := `
+{
+  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ", 
+  "payload": "Zm9v",
+  "signatures": ["PKWWclRsiHF4bm-nmpxDez6Y_3Mdtu263YeYklbGYt1EiMOLiKY_dr_EqhUUKAKEWysFLO-hQLXVU7kVkHeYWQFFOA18oFgcZgkSF2Pr3DNZrVj9e2gl0eZ2i2jk6X5GYPt1lIfok_DrL92wrxEKGcrmxqXXGm0JgP6Al2VGapKZK2HaYbCHoGvtzNmzUX9rC21sKewq5CquJRvTmvQp5bmU7Q9KeafGibFr0jl6IA3W5LBGgf6xftuUtEVEbKmKaKtaG7tXsQH1mIVOPUZZoLWz9sWJSFLmV0QSXm3ZHV0DrOhLfcADbOCoQBMeGdseBQZuUO541A3BEKGv2Aikjw"]
+}
+`
+
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
@@ -769,7 +777,7 @@ func TestParseJWS(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", tooManySigsJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
-				Detail:     "Too many signatures in POST body",
+				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
@@ -779,6 +787,15 @@ func TestParseJWS(t *testing.T) {
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
 				Detail:     "JWS \"header\" field not allowed. All headers must be in \"protected\" field",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:    "Unsupported signatures field in JWS",
+			Request: makePostRequestWithPath("test-path", wrongSignaturesFieldJWSBody),
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
