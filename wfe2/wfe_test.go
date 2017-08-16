@@ -915,6 +915,11 @@ func TestHTTPMethods(t *testing.T) {
 			Path:    rolloverPath,
 			Allowed: postOnly,
 		},
+		{
+			Name:    "New order path should be POST only",
+			Path:    newOrderPath,
+			Allowed: postOnly,
+		},
 	}
 
 	// NOTE: We omit http.MethodOptions because all requests with this method are
@@ -2159,4 +2164,5 @@ func TestNewOrder(t *testing.T) {
     "http://localhost/acme/authz/hello"
   ]
 }`)
+
 }

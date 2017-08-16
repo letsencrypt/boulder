@@ -1287,7 +1287,7 @@ type orderJSON struct {
 	Authorizations []string
 }
 
-// NewCertificate is used by clients to create a new order object from a CSR
+// NewOrder is used by clients to create a new order object from a CSR
 func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
@@ -1298,6 +1298,8 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 	}
 
 	var rawCSR core.RawCertificateRequest
+	// The optional fields NotAfter and NotBefore are ignored if present
+	// in the request
 	err := json.Unmarshal(body, &rawCSR)
 	if err != nil {
 		logEvent.AddError("unable to JSON unmarshal order request: %s", err)
@@ -1342,11 +1344,13 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
 	}
 
+	// TODO(#2985): This location header points to a non-existent path, remove
+	// comment once the order handler is added
 	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling authz"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
 	}
 }
