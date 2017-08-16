@@ -1304,6 +1304,14 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 		return
 	}
 
+	// Check for a malformed CSR early to avoid unnecessary RPCs
+	_, err = x509.ParseCertificateRequest(rawCSR.CSR)
+	if err != nil {
+		logEvent.AddError("unable to parse CSR: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
+		return
+	}
+
 	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: &reg.ID,
 		Csr:            rawCSR.CSR,
@@ -1326,7 +1334,7 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 
 	// TODO(#2985): This location header points to a non-existent path, remove
 	// comment once the order handler is added
-	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, order.Id)))
+	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
 	if err != nil {
