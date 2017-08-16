@@ -22,7 +22,7 @@ const maxCNLength = 64
 // SHA1WithRSA is allowed because there's still a fair bit of it
 // out there, but we should try to remove it soon.
 var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
-	x509.SHA1WithRSA:      true, // TODO(XXX): Remove
+	x509.SHA1WithRSA:      true, // TODO(#2988): Remove support
 	x509.SHA256WithRSA:    true,
 	x509.SHA384WithRSA:    true,
 	x509.SHA512WithRSA:    true,
