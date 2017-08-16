@@ -36,10 +36,8 @@ const (
 	directoryPath  = "/directory"
 	newRegPath     = "/acme/new-reg"
 	regPath        = "/acme/reg/"
-	newAuthzPath   = "/acme/new-authz"
 	authzPath      = "/acme/authz/"
 	challengePath  = "/acme/challenge/"
-	newCertPath    = "/acme/new-cert"
 	certPath       = "/acme/cert/"
 	revokeCertPath = "/acme/revoke-cert"
 	termsPath      = "/terms"
@@ -300,8 +298,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
-	wfe.HandleFunc(m, newAuthzPath, wfe.NewAuthorization, "POST")
-	wfe.HandleFunc(m, newCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, regPath, wfe.Registration, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
@@ -372,8 +368,6 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
 		"new-reg":     newRegPath,
-		"new-authz":   newAuthzPath,
-		"new-cert":    newCertPath,
 		"revoke-cert": revokeCertPath,
 	}
 
@@ -503,7 +497,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID))
 
 	response.Header().Add("Location", regURL)
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -514,55 +507,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		// should be OK.
 		logEvent.AddError("unable to marshal registration: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling registration"), err)
-		return
-	}
-}
-
-// NewAuthorization is used by clients to submit a new ID Authorization
-func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		// validPOSTforAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
-		return
-	}
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if currReg.Agreement == "" {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
-		return
-	}
-
-	var init core.Authorization
-	if err := json.Unmarshal(body, &init); err != nil {
-		logEvent.AddError("unable to JSON unmarshal Authorization: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
-		return
-	}
-	logEvent.Extra["Identifier"] = init.Identifier
-
-	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
-	if err != nil {
-		logEvent.AddError("unable to create new authz: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new authz"), err)
-		return
-	}
-	logEvent.Extra["AuthzID"] = authz.ID
-
-	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	wfe.prepAuthorizationForDisplay(request, &authz)
-
-	response.Header().Add("Location", authzURL)
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
-
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, authz)
-	if err != nil {
-		// ServerInternal because we generated the authz, it should be OK
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling authz"), err)
 		return
 	}
 }
@@ -604,113 +548,6 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 		Registration: registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
-}
-
-// NewCertificate is used by clients to request the issuance of a cert for an
-// authorized identifier.
-func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		// validPOSTForAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
-		return
-	}
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if reg.Agreement == "" {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
-		return
-	}
-
-	var rawCSR core.RawCertificateRequest
-	err := json.Unmarshal(body, &rawCSR)
-	if err != nil {
-		logEvent.AddError("unable to JSON unmarshal CertificateRequest: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling certificate request"), err)
-		return
-	}
-	// Assuming a properly formatted CSR there should be two four byte SEQUENCE
-	// declarations then a two byte integer declaration which defines the version
-	// of the CSR. If those two bytes (at offset 8 and 9) and equal to 2 and 0
-	// then the CSR was generated by a pre-1.0.2 version of OpenSSL with a client
-	// which didn't explicitly set the version causing the integer to be malformed
-	// and encoding/asn1 will refuse to parse it. If this is the case exit early
-	// with a more useful error message.
-	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
-		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
-		wfe.sendError(
-			response,
-			logEvent,
-			probs.Malformed("CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591"),
-			nil,
-		)
-		return
-	}
-
-	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR, err = x509.ParseCertificateRequest(rawCSR.CSR)
-	if err != nil {
-		logEvent.AddError("unable to parse certificate request: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
-		return
-	}
-	wfe.logCsr(request, certificateRequest, *reg)
-	// Check that the key in the CSR is good. This will also be checked in the CA
-	// component, but we want to discard CSRs with bad keys as early as possible
-	// because (a) it's an easy check and we can save unnecessary requests and
-	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
-	// a bad key from the client is just a malformed request and doesn't need to
-	// be audited.
-	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
-		logEvent.AddError("CSR public key failed GoodKey: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
-		return
-	}
-	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
-	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
-	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
-
-	// Create new certificate and return
-	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
-	// WFE is compromised, *and* the attacker knows the public key of an account
-	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole request to the
-	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
-	if err != nil {
-		logEvent.AddError("unable to create new cert: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new cert"), err)
-		return
-	}
-
-	// Make a URL for this certificate.
-	// We use only the sequential part of the serial number, because it should
-	// uniquely identify the certificate, and this makes it easy for anybody to
-	// enumerate and mirror our certificates.
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		logEvent.AddError("unable to parse certificate: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
-		return
-	}
-	serial := parsedCertificate.SerialNumber
-	certURL := wfe.relativeEndpoint(request, certPath+core.SerialToString(serial))
-
-	// TODO Content negotiation
-	response.Header().Add("Location", certURL)
-	if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-		return
-	}
-	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.WriteHeader(http.StatusCreated)
-	if _, err = response.Write(cert.DER); err != nil {
-		logEvent.AddError(err.Error())
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-	}
 }
 
 // Challenge handles POST requests to challenge URLs.  Such requests are clients'
@@ -980,7 +817,6 @@ func (wfe *WebFrontEndImpl) Registration(
 		return
 	}
 
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -1073,8 +909,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
-
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
