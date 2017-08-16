@@ -254,8 +254,20 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOrderRequest) (*corepb.Order, error) {
-	return nil, nil
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	one := int64(1)
+	status := string(core.StatusPending)
+	id := "hello"
+	return &corepb.Order{
+		Id:             &one,
+		RegistrationID: req.RegistrationID,
+		Expires:        &one,
+		Csr:            req.Csr,
+		Status:         &status,
+		Authorizations: []*corepb.Authorization{
+			{Id: &id},
+		},
+	}, nil
 }
 
 type mockPA struct{}
@@ -806,6 +818,11 @@ func TestHTTPMethods(t *testing.T) {
 		{
 			Name:    "Rollover path should be POST only",
 			Path:    rolloverPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "New order path should be POST only",
+			Path:    newOrderPath,
 			Allowed: postOnly,
 		},
 	}
@@ -1981,4 +1998,83 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "detail": "Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
+}
+
+func TestNewOrder(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
+	targetHost := "localhost"
+	targetPath := "new-cert"
+	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
+
+	// CSR from an < 1.0.2 OpenSSL
+	oldOpenSSLCSRPayload := `{
+	"csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
+}`
+
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	// a valid CSR
+	goodCertCSRPayload := `{
+	"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+}`
+
+	testCases := []struct {
+		Name            string
+		Request         *http.Request
+		ExpectedBody    string
+		ExpectedHeaders map[string]string
+	}{
+		{
+			Name: "POST, but no body",
+			Request: &http.Request{
+				Method: "POST",
+				Header: map[string][]string{
+					"Content-Length": {"0"},
+				},
+			},
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
+		},
+		{
+			Name:         "POST, with an invalid JWS body",
+			Request:      makePostRequestWithPath("hi", "hi"),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, payload isn't valid",
+			Request:      signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, trivial JSON payload",
+			Request:      signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, CSR from an old OpenSSL",
+			Request:      signAndPost(t, targetPath, signedURL, oldOpenSSLCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, authorizations for all names in CSR",
+			Request:         signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody:    `{"Status":"pending","Expires":"1970-01-01T00:00:00Z","CSR":"MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo","Authorizations":["http://localhost/acme/authz/hello"]}`,
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter.Body.Reset()
+			responseWriter.HeaderMap = http.Header{}
+
+			wfe.NewOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
+
+			headers := responseWriter.Header()
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(k), v)
+			}
+		})
+	}
 }
