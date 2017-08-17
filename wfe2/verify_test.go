@@ -93,9 +93,11 @@ func signRequestEmbed(
 	opts := &jose.SignerOptions{
 		NonceSource: nonceService,
 		EmbedJWK:    true,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+	}
+	if url != "" {
+		opts.ExtraHeaders = map[jose.HeaderKey]interface{}{
 			"url": url,
-		},
+		}
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
@@ -1295,6 +1297,79 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
+			} else {
+				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+		})
+	}
+}
+
+func TestMatchJWSURLs(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	noURLJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", wfe.nonceService)
+	urlBJWS, _, _ := signRequestEmbed(t, nil, "example.org", "", wfe.nonceService)
+
+	testCases := []struct {
+		Name            string
+		Outer           *jose.JSONWebSignature
+		Inner           *jose.JSONWebSignature
+		ExpectedProblem *probs.ProblemDetails
+	}{
+		{
+			Name:  "Outer JWS without URL",
+			Outer: noURLJWS,
+			Inner: urlAJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Outer JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Inner JWS without URL",
+			Outer: urlAJWS,
+			Inner: noURLJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Inner JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Inner and outer JWS without URL",
+			Outer: noURLJWS,
+			Inner: noURLJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type: probs.MalformedProblem,
+				// The Outer JWS is validated first
+				Detail:     "Outer JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Mismatched inner and outer JWS URLs",
+			Outer: urlAJWS,
+			Inner: urlBJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Outer JWS 'url' value \"example.com\" does not match inner JWS 'url' value \"example.org\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Matching inner and outer JWS URLs",
+			Outer: urlAJWS,
+			Inner: urlAJWS,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			prob := matchJWSURLs(tc.Outer, tc.Inner)
+			if prob != nil && tc.ExpectedProblem == nil {
+				t.Errorf("matchJWSURLs failed. Expected no problem, got %#v", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}

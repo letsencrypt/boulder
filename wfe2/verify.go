@@ -214,6 +214,36 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	return nil
 }
 
+// matchJWSURLs checks two JWS' URL headers are equal. This is used during key
+// rollover to check that the inner JWS URL matches the outer JWS URL. If the
+// JWS URLs do not match a problem is returned.
+func matchJWSURLs(outer, inner *jose.JSONWebSignature) *probs.ProblemDetails {
+	// Verify that the outer JWS has a non-empty URL header. This is strictly
+	// defensive since the expectation is that endpoints using `matchJWSURLs`
+	// have received at least one of their JWS from calling validPOSTForAccount(),
+	// which checks the outer JWS has the expected URL header before processing
+	// the inner JWS.
+	outerURL, ok := outer.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
+	if !ok || len(outerURL) == 0 {
+		return probs.Malformed("Outer JWS header parameter 'url' required")
+	}
+
+	// Verify the inner JWS has a non-empty URL header.
+	innerURL, ok := inner.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
+	if !ok || len(innerURL) == 0 {
+		return probs.Malformed("Inner JWS header parameter 'url' required")
+	}
+
+	// Verify that the outer URL matches the inner URL
+	if outerURL != innerURL {
+		return probs.Malformed(fmt.Sprintf(
+			"Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
+			outerURL, innerURL))
+	}
+
+	return nil
+}
+
 // parseJWS extracts a JSONWebSignature from a byte slice. If there is an error
 // reading the JWS or it is unacceptable (e.g. too many/too few signatures,
 // presence of unprotected headers) a problem is returned, otherwise the parsed
