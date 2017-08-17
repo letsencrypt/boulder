@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"go/format"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -40,7 +42,16 @@ func main() {
 	defer output.Close()
 
 	t := template.Must(template.New("tld").Parse(templateStr))
-	err = t.Execute(output, tlds)
+	buf := bytes.NewBuffer(nil)
+	err = t.Execute(buf, tlds)
+	if err != nil {
+		panic(err)
+	}
+	res, err := format.Source(buf.Bytes())
+	if err != nil {
+		panic(err)
+	}
+	_, err = output.Write(res)
 	if err != nil {
 		panic(err)
 	}

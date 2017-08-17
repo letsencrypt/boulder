@@ -2,14 +2,12 @@
 
 package tlds
 
-import "errors"
-
-// CheckTLD Verifies that the provided TLD is present in the
+// Valid checks that the provided TLD is present in the
 // IANA root DNS zone file
-func CheckTLD(tld string) error {
+func Valid(tld string) bool {
 	_, present := tlds[tld]
 	if !present {
-		return errors.New("Name doesn't end in a IANA TLD")
+		return false
 	}
-	return nil
+	return true
 }
