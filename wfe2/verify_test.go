@@ -705,7 +705,7 @@ func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSign
 	return parsedJWS, body
 }
 
-func TestParseJWS(t *testing.T) {
+func TestParseJWSRequest(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	_, tooManySigsJWSBody := multiSigJWS(t, wfe.nonceService)
@@ -808,7 +808,7 @@ func TestParseJWS(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, prob := wfe.parseJWS(tc.Request)
+			_, prob := wfe.parseJWSRequest(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else {

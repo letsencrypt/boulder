@@ -214,24 +214,11 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	return nil
 }
 
-// parseJWS extracts a JSONWebSignature from an HTTP POST request's body. If
-// there is an error reading the JWS or it is unacceptable (e.g. too many/too
-// few signatures, presence of unprotected headers) a problem is returned,
-// otherwise the parsed *JSONWebSignature is returned.
-func (wfe *WebFrontEndImpl) parseJWS(request *http.Request) (*jose.JSONWebSignature, *probs.ProblemDetails) {
-	// Verify that the POST request has the expected headers
-	if prob := wfe.validPOSTRequest(request); prob != nil {
-		return nil, prob
-	}
-
-	// Read the POST request body's bytes. validPOSTRequest has already checked
-	// that the body is non-nil
-	bodyBytes, err := ioutil.ReadAll(request.Body)
-	if err != nil {
-		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
-		return nil, probs.ServerInternal("unable to read request body")
-	}
-
+// parseJWS extracts a JSONWebSignature from a byte slice. If there is an error
+// reading the JWS or it is unacceptable (e.g. too many/too few signatures,
+// presence of unprotected headers) a problem is returned, otherwise the parsed
+// *JSONWebSignature is returned.
+func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *probs.ProblemDetails) {
 	// Parse the raw JWS JSON to check that:
 	// * the unprotected Header field is not being used.
 	// * the "signatures" member isn't present, just "signature".
@@ -242,7 +229,7 @@ func (wfe *WebFrontEndImpl) parseJWS(request *http.Request) (*jose.JSONWebSignat
 		Header     map[string]string
 		Signatures []interface{}
 	}
-	if err := json.Unmarshal(bodyBytes, &unprotected); err != nil {
+	if err := json.Unmarshal(body, &unprotected); err != nil {
 		wfe.stats.Inc("Errors.JWSParseError", 1)
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
@@ -265,8 +252,8 @@ func (wfe *WebFrontEndImpl) parseJWS(request *http.Request) (*jose.JSONWebSignat
 
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
 	// signature is present in the parsed JWS.
-	body := string(bodyBytes)
-	parsedJWS, err := jose.ParseSigned(body)
+	bodyStr := string(body)
+	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.Inc("Errors.JWSParseError", 1)
 		return nil, probs.Malformed("Parse error reading JWS")
@@ -285,6 +272,24 @@ func (wfe *WebFrontEndImpl) parseJWS(request *http.Request) (*jose.JSONWebSignat
 	}
 
 	return parsedJWS, nil
+}
+
+// parseJWSRequest extracts a JSONWebSignature from an HTTP POST request's body using parseJWS.
+func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWebSignature, *probs.ProblemDetails) {
+	// Verify that the POST request has the expected headers
+	if prob := wfe.validPOSTRequest(request); prob != nil {
+		return nil, prob
+	}
+
+	// Read the POST request body's bytes. validPOSTRequest has already checked
+	// that the body is non-nil
+	bodyBytes, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
+		return nil, probs.ServerInternal("unable to read request body")
+	}
+
+	return wfe.parseJWS(bodyBytes)
 }
 
 // extractJWK extracts a JWK from a provided JWS or returns a problem. It
@@ -445,7 +450,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	ctx context.Context,
 	logEvent *requestEvent) ([]byte, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
-	jws, prob := wfe.parseJWS(request)
+	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
 		return nil, nil, prob
 	}
@@ -481,7 +486,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 
 	// Parse the JWS from the POST request
-	jws, prob := wfe.parseJWS(request)
+	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
 		return nil, nil, prob
 	}
