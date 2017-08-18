@@ -179,7 +179,7 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *req
 
 // validPOSTURL checks the JWS' URL header against the expected URL based on the
 // HTTP request. This prevents a JWS intended for one endpoint being replayed
-// against a different endpoint.
+// against a different endpoint. If the URL isn't present, is invalid, or doesn't match the HTTP request
 func (wfe *WebFrontEndImpl) validPOSTURL(
 	request *http.Request,
 	jws *jose.JSONWebSignature) *probs.ProblemDetails {
@@ -350,6 +350,15 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 	return key, nil
 }
 
+// jwsKeyIDToAccountID returns the KeyID string from a JWS. It should be called
+// only using JWS from `parseJWS` to ensure the correct number of Signatures are
+// present.
+func (wfe *WebFrontEndImpl) jwsKeyIDToAccountID(jws *jose.JSONWebSignature) string {
+	header := jws.Signatures[0].Header
+	accountURL := header.KeyID
+	return accountURL
+}
+
 // lookupJWK finds a JWK associated with the Key ID present in a provided JWS,
 // returning the JWK and a pointer to the associated account, or a problem. It
 // expects that the JWS is using the embedded Key ID style of authentication
@@ -367,10 +376,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, prob
 	}
 
-	// lookupJWK is called after parseJWS() which defends against the
-	// incorrect number of signatures.
-	header := jws.Signatures[0].Header
-	accountURL := header.KeyID
+	accountURL := wfe.jwsKeyIDToAccountID(jws)
 	prefix := wfe.relativeEndpoint(request, regPath)
 	accountIDStr := strings.TrimPrefix(accountURL, prefix)
 	// Convert the account ID string to an int64 for use with the SA's
@@ -473,31 +479,32 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 // specified by the JWS key ID. If the request is valid (e.g. the JWS is well
 // formed, verifies with the JWK stored for the specified key ID, specifies the
 // correct URL, and has a valid nonce) then `validPOSTForAccount` returns the
-// validated JWS body and a pointer to the JWK's associated account. If any of
-// these conditions are not met or an error occurs only a problem is returned.
+// validated JWS body, the parsed JSONWebSignature, and a pointer to the JWK's
+// associated account. If any of these conditions are not met or an error
+// occurs only a problem is returned.
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
-	logEvent *requestEvent) ([]byte, *core.Registration, *probs.ProblemDetails) {
+	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, nil, nil, prob
 	}
 
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, nil, nil, prob
 	}
 
 	// Verify the JWS with the JWK from the SA
 	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, nil, nil, prob
 	}
 
-	return payload, account, nil
+	return payload, jws, account, nil
 }
 
 // validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
@@ -540,4 +547,86 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	}
 
 	return payload, pubKey, nil
+}
+
+// rolloverRequest is a struct representing an ACME key rollover request
+type rolloverRequest struct {
+	NewKey  jose.JSONWebKey
+	Account string
+}
+
+// validKeyRollover checks if the innerJWS is a valid key rollover operation
+// given the outer JWS that carried it. It is assumed that the outerJWS has
+// already been validated per the normal ACME process using `validPOSTForAccount`.
+// It is *critical* this is the case since `validKeyRollover` does not check the
+// outerJWS signature. This function checks that:
+// 1) the inner JWS is valid and well formed
+// 2) the inner JWS has the same "url" header as the outer JWS
+// 3) the inner JWS is self-authenticated with an embedded JWK
+// 4) the payload of the inner JWS is a valid JSON key change object
+// 5) that the key specified in the key change object *also* verifies the inner JWS
+// A *rolloverRequest object and is returned if successfully validated,
+// otherwise a problem is returned. The caller is left to verify whether the
+// new key is appropriate (e.g. isn't being used by another existing account)
+// and that the account field of the rollover object matches the account that
+// verified the outer JWS.
+func (wfe *WebFrontEndImpl) validKeyRollover(
+	outerJWS *jose.JSONWebSignature,
+	innerJWS *jose.JSONWebSignature,
+	logEvent *requestEvent) (*rolloverRequest, *probs.ProblemDetails) {
+
+	// Extract the embedded JWK from the inner JWS
+	jwk, prob := wfe.extractJWK(innerJWS)
+	if prob != nil {
+		return nil, prob
+	}
+
+	// If the key doesn't meet the GoodKey policy return a problem immediately
+	if err := wfe.keyPolicy.GoodKey(jwk.Key); err != nil {
+		wfe.stats.Inc("Errors.InnerJWKRejectedByGoodKey", 1)
+		return nil, probs.Malformed(err.Error())
+	}
+
+	// Check that the public key and JWS algorithms match expected
+	if err := checkAlgorithm(jwk, innerJWS); err != nil {
+		return nil, probs.Malformed(err.Error())
+	}
+
+	// Verify the inner JWS signature with the public key from the embedded JWK.
+	// NOTE(@cpu): We do not use `wfe.validJWSForKey` here because the inner JWS
+	// of a key rollover operation is special (e.g. has no nonce, doesn't have an
+	// HTTP request to match the URL to)
+	innerPayload, err := innerJWS.Verify(jwk)
+	if err != nil {
+		wfe.stats.Inc("Errors.InnerJWSVerificationFailed", 1)
+		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
+	}
+	// NOTE(@cpu): we do not stomp the requestEvent's payload here since that is set
+	// from the outerJWS in validPOSTForAccount and contains the inner JWS and inner
+	// payload already.
+
+	// Verify that the outer and inner JWS protected URL headers match
+	prob = matchJWSURLs(outerJWS, innerJWS)
+	if prob != nil {
+		return nil, prob
+	}
+
+	// Unmarshal the inner JWS' key roll over request
+	var req rolloverRequest
+	err = json.Unmarshal(innerPayload, &req)
+	if err != nil {
+		return nil, probs.Malformed(
+			"Inner JWS payload did not parse as JSON key rollover object")
+	}
+
+	// Verify that the key roll over request's NewKey *also* validates the inner
+	// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
+	// the JWS.
+	_, err = innerJWS.Verify(req.NewKey)
+	if err != nil {
+		wfe.stats.Inc("Errors.InnerJWSVerificationFailed", 1)
+		return nil, probs.Malformed("Inner JWS does not verify with specified new key")
+	}
+
+	return &req, nil
 }

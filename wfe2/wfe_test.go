@@ -283,9 +283,9 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-// loadKeys loads a private key from PEM/DER-encoded data and returns
+// loadKey loads a private key from PEM/DER-encoded data and returns
 // a `crypto.Signer`.
-func loadKeys(t *testing.T, keyBytes []byte) crypto.Signer {
+func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	// pem.Decode does not return an error as its 2nd arg, but instead the "rest"
 	// that was leftover from parsing the PEM block. We only care if the decoded
 	// PEM block was empty for this test function.
@@ -972,7 +972,7 @@ func TestChallenge(t *testing.T) {
 func TestBadNonce(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	key := loadKeys(t, []byte(test2KeyPrivatePEM))
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 	// NOTE: We deliberately do not set the NonceSource in the jose.SignerOptions
@@ -997,7 +997,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// E1 always exists; E2 never exists
-	key := loadKeys(t, []byte(testE2KeyPrivatePEM))
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
@@ -1021,7 +1021,7 @@ func TestNewECDSARegistration(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/0")
 
-	key = loadKeys(t, []byte(testE1KeyPrivatePEM))
+	key = loadKey(t, []byte(testE1KeyPrivatePEM))
 	_, ok = key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
@@ -1049,7 +1049,7 @@ func TestEmptyRegistration(t *testing.T) {
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
 	// return a populated registration for GetRegistrationByKey when test key 1 is
 	// used.
-	key := loadKeys(t, []byte(test1KeyPrivatePEM))
+	key := loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1083,7 +1083,7 @@ func TestEmptyRegistration(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-	key := loadKeys(t, []byte(test2KeyPrivatePEM))
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test2 key")
 
@@ -1168,7 +1168,7 @@ func TestNewRegistration(t *testing.T) {
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 
-	key = loadKeys(t, []byte(test1KeyPrivatePEM))
+	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test1 key")
 
@@ -1269,7 +1269,7 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
-	key := loadKeys(t, []byte(test2KeyPrivatePEM))
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1287,7 +1287,7 @@ func TestRegistration(t *testing.T) {
 		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
-	key = loadKeys(t, []byte(test1KeyPrivatePEM))
+	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
@@ -1525,7 +1525,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
 
-	key := loadKeys(t, []byte(test1KeyPrivatePEM))
+	key := loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Failed to load test 1 RSA key")
 
@@ -1652,7 +1652,7 @@ func TestDeactivateRegistration(t *testing.T) {
 		}`)
 
 	responseWriter.Body.Reset()
-	key := loadKeys(t, []byte(test3KeyPrivatePEM))
+	key := loadKey(t, []byte(test3KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test3 RSA key")
 
@@ -1748,6 +1748,103 @@ func TestNewOrder(t *testing.T) {
 			for k, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(k), v)
 			}
+		})
+	}
+}
+
+func TestKeyRollover(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
+
+	newJWK := &jose.JSONWebKey{
+		Key:       &newKey.PublicKey,
+		Algorithm: keyAlgForKey(t, newKey),
+	}
+	newJWKJSON, err := newJWK.MarshalJSON()
+	test.AssertNotError(t, err, "Error marshaling random JWK")
+
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{
+		  "type": "urn:acme:error:malformed",
+		  "detail": "Parse error reading JWS",
+		  "status": 400
+		}`)
+
+	testCases := []struct {
+		Name             string
+		Payload          string
+		ExpectedResponse string
+		NewKey           crypto.Signer
+	}{
+		{
+			Name:    "Missing account URL",
+			Payload: `{"newKey":` + string(newJWKJSON) + `}`,
+			ExpectedResponse: `{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/reg/1\"",
+		     "status": 400
+		   }`,
+			NewKey: newKey,
+		},
+		{
+			Name:    "Missing new key from inner payload",
+			Payload: `{"account":"http://localhost/acme/reg/1"}`,
+			ExpectedResponse: `{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Inner JWS does not verify with specified new key",
+		     "status": 400
+		   }`,
+		},
+		{
+			Name:    "New key is the same as the old key",
+			Payload: `{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			ExpectedResponse: `{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "New key specified by rollover request is the same as the old key",
+		     "status": 400
+		   }`,
+		},
+		{
+			Name:    "Inner JWS signed by the wrong key",
+			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/reg/1"}`,
+			ExpectedResponse: `{
+		     "type": "urn:acme:error:malformed",
+		     "detail": "Inner JWS does not verify with specified new key",
+		     "status": 400
+		   }`,
+		},
+		{
+			Name:    "Valid key rollover request",
+			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/reg/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "Status": "valid"
+		   }`,
+			NewKey: newKey,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter.Body.Reset()
+
+			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)
+			_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
+
+			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 		})
 	}
 }
