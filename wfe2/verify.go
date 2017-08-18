@@ -179,7 +179,8 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *req
 
 // validPOSTURL checks the JWS' URL header against the expected URL based on the
 // HTTP request. This prevents a JWS intended for one endpoint being replayed
-// against a different endpoint. If the URL isn't present, is invalid, or doesn't match the HTTP request
+// against a different endpoint. If the URL isn't present, is invalid, or
+// doesn't match the HTTP request a problem is returned.
 func (wfe *WebFrontEndImpl) validPOSTURL(
 	request *http.Request,
 	jws *jose.JSONWebSignature) *probs.ProblemDetails {
