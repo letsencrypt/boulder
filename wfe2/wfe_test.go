@@ -1284,7 +1284,7 @@ func TestRegistration(t *testing.T) {
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"102\" not found","status":400}`)
+		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"http://localhost/acme/reg/102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))

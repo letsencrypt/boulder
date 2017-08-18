@@ -947,7 +947,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retreiving account \"100\"",
+				Detail:     "Error retreiving account \"http://localhost/acme/reg/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
 		},
@@ -957,7 +957,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", missingIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"102\" not found",
+				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
@@ -1165,7 +1165,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			Request: makePostRequestWithPath("test", missingJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"102\" not found",
+				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
