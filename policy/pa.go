@@ -113,20 +113,6 @@ func isDNSCharacter(ch byte) bool {
 		ch == '.' || ch == '-'
 }
 
-// Test whether the domain name indicated by the label set is a label-wise
-// suffix match for the provided suffix set.  If the `properSuffix` flag is
-// set, then the name is required to not be in the suffix set (i.e., it must
-// have at least one label beyond any suffix in the set).
-func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) bool {
-	for i := range labels {
-		if domain := strings.Join(labels[i:], "."); suffixSet[domain] {
-			// If we match on the whole domain, gate on properSuffix
-			return !properSuffix || (i > 0)
-		}
-	}
-	return false
-}
-
 var (
 	errInvalidIdentifier   = berrors.MalformedError("Invalid identifier type")
 	errNonPublic           = berrors.MalformedError("Name does not end in a public suffix")
