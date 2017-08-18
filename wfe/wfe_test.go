@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 
@@ -1008,6 +1010,9 @@ func TestIssueCertificate(t *testing.T) {
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
+
+	// Test the CSR signature type counter works
+	test.AssertEquals(t, count("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -2241,4 +2246,13 @@ func TestKeyRollover(t *testing.T) {
 		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
 		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
 	}
+}
+
+func count(key string, value string, counter *prometheus.CounterVec) int {
+	ch := make(chan prometheus.Metric, 10)
+	counter.With(prometheus.Labels{key: value}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
 }

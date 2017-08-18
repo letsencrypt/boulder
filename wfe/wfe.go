@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -94,6 +95,8 @@ type WebFrontEndImpl struct {
 
 	AcceptRevocationReason bool
 	AllowAuthzDeactivation bool
+
+	csrSignatureAlgs *prometheus.CounterVec
 }
 
 // signatureValidationError indicates that the user's signature could not
@@ -115,12 +118,22 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, err
 	}
 
+	csrSignatureAlgs := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "csrSignatureAlgs",
+			Help: "Number of CSR signatures by algorithm",
+		},
+		[]string{"type"},
+	)
+	stats.MustRegister(csrSignatureAlgs)
+
 	return WebFrontEndImpl{
-		log:          logger,
-		clk:          clk,
-		nonceService: nonceService,
-		stats:        stats,
-		keyPolicy:    keyPolicy,
+		log:              logger,
+		clk:              clk,
+		nonceService:     nonceService,
+		stats:            stats,
+		keyPolicy:        keyPolicy,
+		csrSignatureAlgs: csrSignatureAlgs,
 	}, nil
 }
 
@@ -947,6 +960,9 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+
+	// Inc CSR signature algorithm counter
+	wfe.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
