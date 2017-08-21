@@ -1088,7 +1088,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	if rolloverRequest.Account != header.KeyID {
 		wfe.sendError(response, logEvent, probs.Malformed(
 			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
-				rolloverRequest.Account, accountURL)), nil)
+				rolloverRequest.Account, header.KeyID)), nil)
 		return
 	}
 
@@ -1110,7 +1110,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+	if _, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
 		wfe.sendError(response, logEvent, probs.Conflict("New key is already in use for a different account"), err)
 		return
 	}
@@ -1123,17 +1123,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	// Marshal & return the new account information
-	jsonReply, err := marshalIndent(updatedAcct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
-		// This should not happen - we've already marshalled the new key by now and
-		// everything else is from the SA
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal account"), err)
-		return
+		logEvent.AddError("failed to marshal updated account: %q", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
 	}
-	response.Header().Set("Content-Type", "application/json")
-	response.WriteHeader(http.StatusOK)
-	response.Write(jsonReply)
 }
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
