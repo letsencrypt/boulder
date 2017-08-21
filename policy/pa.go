@@ -104,26 +104,13 @@ const (
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
+var idnReservedRegexp = regexp.MustCompile("^[a-z0-9]{2}--")
 
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
 		('A' <= ch && ch <= 'Z') ||
 		('0' <= ch && ch <= '9') ||
 		ch == '.' || ch == '-'
-}
-
-// Test whether the domain name indicated by the label set is a label-wise
-// suffix match for the provided suffix set.  If the `properSuffix` flag is
-// set, then the name is required to not be in the suffix set (i.e., it must
-// have at least one label beyond any suffix in the set).
-func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) bool {
-	for i := range labels {
-		if domain := strings.Join(labels[i:], "."); suffixSet[domain] {
-			// If we match on the whole domain, gate on properSuffix
-			return !properSuffix || (i > 0)
-		}
-	}
-	return false
 }
 
 var (
@@ -141,6 +128,7 @@ var (
 	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
 	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
 	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
+	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -226,6 +214,8 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 			if !norm.NFKC.IsNormalString(ulabel) {
 				return errMalformedIDN
 			}
+		} else if idnReservedRegexp.MatchString(label) {
+			return errInvalidRLDH
 		}
 	}
 

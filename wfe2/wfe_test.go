@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -26,14 +27,12 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
@@ -254,8 +253,20 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOrderRequest) (*corepb.Order, error) {
-	return nil, nil
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	one := int64(1)
+	status := string(core.StatusPending)
+	id := "hello"
+	return &corepb.Order{
+		Id:             &one,
+		RegistrationID: req.RegistrationID,
+		Expires:        &one,
+		Csr:            req.Csr,
+		Status:         &status,
+		Authorizations: []*corepb.Authorization{
+			{Id: &id},
+		},
+	}, nil
 }
 
 type mockPA struct{}
@@ -625,6 +636,12 @@ func randomDirectoryKeyPresent(t *testing.T, buf []byte) bool {
 	return false
 }
 
+type fakeRand struct{}
+
+func (fr fakeRand) Read(p []byte) (int, error) {
+	return len(p), nil
+}
+
 func TestDirectory(t *testing.T) {
 	// Note: `TestDirectory` sets the `wfe.BaseURL` specifically to test the
 	// that it overrides the relative /directory behaviour.
@@ -634,27 +651,8 @@ func TestDirectory(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
-
-	const (
-		oldUA = "LetsEncryptPythonClient"
-	)
-
-	// Directory with a key change endpoint but no meta endpoint or random entry
-	noMetaJSONWithKeyChange := `{
-		"key-change": "http://localhost:4300/acme/key-change",
-		"new-authz": "http://localhost:4300/acme/new-authz",
-		"new-cert": "http://localhost:4300/acme/new-cert",
-		"new-reg": "http://localhost:4300/acme/new-reg",
-		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
-
-	// Directory without a key change endpoint or a random entry
-	noMetaJSONWithoutKeyChange := `{
-		"new-authz": "http://localhost:4300/acme/new-authz",
-		"new-cert": "http://localhost:4300/acme/new-cert",
-		"new-reg": "http://localhost:4300/acme/new-reg",
-		"revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
+	core.RandReader = fakeRand{}
+	defer func() { core.RandReader = rand.Reader }()
 
 	// Directory with a key change endpoint and a meta entry
 	metaJSON := `{
@@ -662,118 +660,38 @@ func TestDirectory(t *testing.T) {
   "meta": {
     "terms-of-service": "http://example.invalid/terms"
   },
-  "new-authz": "http://localhost:4300/acme/new-authz",
-  "new-cert": "http://localhost:4300/acme/new-cert",
   "new-reg": "http://localhost:4300/acme/new-reg",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert",
+  "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`
 
-	// Directory with a meta entry but no key change endpoint
-	metaNoKeyChangeJSON := `{
-  "meta": {
-    "terms-of-service": "http://example.invalid/terms"
-  },
-  "new-authz": "http://localhost:4300/acme/new-authz",
-  "new-cert": "http://localhost:4300/acme/new-cert",
-  "new-reg": "http://localhost:4300/acme/new-reg",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
-}`
-
-	testCases := []struct {
-		Name         string
-		UserAgent    string
-		SetFeatures  []string
-		ExpectedJSON string
-		RandomEntry  bool
-	}{
-		{
-			Name:         "No meta feature enabled, no explicit user-agent",
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "Key change feature enabled, no explicit user-agent",
-			SetFeatures:  []string{"AllowKeyRollover"},
-			ExpectedJSON: noMetaJSONWithKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, no explicit user-agent",
-			SetFeatures:  []string{"DirectoryMeta"},
-			ExpectedJSON: metaNoKeyChangeJSON,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, no key change enabled, explicit old Let's Encrypt user-agent",
-			SetFeatures:  []string{"DirectoryMeta"},
-			UserAgent:    oldUA,
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, key change enabled, explicit old Let's Encrypt user-agent",
-			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
-			UserAgent:    oldUA,
-			ExpectedJSON: noMetaJSONWithoutKeyChange,
-		},
-		{
-			Name:         "DirectoryMeta feature enabled, key change enabled, no explicit user-agent",
-			SetFeatures:  []string{"DirectoryMeta", "AllowKeyRollover"},
-			ExpectedJSON: metaJSON,
-		},
-		{
-			Name:        "RandomDirectoryEntry feature enabled, no explicit user-agent",
-			SetFeatures: []string{"RandomDirectoryEntry"},
-			RandomEntry: true,
-		},
-		{
-			Name:        "RandomDirectoryEntry feature enabled, explicit old Let's Encrypt user-agent",
-			UserAgent:   oldUA,
-			SetFeatures: []string{"RandomDirectoryEntry"},
-			RandomEntry: false,
-		},
+	// NOTE: the req.URL will be modified and must be constructed per
+	// testcase or things will break and you will be confused and sad.
+	url, _ := url.Parse("/directory")
+	req := &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "127.0.0.1:4300",
 	}
-
-	for _, tc := range testCases {
-		// Each test case will set zero or more feature flags
-		for _, feature := range tc.SetFeatures {
-			_ = features.Set(map[string]bool{feature: true})
-		}
-		t.Run(tc.Name, func(t *testing.T) {
-			// NOTE: the req.URL will be modified and must be constructed per
-			// testcase or things will break and you will be confused and sad.
-			url, _ := url.Parse("/directory")
-			req := &http.Request{
-				Method: "GET",
-				URL:    url,
-				Host:   "127.0.0.1:4300",
-			}
-			// Set an explicit User-Agent header as directed by the test case
-			if tc.UserAgent != "" {
-				req.Header = map[string][]string{"User-Agent": []string{tc.UserAgent}}
-			}
-			// Serve the /directory response for this request into a recorder
-			responseWriter := httptest.NewRecorder()
-			mux.ServeHTTP(responseWriter, req)
-			// We expect all directory requests to return a json object with a good HTTP status
-			test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-			// If the test case specifies exact JSON it expects, test that it matches
-			if tc.ExpectedJSON != "" {
-				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedJSON)
-			}
-			// Check if there is a random directory key present and if so, that it is
-			// expected to be present
-			test.AssertEquals(t,
-				randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
-				tc.RandomEntry)
-		})
-		// Reset the feature flags between test cases to get a blank slate
-		features.Reset()
-	}
+	// Serve the /directory response for this request into a recorder
+	responseWriter := httptest.NewRecorder()
+	mux.ServeHTTP(responseWriter, req)
+	// We expect all directory requests to return a json object with a good HTTP status
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
+	// Check if there is a random directory key present and if so, that it is
+	// expected to be present
+	test.AssertEquals(t,
+		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+		true)
 }
 
 func TestRelativeDirectory(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
+	core.RandReader = fakeRand{}
+	defer func() { core.RandReader = rand.Reader }()
 
 	dirTests := []struct {
 		host        string
@@ -781,15 +699,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 	}
 
 	for _, tt := range dirTests {
@@ -815,10 +733,6 @@ func TestRelativeDirectory(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	// Always allow key rollover to test the rolloverPath
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -846,11 +760,6 @@ func TestHTTPMethods(t *testing.T) {
 		{
 			Name:    "NewReg path should be POST only",
 			Path:    newRegPath,
-			Allowed: postOnly,
-		},
-		{
-			Name:    "NewAuthz path should be POST only",
-			Path:    newAuthzPath,
 			Allowed: postOnly,
 		},
 		{
@@ -901,6 +810,11 @@ func TestHTTPMethods(t *testing.T) {
 		{
 			Name:    "Rollover path should be POST only",
 			Path:    rolloverPath,
+			Allowed: postOnly,
+		},
+		{
+			Name:    "New order path should be POST only",
+			Path:    newOrderPath,
 			Allowed: postOnly,
 		},
 	}
@@ -955,211 +869,6 @@ func TestHTTPMethods(t *testing.T) {
 	}
 }
 
-// TODO: Write additional test cases for:
-//  - RA returns with a failure
-func TestIssueCertificate(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	mockLog := wfe.log.(*blog.Mock)
-
-	// The mock CA we use always returns the same test certificate, with a Not
-	// Before of 2015-09-22. Since we're currently using a real RA instead of a
-	// mock (see below), that date would trigger failures for excessive
-	// backdating. So we set the fake clock's time to a time that matches that
-	// test certificate.
-	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
-	fc.Add(fc.Now().Sub(testTime))
-
-	mockCertPEM, err := ioutil.ReadFile("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load mock cert")
-
-	// TODO: Use a mock RA so we can test various conditions of authorized, not
-	// authorized, etc.
-	stats := metrics.NewNoopScope()
-	ra := ra.NewRegistrationAuthorityImpl(
-		fc,
-		wfe.log,
-		stats,
-		0,
-		testKeyPolicy,
-		0,
-		true,
-		false,
-		300*24*time.Hour,
-		7*24*time.Hour,
-		nil,
-		0,
-	)
-	ra.SA = mocks.NewStorageAuthority(fc)
-	ra.CA = &mocks.MockCA{
-		PEM: mockCertPEM,
-	}
-	ra.PA = &mockPA{}
-	wfe.RA = ra
-
-	targetHost := "localhost"
-	targetPath := "new-cert"
-	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
-
-	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
-	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=foo.com | \
-	// sed 's/foo.com/fob.com/' | b64url
-	brokenCSRSignaturePayload := `{
-      "csr": "MIICVzCCAT8CAQAwEjEQMA4GA1UEAwwHZm9iLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKzHhqcMSTVjBu61vufGVmIYM4mMbWXgndHOUWnIqSKcNtFtPQ465tcZRT5ITIZWXGjsmgDrj31qvG3t5qLwyaF5hsTvFHK72nLMAQhdgM6481Qe9yaoaulWpkGr_9LVz4jQ9pGAaLVamXGpSxV-ipTOo79Sev4aZE8ksD9atEfWtcOD9w8_zj74vpWjTAHN49Q88chlChVqakn0zSfHPfS-jF8g0UTddBuF0Ti3sZChjxzbo6LwZ4182xX7XPnOLav3AGj0Su7j5XMl3OpenOrlWulWJeZIHq5itGW321j306XiGdbrdWH4K7JygICFds6oolwQRGBY6yinAtCgkTcCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxPiHOtKuBxtvecMNtLkTSuTyEkusQGnjoFDaKe5oqwGYQgy0YBii2-BbaPmqS4ZaDc-vDz_RLeKH5ZiH-NliYR1V_CRtpFLQi18g_2pLQnZLVO3ENs-SM37nU_nBGn9O93t2bkssoM3fZmtgp3R2W7I_wvx7Z8oWKa4boTeBAg_q9Gmi6QskZBddK7A4S_vOR0frU6QSPK_ksPhvovp9fwb6CVKrlJWf556UwRPWgbkW39hvTxK2KHhrUEg3oawNkWde2jZtnZ9e-9zpw8-_5O0X7-YN0ucbFTfQybce_ReuLlGepiHT5bvVavBZoIvqw1XOgSMvGgZFU8tAWMBlj"
-    }`
-
-	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url
-	noAuthorizationsCSRPayload := `{
-			"resource":"new-cert",
-			"csr": "MIICWDCCAUACAQAwEzERMA8GA1UEAwwIbWVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5-UED2bFRL1MsyBdbmCF_-pu3i-ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1_TBOwTAuFkHePmkNT63uPm9My_hNzsSm1o-Q519Cf7ry-JQmOVgz_jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoXRUlQjXXkNTj23OxxdT_cVLcLJjytyG6e5izME2R2aCkDBWIc1a4_sRJ0R396auPXG6KhJ7o_AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEALu046p76aKgvoAEHFINkMTgKokPXf9mZ4IZx_BKz-qs1MPMxVtPIrQDVweBH6tYT7Hfj2naLry6SpZ3vUNP_FYeTFWgW1V03LiqacX-QQgbEYtn99Dt3ScGyzb7EH833ztb3vDJ_-ha_CJplIrg-kHBBrlLFWXhh-I9K1qLRTNpbhZ18ooFde4Sbhkw9o9fKivGhx9aYr7ZbjRsNtKit_DsG1nwEXz53TMJ2vB9IQY29coJv_n5NFLkvBfzbG5faRNiFcimPYBO2jFdaA2mWzfxltLtwMF_dBwzTXDpMo3TVT9zEdV8YpsWqr63igqGDZVpKenlkqvRTeGJVayVuMA"
-		}`
-
-	// CSR from an < 1.0.2 OpenSSL
-	oldOpenSSLCSRPayload := `{
-      "resource": "new-cert",
-      "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
-    }`
-
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	// a valid CSR with authorizations for all of its names
-	goodCertCSRPayload := `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`
-
-	cert, err := core.LoadCert("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load cert")
-
-	goodCertHeaders := map[string]string{
-		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
-		"Link":         `<http://localhost/acme/issuer-cert>;rel="up"`,
-		"Content-Type": "application/pkix-cert",
-	}
-	// NOTE(@cpu): Unlike the test case above this case expects
-	// `localhost:4000` in the Link header value since the AIAIssuer flag
-	// will have been true. The WFE will also promote it from HTTP to HTTPS.
-	goodCertAIAHeaders := map[string]string{
-		"Location":     "http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46",
-		"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
-		"Content-Type": "application/pkix-cert",
-	}
-	goodCertLogParts := []string{
-		`INFO: `,
-		`[AUDIT] `,
-		`"CommonName":"not-an-example.com",`,
-	}
-
-	testCases := []struct {
-		Name             string
-		Request          *http.Request
-		ExpectedProblem  string
-		ExpectedCert     string
-		AssertCSRLogged  bool
-		ExpectedHeaders  map[string]string
-		ExpectedLogParts []string
-		UseAIAIssuer     bool
-	}{
-		{
-			Name: "POST, but no body",
-			Request: &http.Request{
-				Method: "POST",
-				Header: map[string][]string{
-					"Content-Length": {"0"},
-				},
-			},
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
-		},
-		{
-			Name:            "POST, with an invalid JWS body",
-			Request:         makePostRequestWithPath("hi", "hi"),
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
-		},
-		{
-			Name:            "POST, properly signed JWS, payload isn't valid",
-			Request:         signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
-		},
-		{
-			Name:            "POST, properly signed JWS, trivial JSON payload",
-			Request:         signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`,
-		},
-		{
-			Name:            "POST, properly signed JWS, broken signature on CSR",
-			Request:         signAndPost(t, targetPath, signedURL, brokenCSRSignaturePayload, 1, wfe.nonceService),
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`,
-		},
-		{
-			Name:            "POST, properly signed JWS, CSR from an old OpenSSL",
-			Request:         signAndPost(t, targetPath, signedURL, oldOpenSSLCSRPayload, 1, wfe.nonceService),
-			ExpectedProblem: `{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`,
-		},
-		{
-			Name:            "POST, properly signed JWS, no authorizations for names in CSR",
-			Request:         signAndPost(t, targetPath, signedURL, noAuthorizationsCSRPayload, 1, wfe.nonceService),
-			ExpectedProblem: `{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`,
-			AssertCSRLogged: true,
-		},
-		{
-			Name:             "POST, properly signed JWS, authorizations for all names in CSR",
-			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedCert:     string(cert.Raw),
-			AssertCSRLogged:  true,
-			ExpectedHeaders:  goodCertHeaders,
-			ExpectedLogParts: goodCertLogParts,
-		},
-		{
-			Name:             "POST, properly signed JWS, authorizations for all names in CSR, using AIAIssuer",
-			Request:          signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedCert:     string(cert.Raw),
-			AssertCSRLogged:  true,
-			UseAIAIssuer:     true,
-			ExpectedHeaders:  goodCertAIAHeaders,
-			ExpectedLogParts: goodCertLogParts,
-		},
-	}
-
-	responseWriter := httptest.NewRecorder()
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
-			mockLog.Clear()
-
-			if tc.UseAIAIssuer {
-				_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
-			}
-
-			wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, tc.Request)
-			if len(tc.ExpectedProblem) > 0 {
-				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedProblem)
-			} else if len(tc.ExpectedCert) > 0 {
-				test.AssertEquals(t, responseWriter.Body.String(), tc.ExpectedCert)
-			}
-
-			if tc.AssertCSRLogged {
-				assertCsrLogged(t, mockLog)
-			}
-
-			headers := responseWriter.Header()
-			for k, v := range tc.ExpectedHeaders {
-				test.AssertEquals(t, headers.Get(k), v)
-			}
-
-			if len(tc.ExpectedLogParts) > 0 {
-				reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
-				test.AssertEquals(t, len(reqlogs), 1)
-				for _, msg := range tc.ExpectedLogParts {
-					test.AssertContains(t, reqlogs[0], msg)
-				}
-			}
-			features.Reset()
-		})
-	}
-}
-
 func TestGetChallenge(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
@@ -1198,69 +907,66 @@ func TestGetChallenge(t *testing.T) {
 
 func TestChallenge(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
 
-	var key jose.JSONWebKey
-	err := json.Unmarshal([]byte(`
+	// See mocks/mocks.go StorageAuthority.GetAuthorization for the "expired/"
+	// "error_result/" path handling.
+	testCases := []struct {
+		Name            string
+		Path            string
+		ExpectedStatus  int
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
+	}{
 		{
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-		}
-	`), &key)
-	test.AssertNotError(t, err, "Could not unmarshal testing key")
+			Name:           "Valid challenge",
+			Path:           "valid/23",
+			ExpectedStatus: http.StatusAccepted,
+			ExpectedHeaders: map[string]string{
+				"Location": "http://localhost/acme/challenge/valid/23",
+				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
+			},
+			ExpectedBody: `{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`,
+		},
+		{
+			Name:           "Expired challenge",
+			Path:           "expired/23",
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   `{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`,
+		},
+		{
+			Name:           "Missing challenge",
+			Path:           "",
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   `{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`,
+		},
+		{
+			Name:           "Unspecified database error",
+			Path:           "error_result/24",
+			ExpectedStatus: http.StatusInternalServerError,
+			ExpectedBody:   `{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`,
+		},
+	}
 
-	targetHost := "localhost"
-	challengePath := "valid/23"
-	signedURL := fmt.Sprintf("http://%s/%s", targetHost, challengePath)
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request := makePostRequestWithPath(challengePath, body)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
 
-	test.AssertEquals(t, responseWriter.Code, 202)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/challenge/valid/23")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/authz/valid>;rel="up"`)
-	test.AssertUnmarshaledEquals(
-		t, responseWriter.Body.String(),
-		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+			// Make a signed request to the Challenge endpoint
+			signedURL := fmt.Sprintf("http://localhost/%s", tc.Path)
+			_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+			request := makePostRequestWithPath(tc.Path, jwsBody)
+			wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
-	// Expired challenges should be inaccessible
-	challengePath = "expired/23"
-	signedURL = fmt.Sprintf("http://%s/%s", targetHost, challengePath)
-	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request = makePostRequestWithPath(challengePath, body)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
-
-	// Challenge Not found
-	challengePath = ""
-	signedURL = fmt.Sprintf("http://%s/%s", targetHost, challengePath)
-	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request = makePostRequestWithPath(challengePath, body)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`)
-
-	// Unspecified database error
-	errorPath := "error_result/24"
-	signedURL = fmt.Sprintf("http://%s/%s", targetHost, errorPath)
-	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request = makePostRequestWithPath(errorPath, body)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`)
-
+			// Check the reponse code, headers and body match expected
+			headers := responseWriter.Header()
+			body := responseWriter.Body.String()
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
+			for h, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(h), v)
+			}
+			test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
+		})
+	}
 }
 
 func TestBadNonce(t *testing.T) {
@@ -1460,12 +1166,7 @@ func TestNewRegistration(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/reg/0")
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
-
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/new-authz>;rel="next"`)
 
 	key = loadKeys(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
@@ -1513,70 +1214,12 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
-func TestAuthorization(t *testing.T) {
+func TestGetAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
-
-	responseWriter := httptest.NewRecorder()
-
-	// POST, but no body.
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "POST",
-		Header: map[string][]string{
-			"Content-Length": {"0"},
-		},
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
-
-	// POST, but body that isn't valid JWS
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("hi", "hi"))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
-
-	signedURL := fmt.Sprintf("http://localhost%s", authzPath)
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	_, _, fooBody := signRequestKeyID(t, 1, nil, signedURL, `foo`, wfe.nonceService)
-	request := makePostRequestWithPath(authzPath, fooBody)
-
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
-
-	// Same signed body, but payload modified by one byte, breaking signature.
-	// should fail JWS verification.
-	responseWriter.Body.Reset()
-	request = makePostRequestWithPath(authzPath,
-		`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImtpZCI6IjEiLCJub25jZSI6ImdMTE90QlJCeXl4V3Y2RExQRUJFUERsS05DV294NzdjYzBRLXdTSVdYY1UiLCJ1cmwiOiJodHRwOi8vbG9jYWxob3N0L2FjbWUvYXV0aHovIn0","signature":"Xn2yTyn1eIgbv1HOnl8_OuDMrHRlacje_fhAYyOlVmFGrb9vzTTYQ-TXdXpjrtQzcIRX7z0v1Wv3DJJryMAMwm-I9DN-Gmd_h1HG6KXK61vHIqMWlUen2WoBBNdeE00S5UI0iP-zY5E_jfW0ByLzAqoZeMN_vTJG40Ji9hfvaPaQBGLEcz6xw0Mc7EgacY6m_JGPBkCDvrDstHTTqIu5tZ3Dw7tif33aakONDKXVE0WOHjfHNP-jW4tkeCrlIDajWpU074AGmCMyBDXK5ii6Pv6tztcMPqg8SvL9_I7RyCsjQGCymNCr_XoJkRwS6GBoaKS5Jqmb-qt-O_-rcpq-Fw"}`)
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`)
-
-	responseWriter.Body.Reset()
-	payload := `{"identifier":{"type":"dns","value":"test.com"}}`
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(authzPath, body)
-
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, request)
-
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/authz/bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/new-cert>;rel="next"`)
-
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
-
-	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
 	authzURL := "expired"
-	responseWriter = httptest.NewRecorder()
+	responseWriter := httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
@@ -1605,8 +1248,6 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
@@ -1671,7 +1312,6 @@ func TestRegistration(t *testing.T) {
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 
@@ -1697,7 +1337,6 @@ func TestRegistration(t *testing.T) {
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links = responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 }
@@ -1732,8 +1371,6 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1742,125 +1379,95 @@ func TestGetCertificate(t *testing.T) {
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
+	pkixContent := "application/pkix-cert"
 
-	responseWriter := httptest.NewRecorder()
+	noCache := "public, max-age=0, no-cache"
+	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
+	notFound := `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`
 
-	mockLog := wfe.log.(*blog.Mock)
-	mockLog.Clear()
+	testCases := []struct {
+		Name            string
+		Path            string
+		Features        []string
+		ExpectedStatus  int
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
+		ExpectedCert    []byte
+	}{
+		{
+			Name:           "Valid serial, UseAIAIssuer feature enabled",
+			Path:           goodSerial,
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+				"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
+			},
+			ExpectedCert: certBlock.Bytes,
+		},
+		{
+			Name:           "Unused serial, no cache",
+			Path:           "/acme/cert/0000000000000000000000000000000000ff",
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   notFound,
+		},
+		{
+			Name:           "Invalid serial, no cache",
+			Path:           "/acme/cert/nothex",
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   notFound,
+		},
+		{
+			Name:           "Another invalid serial, no cache",
+			Path:           "/acme/cert/00000000000000",
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   notFound,
+		},
+	}
 
-	// Valid serial, cached
-	req, _ := http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
-	req.RemoteAddr = "192.168.0.1"
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
-	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/issuer-cert>;rel="up"`)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
+			mockLog := wfe.log.(*blog.Mock)
+			mockLog.Clear()
 
-	// Valid serial, UseAIAIssuerURL: true
-	mockLog.Clear()
-	responseWriter = httptest.NewRecorder()
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
-	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
-	req.RemoteAddr = "192.168.0.1"
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
+			// Mux a request for a certificate
+			req, _ := http.NewRequest("GET", tc.Path, nil)
+			req.RemoteAddr = "192.168.0.1"
+			mux.ServeHTTP(responseWriter, req)
+			headers := responseWriter.Header()
 
-	reqlogs := mockLog.GetAllMatching(`Successful request`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
+			// Assert that the status code written is as expected
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
 
-	// Unused serial, no cache
-	mockLog.Clear()
-	responseWriter = httptest.NewRecorder()
-	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000ff", nil)
-	req.RemoteAddr = "192.168.0.1"
-	req.Header.Set("X-Forwarded-For", "192.168.99.99")
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+			// All of the responses should have the correct cache control header
+			test.AssertEquals(t, headers.Get("Cache-Control"), noCache)
 
-	reqlogs = mockLog.GetAllMatching(`Terminated request`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
+			// If the test cases expects additional headers, check those too
+			for h, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(h), v)
+			}
 
-	// Invalid serial, no cache
-	responseWriter = httptest.NewRecorder()
-	req, _ = http.NewRequest("GET", "/acme/cert/nothex", nil)
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+			if len(tc.ExpectedCert) > 0 {
+				// If the expectation was to return a certificate, check that it was the one expected
+				bodyBytes := responseWriter.Body.Bytes()
+				test.Assert(t, bytes.Compare(bodyBytes, tc.ExpectedCert) == 0, "Certificates don't match")
 
-	// Invalid serial, no cache
-	responseWriter = httptest.NewRecorder()
-	req, _ = http.NewRequest("GET", "/acme/cert/00000000000000", nil)
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
-}
+				// Successful requests should be logged as such
+				reqlogs := mockLog.GetAllMatching(`Successful request`)
+				test.AssertEquals(t, len(reqlogs), 1)
+				test.AssertContains(t, reqlogs[0], `INFO: `)
+			} else {
+				// Otherwise if the expectation wasn't a certificate, check that the body matches the expected
+				body := responseWriter.Body.String()
+				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 
-func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
-	matches := mockLog.GetAllMatching("^INFO: \\[AUDIT\\] Certificate request JSON=")
-	test.Assert(t, len(matches) == 1,
-		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
-			len(matches)))
-}
-
-func TestLogCsrPem(t *testing.T) {
-	const certificateRequestJSON = `{
-		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
-	}`
-	wfe, fc := setupWFE(t)
-	var certificateRequest core.CertificateRequest
-	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
-	test.AssertNotError(t, err, "Unable to parse certificateRequest")
-
-	mockSA := mocks.NewStorageAuthority(fc)
-	reg, err := mockSA.GetRegistration(ctx, 789)
-	test.AssertNotError(t, err, "Unable to get registration")
-
-	req, err := http.NewRequest("GET", "http://[::1]/", nil)
-	test.AssertNotError(t, err, "NewRequest failed")
-	req.RemoteAddr = "12.34.98.76"
-	req.Header.Set("X-Forwarded-For", "10.0.0.1,172.16.0.1")
-
-	mockLog := wfe.log.(*blog.Mock)
-	mockLog.Clear()
-
-	wfe.logCsr(req, certificateRequest, reg)
-
-	assertCsrLogged(t, mockLog)
-}
-
-func TestBadKeyCSR(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	payload := `{
-			"resource":"new-cert",
-			"csr": "MIHLMHcCAQAwEjEQMA4GA1UEAwwHZm9vLmNvbTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQDCZftp4x4owgjBnwOKfzihIPedT-BUmV2fuQPMqaUlc8yJUp13vcO5uxUlaBm8leM7Dj_sgTDP_JgykorlYo73AgMBAAGgADANBgkqhkiG9w0BAQsFAANBAEaQ2QBhweK-kp1ejQCedUhMit_wG-uTBtKnc3M82f6_fztLkhg1vWQ782nmhbEI5orXp6QtNHgJYnBpqA9Ut00"
-		}`
-	signedURL := fmt.Sprintf("http://localhost%s", newCertPath)
-	// Sign a request using test1key
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request := makePostRequestWithPath(newCertPath, body)
-
-	// CSR with a bad (512 bit RSA) key.
-	// openssl req -outform der -new -newkey rsa:512 -nodes -keyout foo.com.key
-	//   -subj /CN=foo.com | base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, request)
-
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
+				// Unsuccessful requests should be logged as such
+				reqlogs := mockLog.GetAllMatching(`Terminated request`)
+				test.AssertEquals(t, len(reqlogs), 1)
+				test.AssertContains(t, reqlogs[0], `INFO: `)
+			}
+		})
+	}
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
@@ -1984,8 +1591,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 func TestDeactivateRegistration(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 
 	responseWriter.Body.Reset()
 	payload := `{"status":"asd"}`
@@ -2066,4 +1671,83 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "detail": "Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
+}
+
+func TestNewOrder(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
+	targetHost := "localhost"
+	targetPath := "new-cert"
+	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
+
+	// CSR from an < 1.0.2 OpenSSL
+	oldOpenSSLCSRPayload := `{
+	"csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
+}`
+
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	// a valid CSR
+	goodCertCSRPayload := `{
+	"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+}`
+
+	testCases := []struct {
+		Name            string
+		Request         *http.Request
+		ExpectedBody    string
+		ExpectedHeaders map[string]string
+	}{
+		{
+			Name: "POST, but no body",
+			Request: &http.Request{
+				Method: "POST",
+				Header: map[string][]string{
+					"Content-Length": {"0"},
+				},
+			},
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
+		},
+		{
+			Name:         "POST, with an invalid JWS body",
+			Request:      makePostRequestWithPath("hi", "hi"),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, payload isn't valid",
+			Request:      signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, trivial JSON payload",
+			Request:      signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, CSR from an old OpenSSL",
+			Request:      signAndPost(t, targetPath, signedURL, oldOpenSSLCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`,
+		},
+		{
+			Name:            "POST, properly signed JWS, authorizations for all names in CSR",
+			Request:         signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody:    `{"Status":"pending","Expires":"1970-01-01T00:00:00Z","CSR":"MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo","Authorizations":["http://localhost/acme/authz/hello"]}`,
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter.Body.Reset()
+			responseWriter.HeaderMap = http.Header{}
+
+			wfe.NewOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
+
+			headers := responseWriter.Header()
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(k), v)
+			}
+		})
+	}
 }

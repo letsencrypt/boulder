@@ -9,6 +9,7 @@ import "core/proto/core.proto";
 service CertificateAuthority {
   rpc IssueCertificate(IssueCertificateRequest) returns (core.Certificate) {}
   rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
+  rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
 }
 
 // OCSPGenerator generates OCSP. We separate this out from
@@ -27,6 +28,12 @@ message IssueCertificateRequest {
 message IssuePrecertificateResponse {
   optional core.Precertificate precert = 1;
   optional core.SCTFetchingConfig sctFetchingConfig = 2;
+}
+
+message IssueCertificateForPrecertificateRequest {
+  optional IssueCertificateRequest issueReq = 1;
+  optional bytes precertDER = 2;
+  repeated bytes SCTs = 3;
 }
 
 message GenerateOCSPRequest {

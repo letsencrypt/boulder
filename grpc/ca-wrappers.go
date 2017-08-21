@@ -51,6 +51,17 @@ func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Con
 	return cac.inner.IssuePrecertificate(ctx, issueReq)
 }
 
+func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
+	if cac.inner == nil {
+		return core.Certificate{}, errors.New("this CA client does not support issuing precertificates")
+	}
+	res, err := cac.inner.IssueCertificateForPrecertificate(ctx, req)
+	if err != nil {
+		return core.Certificate{}, err
+	}
+	return pbToCert(res), nil
+}
+
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
 	if cac.innerOCSP == nil {
 		return nil, errors.New("this CA client does not support generating OCSP")
@@ -88,6 +99,14 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Conte
 
 func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	return cas.inner.IssuePrecertificate(ctx, request)
+}
+
+func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	cert, err := cas.inner.IssueCertificateForPrecertificate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return certToPB(cert), nil
 }
 
 func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, request *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
