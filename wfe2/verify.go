@@ -351,15 +351,6 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 	return key, nil
 }
 
-// jwsKeyIDToAccountID returns the KeyID string from a JWS. It should be called
-// only using JWS from `parseJWS` to ensure the correct number of Signatures are
-// present.
-func (wfe *WebFrontEndImpl) jwsKeyIDToAccountID(jws *jose.JSONWebSignature) string {
-	header := jws.Signatures[0].Header
-	accountURL := header.KeyID
-	return accountURL
-}
-
 // lookupJWK finds a JWK associated with the Key ID present in a provided JWS,
 // returning the JWK and a pointer to the associated account, or a problem. It
 // expects that the JWS is using the embedded Key ID style of authentication
@@ -377,7 +368,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, prob
 	}
 
-	accountURL := wfe.jwsKeyIDToAccountID(jws)
+	header := jws.Signatures[0].Header
+	accountURL := header.KeyID
 	prefix := wfe.relativeEndpoint(request, regPath)
 	accountIDStr := strings.TrimPrefix(accountURL, prefix)
 	// Convert the account ID string to an int64 for use with the SA's

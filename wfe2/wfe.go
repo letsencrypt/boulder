@@ -1084,7 +1084,8 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 	// Check that the rollover request's account URL matches the account URL used
 	// to validate the outer JWS
-	accountURL := wfe.jwsKeyIDToAccountID(outerJWS)
+	header := outerJWS.Signatures[0].Header
+	accountURL := header.KeyID
 	if rolloverRequest.Account != accountURL {
 		wfe.sendError(response, logEvent, probs.Malformed(
 			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
