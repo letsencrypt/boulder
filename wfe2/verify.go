@@ -599,15 +599,13 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// payload already.
 
 	// Verify that the outer and inner JWS protected URL headers match
-	prob = matchJWSURLs(outerJWS, innerJWS)
-	if prob != nil {
+	if matchJWSURLs(outerJWS, innerJWS) != nil {
 		return nil, prob
 	}
 
 	// Unmarshal the inner JWS' key roll over request
 	var req rolloverRequest
-	err = json.Unmarshal(innerPayload, &req)
-	if err != nil {
+	if json.Unmarshal(innerPayload, &req) != nil {
 		return nil, probs.Malformed(
 			"Inner JWS payload did not parse as JSON key rollover object")
 	}
@@ -615,8 +613,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// Verify that the key roll over request's NewKey *also* validates the inner
 	// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
 	// the JWS.
-	_, err = innerJWS.Verify(req.NewKey)
-	if err != nil {
+	if _, err := innerJWS.Verify(req.NewKey); err != nil {
 		wfe.stats.Inc("Errors.InnerJWSVerificationFailed", 1)
 		return nil, probs.Malformed("Inner JWS does not verify with specified new key")
 	}
