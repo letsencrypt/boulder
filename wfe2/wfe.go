@@ -670,7 +670,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *requestEvent) {
-	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -735,7 +735,7 @@ func (wfe *WebFrontEndImpl) Registration(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -836,7 +836,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) bool {
-	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
@@ -1053,12 +1053,82 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 }
 
 // KeyRollover allows a user to change their signing key
-func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	// KeyRollover is a NOP for WFEv2 at the present time. It needs unique JWS
-	// validation compared to other ACME v2 endpoints.
-	wfe.sendError(response, logEvent,
-		probs.ServerInternal("KeyRollover is not presently implemented for ACME v2"), nil)
-	return
+func (wfe *WebFrontEndImpl) KeyRollover(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	// Validate the outer JWS on the key rollover in standard fashion using
+	// validPOSTForAccount
+	outerBody, outerJWS, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Parse the inner JWS from the validated outer JWS body
+	innerJWS, prob := wfe.parseJWS(outerBody)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Validate the inner JWS as a key rollover request for the outer JWS
+	rolloverRequest, prob := wfe.validKeyRollover(outerJWS, innerJWS, logEvent)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+	newKey := rolloverRequest.NewKey
+
+	// Check that the rollover request's account URL matches the account URL used
+	// to validate the outer JWS
+	header := outerJWS.Signatures[0].Header
+	if rolloverRequest.Account != header.KeyID {
+		wfe.sendError(response, logEvent, probs.Malformed(
+			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
+				rolloverRequest.Account, header.KeyID)), nil)
+		return
+	}
+
+	// Check that the new key isn't the same as the old key. This would fail as
+	// part of the subsequent `wfe.SA.GetRegistrationByKey` check since the new key
+	// will find the old registration if its equal to the old registration key. We
+	// check new key against old key explicitly to save an RPC round trip and a DB
+	// query for this easy rejection case
+	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
+	if err != nil {
+		// This should not happen - both the old and new key have been validated by now
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), nil)
+		return
+	}
+	if keysEqual {
+		wfe.sendError(response, logEvent, probs.Malformed(
+			"New key specified by rollover request is the same as the old key"), nil)
+		return
+	}
+
+	// Check that the new key isn't already being used for an existing account
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingAcct.ID)))
+		wfe.sendError(response, logEvent, probs.Conflict("New key is already in use for a different account"), err)
+		return
+	}
+
+	// Update the account key to the new key
+	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			problemDetailsForError(err, "Unable to update account with new key"), err)
+		return
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
+	if err != nil {
+		logEvent.AddError("failed to marshal updated account: %q", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
+	}
 }
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
@@ -1103,7 +1173,7 @@ type orderJSON struct {
 
 // NewOrder is used by clients to create a new order object from a CSR
 func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors

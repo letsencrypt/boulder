@@ -78,7 +78,7 @@ func signRequestEmbed(
 	// if no key is provided default to test1KeyPrivatePEM
 	var publicKey interface{}
 	if privateKey == nil {
-		signer := loadKeys(t, []byte(test1KeyPrivatePEM))
+		signer := loadKey(t, []byte(test1KeyPrivatePEM))
 		privateKey = signer
 		publicKey = signer.Public()
 	} else {
@@ -93,9 +93,11 @@ func signRequestEmbed(
 	opts := &jose.SignerOptions{
 		NonceSource: nonceService,
 		EmbedJWK:    true,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+	}
+	if url != "" {
+		opts.ExtraHeaders = map[jose.HeaderKey]interface{}{
 			"url": url,
-		},
+		}
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
@@ -124,13 +126,13 @@ func signRequestKeyID(
 	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
 	if privateKey == nil {
-		privateKey = loadKeys(t, []byte(test1KeyPrivatePEM))
+		privateKey = loadKey(t, []byte(test1KeyPrivatePEM))
 	}
 
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
 		Algorithm: keyAlgForKey(t, privateKey),
-		KeyID:     fmt.Sprintf("%d", keyID),
+		KeyID:     fmt.Sprintf("http://localhost/acme/reg/%d", keyID),
 	}
 
 	signerKey := jose.SigningKey{
@@ -567,7 +569,7 @@ func signExtraHeaders(
 	t *testing.T,
 	headers map[jose.HeaderKey]interface{},
 	nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey := loadKeys(t, []byte(test1KeyPrivatePEM))
+	privateKey := loadKey(t, []byte(test1KeyPrivatePEM))
 
 	signerKey := jose.SigningKey{
 		Key:       privateKey,
@@ -674,8 +676,8 @@ func TestValidPOSTURL(t *testing.T) {
 }
 
 func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKeyA := loadKeys(t, []byte(test1KeyPrivatePEM))
-	privateKeyB := loadKeys(t, []byte(test2KeyPrivatePEM))
+	privateKeyA := loadKey(t, []byte(test1KeyPrivatePEM))
+	privateKeyB := loadKey(t, []byte(test2KeyPrivatePEM))
 
 	signerKeyA := jose.SigningKey{
 		Key:       privateKeyA,
@@ -705,7 +707,7 @@ func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSign
 	return parsedJWS, body
 }
 
-func TestParseJWS(t *testing.T) {
+func TestParseJWSRequest(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	_, tooManySigsJWSBody := multiSigJWS(t, wfe.nonceService)
@@ -808,7 +810,7 @@ func TestParseJWS(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, prob := wfe.parseJWS(tc.Request)
+			_, prob := wfe.parseJWSRequest(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else {
@@ -861,7 +863,7 @@ func TestExtractJWK(t *testing.T) {
 }
 
 func signRequestBadKeyID(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey := loadKeys(t, []byte(test1KeyPrivatePEM))
+	privateKey := loadKey(t, []byte(test1KeyPrivatePEM))
 
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
@@ -945,7 +947,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retreiving account \"100\"",
+				Detail:     "Error retreiving account \"http://localhost/acme/reg/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
 		},
@@ -955,7 +957,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", missingIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"102\" not found",
+				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
@@ -1120,14 +1122,14 @@ func TestValidJWSForKey(t *testing.T) {
 func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	_, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
 	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)
 
 	// ID 102 is mocked to return missing
 	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
 
 	// ID 3 is mocked to return deactivated
-	key3 := loadKeys(t, []byte(test3KeyPrivatePEM))
+	key3 := loadKey(t, []byte(test3KeyPrivatePEM))
 	_, _, deactivatedJWSBody := signRequestKeyID(t, 3, key3, "http://localhost/test", "{}", wfe.nonceService)
 
 	_, _, embeddedJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
@@ -1138,6 +1140,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 		ExpectedProblem *probs.ProblemDetails
 		ExpectedPayload string
 		ExpectedAcct    *core.Registration
+		ExpectedJWS     *jose.JSONWebSignature
 	}{
 		{
 			Name:    "Invalid JWS",
@@ -1162,7 +1165,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			Request: makePostRequestWithPath("test", missingJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"102\" not found",
+				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 		},
@@ -1180,6 +1183,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			Request:         makePostRequestWithPath("test", validJWSBody),
 			ExpectedPayload: `{"test":"passed"}`,
 			ExpectedAcct:    &validAccount,
+			ExpectedJWS:     validJWS,
 		},
 	}
 
@@ -1187,7 +1191,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 
-			outPayload, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
+			outPayload, jws, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
@@ -1195,6 +1199,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
+				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -1234,7 +1239,7 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	// Ensure that ValidPOSTForAccount produces an error since the
 	// mockSADifferentStoredKey will return a different key than the one we used to
 	// sign the request
-	_, _, prob := wfe.validPOSTForAccount(request, ctx, event)
+	_, _, _, prob := wfe.validPOSTForAccount(request, ctx, event)
 	test.Assert(t, prob != nil, "No error returned for request signed by wrong key")
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 	test.AssertEquals(t, prob.Detail, "JWS verification error")
@@ -1298,6 +1303,112 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
+		})
+	}
+}
+
+func TestMatchJWSURLs(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	noURLJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", wfe.nonceService)
+	urlBJWS, _, _ := signRequestEmbed(t, nil, "example.org", "", wfe.nonceService)
+
+	testCases := []struct {
+		Name            string
+		Outer           *jose.JSONWebSignature
+		Inner           *jose.JSONWebSignature
+		ExpectedProblem *probs.ProblemDetails
+	}{
+		{
+			Name:  "Outer JWS without URL",
+			Outer: noURLJWS,
+			Inner: urlAJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Outer JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Inner JWS without URL",
+			Outer: urlAJWS,
+			Inner: noURLJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Inner JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Inner and outer JWS without URL",
+			Outer: noURLJWS,
+			Inner: noURLJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type: probs.MalformedProblem,
+				// The Outer JWS is validated first
+				Detail:     "Outer JWS header parameter 'url' required",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Mismatched inner and outer JWS URLs",
+			Outer: urlAJWS,
+			Inner: urlBJWS,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Outer JWS 'url' value \"example.com\" does not match inner JWS 'url' value \"example.org\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			Name:  "Matching inner and outer JWS URLs",
+			Outer: urlAJWS,
+			Inner: urlAJWS,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			prob := matchJWSURLs(tc.Outer, tc.Inner)
+			if prob != nil && tc.ExpectedProblem == nil {
+				t.Errorf("matchJWSURLs failed. Expected no problem, got %#v", prob)
+			} else {
+				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+		})
+	}
+}
+
+func TestValidKeyRollover(t *testing.T) {
+
+	testCases := []struct {
+		Name             string
+		OuterJWS         *jose.JSONWebSignature
+		InnerJWS         *jose.JSONWebSignature
+		ExpectedRollover *rolloverRequest
+		ExpectedProblem  *probs.ProblemDetails
+	}{
+		{
+			Name: "Inner JWK with broken signature",
+		},
+		{
+			Name: "Mismatched outer/inner JWK URLs",
+		},
+		{
+			Name: "Invalid inner JWS payload",
+		},
+		{
+			Name: "Rollover key doesn't validate inner JWS",
+		},
+		{
+			Name: "Good rollover request",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+
 		})
 	}
 }
