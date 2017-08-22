@@ -10,6 +10,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
 )
 
 func fatalf(t *testing.T, format string, args ...interface{}) {
@@ -151,4 +154,14 @@ func AssertBetween(t *testing.T, a, b, c int64) {
 	if a < b || a > c {
 		fatalf(t, "%d is not between %d and %d", a, b, c)
 	}
+}
+
+// CountCounter returns the count by label and value of a prometheus metric
+func CountCounter(labelName string, value string, counter *prometheus.CounterVec) int {
+	ch := make(chan prometheus.Metric, 10)
+	counter.With(prometheus.Labels{labelName: value}).Collect(ch)
+	m := <-ch
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Counter.GetValue())
 }
