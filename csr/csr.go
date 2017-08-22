@@ -14,20 +14,24 @@ import (
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
 const maxCNLength = 64
 
-// This map is used to detect algorithms in crypto/x509 that
-// are no longer considered sufficiently strong.
-// * No MD2, MD5, or SHA-1
-// * No DSA
+// This map is used to decide which CSR signing algorithms we consider
+// strong enough to use. Significantly the missing algorithms are:
+// * No algorithms using MD2, MD5, or SHA-1
+// * No DSA algorithms
 //
 // SHA1WithRSA is allowed because there's still a fair bit of it
 // out there, but we should try to remove it soon.
-var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
-	x509.UnknownSignatureAlgorithm: true,
-	x509.MD2WithRSA:                true,
-	x509.MD5WithRSA:                true,
-	x509.DSAWithSHA1:               true,
-	x509.DSAWithSHA256:             true,
-	x509.ECDSAWithSHA1:             true,
+var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.SHA1WithRSA:      true, // TODO(#2988): Remove support
+	x509.SHA256WithRSA:    true,
+	x509.SHA384WithRSA:    true,
+	x509.SHA512WithRSA:    true,
+	x509.ECDSAWithSHA256:  true,
+	x509.ECDSAWithSHA384:  true,
+	x509.ECDSAWithSHA512:  true,
+	x509.SHA256WithRSAPSS: true,
+	x509.SHA384WithRSAPSS: true,
+	x509.SHA512WithRSAPSS: true,
 }
 
 var (
@@ -51,9 +55,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if err := keyPolicy.GoodKey(key); err != nil {
 		return fmt.Errorf("invalid public key in CSR: %s", err)
 	}
-	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
-		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
-		// does not
+	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
 	}
 	if err := csr.CheckSignature(); err != nil {
