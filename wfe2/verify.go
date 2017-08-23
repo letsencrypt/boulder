@@ -14,11 +14,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
-
-	"gopkg.in/square/go-jose.v2"
 )
 
 var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
@@ -113,13 +114,13 @@ func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 	// Check the auth type for the provided JWS
 	authType, prob := checkJWSAuthType(jws)
 	if prob != nil {
-		wfe.stats.Inc("Errors.InvalidJWSAuth", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAuthTypeInvalid"}).Inc()
 		return prob
 	}
 	// If the auth type isn't the one expected return a sensible problem based on
 	// what was expected
 	if authType != expectedAuthType {
-		wfe.stats.Inc("Errors.WrongJWSAuthType", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAuthTypeWrong"}).Inc()
 		switch expectedAuthType {
 		case embeddedKeyID:
 			return probs.Malformed("No Key ID in JWS header")
@@ -136,20 +137,20 @@ func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.ProblemDetails {
 	// All POSTs should have an accompanying Content-Length header
 	if _, present := request.Header["Content-Length"]; !present {
-		wfe.stats.Inc("HTTP.ClientErrors.LengthRequiredError", 1)
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "ContentLengthRequired"}).Inc()
 		return probs.ContentLengthRequired()
 	}
 
 	// Per 6.4.1 "Replay-Nonce" clients should not send a Replay-Nonce header in
 	// the HTTP request, it needs to be part of the signed JWS request body
 	if _, present := request.Header["Replay-Nonce"]; present {
-		wfe.stats.Inc("HTTP.ClientErrors.ReplayNonceOutsideJWSError", 1)
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "ReplayNonceOutsideJWS"}).Inc()
 		return probs.Malformed("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
 	}
 
 	// All POSTs should have a non-nil body
 	if request.Body == nil {
-		wfe.stats.Inc("HTTP.ClientErrors.NoPOSTBody", 1)
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoPOSTBody"}).Inc()
 		return probs.Malformed("No body on POST")
 	}
 
@@ -168,10 +169,10 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *req
 	nonce := header.Nonce
 	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
-		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
-		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonce))
 	}
 	return nil
@@ -190,13 +191,13 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	extraHeaders := header.ExtraHeaders
 	// Check that there is at least one Extra Header
 	if len(extraHeaders) == 0 {
-		wfe.stats.Inc("Errors.MissingURLinJWS", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoExtraHeaders"}).Inc()
 		return probs.Malformed("JWS header parameter 'url' required")
 	}
 	// Try to read a 'url' Extra Header as a string
 	headerURL, ok := extraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(headerURL) == 0 {
-		wfe.stats.Inc("Errors.MissingURLinJWS", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingURL"}).Inc()
 		return probs.Malformed("JWS header parameter 'url' required")
 	}
 	// Compute the URL we expect to be in the JWS based on the HTTP request
@@ -208,6 +209,7 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	// Check that the URL we expect is the one that was found in the signed JWS
 	// header
 	if expectedURL.String() != headerURL {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMismatchedURL"}).Inc()
 		return probs.Malformed(fmt.Sprintf(
 			"JWS header parameter 'url' incorrect. Expected %q got %q",
 			expectedURL.String(), headerURL))
@@ -218,7 +220,7 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 // matchJWSURLs checks two JWS' URL headers are equal. This is used during key
 // rollover to check that the inner JWS URL matches the outer JWS URL. If the
 // JWS URLs do not match a problem is returned.
-func matchJWSURLs(outer, inner *jose.JSONWebSignature) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner *jose.JSONWebSignature) *probs.ProblemDetails {
 	// Verify that the outer JWS has a non-empty URL header. This is strictly
 	// defensive since the expectation is that endpoints using `matchJWSURLs`
 	// have received at least one of their JWS from calling validPOSTForAccount(),
@@ -226,17 +228,20 @@ func matchJWSURLs(outer, inner *jose.JSONWebSignature) *probs.ProblemDetails {
 	// the inner JWS.
 	outerURL, ok := outer.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(outerURL) == 0 {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverOuterJWSNoURL"}).Inc()
 		return probs.Malformed("Outer JWS header parameter 'url' required")
 	}
 
 	// Verify the inner JWS has a non-empty URL header.
 	innerURL, ok := inner.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(innerURL) == 0 {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverInnerJWSNoURL"}).Inc()
 		return probs.Malformed("Inner JWS header parameter 'url' required")
 	}
 
 	// Verify that the outer URL matches the inner URL
 	if outerURL != innerURL {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedURLs"}).Inc()
 		return probs.Malformed(fmt.Sprintf(
 			"Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
 			outerURL, innerURL))
@@ -261,14 +266,14 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal(body, &unprotected); err != nil {
-		wfe.stats.Inc("Errors.JWSParseError", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
-		wfe.stats.Inc("Errors.JWSUnprotectedHeaders", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnprotectedHeaders"}).Inc()
 		return nil, probs.Malformed(
 			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
@@ -276,7 +281,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	// ACME v2 never uses the "signatures" array of JSON serialized JWS, just the
 	// mandatory "signature" field. Reject JWS that include the "signatures" array.
 	if len(unprotected.Signatures) > 0 {
-		wfe.stats.Inc("Errors.JWSMultiSigField", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMultiSig"}).Inc()
 		return nil, probs.Malformed(
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
@@ -286,19 +291,19 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	bodyStr := string(body)
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
-		wfe.stats.Inc("Errors.JWSParseError", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
-		wfe.stats.Inc("Errors.TooManySignaturesInJWS", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSTooManySignatures"}).Inc()
 		return nil, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJWS.Signatures) == 0 {
-		wfe.stats.Inc("Errors.NoSignaturesInJWS", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoSignatures"}).Inc()
 		return nil, probs.Malformed("POST JWS not signed")
 	}
 	if len(parsedJWS.Signatures) == 1 && len(parsedJWS.Signatures[0].Signature) == 0 {
-		wfe.stats.Inc("Errors.EmptySignatureInJWS", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSEmptySignature"}).Inc()
 		return nil, probs.Malformed("POST JWS not signed")
 	}
 
@@ -316,7 +321,7 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 	// that the body is non-nil
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
 		return nil, probs.ServerInternal("unable to read request body")
 	}
 
@@ -344,7 +349,7 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 
 	// If the key isn't considered valid by go-jose return a problem immediately
 	if !key.Valid() {
-		wfe.stats.Inc("Errors.InvalidJWK", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKInvalid"}).Inc()
 		return nil, probs.Malformed("Invalid JWK in JWS header")
 	}
 
@@ -376,7 +381,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	// GetRegistration RPC
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
-		wfe.stats.Inc("Errors.InvalidKeyID", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidKeyID"}).Inc()
 		return nil, nil, probs.Malformed(fmt.Sprintf("Malformed account ID in KeyID header"))
 	}
 
@@ -385,14 +390,14 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	if err != nil {
 		// If the account isn't found, return a suitable problem
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.stats.Inc("Errors.KeyIDNotFound", 1)
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDNotFound"}).Inc()
 			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
 				"Account %q not found", accountURL))
 		}
 
 		// If there was an error and it isn't a "Not Found" error, return
 		// a ServerInternal problem since this is unexpected.
-		wfe.stats.Inc("Errors.UnableToGetAccountByID", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
@@ -401,7 +406,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Verify the account is not deactivated
 	if account.Status != core.StatusValid {
-		wfe.stats.Inc("Errors.AccountIsNotValid", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
 		return nil, nil, probs.Unauthorized(
 			fmt.Sprintf("Account is not valid, has status %q", account.Status))
 	}
@@ -426,6 +431,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 
 	// Check that the public key and JWS algorithms match expected
 	if err := checkAlgorithm(jwk, jws); err != nil {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
 		return nil, probs.Malformed(err.Error())
 	}
 
@@ -437,7 +443,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// the signature itself.
 	payload, err := jws.Verify(jwk)
 	if err != nil {
-		wfe.stats.Inc("Errors.JWSVerificationFailed", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("JWS verification error")
 	}
 	// Store the verified payload in the logEvent
@@ -460,7 +466,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// early if it isn't valid JSON.
 	var parsedBody struct{}
 	if err := json.Unmarshal(payload, &parsedBody); err != nil {
-		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSBodyUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed("Request payload did not parse as JSON")
 	}
 
@@ -529,7 +535,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
-		wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
 		return nil, nil, probs.Malformed(err.Error())
 	}
 
@@ -576,7 +582,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(jwk.Key); err != nil {
-		wfe.stats.Inc("Errors.InnerJWKRejectedByGoodKey", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
 		return nil, probs.Malformed(err.Error())
 	}
 
@@ -591,7 +597,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// HTTP request to match the URL to)
 	innerPayload, err := innerJWS.Verify(jwk)
 	if err != nil {
-		wfe.stats.Inc("Errors.InnerJWSVerificationFailed", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
 	}
 	// NOTE(@cpu): we do not stomp the requestEvent's payload here since that is set
@@ -599,13 +605,14 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// payload already.
 
 	// Verify that the outer and inner JWS protected URL headers match
-	if matchJWSURLs(outerJWS, innerJWS) != nil {
+	if wfe.matchJWSURLs(outerJWS, innerJWS) != nil {
 		return nil, prob
 	}
 
 	// Unmarshal the inner JWS' key roll over request
 	var req rolloverRequest
 	if json.Unmarshal(innerPayload, &req) != nil {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed(
 			"Inner JWS payload did not parse as JSON key rollover object")
 	}
@@ -614,7 +621,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
 	// the JWS.
 	if _, err := innerJWS.Verify(req.NewKey); err != nil {
-		wfe.stats.Inc("Errors.InnerJWSVerificationFailed", 1)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSNewKeyVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with specified new key")
 	}
 
