@@ -141,6 +141,14 @@ func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.C
 		record.Tag = "issue"
 		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
 		results = append(results, &record)
+	case "present-dns-only.com":
+		record.Tag = "issue"
+		record.Value = "  letsencrypt.org  ; challenge=dns-01"
+		results = append(results, &record)
+	case "present-http-only.com":
+		record.Tag = "issue"
+		record.Value = "  letsencrypt.org  ; challenge=http-01"
+		results = append(results, &record)
 	case "unsatisfiable.com":
 		record.Tag = "issue"
 		record.Value = ";"

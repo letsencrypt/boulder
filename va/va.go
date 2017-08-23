@@ -761,8 +761,8 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, identifier)
+func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier, challengeType string) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, identifier, challengeType)
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
@@ -781,7 +781,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		ch <- va.checkCAA(ctx, identifier, challenge.Type)
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -1038,17 +1038,17 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return parseResults(results)
 }
 
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
+func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier, challengeType string) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, err
 	}
-	present, valid = va.validateCAASet(caaSet)
+	present, valid = va.validateCAASet(caaSet, challengeType)
 	return present, valid, nil
 }
 
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType string) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("CAA.None", 1)
@@ -1085,7 +1085,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
-		if extractIssuerDomain(caa) == va.issuerDomain {
+		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
+		caaChallenge, caaChallengeSet := caaParameters["challenge"]
+
+		if caaIssuerDomain == va.issuerDomain && (!caaChallengeSet || caaChallenge == challengeType) {
 			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
 		}
@@ -1096,19 +1099,29 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 	return true, false
 }
 
+func isIssueSpace(r rune) bool {
+	return r == '\t' || r == ' '
+}
+
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
 // that is, a domain name with zero or more additional key-value parameters.
 // Returns the domain name, which may be "" (unsatisfiable).
-func extractIssuerDomain(caa *dns.CAA) string {
-	v := caa.Value
-	v = strings.Trim(v, " \t") // Value can start and end with whitespace.
-	idx := strings.IndexByte(v, ';')
-	if idx < 0 {
-		return v // no parameters; domain only
+func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
+	v := strings.SplitN(caa.Value, ";", 2)
+	domain = strings.TrimFunc(v[0], isIssuerSpace)
+	parameters = make(map[string]string)
+
+	if len(v) == 2 {
+		parameterStrings := strings.FieldsFunc(v[1], isIssuerSpace)
+
+		for _, str := range parameterStrings {
+			kv := strings.SplitN(str, "=", 2)
+
+			if len(kv) == 2 {
+				parameters[kv[0]] = kv[1]
+			}
+		}
 	}
 
-	// Currently, ignore parameters. Unfortunately, the RFC makes no statement on
-	// whether any parameters are critical. Treat unknown parameters as
-	// non-critical.
-	return strings.Trim(v[0:idx], " \t")
+	return domain, parameters
 }

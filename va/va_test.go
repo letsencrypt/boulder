@@ -783,7 +783,7 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, "http-01")
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
@@ -820,13 +820,17 @@ func TestCAAChecking(t *testing.T) {
 		{"unknown-noncritical.com", true, true},
 		// Good (issue record with unknown parameters)
 		{"present-with-parameter.com", true, true},
+		// Bad (restricts to dns-01, but tested with http-01)
+		{"present-dns-only.com", true, false},
+		// Good (restricts to http-01, tested with http-01)
+		{"present-http-only.com", true, true},
 		// Bad (unsatisfiable issue record)
 		{"unsatisfiable.com", true, false},
 	}
 
 	va, _ := setup(nil, 0)
 	for _, caaTest := range tests {
-		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}, "http-01")
 		if err != nil {
 			t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 		}
@@ -838,22 +842,22 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, "http-01")
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, "http-01")
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
 
-	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, "http-01")
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, "http-01")
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
