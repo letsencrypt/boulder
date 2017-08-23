@@ -1780,6 +1780,7 @@ func TestKeyRollover(t *testing.T) {
 		Payload          string
 		ExpectedResponse string
 		NewKey           crypto.Signer
+		ErrorStatType    string
 	}{
 		{
 			Name:    "Missing account URL",
@@ -1789,7 +1790,8 @@ func TestKeyRollover(t *testing.T) {
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/reg/1\"",
 		     "status": 400
 		   }`,
-			NewKey: newKey,
+			NewKey:        newKey,
+			ErrorStatType: "KeyRolloverMismatchedAccount",
 		},
 		{
 			Name:    "Missing new key from inner payload",
@@ -1799,6 +1801,7 @@ func TestKeyRollover(t *testing.T) {
 		     "detail": "Inner JWS does not verify with specified new key",
 		     "status": 400
 		   }`,
+			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
 		},
 		{
 			Name:    "New key is the same as the old key",
@@ -1808,6 +1811,7 @@ func TestKeyRollover(t *testing.T) {
 		     "detail": "New key specified by rollover request is the same as the old key",
 		     "status": 400
 		   }`,
+			ErrorStatType: "KeyRolloverUnchangedKey",
 		},
 		{
 			Name:    "Inner JWS signed by the wrong key",
@@ -1817,6 +1821,7 @@ func TestKeyRollover(t *testing.T) {
 		     "detail": "Inner JWS does not verify with specified new key",
 		     "status": 400
 		   }`,
+			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
 		},
 		{
 			Name:    "Valid key rollover request",
@@ -1838,13 +1843,16 @@ func TestKeyRollover(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			responseWriter.Body.Reset()
-
 			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)
 			_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
-
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+			}
 		})
 	}
 }

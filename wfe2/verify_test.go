@@ -6,9 +6,10 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"fmt"
-	"golang.org/x/net/context"
 	"net/http"
 	"testing"
+
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -368,6 +369,7 @@ func TestValidPOSTRequest(t *testing.T) {
 		Body          *string
 		HTTPStatus    int
 		ProblemDetail string
+		ErrorStatType string
 	}{
 		// POST requests without a Content-Length should produce a problem
 		{
@@ -375,6 +377,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Headers:       nil,
 			HTTPStatus:    http.StatusLengthRequired,
 			ProblemDetail: "missing Content-Length header",
+			ErrorStatType: "ContentLengthRequired",
 		},
 		// POST requests with a Replay-Nonce header should produce a problem
 		{
@@ -385,6 +388,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
+			ErrorStatType: "ReplayNonceOutsideJWS",
 		},
 		// POST requests without a body should produce a problem
 		{
@@ -394,6 +398,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "No body on POST",
+			ErrorStatType: "NoPOSTBody",
 		},
 	}
 
@@ -409,6 +414,8 @@ func TestValidPOSTRequest(t *testing.T) {
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 			test.AssertEquals(t, prob.HTTPStatus, tc.HTTPStatus)
 			test.AssertEquals(t, prob.Detail, tc.ProblemDetail)
+			test.AssertEquals(t, test.CountCounter(
+				"type", tc.ErrorStatType, wfe.stats.httpErrorCount), 1)
 		})
 	}
 }
@@ -446,6 +453,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 		JWS              *jose.JSONWebSignature
 		ExpectedAuthType jwsAuthType
 		ExpectedResult   *probs.ProblemDetails
+		ErrorStatType    string
 	}{
 		{
 			Name:             "Key ID and embedded JWS",
@@ -456,6 +464,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 				Detail:     "jwk and kid header fields are mutually exclusive",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeInvalid",
 		},
 		{
 			Name:             "Key ID when expected is embedded JWK",
@@ -466,6 +475,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 				Detail:     "No embedded JWK in JWS header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
 			Name:             "Embedded JWK when expected is Key ID",
@@ -476,6 +486,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 				Detail:     "No Key ID in JWS header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
 			Name:             "Key ID when expected is KeyID",
@@ -493,11 +504,16 @@ func TestEnforceJWSAuthType(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.enforceJWSAuthType(tc.JWS, tc.ExpectedAuthType)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -527,6 +543,7 @@ func TestValidNonce(t *testing.T) {
 		Name           string
 		JWS            *jose.JSONWebSignature
 		ExpectedResult *probs.ProblemDetails
+		ErrorStatType  string
 	}{
 		{
 			Name: "No nonce in JWS",
@@ -536,6 +553,7 @@ func TestValidNonce(t *testing.T) {
 				Detail:     "JWS has no anti-replay nonce",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMissingNonce",
 		},
 		{
 			Name: "Invalid nonce in JWS",
@@ -545,6 +563,7 @@ func TestValidNonce(t *testing.T) {
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSInvalidNonce",
 		},
 		{
 			Name:           "Valid nonce in JWS",
@@ -555,11 +574,16 @@ func TestValidNonce(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validNonce(tc.JWS, newRequestEvent())
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -624,6 +648,7 @@ func TestValidPOSTURL(t *testing.T) {
 		JWS            *jose.JSONWebSignature
 		Request        *http.Request
 		ExpectedResult *probs.ProblemDetails
+		ErrorStatType  string
 	}{
 		{
 			Name:    "No extra headers in JWS",
@@ -634,6 +659,7 @@ func TestValidPOSTURL(t *testing.T) {
 				Detail:     "JWS header parameter 'url' required",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSNoExtraHeaders",
 		},
 		{
 			Name:    "No URL header in JWS",
@@ -644,6 +670,7 @@ func TestValidPOSTURL(t *testing.T) {
 				Detail:     "JWS header parameter 'url' required",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMissingURL",
 		},
 		{
 			Name:    "Wrong URL header in JWS",
@@ -654,6 +681,7 @@ func TestValidPOSTURL(t *testing.T) {
 				Detail:     "JWS header parameter 'url' incorrect. Expected \"http://localhost/test-path\" got \"foobar\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMismatchedURL",
 		},
 		{
 			Name:           "Correct URL header in JWS",
@@ -665,11 +693,16 @@ func TestValidPOSTURL(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validPOSTURL(tc.Request, tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -742,6 +775,7 @@ func TestParseJWSRequest(t *testing.T) {
 		Name            string
 		Request         *http.Request
 		ExpectedProblem *probs.ProblemDetails
+		ErrorStatType   string
 	}{
 		{
 			Name: "Invalid POST request",
@@ -764,6 +798,7 @@ func TestParseJWSRequest(t *testing.T) {
 				Detail:     "Parse error reading JWS",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSUnmarshalFailed",
 		},
 		{
 			Name:    "Too few signatures in JWS",
@@ -773,6 +808,7 @@ func TestParseJWSRequest(t *testing.T) {
 				Detail:     "POST JWS not signed",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSEmptySignature",
 		},
 		{
 			Name:    "Too many signatures in JWS",
@@ -782,6 +818,7 @@ func TestParseJWSRequest(t *testing.T) {
 				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMultiSig",
 		},
 		{
 			Name:    "Unprotected JWS headers",
@@ -791,6 +828,7 @@ func TestParseJWSRequest(t *testing.T) {
 				Detail:     "JWS \"header\" field not allowed. All headers must be in \"protected\" field",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSUnprotectedHeaders",
 		},
 		{
 			Name:    "Unsupported signatures field in JWS",
@@ -800,6 +838,7 @@ func TestParseJWSRequest(t *testing.T) {
 				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMultiSig",
 		},
 		{
 			Name:            "Valid JWS in POST request",
@@ -810,11 +849,16 @@ func TestParseJWSRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			_, prob := wfe.parseJWSRequest(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -920,6 +964,7 @@ func TestLookupJWK(t *testing.T) {
 		ExpectedProblem *probs.ProblemDetails
 		ExpectedKey     *jose.JSONWebKey
 		ExpectedAccount *core.Registration
+		ErrorStatType   string
 	}{
 		{
 			Name:    "JWS with wrong auth type (embedded JWK vs Key ID)",
@@ -930,6 +975,7 @@ func TestLookupJWK(t *testing.T) {
 				Detail:     "No Key ID in JWS header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
 			Name:    "JWS with invalid key ID",
@@ -940,6 +986,7 @@ func TestLookupJWK(t *testing.T) {
 				Detail:     "Malformed account ID in KeyID header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSInvalidKeyID",
 		},
 		{
 			Name:    "JWS with account ID that causes GetRegistration error",
@@ -950,6 +997,7 @@ func TestLookupJWK(t *testing.T) {
 				Detail:     "Error retreiving account \"http://localhost/acme/reg/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
+			ErrorStatType: "JWSKeyIDLookupFailed",
 		},
 		{
 			Name:    "JWS with account ID that doesn't exist",
@@ -960,6 +1008,7 @@ func TestLookupJWK(t *testing.T) {
 				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSKeyIDNotFound",
 		},
 		{
 			Name:    "JWS with account ID that is deactivated",
@@ -970,6 +1019,7 @@ func TestLookupJWK(t *testing.T) {
 				Detail:     "Account is not valid, has status \"deactivated\"",
 				HTTPStatus: http.StatusForbidden,
 			},
+			ErrorStatType: "JWSKeyIDAccountInvalid",
 		},
 		{
 			Name:            "Valid JWS with valid account ID",
@@ -981,6 +1031,7 @@ func TestLookupJWK(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
 			jwk, acct, prob := wfe.lookupJWK(tc.JWS, context.Background(), tc.Request, inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
@@ -994,6 +1045,10 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertEquals(t, inputLogEvent.Contacts, acct.Contact)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -1043,6 +1098,7 @@ func TestValidJWSForKey(t *testing.T) {
 		JWK             *jose.JSONWebKey
 		Body            string
 		ExpectedProblem *probs.ProblemDetails
+		ErrorStatType   string
 	}{
 		{
 			Name: "JWS with an invalid algorithm",
@@ -1053,6 +1109,7 @@ func TestValidJWSForKey(t *testing.T) {
 				Detail:     "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAlgorithmCheckFailed",
 		},
 		{
 			Name: "JWS with an invalid nonce",
@@ -1063,6 +1120,7 @@ func TestValidJWSForKey(t *testing.T) {
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSInvalidNonce",
 		},
 		{
 			Name: "JWS with broken signature",
@@ -1073,6 +1131,7 @@ func TestValidJWSForKey(t *testing.T) {
 				Detail:     "JWS verification error",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSVerifyFailed",
 		},
 		{
 			Name: "JWS with incorrect URL",
@@ -1083,6 +1142,7 @@ func TestValidJWSForKey(t *testing.T) {
 				Detail:     "JWS header parameter 'url' incorrect. Expected \"http://localhost/test\" got \"foobar\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMismatchedURL",
 		},
 		{
 			Name: "Valid JWS with invalid JSON in the protected body",
@@ -1093,6 +1153,7 @@ func TestValidJWSForKey(t *testing.T) {
 				Detail:     "Request payload did not parse as JSON",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSBodyUnmarshalFailed",
 		},
 		{
 			Name: "Good JWS and JWK",
@@ -1103,6 +1164,7 @@ func TestValidJWSForKey(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
 			request := makePostRequestWithPath("test", tc.Body)
 			outPayload, prob := wfe.validJWSForKey(tc.JWS, tc.JWK, request, inputLogEvent)
@@ -1114,6 +1176,10 @@ func TestValidJWSForKey(t *testing.T) {
 				test.AssertEquals(t, string(outPayload), payload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -1141,6 +1207,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 		ExpectedPayload string
 		ExpectedAcct    *core.Registration
 		ExpectedJWS     *jose.JSONWebSignature
+		ErrorStatType   string
 	}{
 		{
 			Name:    "Invalid JWS",
@@ -1150,6 +1217,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				Detail:     "Parse error reading JWS",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSUnmarshalFailed",
 		},
 		{
 			Name:    "Embedded Key JWS",
@@ -1159,6 +1227,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				Detail:     "No Key ID in JWS header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
 			Name:    "JWS signed by account that doesn't exist",
@@ -1168,6 +1237,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSKeyIDNotFound",
 		},
 		{
 			Name:    "JWS signed by account that's deactivated",
@@ -1177,6 +1247,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				Detail:     "Account is not valid, has status \"deactivated\"",
 				HTTPStatus: http.StatusForbidden,
 			},
+			ErrorStatType: "JWSKeyIDAccountInvalid",
 		},
 		{
 			Name:            "Valid JWS for account",
@@ -1189,10 +1260,9 @@ func TestValidPOSTForAccount(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
-
 			outPayload, jws, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
-
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else if tc.ExpectedProblem == nil {
@@ -1202,6 +1272,10 @@ func TestValidPOSTForAccount(t *testing.T) {
 				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -1258,6 +1332,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 		ExpectedProblem *probs.ProblemDetails
 		ExpectedPayload string
 		ExpectedJWK     *jose.JSONWebKey
+		ErrorStatType   string
 	}{
 		{
 			Name:    "Invalid JWS",
@@ -1267,6 +1342,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				Detail:     "Parse error reading JWS",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSUnmarshalFailed",
 		},
 		{
 			Name:    "JWS with key ID",
@@ -1276,6 +1352,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				Detail:     "No embedded JWK in JWS header",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
 			Name:            "Valid JWS",
@@ -1287,14 +1364,12 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
-
 			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(tc.Request, inputLogEvent)
-
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
 			} else if tc.ExpectedProblem == nil {
-
 				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
@@ -1302,6 +1377,10 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+			}
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
 	}
@@ -1319,6 +1398,7 @@ func TestMatchJWSURLs(t *testing.T) {
 		Outer           *jose.JSONWebSignature
 		Inner           *jose.JSONWebSignature
 		ExpectedProblem *probs.ProblemDetails
+		ErrorStatType   string
 	}{
 		{
 			Name:  "Outer JWS without URL",
@@ -1329,6 +1409,7 @@ func TestMatchJWSURLs(t *testing.T) {
 				Detail:     "Outer JWS header parameter 'url' required",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "KeyRolloverOuterJWSNoURL",
 		},
 		{
 			Name:  "Inner JWS without URL",
@@ -1339,6 +1420,7 @@ func TestMatchJWSURLs(t *testing.T) {
 				Detail:     "Inner JWS header parameter 'url' required",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "KeyRolloverInnerJWSNoURL",
 		},
 		{
 			Name:  "Inner and outer JWS without URL",
@@ -1350,6 +1432,7 @@ func TestMatchJWSURLs(t *testing.T) {
 				Detail:     "Outer JWS header parameter 'url' required",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "KeyRolloverOuterJWSNoURL",
 		},
 		{
 			Name:  "Mismatched inner and outer JWS URLs",
@@ -1360,6 +1443,7 @@ func TestMatchJWSURLs(t *testing.T) {
 				Detail:     "Outer JWS 'url' value \"example.com\" does not match inner JWS 'url' value \"example.org\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "KeyRolloverMismatchedURLs",
 		},
 		{
 			Name:  "Matching inner and outer JWS URLs",
@@ -1370,45 +1454,17 @@ func TestMatchJWSURLs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			prob := matchJWSURLs(tc.Outer, tc.Inner)
+			wfe.stats.joseErrorCount.Reset()
+			prob := wfe.matchJWSURLs(tc.Outer, tc.Inner)
 			if prob != nil && tc.ExpectedProblem == nil {
 				t.Errorf("matchJWSURLs failed. Expected no problem, got %#v", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
-		})
-	}
-}
-
-func TestValidKeyRollover(t *testing.T) {
-
-	testCases := []struct {
-		Name             string
-		OuterJWS         *jose.JSONWebSignature
-		InnerJWS         *jose.JSONWebSignature
-		ExpectedRollover *rolloverRequest
-		ExpectedProblem  *probs.ProblemDetails
-	}{
-		{
-			Name: "Inner JWK with broken signature",
-		},
-		{
-			Name: "Mismatched outer/inner JWK URLs",
-		},
-		{
-			Name: "Invalid inner JWS payload",
-		},
-		{
-			Name: "Rollover key doesn't validate inner JWS",
-		},
-		{
-			Name: "Good rollover request",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-
+			if tc.ErrorStatType != "" {
+				test.AssertEquals(t, test.CountCounter(
+					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+			}
 		})
 	}
 }

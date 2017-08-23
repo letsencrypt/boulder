@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
@@ -55,9 +56,9 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	stats metrics.Scope
 	log   blog.Logger
 	clk   clock.Clock
+	stats wfe2Stats
 
 	// URL configuration parameters
 	BaseURL string
@@ -106,8 +107,8 @@ func NewWebFrontEndImpl(
 		log:          logger,
 		clk:          clk,
 		nonceService: nonceService,
-		stats:        stats,
 		keyPolicy:    keyPolicy,
+		stats:        initStats(stats),
 	}, nil
 }
 
@@ -430,7 +431,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 
 	problemSegments := strings.Split(string(prob.Type), ":")
 	if len(problemSegments) > 0 {
-		wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1)
+		probType := problemSegments[len(problemSegments)-1]
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": probType}).Inc()
 	}
 }
 
@@ -1086,6 +1088,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// to validate the outer JWS
 	header := outerJWS.Signatures[0].Header
 	if rolloverRequest.Account != header.KeyID {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedAccount"}).Inc()
 		wfe.sendError(response, logEvent, probs.Malformed(
 			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
 				rolloverRequest.Account, header.KeyID)), nil)
@@ -1104,6 +1107,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 	if keysEqual {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnchangedKey"}).Inc()
 		wfe.sendError(response, logEvent, probs.Malformed(
 			"New key specified by rollover request is the same as the old key"), nil)
 		return
