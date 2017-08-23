@@ -1108,11 +1108,11 @@ func isIssueSpace(r rune) bool {
 // Returns the domain name, which may be "" (unsatisfiable).
 func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
 	v := strings.SplitN(caa.Value, ";", 2)
-	domain = strings.TrimFunc(v[0], isIssuerSpace)
+	domain = strings.TrimFunc(v[0], isIssueSpace)
 	parameters = make(map[string]string)
 
 	if len(v) == 2 {
-		parameterStrings := strings.FieldsFunc(v[1], isIssuerSpace)
+		parameterStrings := strings.FieldsFunc(v[1], isIssueSpace)
 
 		for _, str := range parameterStrings {
 			kv := strings.SplitN(str, "=", 2)
