@@ -824,6 +824,8 @@ func TestCAAChecking(t *testing.T) {
 		{"present-dns-only.com", true, false},
 		// Good (restricts to http-01, tested with http-01)
 		{"present-http-only.com", true, true},
+		// Good (restricts to http-01 or dns-01, tested with http-01)
+		{"present-http-or-dns.com", true, true},
 		// Bad (unsatisfiable issue record)
 		{"unsatisfiable.com", true, false},
 	}

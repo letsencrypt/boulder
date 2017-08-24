@@ -1048,6 +1048,16 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	return present, valid, nil
 }
 
+func containsMethod(commaSeparatedMethods string, method string) bool {
+	for _, m := range strings.Split(commaSeparatedMethods, ",") {
+		if method == m {
+			return true
+		}
+	}
+	
+	return false
+}
+
 func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType string) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
@@ -1086,9 +1096,9 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType 
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
 		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
-		caaChallenge, caaChallengeSet := caaParameters["challenge"]
+		caaMethods, caaMethodsSet := caaParameters["validation-methods"]
 
-		if caaIssuerDomain == va.issuerDomain && (!caaChallengeSet || caaChallenge == challengeType) {
+		if caaIssuerDomain == va.issuerDomain && (!caaMethodsSet || containsMethod(caaMethods, challengeType)) {
 			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
 		}
