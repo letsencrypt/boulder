@@ -473,24 +473,18 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	return payload, nil
 }
 
-// validPOSTForAccount checks that a given POST request has a valid JWS
-// verified with the public key associated to a known account,
-// specified by the JWS key ID. If the request is valid (e.g. the JWS is well
-// formed, verifies with the JWK stored for the specified key ID, specifies the
-// correct URL, and has a valid nonce) then `validPOSTForAccount` returns the
-// validated JWS body, the parsed JSONWebSignature, and a pointer to the JWK's
-// associated account. If any of these conditions are not met or an error
-// occurs only a problem is returned.
-func (wfe *WebFrontEndImpl) validPOSTForAccount(
+// validJWSForAccount checks that a given JWS is valid and verifies with the
+// public key associated to a known account specified by the JWS Key ID. If the
+// JWS is valid (e.g. the JWS is well formed, verifies with the JWK stored for the
+// specified key ID, specifies the correct URL, and has a valid nonce) then
+// `validJWSForAccount` returns the validated JWS body, the parsed
+// JSONWebSignature, and a pointer to the JWK's associated account. If any of
+// these conditions are not met or an error occurs only a problem is returned.
+func (wfe *WebFrontEndImpl) validJWSForAccount(
+	jws *jose.JSONWebSignature,
 	request *http.Request,
 	ctx context.Context,
 	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
-	// Parse the JWS from the POST request
-	jws, prob := wfe.parseJWSRequest(request)
-	if prob != nil {
-		return nil, nil, nil, prob
-	}
-
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
 	if prob != nil {
@@ -506,27 +500,35 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	return payload, jws, account, nil
 }
 
-// validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
-// verified with the JWK embedded in the JWS itself (e.g. self-authenticated).
-// This type of POST request is only used for creating new accounts or revoking a
-// certificate by signing the request with the private key corresponding to the
-// certificate's public key and embedding that public key in the JWS. All other
-// request should be validated using `validPOSTforAccount`. If the POST request
-// validates (e.g. the JWS is well formed, verifies with the JWK embedded in it,
-// the JWK meets policy/algorithm requirements, has the correct URL and includes a
-// valid nonce) then `validSelfAuthenticatedPOST` returns the validated JWS body
-// and the JWK that was embedded in the JWS. Otherwise if the valid JWS
-// conditions are not met or an error occurs only a problem is returned.
-func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
+// validPOSTForAccount checks that a given POST request has a valid JWS
+// using `validJWSForAccount`.
+func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
-
+	ctx context.Context,
+	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, nil, nil, prob
 	}
+	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
+}
 
+// validSelfAuthenticatedJWS checks that a given JWS verifies with the JWK
+// embedded in the JWS itself (e.g. self-authenticated). This type of JWS
+// is only used for creating new accounts or revoking a certificate by signing
+// the request with the private key corresponding to the certificate's public
+// key and embedding that public key in the JWS. All other request should be
+// validated using `validJWSforAccount`. If the JWS validates (e.g. the JWS is
+// well formed, verifies with the JWK embedded in it, the JWK meets
+// policy/algorithm requirements, has the correct URL and includes a valid
+// nonce) then `validSelfAuthenticatedJWS` returns the validated JWS body and
+// the JWK that was embedded in the JWS. Otherwise if the valid JWS conditions
+// are not met or an error occurs only a problem is returned
+func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
+	jws *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Extract the embedded JWK from the parsed JWS
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
@@ -546,6 +548,20 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	}
 
 	return payload, pubKey, nil
+}
+
+// validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
+// using `validSelfAuthenticatedJWS`.
+func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
+	request *http.Request,
+	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	// Extract the embedded JWK from the parsed JWS
+	// Parse the JWS from the POST request
+	jws, prob := wfe.parseJWSRequest(request)
+	if prob != nil {
+		return nil, nil, prob
+	}
+	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
 }
 
 // rolloverRequest is a struct representing an ACME key rollover request
