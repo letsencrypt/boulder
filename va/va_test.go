@@ -794,6 +794,9 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
+	_ = features.Set(map[string]bool{"CAAValidationMethods": true})
+	defer features.Reset()
+
 	type CAATest struct {
 		Domain  string
 		Present bool
@@ -844,7 +847,14 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, "http-01")
+	// After resetting CAAValidationMethods, present-dns-only.com should be valid even with http-01
+	features.Reset()
+	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, "http-01")
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, "http-01")
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")

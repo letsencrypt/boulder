@@ -26,6 +26,7 @@ const (
 	IPv6First
 	DirectoryMeta
 	AllowRenewalFirstRL
+	CAAValidationMethods
 )
 
 // List of features and their default value, protected by fMu
@@ -43,6 +44,7 @@ var features = map[FeatureFlag]bool{
 	IPv6First:                false,
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
+	CAAValidationMethods:     false,
 }
 
 var fMu = new(sync.RWMutex)

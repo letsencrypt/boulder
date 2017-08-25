@@ -1098,7 +1098,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType 
 		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
 		caaMethods, caaMethodsSet := caaParameters["validation-methods"]
 
-		if caaIssuerDomain == va.issuerDomain && (!caaMethodsSet || containsMethod(caaMethods, challengeType)) {
+		if caaIssuerDomain == va.issuerDomain && (!features.Enabled(features.CAAValidationMethods) || !caaMethodsSet || containsMethod(caaMethods, challengeType)) {
 			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
 		}
