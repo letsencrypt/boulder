@@ -1115,7 +1115,7 @@ func isIssueSpace(r rune) bool {
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
 // that is, a domain name with zero or more additional key-value parameters.
-// Returns the domain name, which may be "" (unsatisfiable).
+// Returns the domain name, which may be "" (unsatisfiable), and a tag-value map of parameters.
 func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
 	v := strings.SplitN(caa.Value, ";", 2)
 	domain = strings.TrimFunc(v[0], isIssueSpace)
