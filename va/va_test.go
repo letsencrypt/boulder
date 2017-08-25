@@ -1566,3 +1566,13 @@ func TestDetailedError(t *testing.T) {
 		}
 	}
 }
+
+func TestContainsMethod(t *testing.T) {
+	test.AssertEquals(t, containsMethod("abc,123,xyz", "123"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "abc"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "xyz"), true)
+	test.AssertEquals(t, containsMethod("abc", "abc"), true)
+
+	test.AssertEquals(t, containsMethod("abc,xyz,123", "456"), false)
+	test.AssertEquals(t, containsMethod("abc", "123"), false)
+}
