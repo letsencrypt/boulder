@@ -1054,7 +1054,7 @@ func containsMethod(commaSeparatedMethods string, method string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
