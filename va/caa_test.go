@@ -96,8 +96,7 @@ func TestCAAFailure(t *testing.T) {
 
 	va, _ := setup(hs, 0)
 
-	ident.Value = "reserved.com"
-	_, prob := va.validateChallengeAndCAA(ctx, ident, chall)
+	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 }
 
