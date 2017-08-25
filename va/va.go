@@ -1048,7 +1048,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	return present, valid, nil
 }
 
-func containsMethod(commaSeparatedMethods string, method string) bool {
+func containsMethod(commaSeparatedMethods, method string) bool {
 	for _, m := range strings.Split(commaSeparatedMethods, ",") {
 		if method == m {
 			return true
