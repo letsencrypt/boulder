@@ -1152,7 +1152,7 @@ func TestFallbackDialer(t *testing.T) {
 
 	// The validation is expected to succeed with IPv6First enabled even though
 	// the V6 server doesn't exist because we fallback to the IPv4 address.
-	records, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	records, prob = va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
@@ -1204,7 +1204,7 @@ func TestFallbackTLS(t *testing.T) {
 
 	// The validation is expected to succeed now that IPv6First is enabled by the
 	// fallback to the IPv4 address that has a test server waiting
-	records, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	records, prob = va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
