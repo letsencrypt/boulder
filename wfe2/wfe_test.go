@@ -206,26 +206,26 @@ type MockRegistrationAuthority struct {
 	lastRevocationReason revocation.Reason
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	return reg, nil
+func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct core.Registration) (core.Registration, error) {
+	return acct, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	authz.RegistrationID = regID
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, acctID int64) (core.Authorization, error) {
+	authz.RegistrationID = acctID
 	authz.ID = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, acctID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
-	keysMatch, _ := core.PublicKeysEqual(reg.Key.Key, updated.Key.Key)
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, acct core.Registration, updated core.Registration) (core.Registration, error) {
+	keysMatch, _ := core.PublicKeysEqual(acct.Key.Key, updated.Key.Key)
 	if !keysMatch {
-		reg.Key = updated.Key
+		acct.Key = updated.Key
 	}
-	return reg, nil
+	return acct, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
@@ -660,7 +660,7 @@ func TestDirectory(t *testing.T) {
   "meta": {
     "terms-of-service": "http://example.invalid/terms"
   },
-  "new-reg": "http://localhost:4300/acme/new-reg",
+  "new-account": "http://localhost:4300/acme/new-acct",
   "revoke-cert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`
@@ -699,15 +699,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","new-account":"http://localhost/acme/new-acct","revoke-cert":"http://localhost/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-account":"http://localhost:4300/acme/new-acct","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-account":"http://127.0.0.1:4300/acme/new-acct","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-account":"http://localhost:4300/acme/new-acct","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-account":"https://localhost:4300/acme/new-acct","revoke-cert":"https://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
 	}
 
 	for _, tt := range dirTests {
@@ -758,18 +758,13 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: getOnly,
 		},
 		{
-			Name:    "NewReg path should be POST only",
-			Path:    newRegPath,
+			Name:    "NewAcct path should be POST only",
+			Path:    newAcctPath,
 			Allowed: postOnly,
 		},
 		{
-			Name:    "NewReg path should be POST only",
-			Path:    newRegPath,
-			Allowed: postOnly,
-		},
-		{
-			Name:    "Reg path should be POST only",
-			Path:    regPath,
+			Name:    "Acct path should be POST only",
+			Path:    acctPath,
 			Allowed: postOnly,
 		},
 		{
@@ -988,12 +983,12 @@ func TestBadNonce(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Failed to sign body")
-	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
-func TestNewECDSARegistration(t *testing.T) {
+func TestNewECDSAAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// E1 always exists; E2 never exists
@@ -1001,25 +996,25 @@ func TestNewECDSARegistration(t *testing.T) {
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
-	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
-	path := "new-reg"
-	signedURL := fmt.Sprintf("http://localhost/%s", path)
+	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 
-	var reg core.Registration
+	var acct core.Registration
 	responseBody := responseWriter.Body.String()
-	err := json.Unmarshal([]byte(responseBody), &reg)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
-	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
+	err := json.Unmarshal([]byte(responseBody), &acct)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/0")
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
 
 	key = loadKey(t, []byte(testE1KeyPrivatePEM))
 	_, ok = key.(*ecdsa.PrivateKey)
@@ -1031,23 +1026,23 @@ func TestNewECDSARegistration(t *testing.T) {
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	responseBody = responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
+	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"urn:acme:error:malformed","detail":"Account key is already in use","status":409}`)
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
 // spec describes how when clients wish to query the server for information
-// about a registration an empty registration update should be sent, and
-// a populated reg object will be returned.
-func TestEmptyRegistration(t *testing.T) {
+// about an account an empty account update should be sent, and
+// a populated acct object will be returned.
+func TestEmptyAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
-	// return a populated registration for GetRegistrationByKey when test key 1 is
+	// return a populated account for GetRegistrationByKey when test key 1 is
 	// used.
 	key := loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
@@ -1059,8 +1054,8 @@ func TestEmptyRegistration(t *testing.T) {
 	_, _, body := signRequestKeyID(t, 1, key, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
-	// Send a registration update with the trivial body
-	wfe.Registration(
+	// Send an account update with the trivial body
+	wfe.Account(
 		ctx,
 		newRequestEvent(),
 		responseWriter,
@@ -1070,44 +1065,44 @@ func TestEmptyRegistration(t *testing.T) {
 	// There should be no error
 	test.AssertNotContains(t, responseBody, "urn:acme:error")
 
-	// We should get back a populated Registration
-	var reg core.Registration
-	err := json.Unmarshal([]byte(responseBody), &reg)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
+	// We should get back a populated Account
+	var acct core.Registration
+	err := json.Unmarshal([]byte(responseBody), &acct)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
 	responseWriter.Body.Reset()
 }
 
-func TestNewRegistration(t *testing.T) {
+func TestNewAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test2 key")
 
-	path := newRegPath
-	signedURL := fmt.Sprintf("http://localhost%s", newRegPath)
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
 
-	wrongAgreementReg := `{"contact":["mailto:person@mail.com"],"agreement":"https://letsencrypt.org/im-bad"}`
-	// A reg with the wrong agreement URL
-	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementReg, wfe.nonceService)
+	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"agreement":"https://letsencrypt.org/im-bad"}`
+	// An acct with the wrong agreement URL
+	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementAcct, wfe.nonceService)
 
 	// A non-JSON payload
 	_, _, fooBody := signRequestEmbed(t, key, signedURL, `foo`, wfe.nonceService)
 
-	type newRegErrorTest struct {
+	type newAcctErrorTest struct {
 		r        *http.Request
 		respBody string
 	}
 
-	regErrTests := []newRegErrorTest{
+	acctErrTests := []newAcctErrorTest{
 		// POST, but no body.
 		{
 			&http.Request{
 				Method: "POST",
-				URL:    mustParseURL(newRegPath),
+				URL:    mustParseURL(newAcctPath),
 				Header: map[string][]string{
 					"Content-Length": {"0"},
 				},
@@ -1117,29 +1112,29 @@ func TestNewRegistration(t *testing.T) {
 
 		// POST, but body that isn't valid JWS
 		{
-			makePostRequestWithPath(newRegPath, "hi"),
+			makePostRequestWithPath(newAcctPath, "hi"),
 			`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
-			makePostRequestWithPath(newRegPath, fooBody),
+			makePostRequestWithPath(newAcctPath, fooBody),
 			`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
 		// should fail JWS verification.
 		{
-			makePostRequestWithPath(newRegPath,
+			makePostRequestWithPath(newAcctPath,
 				`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`),
 			`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`,
 		},
 		{
-			makePostRequestWithPath(newRegPath, wrongAgreementBody),
+			makePostRequestWithPath(newAcctPath, wrongAgreementBody),
 			`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]","status":400}`,
 		},
 	}
-	for _, rt := range regErrTests {
+	for _, rt := range acctErrTests {
 		responseWriter := httptest.NewRecorder()
 		mux.ServeHTTP(responseWriter, rt.r)
 		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), rt.respBody)
@@ -1151,20 +1146,20 @@ func TestNewRegistration(t *testing.T) {
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
-	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 
-	var reg core.Registration
+	var acct core.Registration
 	responseBody := responseWriter.Body.String()
-	err := json.Unmarshal([]byte(responseBody), &reg)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
-	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
-	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
+	err := json.Unmarshal([]byte(responseBody), &acct)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/reg/0")
+		"http://localhost/acme/acct/0")
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 
@@ -1179,13 +1174,13 @@ func TestNewRegistration(t *testing.T) {
 	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
+		`{"type":"urn:acme:error:malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/reg/1")
+		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
@@ -1247,7 +1242,7 @@ func contains(s []string, e string) bool {
 	return false
 }
 
-func TestRegistration(t *testing.T) {
+func TestAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
@@ -1255,7 +1250,7 @@ func TestRegistration(t *testing.T) {
 	// Test GET proper entry returns 405
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(regPath),
+		URL:    mustParseURL(acctPath),
 	})
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
@@ -1263,7 +1258,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
+	wfe.Account(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
@@ -1273,68 +1268,68 @@ func TestRegistration(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	signedURL := fmt.Sprintf("http://localhost%s%d", regPath, 102)
-	path := fmt.Sprintf("%s%d", regPath, 102)
-	payload := `{"resource":"reg","agreement":"` + agreementURL + `"}`
-	// ID 102 is used by the mock for missing reg
+	signedURL := fmt.Sprintf("http://localhost%s%d", acctPath, 102)
+	path := fmt.Sprintf("%s%d", acctPath, 102)
+	payload := `{"agreement":"` + agreementURL + `"}`
+	// ID 102 is used by the mock for missing acct
 	_, _, body := signRequestKeyID(t, 102, nil, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
 	// Test POST valid JSON but key is not registered
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"http://localhost/acme/reg/102\" not found","status":400}`)
+		`{"type":"urn:ietf:params:acme:error:accountDoesNotExist","detail":"Account \"http://localhost/acme/acct/102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
+	// Test POST valid JSON with account up in the mock (with incorrect agreement URL)
 	payload = `{"agreement":"https://letsencrypt.org/im-bad"}`
 	path = "1"
 	signedURL = "http://localhost/1"
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
 	responseWriter.Body.Reset()
 
-	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
-	payload = `{"resource":"reg","agreement":"` + agreementURL + `"}`
+	// Test POST valid JSON with account up in the mock (with correct agreement URL)
+	payload = `{"agreement":"` + agreementURL + `"}`
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 
-	// Test POST valid JSON with garbage in URL but valid registration ID
-	payload = `{"resource":"reg","agreement":"` + agreementURL + `"}`
+	// Test POST valid JSON with garbage in URL but valid account ID
+	payload = `{"agreement":"` + agreementURL + `"}`
 	signedURL = "http://localhost/a/bunch/of/garbage/1"
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath("/a/bunch/of/garbage/1", body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
 	responseWriter.Body.Reset()
 
-	// Test POST valid JSON with registration up in the mock (with old agreement URL)
+	// Test POST valid JSON with account up in the mock (with old agreement URL)
 	responseWriter.HeaderMap = http.Header{}
 	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
-	payload = `{"resource":"reg","agreement":"` + agreementURL + `"}`
+	payload = `{"agreement":"` + agreementURL + `"}`
 	signedURL = "http://localhost/1"
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links = responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
@@ -1530,7 +1525,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	test.Assert(t, ok, "Failed to load test 1 RSA key")
 
 	payload := `{"agreement":"` + agreementURL + `"}`
-	path := fmt.Sprintf("%s%d", regPath, 1)
+	path := fmt.Sprintf("%s%d", acctPath, 1)
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
@@ -1588,7 +1583,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		}`)
 }
 
-func TestDeactivateRegistration(t *testing.T) {
+func TestDeactivateAccount(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 
@@ -1599,7 +1594,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "urn:acme:error:malformed","detail": "Invalid value provided for status field","status": 400}`)
@@ -1609,7 +1604,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -1632,7 +1627,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	payload = `{"status":"deactivated", "contact":[]}`
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -1662,7 +1657,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 3, key, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
@@ -1787,7 +1782,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"newKey":` + string(newJWKJSON) + `}`,
 			ExpectedResponse: `{
 		     "type": "urn:acme:error:malformed",
-		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/reg/1\"",
+		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
 			NewKey:        newKey,
@@ -1795,7 +1790,7 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Missing new key from inner payload",
-			Payload: `{"account":"http://localhost/acme/reg/1"}`,
+			Payload: `{"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "urn:acme:error:malformed",
 		     "detail": "Inner JWS does not verify with specified new key",
@@ -1805,7 +1800,7 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "New key is the same as the old key",
-			Payload: `{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
+			Payload: `{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "urn:acme:error:malformed",
 		     "detail": "New key specified by rollover request is the same as the old key",
@@ -1815,7 +1810,7 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Inner JWS signed by the wrong key",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/reg/1"}`,
+			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "urn:acme:error:malformed",
 		     "detail": "Inner JWS does not verify with specified new key",
@@ -1825,7 +1820,7 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Valid key rollover request",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/reg/1"}`,
+			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "id": 1,
 		     "key": ` + string(newJWKJSON) + `,
