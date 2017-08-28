@@ -361,3 +361,16 @@ type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID string
 }
+
+func modelToOrder(om orderModel) *corepb.Order {
+	expires := om.Expires.UnixNano()
+	return &corepb.Order{
+		Id:                &om.ID,
+		RegistrationID:    &om.RegistrationID,
+		Expires:           &expires,
+		Csr:               om.CSR,
+		Error:             om.Error,
+		CertificateSerial: &om.CertificateSerial,
+		Status:            &om.Status,
+	}
+}

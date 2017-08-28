@@ -39,6 +39,7 @@ service StorageAuthority {
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
+        rpc Order(OrderRequest) returns (core.Order) {}
 }
 
 message RegistrationID {
@@ -178,4 +179,8 @@ message RevokeAuthorizationsByDomainRequest {
 message RevokeAuthorizationsByDomainResponse {
         optional int64 finalized = 1;
         optional int64 pending = 2;
+}
+
+message OrderRequest {
+        optional int64 id = 1;
 }

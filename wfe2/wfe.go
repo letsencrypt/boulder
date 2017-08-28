@@ -309,6 +309,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -1173,6 +1174,8 @@ type orderJSON struct {
 	Expires        time.Time
 	CSR            core.JSONBuffer
 	Authorizations []string
+	Certificate    string `json:",omitempty"`
+	Error          string `json:",omitempty"`
 }
 
 // NewOrder is used by clients to create a new order object from a CSR
@@ -1245,6 +1248,43 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
+		return
+	}
+}
+
+// Order ...
+func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	id, err := strconv.Atoi(request.URL.Path)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid ID"), err)
+		return
+	}
+
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: id})
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound("No order for ID"), err)
+			return
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order"), err)
+		return
+	}
+
+	respObj := orderJSON{
+		Status:         core.AcmeStatus(*order.Status),
+		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
+		CSR:            core.JSONBuffer(order.Csr),
+		Authorizations: make([]string, len(order.Authorizations)),
+		Certificate:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, *order.CertificateSerial)),
+		Error:          string(order.Error),
+	}
+	for i, authz := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return

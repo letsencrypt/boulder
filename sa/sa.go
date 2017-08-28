@@ -1314,3 +1314,16 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	req.Id = &order.ID
 	return req, nil
 }
+
+// Order ...
+func (ssa *SQLStorageAuthority) Order(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	var om orderModel
+	err := ssa.dbMap.Get(&om, *req.Id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+		}
+		return nil, err
+	}
+	return modelToOrder(om), nil
+}
