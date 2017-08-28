@@ -18,13 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"github.com/jmhodges/clock"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -43,6 +37,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 type DummyValidationAuthority struct {

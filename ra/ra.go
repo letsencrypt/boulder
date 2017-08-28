@@ -726,6 +726,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 	for _, name := range names {
 		wg.Add(1)
 		go func(name string) {
+			defer wg.Done()
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain: &name,
 			})
@@ -738,7 +739,6 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 					Detail: *resp.Problem.Detail,
 				}
 			}
-			wg.Done()
 		}(name)
 	}
 	wg.Wait()

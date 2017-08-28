@@ -20,12 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -41,6 +36,9 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
