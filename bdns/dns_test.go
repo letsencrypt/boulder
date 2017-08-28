@@ -473,10 +473,11 @@ func TestRetry(t *testing.T) {
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
-		maxTries      int
-		te            *testExchanger
-		expected      error
-		expectedCount int
+		maxTries          int
+		te                *testExchanger
+		expected          error
+		expectedCount     int
+		metricsAllRetries int
 	}
 	tests := []*testCase{
 		// The success on first try case
@@ -516,8 +517,9 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:      netError,
-			expectedCount: 3,
+			expected:          netError,
+			expectedCount:     3,
+			metricsAllRetries: 1,
 		},
 		// Even with maxTries at 0, we should still let a single request go
 		// through
@@ -564,8 +566,9 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:      netError,
-			expectedCount: 3,
+			expected:          netError,
+			expectedCount:     3,
+			metricsAllRetries: 1,
 		},
 		// temporary then non-Temporary error causes two retries
 		{
@@ -583,7 +586,6 @@ func TestRetry(t *testing.T) {
 
 	for i, tc := range tests {
 		dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
-
 		dr.dnsClient = tc.te
 		_, _, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
@@ -597,6 +599,12 @@ func TestRetry(t *testing.T) {
 		}
 		if tc.expectedCount != tc.te.count {
 			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
+		}
+		if tc.metricsAllRetries > 0 {
+			test.AssertEquals(t, test.CountCounter(
+				"qtype",
+				"TXT",
+				dr.usedAllRetriesCounter), tc.metricsAllRetries)
 		}
 	}
 
@@ -626,6 +634,11 @@ func TestRetry(t *testing.T) {
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
+
+	test.AssertEquals(t, test.CountCounter(
+		"qtype",
+		"TXT",
+		dr.cancelCounter), 3)
 }
 
 type tempError bool

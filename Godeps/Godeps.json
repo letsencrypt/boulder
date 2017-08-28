@@ -148,11 +148,11 @@
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
-			"Rev": "a8c029efb52bae66853e05241150ab338e98fbc7"
+			"Rev": "f387afacc9e702b5ed3e90100d3375871e724c08"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing/internal/safebrowsing_proto",
-			"Rev": "a8c029efb52bae66853e05241150ab338e98fbc7"
+			"Rev": "f387afacc9e702b5ed3e90100d3375871e724c08"
 		},
 		{
 			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",
