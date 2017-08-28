@@ -719,6 +719,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 }
 
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
+	ra.stats.Inc("recheck_caa", 1)
+	ra.stats.Inc("recheck_caa_names", int64(len(names)))
 	wg := sync.WaitGroup{}
 	ch := make(chan *probs.ProblemDetails, len(names))
 	for _, name := range names {
@@ -748,7 +750,10 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 		}
 	}
 	if len(fails) > 0 {
-		return fmt.Errorf("Rechecking CAA: %s", fails)
+		return &probs.ProblemDetails{
+			Type:   probs.CAAProblem,
+			Detail: fmt.Sprintf("Rechecking CAA: %s", fails),
+		}
 	}
 	return nil
 }
