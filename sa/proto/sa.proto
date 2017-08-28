@@ -39,7 +39,7 @@ service StorageAuthority {
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
-        rpc Order(OrderRequest) returns (core.Order) {}
+        rpc GetOrder(OrderRequest) returns (core.Order) {}
 }
 
 message RegistrationID {

@@ -1262,7 +1262,7 @@ func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, r
 		return
 	}
 
-	order, err := wfe.SA.Order(ctx, &sapb.OrderRequest{Id: &id})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &id})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID"), err)

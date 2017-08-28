@@ -1324,8 +1324,8 @@ func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
 	return ids, nil
 }
 
-// Order is used to retrieve an already existing order object
-func (ssa *SQLStorageAuthority) Order(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+// GetOrder is used to retrieve an already existing order object
+func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	omObj, err := ssa.dbMap.Get(orderModel{}, *req.Id)
 	if err == sql.ErrNoRows || omObj == nil {
 		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)

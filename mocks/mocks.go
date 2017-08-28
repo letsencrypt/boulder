@@ -413,7 +413,7 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 }
 
 // Order is a mock
-func (sa *StorageAuthority) Order(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if *req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")
 	}

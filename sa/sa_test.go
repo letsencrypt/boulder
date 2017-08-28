@@ -1335,7 +1335,7 @@ func TestOrder(t *testing.T) {
 
 	test.AssertEquals(t, *order.Id, int64(1))
 
-	storedOrder, err := sa.Order(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.Order failed")
 	test.AssertDeepEquals(t, storedOrder, order)
 }

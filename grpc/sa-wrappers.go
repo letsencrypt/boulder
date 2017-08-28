@@ -479,8 +479,8 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	return resp, nil
 }
 
-func (sas StorageAuthorityClientWrapper) Order(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
-	resp, err := sas.inner.Order(ctx, request)
+func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
+	resp, err := sas.inner.GetOrder(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -934,10 +934,10 @@ func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *
 	return sas.inner.NewOrder(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) Order(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
+func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
 	if request == nil || request.Id == nil {
 		return nil, errIncompleteRequest
 	}
 
-	return sas.inner.Order(ctx, request)
+	return sas.inner.GetOrder(ctx, request)
 }
