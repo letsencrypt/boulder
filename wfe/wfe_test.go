@@ -21,9 +21,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -38,6 +35,10 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -785,6 +786,17 @@ func TestRandomDirectoryKey(t *testing.T) {
 	}
 }
 
+// noopCAA implements RA's caaChecker, always returning nil
+type noopCAA struct{}
+
+func (cr noopCAA) IsCAAValid(
+	ctx context.Context,
+	in *vaPB.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vaPB.IsCAAValidResponse, error) {
+	return &vaPB.IsCAAValidResponse{}, nil
+}
+
 func TestRelativeDirectory(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
 	defer features.Reset()
@@ -853,6 +865,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats := metrics.NewNoopScope()
+
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
@@ -865,6 +878,7 @@ func TestIssueCertificate(t *testing.T) {
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
+		noopCAA{},
 		0,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)

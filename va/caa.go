@@ -6,10 +6,33 @@ import (
 	"sync"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 )
+
+func (va *ValidationAuthorityImpl) IsCAAValid(
+	ctx context.Context,
+	req *vapb.IsCAAValidRequest,
+) (*vapb.IsCAAValidResponse, error) {
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: *req.Domain,
+	})
+
+	if prob != nil {
+		typ := string(prob.Type)
+		return &vapb.IsCAAValidResponse{
+			Problem: &corepb.ProblemDetails{
+				ProblemType: &typ,
+				Detail:      &prob.Detail,
+			},
+		}, nil
+	}
+	return &vapb.IsCAAValidResponse{}, nil
+}
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
 	present, valid, err := va.checkCAARecords(ctx, identifier)

@@ -45,6 +45,7 @@
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
+      "RecheckCAA": true,
       "ReusePendingAuthz": true
     }
   },
