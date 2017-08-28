@@ -148,18 +148,11 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register VA gRPC server")
+	vaPB.RegisterCAAServer(grpcSrv, vai)
+	cmd.FailOnError(err, "Unable to register CAA gRPC server")
 	go func() {
 		err = grpcSrv.Serve(l)
 		cmd.FailOnError(err, "VA gRPC service failed")
-	}()
-
-	caaGRPCSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tls, scope)
-	cmd.FailOnError(err, "Unable to setup CAA gRPC server")
-	vaPB.RegisterCAAServer(caaGRPCSrv, vai)
-	cmd.FailOnError(err, "Unable to register CAA gRPC server")
-	go func() {
-		err = caaGRPCSrv.Serve(l)
-		cmd.FailOnError(err, "CAA gRPC service failed")
 	}()
 
 	go cmd.CatchSignals(logger, func() {
