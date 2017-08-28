@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type config struct {
@@ -150,6 +151,15 @@ func main() {
 	go func() {
 		err = grpcSrv.Serve(l)
 		cmd.FailOnError(err, "VA gRPC service failed")
+	}()
+
+	caaGRPCSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tls, scope)
+	cmd.FailOnError(err, "Unable to setup CAA gRPC server")
+	vaPB.RegisterCAAServer(caaGRPCSrv, vai)
+	cmd.FailOnError(err, "Unable to register CAA gRPC server")
+	go func() {
+		err = caaGRPCSrv.Serve(l)
+		cmd.FailOnError(err, "CAA gRPC service failed")
 	}()
 
 	go cmd.CatchSignals(logger, func() {
