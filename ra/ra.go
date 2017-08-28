@@ -44,6 +44,16 @@ import (
 // of exported var name:" error from the expvar package.
 var issuanceExpvar = expvar.NewInt("lastIssuance")
 
+type caaChecker interface {
+	CheckCAA(ctx context.Context, name string) error
+}
+
+type fakeCAAChecker struct{}
+
+func (f *fakeCAAChecker) CheckCAA(ctx context.Context, name string) error {
+	return nil
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -54,6 +64,7 @@ type RegistrationAuthorityImpl struct {
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
 	publisher core.Publisher
+	caa       caaChecker
 
 	stats     metrics.Scope
 	DNSClient bdns.DNSClient
@@ -100,6 +111,7 @@ func NewRegistrationAuthorityImpl(
 		stats: stats,
 		clk:   clk,
 		log:   logger,
+		caa:   &fakeCAAChecker{},
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),
@@ -658,13 +670,22 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 
 // checkAuthorizations checks that each requested name has a valid authorization
 // that won't expire before the certificate expires. Returns an error otherwise.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, registration *core.Registration) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
 	now := ra.clk.Now()
-	var badNames []string
+	var badNames, recheckNames []string
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	auths, err := ra.SA.GetValidAuthorizations(ctx, registration.ID, names, now)
+	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
+	// CAA is checked when an authorization is validated, so as long as that was
+	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
+	// we have to recheck. Since we don't record the validation time for
+	// authorizations, we instead look at the expiration time and subtract out the
+	// expected authorization lifetime. Note: If we adjust the authorization
+	// lifetime in the future we will need to tweak this correspondingly so it
+	// works correctly during the switchover.
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, names, now)
 	if err != nil {
 		return err
 	}
@@ -676,7 +697,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
+		} else if authz.Expires.Before(caaRecheckTime) {
+			recheckNames = append(recheckNames, name)
 		}
+	}
+
+	if err = ra.recheckCAA(ctx, recheckNames); err != nil {
+		return err
 	}
 
 	if len(badNames) > 0 {
@@ -684,6 +711,32 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 			"authorizations for these names not found or expired: %s",
 			strings.Join(badNames, ", "),
 		)
+	}
+
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
+	wg := sync.WaitGroup{}
+	ch := make(chan error, len(names))
+	for _, name := range names {
+		wg.Add(1)
+		go func(name string) {
+			err := ra.caa.CheckCAA(ctx, name)
+			ch <- err
+			wg.Done()
+		}(name)
+	}
+	wg.Wait()
+	close(ch)
+	var fails []error
+	for err := range ch {
+		if err != nil {
+			fails = append(fails, err)
+		}
+	}
+	if len(fails) > 0 {
+		return fmt.Errorf("Rechecking CAA: %s", fails)
 	}
 	return nil
 }
@@ -753,7 +806,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	err = ra.checkAuthorizations(ctx, names, &registration)
+	err = ra.checkAuthorizations(ctx, names, registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
