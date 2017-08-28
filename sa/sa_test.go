@@ -1291,20 +1291,13 @@ func TestNewOrder(t *testing.T) {
 	defer cleanup()
 
 	i := int64(1337)
-	serial := "serial"
-	a, b, c := "a", "b", "c"
 	status := string(core.StatusPending)
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:    &i,
-		Expires:           &i,
-		Csr:               []byte{0, 1, 2},
-		CertificateSerial: &serial,
-		Authorizations: []*corepb.Authorization{
-			&corepb.Authorization{Id: &a},
-			&corepb.Authorization{Id: &b},
-			&corepb.Authorization{Id: &c},
-		},
-		Status: &status,
+		RegistrationID: &i,
+		Expires:        &i,
+		Csr:            []byte{0, 1, 2},
+		Authorizations: []string{"a", "b", "c"},
+		Status:         &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
@@ -1315,4 +1308,34 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+}
+
+func TestOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := time.Now().Truncate(time.Second).UnixNano()
+	status := string(core.StatusPending)
+	empty := ""
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:    &i,
+		Expires:           &i,
+		Csr:               []byte{0, 1, 2},
+		Authorizations:    []string{"a"},
+		Status:            &status,
+		CertificateSerial: &empty,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	test.AssertEquals(t, *order.Id, int64(1))
+
+	storedOrder, err := sa.Order(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.Order failed")
+	test.AssertDeepEquals(t, storedOrder, order)
 }

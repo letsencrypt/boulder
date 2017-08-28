@@ -1294,10 +1294,10 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, err
 	}
 
-	for _, authz := range req.Authorizations {
+	for _, id := range req.Authorizations {
 		otoa := &orderToAuthzModel{
 			OrderID: order.ID,
-			AuthzID: *authz.Id,
+			AuthzID: id,
 		}
 		err = tx.Insert(otoa)
 		if err != nil {
@@ -1315,15 +1315,32 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return req, nil
 }
 
-// Order ...
-func (ssa *SQLStorageAuthority) Order(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
-	var om orderModel
-	err := ssa.dbMap.Get(&om, *req.Id)
+func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
+	var ids []string
+	_, err := ssa.dbMap.Select(&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
-		}
 		return nil, err
 	}
-	return modelToOrder(om), nil
+	return ids, nil
+}
+
+// Order ...
+func (ssa *SQLStorageAuthority) Order(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	omObj, err := ssa.dbMap.Get(orderModel{}, *req.Id)
+	if err == sql.ErrNoRows || omObj == nil {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	order := modelToOrder(omObj.(*orderModel))
+	authzIDs, err := ssa.authzForOrder(*order.Id)
+	if err != nil {
+		return nil, err
+	}
+	for _, authzID := range authzIDs {
+		order.Authorizations = append(order.Authorizations, authzID)
+	}
+
+	return order, nil
 }

@@ -484,7 +484,7 @@ func (sas StorageAuthorityClientWrapper) Order(ctx context.Context, request *sap
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.Certificate == nil {
+	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil

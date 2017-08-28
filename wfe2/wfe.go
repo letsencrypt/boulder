@@ -1239,8 +1239,8 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
-	for i, authz := range order.Authorizations {
-		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authzID))
 	}
 
 	// TODO(#2985): This location header points to a non-existent path, remove

@@ -1381,11 +1381,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			return nil, err
 		}
-		authzPB, err := grpc.AuthzToPB(authz)
-		if err != nil {
-			return nil, err
-		}
-		order.Authorizations = append(order.Authorizations, authzPB)
+		order.Authorizations = append(order.Authorizations, authz.ID)
 	}
 
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
