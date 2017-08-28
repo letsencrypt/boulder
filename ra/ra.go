@@ -750,10 +750,14 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 		}
 	}
 	if len(fails) > 0 {
-		return &probs.ProblemDetails{
-			Type:   probs.CAAProblem,
-			Detail: fmt.Sprintf("Rechecking CAA: %s", fails),
+		message := "Rechecking CAA: "
+		for i, pd := range fails {
+			if i > 0 {
+				message = message + ", "
+			}
+			message = message + pd.Detail
 		}
+		return berrors.ConnectionFailureError(message)
 	}
 	return nil
 }

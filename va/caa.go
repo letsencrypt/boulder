@@ -2,15 +2,13 @@ package va
 
 import (
 	"fmt"
-	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
-	vapb "github.com/letsencrypt/boulder/va/proto"
-	"golang.org/x/net/context"
 	"strings"
 	"sync"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 )
