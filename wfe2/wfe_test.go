@@ -256,16 +256,13 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	one := int64(1)
 	status := string(core.StatusPending)
-	id := "hello"
 	return &corepb.Order{
 		Id:             &one,
 		RegistrationID: req.RegistrationID,
 		Expires:        &one,
 		Csr:            req.Csr,
 		Status:         &status,
-		Authorizations: []*corepb.Authorization{
-			{Id: &id},
-		},
+		Authorizations: []string{"hello"},
 	}, nil
 }
 
@@ -1855,4 +1852,20 @@ func TestKeyRollover(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrder(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
+	wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: "1"}})
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"Status": "pending","Expires": "1970-01-01T00:00:00Z","CSR": "AQMDBw","Authorizations":["http://localhost/acme/authz/hello"],"Certificate":"http://localhost/acme/cert/serial","Error":"error"}`)
+
+	responseWriter.Body.Reset()
+	wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: "2"}})
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No order for ID", "status":404}`)
+
+	responseWriter.Body.Reset()
+	wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: "asd"}})
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Invalid ID","status":400}`)
 }

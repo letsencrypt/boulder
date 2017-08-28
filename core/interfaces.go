@@ -124,6 +124,7 @@ type StorageGetter interface {
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
+	Order(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods

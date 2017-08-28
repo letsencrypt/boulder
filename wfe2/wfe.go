@@ -20,6 +20,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -27,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -1240,11 +1242,9 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
 	for i, authzID := range order.Authorizations {
-		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authzID))
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
 	}
 
-	// TODO(#2985): This location header points to a non-existent path, remove
-	// comment once the order handler is added
 	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
@@ -1254,15 +1254,15 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 	}
 }
 
-// Order ...
+// Order is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	id, err := strconv.Atoi(request.URL.Path)
+	id, err := strconv.ParseInt(request.URL.Path, 10, 64)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid ID"), err)
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: id})
+	order, err := wfe.SA.Order(ctx, &sapb.OrderRequest{Id: &id})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID"), err)
@@ -1280,8 +1280,8 @@ func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, r
 		Certificate:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, *order.CertificateSerial)),
 		Error:          string(order.Error),
 	}
-	for i, authz := range order.Authorizations {
-		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
