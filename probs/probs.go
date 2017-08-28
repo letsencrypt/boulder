@@ -17,7 +17,6 @@ const (
 	BadNonceProblem           = ProblemType("urn:acme:error:badNonce")
 	InvalidEmailProblem       = ProblemType("urn:acme:error:invalidEmail")
 	RejectedIdentifierProblem = ProblemType("urn:acme:error:rejectedIdentifier")
-	CAAProblem                = ProblemType("urn:acme:error:caa")
 
 	v2ErrorNS                  = "urn:ietf:params:acme:error:"
 	AccountDoesNotExistProblem = ProblemType(v2ErrorNS + "accountDoesNotExist")
