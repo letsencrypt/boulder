@@ -26,7 +26,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	grpc "google.golang.org/grpc"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -45,13 +46,11 @@ import (
 var issuanceExpvar = expvar.NewInt("lastIssuance")
 
 type caaChecker interface {
-	CheckCAA(ctx context.Context, name string) error
-}
-
-type fakeCAAChecker struct{}
-
-func (f *fakeCAAChecker) CheckCAA(ctx context.Context, name string) error {
-	return nil
+	IsCAAValid(
+		ctx context.Context,
+		in *vaPB.IsCAAValidRequest,
+		opts ...grpc.CallOption,
+	) (*vaPB.IsCAAValidResponse, error)
 }
 
 // RegistrationAuthorityImpl defines an RA.
@@ -105,13 +104,13 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc core.Publisher,
+	caaClient caaChecker,
 	orderLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		caa:   &fakeCAAChecker{},
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),
@@ -127,6 +126,7 @@ func NewRegistrationAuthorityImpl(
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
+		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 	}
 	return ra
@@ -438,7 +438,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
 	// interface, because we want to move towards using gRPC interfaces more
 	// directly. So we type-assert the wrapper to a gRPC-specific type.
-	saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+	saGRPC, ok := ra.SA.(*bgrpc.StorageAuthorityClientWrapper)
 	if !limit.Enabled() || !ok {
 		return nil
 	}
@@ -702,8 +702,10 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 		}
 	}
 
-	if err = ra.recheckCAA(ctx, recheckNames); err != nil {
-		return err
+	if features.Enabled(features.RecheckCAA) {
+		if err = ra.recheckCAA(ctx, recheckNames); err != nil {
+			return err
+		}
 	}
 
 	if len(badNames) > 0 {
@@ -718,18 +720,28 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	wg := sync.WaitGroup{}
-	ch := make(chan error, len(names))
+	ch := make(chan *probs.ProblemDetails, len(names))
 	for _, name := range names {
 		wg.Add(1)
 		go func(name string) {
-			err := ra.caa.CheckCAA(ctx, name)
-			ch <- err
+			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
+				Domain: &name,
+			})
+			if err != nil {
+				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
+				ch <- probs.ServerInternal("Internal error rechecking CAA for " + name)
+			} else if resp.Problem != nil {
+				ch <- &probs.ProblemDetails{
+					Type:   probs.ProblemType(*resp.Problem.ProblemType),
+					Detail: *resp.Problem.Detail,
+				}
+			}
 			wg.Done()
 		}(name)
 	}
 	wg.Wait()
 	close(ch)
-	var fails []error
+	var fails []*probs.ProblemDetails
 	for err := range ch {
 		if err != nil {
 			fails = append(fails, err)
@@ -1434,7 +1446,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			return nil, err
 		}
-		authzPB, err := grpc.AuthzToPB(authz)
+		authzPB, err := bgrpc.AuthzToPB(authz)
 		if err != nil {
 			return nil, err
 		}
