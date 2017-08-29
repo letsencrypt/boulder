@@ -847,11 +847,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	}
 
 	if ra.publisher != nil {
-		go func() {
+		go func(der []byte) {
 			// Since we don't want this method to be canceled if the parent context
 			// expires, pass a background context to it and run it in a goroutine.
-			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
-		}()
+			_ = ra.publisher.SubmitToCT(context.Background(), der)
+		}(cert.DER)
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
