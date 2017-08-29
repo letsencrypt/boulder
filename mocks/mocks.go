@@ -416,6 +416,8 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if *req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")
+	} else if *req.Id == 3 {
+		return nil, errors.New("very bad")
 	}
 	status := string(core.StatusPending)
 	one := int64(1)

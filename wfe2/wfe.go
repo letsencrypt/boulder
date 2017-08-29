@@ -1258,17 +1258,17 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	id, err := strconv.ParseInt(request.URL.Path, 10, 64)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid ID"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
 		return
 	}
 
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &id})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("No order for ID"), err)
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", id)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", id)), err)
 		return
 	}
 
