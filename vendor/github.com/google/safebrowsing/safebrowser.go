@@ -402,33 +402,34 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 		return threats, err
 	}
 
-	// TODO: There are some optimizations to be made here:
-	//	1.) We could force a database update if it is in error.
-	//  However, we must ensure that we perform some form of rate-limiting.
-	//	2.) We should batch all of the partial hashes together such that we
-	//	call api.HashLookup only once.
+	hashes := make(map[hashPrefix]string)
+	hash2idx := make(map[hashPrefix]int)
+
+	// Construct the follow-up request being made to the server.
+	// In the request, we only ask for partial hashes for privacy reasons.
+	req := &pb.FindFullHashesRequest{
+		Client: &pb.ClientInfo{
+			ClientId:      sb.config.ID,
+			ClientVersion: sb.config.Version,
+		},
+		ThreatInfo: &pb.ThreatInfo{},
+	}
+	ttm := make(map[pb.ThreatType]bool)
+	ptm := make(map[pb.PlatformType]bool)
+	tetm := make(map[pb.ThreatEntryType]bool)
 
 	for i, url := range urls {
-		hashes, err := generateHashes(url)
+		urlhashes, err := generateHashes(url)
 		if err != nil {
-			sb.log.Printf("error generating hashes: %v", err)
+			sb.log.Printf("error generating urlhashes: %v", err)
 			atomic.AddInt64(&sb.stats.QueriesFail, int64(len(urls)-i))
 			return threats, err
 		}
 
-		// Construct the follow-up request being made to the server.
-		// In the request, we only ask for partial hashes for privacy reasons.
-		req := &pb.FindFullHashesRequest{
-			Client: &pb.ClientInfo{
-				ClientId:      sb.config.ID,
-				ClientVersion: sb.config.Version,
-			},
-			ThreatInfo: &pb.ThreatInfo{},
-		}
-		ttm := make(map[pb.ThreatType]bool)
-		ptm := make(map[pb.PlatformType]bool)
-		tetm := make(map[pb.ThreatEntryType]bool)
-		for fullHash, pattern := range hashes {
+		for fullHash, pattern := range urlhashes {
+			hashes[fullHash] = pattern
+			hash2idx[fullHash] = i
+
 			// Lookup in database according to threat list.
 			partialHash, unsureThreats := sb.db.Lookup(fullHash)
 			if len(unsureThreats) == 0 {
@@ -451,6 +452,7 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 						})
 					}
 				}
+				atomic.AddInt64(&sb.stats.QueriesByCache, 1)
 			case negativeCacheHit:
 				// This is cached as a non-threat.
 				atomic.AddInt64(&sb.stats.QueriesByCache, 1)
@@ -467,27 +469,23 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 					&pb.ThreatEntry{Hash: []byte(partialHash)})
 			}
 		}
-		for tt := range ttm {
-			req.ThreatInfo.ThreatTypes = append(req.ThreatInfo.ThreatTypes, tt)
-		}
-		for pt := range ptm {
-			req.ThreatInfo.PlatformTypes = append(req.ThreatInfo.PlatformTypes, pt)
-		}
-		for tet := range tetm {
-			req.ThreatInfo.ThreatEntryTypes = append(req.ThreatInfo.ThreatEntryTypes, tet)
-		}
+	}
+	for tt := range ttm {
+		req.ThreatInfo.ThreatTypes = append(req.ThreatInfo.ThreatTypes, tt)
+	}
+	for pt := range ptm {
+		req.ThreatInfo.PlatformTypes = append(req.ThreatInfo.PlatformTypes, pt)
+	}
+	for tet := range tetm {
+		req.ThreatInfo.ThreatEntryTypes = append(req.ThreatInfo.ThreatEntryTypes, tet)
+	}
 
-		// All results are known, so just continue.
-		if len(req.ThreatInfo.ThreatEntries) == 0 {
-			atomic.AddInt64(&sb.stats.QueriesByCache, 1)
-			continue
-		}
-
-		// Actually query the Safe Browsing API for exact full hash matches.
+	// Actually query the Safe Browsing API for exact full hash matches.
+	if len(req.ThreatInfo.ThreatEntries) != 0 {
 		resp, err := sb.api.HashLookup(req)
 		if err != nil {
 			sb.log.Printf("HashLookup failure: %v", err)
-			atomic.AddInt64(&sb.stats.QueriesFail, int64(len(urls)-i))
+			atomic.AddInt64(&sb.stats.QueriesFail, 1)
 			return threats, err
 		}
 
@@ -500,7 +498,9 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 			if !fullHash.IsFull() {
 				continue
 			}
-			if pattern, ok := hashes[fullHash]; ok {
+			pattern, ok := hashes[fullHash]
+			idx, findidx := hash2idx[fullHash]
+			if findidx && ok {
 				td := ThreatDescriptor{
 					ThreatType:      ThreatType(tm.ThreatType),
 					PlatformType:    PlatformType(tm.PlatformType),
@@ -509,7 +509,7 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 				if !sb.lists[td] {
 					continue
 				}
-				threats[i] = append(threats[i], URLThreat{
+				threats[idx] = append(threats[idx], URLThreat{
 					Pattern:          pattern,
 					ThreatDescriptor: td,
 				})

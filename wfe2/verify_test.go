@@ -133,7 +133,7 @@ func signRequestKeyID(
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
 		Algorithm: keyAlgForKey(t, privateKey),
-		KeyID:     fmt.Sprintf("http://localhost/acme/reg/%d", keyID),
+		KeyID:     fmt.Sprintf("http://localhost/acme/acct/%d", keyID),
 	}
 
 	signerKey := jose.SigningKey{
@@ -994,7 +994,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retreiving account \"http://localhost/acme/reg/100\"",
+				Detail:     "Error retreiving account \"http://localhost/acme/acct/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
 			ErrorStatType: "JWSKeyIDLookupFailed",
@@ -1005,7 +1005,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", missingIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
+				Detail:     "Account \"http://localhost/acme/acct/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSKeyIDNotFound",
@@ -1234,7 +1234,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			Request: makePostRequestWithPath("test", missingJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"http://localhost/acme/reg/102\" not found",
+				Detail:     "Account \"http://localhost/acme/acct/102\" not found",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSKeyIDNotFound",

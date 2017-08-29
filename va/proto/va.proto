@@ -10,6 +10,19 @@ service VA {
 	rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
 }
 
+service CAA {
+	rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
+}
+
+message IsCAAValidRequest {
+	optional string domain = 1;
+}
+
+// If CAA is valid for the requested domain, the problem will be empty
+message IsCAAValidResponse {
+	optional core.ProblemDetails problem = 1;
+}
+
 message IsSafeDomainRequest {
 	optional string domain = 1;
 }

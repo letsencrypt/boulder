@@ -37,8 +37,8 @@ import (
 // measured_http.
 const (
 	directoryPath  = "/directory"
-	newRegPath     = "/acme/new-reg"
-	regPath        = "/acme/reg/"
+	newAcctPath    = "/acme/new-acct"
+	acctPath       = "/acme/acct/"
 	authzPath      = "/acme/authz/"
 	challengePath  = "/acme/challenge/"
 	certPath       = "/acme/cert/"
@@ -300,8 +300,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
-	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
-	wfe.HandleFunc(m, regPath, wfe.Registration, "POST")
+	wfe.HandleFunc(m, newAcctPath, wfe.NewAccount, "POST")
+	wfe.HandleFunc(m, acctPath, wfe.Account, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
@@ -371,7 +371,7 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
-		"new-reg":     newRegPath,
+		"new-account": newAcctPath,
 		"revoke-cert": revokeCertPath,
 	}
 
@@ -443,10 +443,14 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-// NewRegistration is used by clients to submit a new registration/account
-func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+// NewAccount is used by clients to submit a new account
+func (wfe *WebFrontEndImpl) NewAccount(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
 
-	// NewRegistration uses `validSelfAuthenticatedPOST` instead of
+	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
 	// until after it is created!
 	body, key, prob := wfe.validSelfAuthenticatedPOST(request, logEvent)
@@ -456,10 +460,11 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
-		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
-		// TODO(#595): check for missing registration err
-		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
+		response.Header().Set("Location",
+			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+		// TODO(#595): check for missing account err
+		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
 		return
 	}
 
@@ -487,37 +492,36 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		}
 	}
 
-	reg, err := wfe.RA.NewRegistration(ctx, init)
+	acct, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
-		logEvent.AddError("unable to create new registration: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new registration"), err)
+		logEvent.AddError("unable to create new account: %s", err)
+		wfe.sendError(response, logEvent,
+			problemDetailsForError(err, "Error creating new account"), err)
 		return
 	}
-	logEvent.Requester = reg.ID
-	addRequesterHeader(response, reg.ID)
-	logEvent.Contacts = reg.Contact
+	logEvent.Requester = acct.ID
+	addRequesterHeader(response, acct.ID)
+	logEvent.Contacts = acct.Contact
 
-	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
-	// that reg.ID is a string being passed to %d.
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID))
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
-	response.Header().Add("Location", regURL)
+	response.Header().Add("Location", acctURL)
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, reg)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
-		// ServerInternal because we just created this registration, and it
+		// ServerInternal because we just created this account, and it
 		// should be OK.
-		logEvent.AddError("unable to marshal registration: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling registration"), err)
+		logEvent.AddError("unable to marshal account: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 		return
 	}
 }
 
-func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
-	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
+	authz, err := wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
 	if err != nil {
 		return false, err
 	}
@@ -542,7 +546,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	return
 }
 
-func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, account core.Registration) {
 	var csrLog = struct {
 		ClientAddr   string
 		CSR          string
@@ -550,7 +554,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 	}{
 		ClientAddr:   getClientAddr(request),
 		CSR:          hex.EncodeToString(cr.Bytes),
-		Registration: registration,
+		Registration: account,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
@@ -675,7 +679,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *requestEvent) {
-	body, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -683,20 +687,21 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if currReg.Agreement == "" {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Registration didn't agree to subscriber agreement before any further actions"), nil)
+	// wfe.Account when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require an account update.
+	if currAcct.Agreement == "" {
+		wfe.sendError(response, logEvent,
+			probs.Unauthorized("Account must agree to subscriber agreement before any further actions"), nil)
 		return
 	}
 
-	// Check that the registration ID matching the key used matches
-	// the registration ID on the authz object
-	if currReg.ID != authz.RegistrationID {
-		logEvent.AddError("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID)
+	// Check that the account ID matching the key used matches
+	// the account ID on the authz object
+	if currAcct.ID != authz.RegistrationID {
+		logEvent.AddError("User account id: %d != Authorization account id: %v", currAcct.ID, authz.RegistrationID)
 		wfe.sendError(response,
 			logEvent,
-			probs.Unauthorized("User registration ID doesn't match registration ID in authorization"),
+			probs.Unauthorized("User account ID doesn't match account ID in authorization"),
 			nil,
 		)
 		return
@@ -734,13 +739,13 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	}
 }
 
-// Registration is used by a client to submit an update to their registration.
-func (wfe *WebFrontEndImpl) Registration(
+// Account is used by a client to submit an update to their account.
+func (wfe *WebFrontEndImpl) Account(
 	ctx context.Context,
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, _, currReg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -749,33 +754,34 @@ func (wfe *WebFrontEndImpl) Registration(
 	}
 
 	// Requests to this handler should have a path that leads to a known
-	// registration
+	// account
 	idStr := request.URL.Path
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		logEvent.AddError("registration ID must be an integer, was %#v", idStr)
-		wfe.sendError(response, logEvent, probs.Malformed("Registration ID must be an integer"), err)
+		logEvent.AddError("account ID must be an integer, was %#v", idStr)
+		wfe.sendError(response, logEvent, probs.Malformed("Account ID must be an integer"), err)
 		return
 	} else if id <= 0 {
-		msg := fmt.Sprintf("Registration ID must be a positive non-zero integer, was %d", id)
+		msg := fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
-	} else if id != currReg.ID {
-		logEvent.AddError("Request signing key did not match registration key: %d != %d", id, currReg.ID)
-		wfe.sendError(response, logEvent, probs.Unauthorized("Request signing key did not match registration key"), nil)
+	} else if id != currAcct.ID {
+		logEvent.AddError("Request signing key did not match account key: %d != %d", id, currAcct.ID)
+		wfe.sendError(response, logEvent,
+			probs.Unauthorized("Request signing key did not match account key"), nil)
 		return
 	}
 
 	var update core.Registration
 	err = json.Unmarshal(body, &update)
 	if err != nil {
-		logEvent.AddError("unable to JSON parse registration: %s", err)
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling registration"), err)
+		logEvent.AddError("unable to JSON parse account: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 		return
 	}
 
-	// People *will* POST their full registrations to this endpoint, including
+	// People *will* POST their full accounts to this endpoint, including
 	// the 'valid' status, to avoid always failing out when that happens only
 	// attempt to deactivate if the provided status is different from their current
 	// status.
@@ -783,42 +789,44 @@ func (wfe *WebFrontEndImpl) Registration(
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if update.Status != "" && update.Status != currReg.Status {
+	if update.Status != "" && update.Status != currAcct.Status {
 		if update.Status != core.StatusDeactivated {
 			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
 			return
 		}
-		wfe.deactivateRegistration(ctx, *currReg, response, request, logEvent)
+		wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
 		return
 	}
 
-	// If a user POSTs their registration object including a previously valid
+	// If a user POSTs their account object including a previously valid
 	// agreement URL but that URL has since changed we will fail out here
 	// since the update agreement URL doesn't match the current URL. To fix that we
 	// only fail if the sent URL doesn't match the currently valid agreement URL
-	// and it doesn't match the URL currently stored in the registration
+	// and it doesn't match the URL currently stored in the account
 	// in the database. The RA understands the user isn't actually trying to
 	// update the agreement but since we do an early check here in order to prevent
 	// extraneous requests to the RA we have to add this bypass.
-	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
+	if len(update.Agreement) > 0 && update.Agreement != currAcct.Agreement &&
 		update.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
+			update.Agreement, wfe.SubscriberAgreementURL)
 		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
 
-	// Registration objects contain a JWK object which are merged in UpdateRegistration
-	// if it is different from the existing registration key. Since this isn't how you
+	// Account objects contain a JWK object which are merged in UpdateRegistration
+	// if it is different from the existing account key. Since this isn't how you
 	// update the key we just copy the existing one into the update object here. This
 	// ensures the key isn't changed and that we can cleanly serialize the update as
 	// JSON to send via RPC to the RA.
-	update.Key = currReg.Key
+	update.Key = currAcct.Key
 
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, *currReg, update)
+	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
 	if err != nil {
-		logEvent.AddError("unable to update registration: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
+		logEvent.AddError("unable to update account: %s", err)
+		wfe.sendError(response, logEvent,
+			problemDetailsForError(err, "Unable to update account"), err)
 		return
 	}
 
@@ -826,11 +834,12 @@ func (wfe *WebFrontEndImpl) Registration(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedReg)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
 	if err != nil {
-		// ServerInternal because we just generated the reg, it should be OK
-		logEvent.AddError("unable to marshal updated registration: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		// ServerInternal because we just generated the account, it should be OK
+		logEvent.AddError("unable to marshal updated account: %s", err)
+		wfe.sendError(response, logEvent,
+			probs.ServerInternal("Failed to marshal account"), err)
 		return
 	}
 }
@@ -841,15 +850,16 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) bool {
-	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return false
 	}
-	if reg.ID != authz.RegistrationID {
-		logEvent.AddError("registration ID doesn't match ID for authorization")
-		wfe.sendError(response, logEvent, probs.Unauthorized("Registration ID doesn't match ID for authorization"), nil)
+	if acct.ID != authz.RegistrationID {
+		logEvent.AddError("account ID doesn't match ID for authorization")
+		wfe.sendError(response, logEvent,
+			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
 		return false
 	}
 	var req struct {
@@ -1100,7 +1110,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 	// Check that the new key isn't the same as the old key. This would fail as
 	// part of the subsequent `wfe.SA.GetRegistrationByKey` check since the new key
-	// will find the old registration if its equal to the old registration key. We
+	// will find the old account if its equal to the old account key. We
 	// check new key against old key explicitly to save an RPC round trip and a DB
 	// query for this easy rejection case
 	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
@@ -1118,8 +1128,10 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 	// Check that the new key isn't already being used for an existing account
 	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
-		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingAcct.ID)))
-		wfe.sendError(response, logEvent, probs.Conflict("New key is already in use for a different account"), err)
+		response.Header().Set("Location",
+			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+		wfe.sendError(response, logEvent,
+			probs.Conflict("New key is already in use for a different account"), err)
 		return
 	}
 
@@ -1138,20 +1150,27 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 }
 
-func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
-	err := wfe.RA.DeactivateRegistration(ctx, reg)
+func (wfe *WebFrontEndImpl) deactivateAccount(
+	ctx context.Context,
+	acct core.Registration,
+	response http.ResponseWriter,
+	request *http.Request,
+	logEvent *requestEvent) {
+	err := wfe.RA.DeactivateRegistration(ctx, acct)
 	if err != nil {
-		logEvent.AddError("unable to deactivate registration", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating registration"), err)
+		logEvent.AddError("unable to deactivate account", err)
+		wfe.sendError(response, logEvent,
+			problemDetailsForError(err, "Error deactivating account"), err)
 		return
 	}
-	reg.Status = core.StatusDeactivated
+	acct.Status = core.StatusDeactivated
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, reg)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
-		// ServerInternal because registration is from DB and should be fine
-		logEvent.AddError("unable to marshal updated registration: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
+		// ServerInternal because account is from DB and should be fine
+		logEvent.AddError("unable to marshal updated account: %s", err)
+		wfe.sendError(response, logEvent,
+			probs.ServerInternal("Failed to marshal account"), err)
 		return
 	}
 }
@@ -1181,8 +1200,12 @@ type orderJSON struct {
 }
 
 // NewOrder is used by clients to create a new order object from a CSR
-func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+func (wfe *WebFrontEndImpl) NewOrder(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -1226,7 +1249,7 @@ func (wfe *WebFrontEndImpl) NewOrder(ctx context.Context, logEvent *requestEvent
 	}
 
 	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: &reg.ID,
+		RegistrationID: &acct.ID,
 		Csr:            rawCSR.CSR,
 	})
 	if err != nil {
