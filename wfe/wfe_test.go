@@ -21,11 +21,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_model/go"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -40,6 +35,10 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -787,6 +786,17 @@ func TestRandomDirectoryKey(t *testing.T) {
 	}
 }
 
+// noopCAA implements RA's caaChecker, always returning nil
+type noopCAA struct{}
+
+func (cr noopCAA) IsCAAValid(
+	ctx context.Context,
+	in *vaPB.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vaPB.IsCAAValidResponse, error) {
+	return &vaPB.IsCAAValidResponse{}, nil
+}
+
 func TestRelativeDirectory(t *testing.T) {
 	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
 	defer features.Reset()
@@ -855,6 +865,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats := metrics.NewNoopScope()
+
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
@@ -867,6 +878,7 @@ func TestIssueCertificate(t *testing.T) {
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
+		noopCAA{},
 		0,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
@@ -1012,7 +1024,7 @@ func TestIssueCertificate(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 
 	// Test the CSR signature type counter works
-	test.AssertEquals(t, count("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
+	test.AssertEquals(t, test.CountCounter("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -2246,13 +2258,4 @@ func TestKeyRollover(t *testing.T) {
 		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
 		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
 	}
-}
-
-func count(key string, value string, counter *prometheus.CounterVec) int {
-	ch := make(chan prometheus.Metric, 10)
-	counter.With(prometheus.Labels{key: value}).Collect(ch)
-	m := <-ch
-	var iom io_prometheus_client.Metric
-	_ = m.Write(&iom)
-	return int(iom.Counter.GetValue())
 }

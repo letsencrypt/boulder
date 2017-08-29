@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/metrics"
@@ -160,12 +161,11 @@ type DNSClientImpl struct {
 	caaSERVFAILExceptions map[string]bool
 	maxTries              int
 	clk                   clock.Clock
-	stats                 metrics.Scope
-	txtStats              metrics.Scope
-	aStats                metrics.Scope
-	aaaaStats             metrics.Scope
-	caaStats              metrics.Scope
-	mxStats               metrics.Scope
+
+	queryTime             *prometheus.HistogramVec
+	totalLookupTime       *prometheus.HistogramVec
+	cancelCounter         *prometheus.CounterVec
+	usedAllRetriesCounter *prometheus.CounterVec
 }
 
 var _ DNSClient = &DNSClientImpl{}
@@ -192,6 +192,36 @@ func NewDNSClientImpl(
 	dnsClient.ReadTimeout = readTimeout
 	dnsClient.Net = "tcp"
 
+	queryTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "dns_query_time",
+			Help: "Time taken to perform a DNS query",
+		},
+		[]string{"qtype", "result", "authenticated_data"},
+	)
+	totalLookupTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "dns_total_lookup_time",
+			Help: "Time taken to perform a DNS lookup, including all retried queries",
+		},
+		[]string{"qtype", "result", "authenticated_data", "retries"},
+	)
+	cancelCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_query_cancels",
+			Help: "Counter of canceled DNS queries",
+		},
+		[]string{"qtype"},
+	)
+	usedAllRetriesCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_query_used_all_retries",
+			Help: "Counter of DNS queries which used all its retries",
+		},
+		[]string{"qtype"},
+	)
+	stats.MustRegister(queryTime, totalLookupTime, cancelCounter, usedAllRetriesCounter)
+
 	return &DNSClientImpl{
 		dnsClient:                dnsClient,
 		servers:                  servers,
@@ -199,12 +229,10 @@ func NewDNSClientImpl(
 		caaSERVFAILExceptions:    caaSERVFAILExceptions,
 		maxTries:                 maxTries,
 		clk:                      clk,
-		stats:                    stats,
-		txtStats:                 stats.NewScope("TXT"),
-		aStats:                   stats.NewScope("A"),
-		aaaaStats:                stats.NewScope("AAAA"),
-		caaStats:                 stats.NewScope("CAA"),
-		mxStats:                  stats.NewScope("MX"),
+		queryTime:                queryTime,
+		totalLookupTime:          totalLookupTime,
+		cancelCounter:            cancelCounter,
+		usedAllRetriesCounter:    usedAllRetriesCounter,
 	}
 }
 
@@ -221,7 +249,7 @@ func NewTestDNSClientImpl(readTimeout time.Duration, servers []string, stats met
 // out of the server list, returning the response, time, and error (if any).
 // We assume that the upstream resolver requests and validates DNSSEC records
 // itself.
-func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string, qtype uint16, msgStats metrics.Scope) (*dns.Msg, error) {
+func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, err error) {
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
@@ -230,36 +258,50 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 		return nil, fmt.Errorf("Not configured with at least one DNS Server")
 	}
 
-	dnsClient.stats.Inc("Rate", 1)
-
 	// Randomly pick a server
 	chosenServer := dnsClient.servers[rand.Intn(len(dnsClient.servers))]
 
-	client := dnsClient.dnsClient
-
-	tries := 1
 	start := dnsClient.clk.Now()
-	msgStats.Inc("Calls", 1)
+	client := dnsClient.dnsClient
+	qtypeStr := dns.TypeToString[qtype]
+	tries := 1
 	defer func() {
-		msgStats.TimingDuration("Latency", dnsClient.clk.Now().Sub(start))
+		result, authenticated := "failed", ""
+		if resp != nil {
+			result = dns.RcodeToString[resp.Rcode]
+			authenticated = fmt.Sprintf("%t", resp.AuthenticatedData)
+		}
+		dnsClient.totalLookupTime.With(prometheus.Labels{
+			"qtype":              qtypeStr,
+			"result":             result,
+			"authenticated_data": authenticated,
+			"retries":            fmt.Sprintf("%d", tries),
+		}).Observe(dnsClient.clk.Since(start).Seconds())
 	}()
 	for {
-		msgStats.Inc("Tries", 1)
 		ch := make(chan dnsResp, 1)
 
 		go func() {
 			rsp, rtt, err := client.Exchange(m, chosenServer)
-			msgStats.TimingDuration("SingleTryLatency", rtt)
+			result, authenticated := "failed", ""
+			if rsp != nil {
+				result = dns.RcodeToString[rsp.Rcode]
+				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
+			}
+			dnsClient.queryTime.With(prometheus.Labels{
+				"qtype":              qtypeStr,
+				"result":             result,
+				"authenticated_data": authenticated,
+			}).Observe(rtt.Seconds())
 			ch <- dnsResp{m: rsp, err: err}
 		}()
 		select {
 		case <-ctx.Done():
-			msgStats.Inc("Cancels", 1)
-			msgStats.Inc("Errors", 1)
-			return nil, ctx.Err()
+			dnsClient.cancelCounter.With(prometheus.Labels{"qtype": qtypeStr}).Inc()
+			err = ctx.Err()
+			return
 		case r := <-ch:
 			if r.err != nil {
-				msgStats.Inc("Errors", 1)
 				operr, ok := r.err.(*net.OpError)
 				isRetryable := ok && operr.Temporary()
 				hasRetriesLeft := tries < dnsClient.maxTries
@@ -267,17 +309,14 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 					tries++
 					continue
 				} else if isRetryable && !hasRetriesLeft {
-					msgStats.Inc("RanOutOfTries", 1)
-				}
-			} else {
-				msgStats.Inc("Successes", 1)
-				if r.m.AuthenticatedData {
-					msgStats.Inc("Authenticated", 1)
+					dnsClient.usedAllRetriesCounter.With(prometheus.Labels{"qtype": qtypeStr}).Inc()
 				}
 			}
-			return r.m, r.err
+			resp, err = r.m, r.err
+			return
 		}
 	}
+
 }
 
 type dnsResp struct {
@@ -291,7 +330,7 @@ type dnsResp struct {
 func (dnsClient *DNSClientImpl) LookupTXT(ctx context.Context, hostname string) ([]string, []string, error) {
 	var txt []string
 	dnsType := dns.TypeTXT
-	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType, dnsClient.txtStats)
+	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
 		return nil, nil, &DNSError{dnsType, hostname, err, -1}
 	}
@@ -333,8 +372,8 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
-func (dnsClient *DNSClientImpl) lookupIP(ctx context.Context, hostname string, ipType uint16, stats metrics.Scope) ([]dns.RR, error) {
-	resp, err := dnsClient.exchangeOne(ctx, hostname, ipType, stats)
+func (dnsClient *DNSClientImpl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, error) {
+	resp, err := dnsClient.exchangeOne(ctx, hostname, ipType)
 	if err != nil {
 		return nil, &DNSError{ipType, hostname, err, -1}
 	}
@@ -358,12 +397,12 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		recordsA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA, dnsClient.aStats)
+		recordsA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		recordsAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA, dnsClient.aaaaStats)
+		recordsAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
 	}()
 	wg.Wait()
 
@@ -395,7 +434,7 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 // the provided hostname.
 func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, error) {
 	dnsType := dns.TypeCAA
-	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType, dnsClient.caaStats)
+	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
 		return nil, &DNSError{dnsType, hostname, err, -1}
 	}
@@ -430,7 +469,7 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 // record target.
 func (dnsClient *DNSClientImpl) LookupMX(ctx context.Context, hostname string) ([]string, error) {
 	dnsType := dns.TypeMX
-	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType, dnsClient.mxStats)
+	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
 		return nil, &DNSError{dnsType, hostname, err, -1}
 	}

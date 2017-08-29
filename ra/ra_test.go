@@ -14,14 +14,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -40,6 +37,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 type DummyValidationAuthority struct {
@@ -259,7 +260,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, 0)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -1678,6 +1679,140 @@ func TestDeactivateRegistration(t *testing.T) {
 	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+}
+
+// noopCAA implements caaChecker, always returning nil
+type noopCAA struct{}
+
+func (cr noopCAA) IsCAAValid(
+	ctx context.Context,
+	in *vaPB.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vaPB.IsCAAValidResponse, error) {
+	return &vaPB.IsCAAValidResponse{}, nil
+}
+
+// caaRecorder implements caaChecker, always returning nil, but recording the
+// names it was called for.
+type caaRecorder struct {
+	sync.Mutex
+	names map[string]bool
+}
+
+func (cr *caaRecorder) IsCAAValid(
+	ctx context.Context,
+	in *vaPB.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vaPB.IsCAAValidResponse, error) {
+	cr.Lock()
+	defer cr.Unlock()
+	cr.names[*in.Domain] = true
+	return &vaPB.IsCAAValidResponse{}, nil
+}
+
+// A mock SA that returns special authzs for testing rechecking of CAA (in
+// TestRecheckCAADates below)
+type mockSAWithRecentAndOlder struct {
+	recent, older time.Time
+	mocks.StorageAuthority
+}
+
+func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string,
+	now time.Time) (map[string]*core.Authorization, error) {
+	return map[string]*core.Authorization{
+		"recent.com": &core.Authorization{Expires: &m.recent},
+		"older.com":  &core.Authorization{Expires: &m.older},
+		"older2.com": &core.Authorization{Expires: &m.older},
+	}, nil
+}
+
+// Test that the right set of domain names have their CAA rechecked, based on
+// expiration time.
+func TestRecheckCAADates(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	_ = features.Set(map[string]bool{"RecheckCAA": true})
+	defer features.Reset()
+	recorder := &caaRecorder{names: make(map[string]bool)}
+	ra.caa = recorder
+	ra.authorizationLifetime = 15 * time.Hour
+	ra.SA = &mockSAWithRecentAndOlder{
+		recent: fc.Now().Add(15 * time.Hour),
+		older:  fc.Now().Add(5 * time.Hour),
+	}
+	names := []string{"recent.com", "older.com", "older2.com"}
+	err := ra.checkAuthorizations(context.Background(), names, 999)
+	if err != nil {
+		t.Errorf("expected nil err, got %s", err)
+	}
+	if recorder.names["recent.com"] {
+		t.Errorf("Rechecked CAA unnecessarily for recent.com")
+	}
+	if !recorder.names["older.com"] {
+		t.Errorf("Failed to recheck CAA for older.com %#v", recorder.names)
+	}
+	if !recorder.names["older2.com"] {
+		t.Errorf("Failed to recheck CAA for older.com")
+	}
+}
+
+type caaFailer struct{}
+
+func (cf *caaFailer) IsCAAValid(
+	ctx context.Context,
+	in *vaPB.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vaPB.IsCAAValidResponse, error) {
+	name := *in.Domain
+	if name == "a.com" {
+		return nil, fmt.Errorf("Error checking CAA for a.com")
+	} else if name == "c.com" {
+		return nil, fmt.Errorf("Error checking CAA for c.com")
+	}
+	return &vaPB.IsCAAValidResponse{}, nil
+}
+
+func TestRecheckCAAEmpty(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	_ = features.Set(map[string]bool{"RecheckCAA": true})
+	defer features.Reset()
+	err := ra.recheckCAA(context.Background(), nil)
+	if err != nil {
+		t.Errorf("expected nil err, got %s", err)
+	}
+}
+
+func TestRecheckCAASuccess(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	_ = features.Set(map[string]bool{"RecheckCAA": true})
+	defer features.Reset()
+	names := []string{"a.com", "b.com", "c.com"}
+	err := ra.recheckCAA(context.Background(), names)
+	if err != nil {
+		t.Errorf("expected nil err, got %s", err)
+	}
+}
+
+func TestRecheckCAAFail(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	_ = features.Set(map[string]bool{"RecheckCAA": true})
+	defer features.Reset()
+	names := []string{"a.com", "b.com", "c.com"}
+	ra.caa = &caaFailer{}
+	err := ra.recheckCAA(context.Background(), names)
+	if err == nil {
+		t.Errorf("expected err, got nil")
+	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
+		t.Errorf("expected error to contain error for a.com, got %q", err)
+	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {
+		t.Errorf("expected error to contain error for c.com, got %q", err)
+	}
 }
 
 func TestNewOrder(t *testing.T) {

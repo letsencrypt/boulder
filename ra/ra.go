@@ -26,7 +26,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	grpc "google.golang.org/grpc"
 )
 
 // Note: the issuanceExpvar must be a global. If it is a member of the RA, or
@@ -43,6 +44,14 @@ import (
 // invocations of the constructor (e.g from unit tests) will panic with a "Reuse
 // of exported var name:" error from the expvar package.
 var issuanceExpvar = expvar.NewInt("lastIssuance")
+
+type caaChecker interface {
+	IsCAAValid(
+		ctx context.Context,
+		in *vaPB.IsCAAValidRequest,
+		opts ...grpc.CallOption,
+	) (*vaPB.IsCAAValidResponse, error)
+}
 
 // RegistrationAuthorityImpl defines an RA.
 //
@@ -54,6 +63,7 @@ type RegistrationAuthorityImpl struct {
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
 	publisher core.Publisher
+	caa       caaChecker
 
 	stats     metrics.Scope
 	DNSClient bdns.DNSClient
@@ -94,6 +104,7 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc core.Publisher,
+	caaClient caaChecker,
 	orderLifetime time.Duration,
 ) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
@@ -115,6 +126,7 @@ func NewRegistrationAuthorityImpl(
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
+		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 	}
 	return ra
@@ -426,7 +438,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
 	// interface, because we want to move towards using gRPC interfaces more
 	// directly. So we type-assert the wrapper to a gRPC-specific type.
-	saGRPC, ok := ra.SA.(*grpc.StorageAuthorityClientWrapper)
+	saGRPC, ok := ra.SA.(*bgrpc.StorageAuthorityClientWrapper)
 	if !limit.Enabled() || !ok {
 		return nil
 	}
@@ -658,13 +670,22 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 
 // checkAuthorizations checks that each requested name has a valid authorization
 // that won't expire before the certificate expires. Returns an error otherwise.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, registration *core.Registration) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
 	now := ra.clk.Now()
-	var badNames []string
+	var badNames, recheckNames []string
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	auths, err := ra.SA.GetValidAuthorizations(ctx, registration.ID, names, now)
+	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
+	// CAA is checked when an authorization is validated, so as long as that was
+	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
+	// we have to recheck. Since we don't record the validation time for
+	// authorizations, we instead look at the expiration time and subtract out the
+	// expected authorization lifetime. Note: If we adjust the authorization
+	// lifetime in the future we will need to tweak this correspondingly so it
+	// works correctly during the switchover.
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, names, now)
 	if err != nil {
 		return err
 	}
@@ -676,6 +697,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
+		} else if authz.Expires.Before(caaRecheckTime) {
+			recheckNames = append(recheckNames, name)
+		}
+	}
+
+	if features.Enabled(features.RecheckCAA) {
+		if err = ra.recheckCAA(ctx, recheckNames); err != nil {
+			return err
 		}
 	}
 
@@ -684,6 +713,51 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 			"authorizations for these names not found or expired: %s",
 			strings.Join(badNames, ", "),
 		)
+	}
+
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
+	ra.stats.Inc("recheck_caa", 1)
+	ra.stats.Inc("recheck_caa_names", int64(len(names)))
+	wg := sync.WaitGroup{}
+	ch := make(chan *probs.ProblemDetails, len(names))
+	for _, name := range names {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
+				Domain: &name,
+			})
+			if err != nil {
+				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
+				ch <- probs.ServerInternal("Internal error rechecking CAA for " + name)
+			} else if resp.Problem != nil {
+				ch <- &probs.ProblemDetails{
+					Type:   probs.ProblemType(*resp.Problem.ProblemType),
+					Detail: *resp.Problem.Detail,
+				}
+			}
+		}(name)
+	}
+	wg.Wait()
+	close(ch)
+	var fails []*probs.ProblemDetails
+	for err := range ch {
+		if err != nil {
+			fails = append(fails, err)
+		}
+	}
+	if len(fails) > 0 {
+		message := "Rechecking CAA: "
+		for i, pd := range fails {
+			if i > 0 {
+				message = message + ", "
+			}
+			message = message + pd.Detail
+		}
+		return berrors.ConnectionFailureError(message)
 	}
 	return nil
 }
@@ -753,7 +827,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	err = ra.checkAuthorizations(ctx, names, &registration)
+	err = ra.checkAuthorizations(ctx, names, registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -1381,7 +1455,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			return nil, err
 		}
-		authzPB, err := grpc.AuthzToPB(authz)
+		authzPB, err := bgrpc.AuthzToPB(authz)
 		if err != nil {
 			return nil, err
 		}
