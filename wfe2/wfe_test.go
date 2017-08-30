@@ -1854,11 +1854,9 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 		return nil, err
 	}
 	revokeRequest := struct {
-		Resource       string             `json:"resource"`
 		CertificateDER core.JSONBuffer    `json:"certificate"`
 		Reason         *revocation.Reason `json:"reason"`
 	}{
-		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
 		Reason:         reason,
 	}
@@ -2026,10 +2024,8 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
 
 	revokeRequest := struct {
-		Resource       string          `json:"resource"`
 		CertificateDER core.JSONBuffer `json:"certificate"`
 	}{
-		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
 	}
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
