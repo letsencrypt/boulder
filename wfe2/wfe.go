@@ -657,7 +657,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 
 	switch authType {
 	// If the request was authenticated by key ID then the associated account
-	// must have authorizations for all of the naems in the certificate that is being
+	// must have authorizations for all of the names in the certificate that is being
 	// revoked. Otherwise it is not authorized for this revocation.
 	case embeddedKeyID:
 		// ServerInternal because this should not happen. We get acct from
