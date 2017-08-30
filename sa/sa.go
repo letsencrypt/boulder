@@ -183,8 +183,9 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		if err != nil && err != sql.ErrNoRows {
 			return authz, Rollback(tx, err)
 		} else if err == sql.ErrNoRows {
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
+			// Since we have not done any work at this point we can commit the
+			// transaction instead of rolling it back
+			if rollbackErr := tx.Commit(); rollbackErr != nil {
 				return authz, rollbackErr
 			}
 			return authz, err
