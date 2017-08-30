@@ -38,14 +38,13 @@ env:
     - PATH=$HOME/bin:$PATH # protoc gets installed here
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="vet fmt migrations integration godep-restore errcheck generate dashlint"
+    - RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
     - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="coverage"
-    - RUN="rpm"
 
 install:
   - ./test/travis-before-install.sh
