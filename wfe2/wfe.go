@@ -557,15 +557,15 @@ type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
 // requested a problem is returned. Otherwise the certificate is marked revoked
 // through the SA.
 func (wfe *WebFrontEndImpl) processRevocation(
+	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	authenticateJWS authenticateRevocation,
 	authorizedToRevoke authorizedToRevokeCert,
 	request *http.Request,
-	context context.Context,
 	logEvent *requestEvent) *probs.ProblemDetails {
 	// Authenticate the outer JWS for this revocation request and retreive the JWS
 	// body bytes and account ID (if applicable)
-	jwsBody, acctID, prob := authenticateJWS(context, outerJWS, request, logEvent)
+	jwsBody, acctID, prob := authenticateJWS(ctx, outerJWS, request, logEvent)
 	if prob != nil {
 		return prob
 	}
@@ -646,9 +646,9 @@ func (wfe *WebFrontEndImpl) processRevocation(
 // revokeCertByKeyID processes an outer JWS as a revocation request that is
 // authenticated by a KeyID and the associated account.
 func (wfe *WebFrontEndImpl) revokeCertByKeyID(
+	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	ctx context.Context,
 	logEvent *requestEvent) *probs.ProblemDetails {
 	// We maintain the accountID as a var that is closed-over by the two handler
 	// functions such that the `authorizedToRevoke` function can reference the
@@ -689,7 +689,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	}
 	// Knowing how to authenticate both the JWS and the specific revocation in
 	// question we can process the revocation request generically
-	return wfe.processRevocation(outerJWS, authenticateJWS, authorizedToRevoke, request, ctx, logEvent)
+	return wfe.processRevocation(ctx, outerJWS, authenticateJWS, authorizedToRevoke, request, logEvent)
 }
 
 // revokeCertByJWK processes an outer JWS as a revocation request that is
@@ -697,9 +697,9 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 // requesting a revocation by using the keypair associated with the certificate
 // to be revoked
 func (wfe *WebFrontEndImpl) revokeCertByJWK(
+	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	ctx context.Context,
 	logEvent *requestEvent) *probs.ProblemDetails {
 	// We maintain the requestKey as a var that is closed-over by the two handler
 	// functions such that the `authorizedToRevoke` function can reference the
@@ -739,7 +739,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	}
 	// Knowing how to authenticate both the JWS and the specific revocation in
 	// question we can process the revocation request generically
-	return wfe.processRevocation(outerJWS, authenticateJWS, authorizedToRevoke, request, ctx, logEvent)
+	return wfe.processRevocation(ctx, outerJWS, authenticateJWS, authorizedToRevoke, request, logEvent)
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert. The
@@ -775,10 +775,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
 	if authType == embeddedKeyID {
-		prob = wfe.revokeCertByKeyID(jws, request, ctx, logEvent)
+		prob = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
 		addRequesterHeader(response, logEvent.Requester)
 	} else if authType == embeddedJWK {
-		prob = wfe.revokeCertByJWK(jws, request, ctx, logEvent)
+		prob = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
 	} else {
 		prob = probs.Malformed("Malformed JWS, no KeyID or embedded JWK")
 	}
