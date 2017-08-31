@@ -1260,7 +1260,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
@@ -1297,7 +1297,7 @@ func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, r
 
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 		Certificate:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, *order.CertificateSerial)),

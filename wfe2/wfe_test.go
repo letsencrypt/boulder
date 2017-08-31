@@ -255,11 +255,12 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	one := int64(1)
+	zero := int64(0)
 	status := string(core.StatusPending)
 	return &corepb.Order{
 		Id:             &one,
 		RegistrationID: req.RegistrationID,
-		Expires:        &one,
+		Expires:        &zero,
 		Csr:            req.Csr,
 		Status:         &status,
 		Authorizations: []string{"hello"},

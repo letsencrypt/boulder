@@ -421,11 +421,12 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	}
 	status := string(core.StatusPending)
 	one := int64(1)
+	zero := int64(0)
 	serial := "serial"
 	return &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    &one,
-		Expires:           &one,
+		Expires:           &zero,
 		Csr:               []byte{1, 3, 3, 7},
 		Status:            &status,
 		Authorizations:    []string{"hello"},
