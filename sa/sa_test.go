@@ -1326,5 +1326,5 @@ func TestGetAuthorizationNoRows(t *testing.T) {
 	// An empty authz ID should result in `sql.ErrNoRows`
 	_, err := sa.GetAuthorization(ctx, "")
 	test.AssertError(t, err, "Didn't get an error looking up empty authz ID")
-	test.AssertEquals(t, err, sql.ErrNoRows)
+	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetAuthorization did not return a berrors.NotFound error")
 }
