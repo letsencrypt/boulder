@@ -681,7 +681,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	// certificate by checking that the account has valid authorizations for all
 	// of the names in the certificate
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
-		valid, err := wfe.regHoldsAuthorizations(ctx, accountID, parsedCertificate.DNSNames)
+		valid, err := wfe.acctHoldsAuthorizations(ctx, accountID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
 		}
