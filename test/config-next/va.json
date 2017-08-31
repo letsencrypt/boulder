@@ -28,7 +28,8 @@
       "ServerURL": "http://boulder:6000"
     },
     "features": {
-      "IPv6First": true
+      "IPv6First": true,
+      "CAAValidationMethods": true
     },
     "remoteVAs": [
       {
