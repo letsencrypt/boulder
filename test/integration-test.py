@@ -146,7 +146,7 @@ def test_gsb_lookups():
     # The GSB test server tracks hits with a trailing / on the URL
     hits = hits_map.get(hostname + "/", 0)
     if hits != 1:
-        raise("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
+        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
 
 def test_ocsp():
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -222,7 +222,7 @@ def test_expiration_mailer():
     resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.read())
     if mailcount != 2:
-        raise("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
+        raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
 
 def test_revoke_by_account():
     cert_file_pem = os.path.join(tempdir, "revokeme.pem")
