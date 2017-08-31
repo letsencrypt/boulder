@@ -210,10 +210,18 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType 
 		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
 		caaMethods, caaMethodsSet := caaParameters["validation-methods"]
 
-		if caaIssuerDomain == va.issuerDomain && (!features.Enabled(features.CAAValidationMethods) || !caaMethodsSet || challengeType == nil || containsMethod(caaMethods, *challengeType)) {
-			va.stats.Inc("CAA.Authorized", 1)
-			return true, true
+		if caaIssuerDomain != va.issuerDomain {
+			continue
 		}
+
+		if features.Enabled(features.CAAValidationMethods) {
+			if caaMethodsSet && challengeType != nil && !containsMethod(caaMethods, *challengeType) {
+				continue
+			}
+		}
+
+		va.stats.Inc("CAA.Authorized", 1)
+		return true, true
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
