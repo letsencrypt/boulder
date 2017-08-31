@@ -1316,3 +1316,15 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
 }
+
+// TestGetAuthorizationNoRows ensures that the GetAuthorization function returns
+// the correct error when there are no results for the provided ID.
+func TestGetAuthorizationNoRows(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// An empty authz ID should result in `sql.ErrNoRows`
+	_, err := sa.GetAuthorization(ctx, "")
+	test.AssertError(t, err, "Didn't get an error looking up empty authz ID")
+	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetAuthorization did not return a berrors.NotFound error")
+}

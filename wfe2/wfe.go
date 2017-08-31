@@ -2,7 +2,6 @@ package wfe2
 
 import (
 	"crypto/x509"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -586,7 +586,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if berrors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)

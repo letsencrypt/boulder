@@ -167,23 +167,28 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 }
 
 // GetAuthorization obtains an Authorization by ID
-func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
+	authz := core.Authorization{}
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return authz, err
 	}
-
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", id)
 	if err != nil && err != sql.ErrNoRows {
-		err = Rollback(tx, err)
-		return
+		return authz, Rollback(tx, err)
 	}
 	if err == sql.ErrNoRows {
 		var fa authzModel
-		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
+		err := tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		if err != nil && err != sql.ErrNoRows {
+			return authz, Rollback(tx, err)
+		} else if err == sql.ErrNoRows {
+			// If there was no result in either the pending authz table or the authz
+			// table then return a `berrors.NotFound` instance (or a rollback error if
+			// the transaction rollback fails)
+			return authz, Rollback(
+				tx,
+				berrors.NotFoundError("no authorization found with id %q", id))
 		}
 		authz = fa.Authorization
 	} else {
@@ -197,22 +202,19 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return authz, Rollback(tx, err)
 	}
 	var challs []core.Challenge
 	for _, c := range challObjs {
 		chall, err := modelToChallenge(&c)
 		if err != nil {
-			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return authz, Rollback(tx, err)
 		}
 		challs = append(challs, chall)
 	}
 	authz.Challenges = challs
 
-	err = tx.Commit()
-	return
+	return authz, tx.Commit()
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
