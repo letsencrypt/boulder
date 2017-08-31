@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type config struct {
@@ -129,6 +130,8 @@ func main() {
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
+	caaClient := vaPB.NewCAAClient(vaConn)
+
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, scope)
 	cmd.FailOnError(err, "Unable to create CA client")
 	// Build a CA client that is only capable of issuing certificates, not
@@ -174,6 +177,7 @@ func main() {
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
+		caaClient,
 		c.RA.OrderLifetime.Duration,
 	)
 

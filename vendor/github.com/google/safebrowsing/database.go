@@ -117,16 +117,16 @@ func (db *database) Init(config *Config, logger *log.Logger) bool {
 		db.setError(err)
 		return false
 	}
-
-	// Validate that the database threat list stored on disk is at least a
-	// superset of the specified configuration.
-	if db.config.now().Sub(dbf.Time) > (db.config.UpdatePeriod + jitter) {
+	// Validate that the database threat list stored on disk is not too stale.
+	if db.isStale(dbf.Time) {
 		db.log.Printf("database loaded is stale")
 		db.ml.Lock()
 		defer db.ml.Unlock()
 		db.setStale()
 		return false
 	}
+	// Validate that the database threat list stored on disk is at least a
+	// superset of the specified configuration.
 	tfuNew := make(threatsForUpdate)
 	for _, td := range db.config.ThreatLists {
 		if row, ok := dbf.Table[td]; ok {
@@ -142,8 +142,9 @@ func (db *database) Init(config *Config, logger *log.Logger) bool {
 	return true
 }
 
-// Status reports the health of the database. If in a faulted state, the db
-// may repair itself on the next Update.
+// Status reports the health of the database. The database is considered faulted
+// if there was an error during update or if the last update has gone stale. If
+// in a faulted state, the db may repair itself on the next Update.
 func (db *database) Status() error {
 	db.ml.RLock()
 	defer db.ml.RUnlock()
@@ -151,7 +152,7 @@ func (db *database) Status() error {
 	if db.err != nil {
 		return db.err
 	}
-	if db.config.now().Sub(db.last) > (db.config.UpdatePeriod + jitter) {
+	if db.isStale(db.last) {
 		db.setStale()
 		return db.err
 	}
@@ -304,6 +305,16 @@ func (db *database) setError(err error) {
 	}
 	db.tfl, db.err, db.last = nil, err, time.Time{}
 	db.ml.Unlock()
+}
+
+// isStale checks whether the last successful update should be considered stale.
+// Staleness is defined as being older than two of the configured update periods
+// plus jitter.
+func (db *database) isStale(lastUpdate time.Time) bool {
+	if db.config.now().Sub(lastUpdate) > 2*(db.config.UpdatePeriod+jitter) {
+		return true
+	}
+	return false
 }
 
 // setStale sets the error state to a stale message, without clearing

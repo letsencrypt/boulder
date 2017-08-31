@@ -149,8 +149,8 @@ func (ts *testSrv) serveTestResolver() {
 	dnsServer := &dns.Server{
 		Addr:         "0.0.0.0:8053",
 		Net:          "tcp",
-		ReadTimeout:  time.Millisecond,
-		WriteTimeout: time.Millisecond,
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
 	}
 	go func() {
 		err := dnsServer.ListenAndServe()
