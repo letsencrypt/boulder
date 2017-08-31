@@ -26,6 +26,7 @@ const (
 	IPv6First
 	DirectoryMeta
 	AllowRenewalFirstRL
+	RecheckCAA
 	CAAValidationMethods
 )
 
@@ -44,6 +45,7 @@ var features = map[FeatureFlag]bool{
 	IPv6First:                false,
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
+	RecheckCAA:               false,
 	CAAValidationMethods:     false,
 }
 

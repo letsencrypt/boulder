@@ -1,0 +1,146 @@
+package va
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/miekg/dns"
+
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/test"
+)
+
+func TestCAATimeout(t *testing.T) {
+	va, _ := setup(nil, 0)
+	method := "http-01"
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, &method)
+	if err.Type != probs.ConnectionProblem {
+		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
+	}
+	expected := "DNS problem: query timed out looking up CAA for always.timeout"
+	if err.Detail != expected {
+		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
+	}
+}
+
+func TestCAAChecking(t *testing.T) {
+	_ = features.Set(map[string]bool{"CAAValidationMethods": true})
+	defer features.Reset()
+
+	type CAATest struct {
+		Domain  string
+		Present bool
+		Valid   bool
+	}
+	tests := []CAATest{
+		// Reserved
+		{"reserved.com", true, false},
+		// Critical
+		{"critical.com", true, false},
+		{"nx.critical.com", true, false},
+		// Good (absent)
+		{"absent.com", false, true},
+		{"example.co.uk", false, true},
+		// Good (present)
+		{"present.com", true, true},
+		{"present.servfail.com", true, true},
+		// Good (multiple critical, one matching)
+		{"multi-crit-present.com", true, true},
+		// Bad (unknown critical)
+		{"unknown-critical.com", true, false},
+		{"unknown-critical2.com", true, false},
+		// Good (unknown noncritical, no issue/issuewild records)
+		{"unknown-noncritical.com", true, true},
+		// Good (issue record with unknown parameters)
+		{"present-with-parameter.com", true, true},
+		// Bad (restricts to dns-01, but tested with http-01)
+		{"present-dns-only.com", true, false},
+		// Good (restricts to http-01, tested with http-01)
+		{"present-http-only.com", true, true},
+		// Good (restricts to http-01 or dns-01, tested with http-01)
+		{"present-http-or-dns.com", true, true},
+		// Bad (unsatisfiable issue record)
+		{"unsatisfiable.com", true, false},
+	}
+
+	method := "http-01"
+
+	va, _ := setup(nil, 0)
+
+	for _, caaTest := range tests {
+		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}, &method)
+		if err != nil {
+			t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
+		}
+		if present != caaTest.Present {
+			t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
+		}
+		if valid != caaTest.Valid {
+			t.Errorf("checkCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
+		}
+	}
+
+	// After resetting CAAValidationMethods, present-dns-only.com should be valid even with http-01
+	features.Reset()
+	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, &method)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	// challengeType nil should be valid, too
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, nil)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
+	test.AssertError(t, err, "servfail.com")
+	test.Assert(t, !present, "Present should be false")
+	test.Assert(t, !valid, "Valid should be false")
+
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
+	if err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
+	}
+
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
+	test.AssertError(t, err, "servfail.present.com")
+	test.Assert(t, !present, "Present should be false")
+	test.Assert(t, !valid, "Valid should be false")
+
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
+	if err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
+	}
+}
+
+func TestCAAFailure(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	defer hs.Close()
+
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+}
+
+func TestParseResults(t *testing.T) {
+	r := []caaResult{}
+	s, err := parseResults(r)
+	test.Assert(t, s == nil, "set is not nil")
+	test.Assert(t, err == nil, "error is not nil")
+	test.AssertNotError(t, err, "no error should be returned")
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
+	s, err = parseResults(r)
+	test.Assert(t, s == nil, "set is not nil")
+	test.AssertEquals(t, err.Error(), "")
+	expected := dns.CAA{Value: "other-test"}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
+	s, err = parseResults(r)
+	test.AssertEquals(t, len(s.Unknown), 1)
+	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
+	test.AssertNotError(t, err, "no error should be returned")
+}
