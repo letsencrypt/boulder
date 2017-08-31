@@ -555,12 +555,12 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	request *http.Request,
 	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
-	// Extract the embedded JWK from the parsed JWS
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
 		return nil, nil, prob
 	}
+	// Extract and validate the embedded JWK from the parsed JWS
 	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
 }
 
