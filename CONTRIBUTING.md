@@ -23,6 +23,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 # Patch Guidelines
 * Please include helpful comments. No need to gratuitously comment clear code, but make sure it's clear why things are being done.
 * Include information in your pull request about what you're trying to accomplish with your patch.
+* Avoid named return values. See [#3017](https://github.com/letsencrypt/boulder/pull/3017) for an example of a subtle problem they can cause.
 * Do not include `XXX`s or naked `TODO`s. Use the formats:
 ```
 // TODO(<email-address>): Hoverboard + Time-machine unsupported until upstream patch.
