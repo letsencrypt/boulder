@@ -546,7 +546,7 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 // the decision.
 type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
 
-// processRevocation accepts the outer JWS body for a revocation request along with
+// processRevocation accepts the payload for a revocation request along with
 // an account ID and a callback used to decide if the requester is authorized to
 // revoke a given certificate. If the request can not  be authenticated or the
 // requester is not authorized to revoke the certificate requested a problem is
