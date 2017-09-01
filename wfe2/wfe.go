@@ -543,15 +543,15 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 // there are two ways a revocation request can be authenticated it is the
 // responsibility of the implementation to extract the outer JWS payload (and if
 // applicable, an associated account ID). If the request is not properly
-// authenticated a problem should be returned. Note that the account ID returned
-// _may_ be 0 if the request is self-authenticated and not associated with an
-// account.
+// authenticated a problem should be returned.
 type authenticateRevocation func(context.Context, *jose.JSONWebSignature, *http.Request, *requestEvent) ([]byte, int64, *probs.ProblemDetails)
 
 // authorizedToRevokeCert is a callback function that can be used to validate if
 // a given requester is authorized to revoke the certificate parsed out of the
 // revocation request from the inner JWS. If the requester is not authorized to
-// revoke the certificate a problem is returned.
+// revoke the certificate a problem is returned. It is expected to be a closure
+// containing additional state (an account ID or key) that will be used to make
+// the decision.
 type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
 
 // processRevocation accepts the outer JWS for a revocation request along with
@@ -735,7 +735,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	// certificate by checking that to-be-revoked certificate has the same public
 	// key as the JWK that was used to authenticate the request
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
-		if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey)) {
+		if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
 			return probs.Unauthorized(
 				"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 		}
