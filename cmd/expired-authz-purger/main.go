@@ -29,6 +29,7 @@ type eapConfig struct {
 
 		GracePeriod cmd.ConfigDuration
 		BatchSize   int
+		Parallelism int
 
 		Features map[string]bool
 	}
@@ -43,7 +44,7 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time) error {
+func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time, parallelism int) error {
 	var ids []string
 	for {
 		var idBatch []string
@@ -95,34 +96,50 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 		}
 	}
 
+	sem := make(chan bool, parallelism)
 	for _, id := range ids {
-		// Delete challenges + authorization. We delete challenges first and fail out
-		// if that doesn't succeed so that we don't ever orphan challenges which would
-		// require a relatively expensive join to then find.
-		_, err := p.db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
-		if err != nil {
-			return err
-		}
-		var query string
-		switch table {
-		case "pendingAuthorizations":
-			query = "DELETE FROM pendingAuthorizations WHERE id = ?"
-		case "authz":
-			query = "DELETE FROM authz WHERE id = ?"
-		}
-		_, err = p.db.Exec(query, id)
-		if err != nil {
-			return err
-		}
+		sem <- true
+		go func(id string) {
+			err := deleteAuthorization(p.db, table, id)
+			if err != nil {
+				p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
+			}
+			<-sem
+		}(id)
+	}
+	for i := 0; i < cap(sem); i++ {
+		sem <- true
 	}
 
 	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
 	return nil
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) error {
+func deleteAuthorization(db *gorp.DbMap, table, id string) error {
+	// Delete challenges + authorization. We delete challenges first and fail out
+	// if that doesn't succeed so that we don't ever orphan challenges which would
+	// require a relatively expensive join to then find.
+	_, err := db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
+	if err != nil {
+		return err
+	}
+	var query string
+	switch table {
+	case "pendingAuthorizations":
+		query = "DELETE FROM pendingAuthorizations WHERE id = ?"
+	case "authz":
+		query = "DELETE FROM authz WHERE id = ?"
+	}
+	_, err = db.Exec(query, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool, parallelism int) error {
 	for _, table := range []string{"pendingAuthorizations", "authz"} {
-		err := p.purge(table, yes, purgeBefore)
+		err := p.purge(table, yes, purgeBefore, parallelism)
 		if err != nil {
 			return err
 		}
@@ -172,7 +189,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations")
 		os.Exit(1)
 	}
+	if config.ExpiredAuthzPurger.Parallelism == 0 {
+		fmt.Fprintln(os.Stderr, "Parallelism field in config must be set to non-zero")
+		os.Exit(1)
+	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-	err = purger.purgeAuthzs(purgeBefore, *yes)
+	err = purger.purgeAuthzs(purgeBefore, *yes, config.ExpiredAuthzPurger.Parallelism)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
