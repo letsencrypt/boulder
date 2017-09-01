@@ -1,7 +1,6 @@
 package mocks
 
 import (
-	"database/sql"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -232,7 +231,7 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		return core.Authorization{}, fmt.Errorf("Unspecified database error")
 	}
 
-	return core.Authorization{}, sql.ErrNoRows
+	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
 // RevokeAuthorizationsByDomain is a mock
