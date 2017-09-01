@@ -1730,7 +1730,7 @@ func TestNewOrder(t *testing.T) {
 			Name:            "POST, properly signed JWS, authorizations for all names in CSR",
 			Request:         signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedBody:    `{"Status":"pending","Expires":"1970-01-01T00:00:00Z","CSR":"MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo","Authorizations":["http://localhost/acme/authz/hello"]}`,
-			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1"},
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/1"},
 		},
 	}
 
@@ -1865,22 +1865,37 @@ func TestOrder(t *testing.T) {
 	}{
 		{
 			Name:     "Good request",
-			Path:     "1",
+			Path:     "1/1",
 			Response: `{"Status": "pending","Expires": "1970-01-01T00:00:00Z","CSR": "AQMDBw","Authorizations":["http://localhost/acme/authz/hello"],"Certificate":"http://localhost/acme/cert/serial","Error":"error"}`,
 		},
 		{
 			Name:     "404 request",
-			Path:     "2",
+			Path:     "1/2",
 			Response: `{"type":"urn:acme:error:malformed","detail":"No order for ID 2", "status":404}`,
 		},
 		{
-			Name:     "Invalid request",
+			Name:     "Invalid request path",
 			Path:     "asd",
+			Response: `{"type":"urn:acme:error:malformed","detail":"Invalid request path","status":400}`,
+		},
+		{
+			Name:     "Invalid account ID",
+			Path:     "asd/asd",
+			Response: `{"type":"urn:acme:error:malformed","detail":"Invalid account ID","status":400}`,
+		},
+		{
+			Name:     "Invalid order ID",
+			Path:     "1/asd",
 			Response: `{"type":"urn:acme:error:malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
+			Name:     "Real request, wrong account",
+			Path:     "2/1",
+			Response: `{"type":"urn:acme:error:malformed","detail":"No order found for account ID 2", "status":404}`,
+		},
+		{
 			Name:     "Internal error request",
-			Path:     "3",
+			Path:     "1/3",
 			Response: `{"type":"urn:acme:error:serverInternal","detail":"Failed to retrieve order for ID 3","status":500}`,
 		},
 	}

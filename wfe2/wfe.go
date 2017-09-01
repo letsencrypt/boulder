@@ -1267,7 +1267,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
 	}
 
-	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
+	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
 	if err != nil {
@@ -1278,19 +1278,34 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // Order is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	id, err := strconv.ParseInt(request.URL.Path, 10, 64)
+	fields := strings.SplitN(request.URL.Path, "/", 2)
+	if len(fields) != 2 {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+		return
+	}
+	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		return
+	}
+	orderID, err := strconv.ParseInt(fields[1], 10, 64)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &id})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", id)), err)
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", id)), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if *order.RegistrationID != acctID {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
