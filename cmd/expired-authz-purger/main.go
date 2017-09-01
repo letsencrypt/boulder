@@ -195,7 +195,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations")
 		os.Exit(1)
 	}
-	if config.ExpiredAuthzPurger.Parallelism == 0 {
+	if config.ExpiredAuthzPurger.Parallelism < 1 {
 		fmt.Fprintln(os.Stderr, "Parallelism field in config must be set to non-zero")
 		os.Exit(1)
 	}
