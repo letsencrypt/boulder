@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -96,20 +97,25 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 		}
 	}
 
-	sem := make(chan bool, parallelism)
+	wg := new(sync.WaitGroup)
+	work := make(chan string, len(ids))
 	for _, id := range ids {
-		sem <- true
-		go func(id string) {
-			err := deleteAuthorization(p.db, table, id)
-			if err != nil {
-				p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
+		work <- id
+	}
+	close(work)
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range work {
+				err := deleteAuthorization(p.db, table, id)
+				if err != nil {
+					p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
+				}
 			}
-			<-sem
-		}(id)
+		}()
 	}
-	for i := 0; i < cap(sem); i++ {
-		sem <- true
-	}
+	wg.Wait()
 
 	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
 	return nil
