@@ -479,6 +479,17 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	return resp, nil
 }
 
+func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
+	resp, err := sas.inner.GetOrder(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	inner *sa.SQLStorageAuthority
@@ -921,4 +932,12 @@ func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *
 	}
 
 	return sas.inner.NewOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
+	if request == nil || request.Id == nil {
+		return nil, errIncompleteRequest
+	}
+
+	return sas.inner.GetOrder(ctx, request)
 }

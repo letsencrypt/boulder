@@ -418,6 +418,29 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 	return order, nil
 }
 
+// Order is a mock
+func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	if *req.Id == 2 {
+		return nil, berrors.NotFoundError("bad")
+	} else if *req.Id == 3 {
+		return nil, errors.New("very bad")
+	}
+	status := string(core.StatusPending)
+	one := int64(1)
+	zero := int64(0)
+	serial := "serial"
+	return &corepb.Order{
+		Id:                req.Id,
+		RegistrationID:    &one,
+		Expires:           &zero,
+		Csr:               []byte{1, 3, 3, 7},
+		Status:            &status,
+		Authorizations:    []string{"hello"},
+		CertificateSerial: &serial,
+		Error:             []byte("error"),
+	}, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty

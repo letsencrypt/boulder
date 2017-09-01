@@ -1296,10 +1296,10 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, err
 	}
 
-	for _, authz := range req.Authorizations {
+	for _, id := range req.Authorizations {
 		otoa := &orderToAuthzModel{
 			OrderID: order.ID,
-			AuthzID: *authz.Id,
+			AuthzID: id,
 		}
 		err = tx.Insert(otoa)
 		if err != nil {
@@ -1315,4 +1315,34 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	req.Id = &order.ID
 	return req, nil
+}
+
+func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
+	var ids []string
+	_, err := ssa.dbMap.Select(&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// GetOrder is used to retrieve an already existing order object
+func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	omObj, err := ssa.dbMap.Get(orderModel{}, *req.Id)
+	if err == sql.ErrNoRows || omObj == nil {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	order := modelToOrder(omObj.(*orderModel))
+	authzIDs, err := ssa.authzForOrder(*order.Id)
+	if err != nil {
+		return nil, err
+	}
+	for _, authzID := range authzIDs {
+		order.Authorizations = append(order.Authorizations, authzID)
+	}
+
+	return order, nil
 }

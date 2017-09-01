@@ -83,7 +83,7 @@ message Order {
         optional bytes csr = 4;
         optional bytes error = 5;
         optional string certificateSerial = 6;
-        repeated Authorization authorizations = 7;
+        repeated string authorizations = 7;
         optional string status = 8;
 }
 
