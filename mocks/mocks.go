@@ -206,7 +206,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
-	return core.Registration{ID: 1, Key: &test1KeyPublic, Agreement: agreementURL}, nil
+	return core.Registration{ID: 1, Key: &test1KeyPublic, Agreement: agreementURL, Status: core.StatusValid}, nil
 }
 
 // GetAuthorization is a mock

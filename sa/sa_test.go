@@ -1061,8 +1061,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAccount(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
