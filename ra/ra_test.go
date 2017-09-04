@@ -412,15 +412,6 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-
-	id := result.ID
-	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
-		ID:  33,
-		Key: &ShortKey,
-	})
-	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
-	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -1400,15 +1391,8 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
 
 	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
+
 	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
-	}
-
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
-	changed = mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with empty update")
 	}
