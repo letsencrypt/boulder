@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -236,6 +237,27 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		return authz, nil
 	} else if id == "error_result" {
 		return core.Authorization{}, fmt.Errorf("Unspecified database error")
+	}
+
+	prob := &probs.ProblemDetails{
+		Type:       "things:are:whack",
+		Detail:     "whack attack",
+		HTTPStatus: 555,
+	}
+	exp := sa.clk.Now().AddDate(100, 0, 0)
+	authz.Expires = &exp
+	// "oldNS" returns an authz with a failed challenge that has the problem type
+	// statically prefixed by the V1ErrorNS
+	if id == "oldNS" {
+		prob.Type = probs.V1ErrorNS + prob.Type
+		authz.Challenges[0].Error = prob
+		return authz, nil
+	}
+	// "failed" returns an authz with a failed challenge that has no error
+	// namespace on the problem type.
+	if id == "failed" {
+		authz.Challenges[0].Error = prob
+		return authz, nil
 	}
 
 	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)

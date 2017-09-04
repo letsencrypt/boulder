@@ -7,19 +7,20 @@ import (
 
 // Error types that can be used in ACME payloads
 const (
-	ConnectionProblem         = ProblemType("urn:acme:error:connection")
-	MalformedProblem          = ProblemType("urn:acme:error:malformed")
-	ServerInternalProblem     = ProblemType("urn:acme:error:serverInternal")
-	TLSProblem                = ProblemType("urn:acme:error:tls")
-	UnauthorizedProblem       = ProblemType("urn:acme:error:unauthorized")
-	UnknownHostProblem        = ProblemType("urn:acme:error:unknownHost")
-	RateLimitedProblem        = ProblemType("urn:acme:error:rateLimited")
-	BadNonceProblem           = ProblemType("urn:acme:error:badNonce")
-	InvalidEmailProblem       = ProblemType("urn:acme:error:invalidEmail")
-	RejectedIdentifierProblem = ProblemType("urn:acme:error:rejectedIdentifier")
+	ConnectionProblem          = ProblemType("connection")
+	MalformedProblem           = ProblemType("malformed")
+	ServerInternalProblem      = ProblemType("serverInternal")
+	TLSProblem                 = ProblemType("tls")
+	UnauthorizedProblem        = ProblemType("unauthorized")
+	UnknownHostProblem         = ProblemType("unknownHost")
+	RateLimitedProblem         = ProblemType("rateLimited")
+	BadNonceProblem            = ProblemType("badNonce")
+	InvalidEmailProblem        = ProblemType("invalidEmail")
+	RejectedIdentifierProblem  = ProblemType("rejectedIdentifier")
+	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
 
-	v2ErrorNS                  = "urn:ietf:params:acme:error:"
-	AccountDoesNotExistProblem = ProblemType(v2ErrorNS + "accountDoesNotExist")
+	V1ErrorNS = "urn:acme:error:"
+	V2ErrorNS = "urn:ietf:params:acme:error:"
 )
 
 // ProblemType defines the error types in the ACME protocol
