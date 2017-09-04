@@ -18,6 +18,7 @@ import (
 
 var method = flag.String("method", "GET", "Method to use for fetching OCSP")
 var urlOverride = flag.String("url", "", "URL of OCSP responder to override")
+var hostOverride = flag.String("host", "", "Host header to override in HTTP request")
 var tooSoon = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
 var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
 var expectStatus = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=good, 1=revoked)")
@@ -147,17 +148,27 @@ func Req(fileName string) (*ocsp.Response, error) {
 
 func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
+	var httpRequest *http.Request
+	var err error
 	if *method == "GET" {
 		ocspURL.Path = encodedReq
 		fmt.Printf("Fetching %s\n", ocspURL.String())
-		return http.Get(ocspURL.String())
+		httpRequest, err = http.NewRequest("GET", ocspURL.String(), http.NoBody)
 	} else if *method == "POST" {
 		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
 			ocspURL, encodedReq)
-		return http.Post(ocspURL.String(), "application/ocsp-request", bytes.NewBuffer(req))
+		httpRequest, err = http.NewRequest("POST", ocspURL.String(), bytes.NewBuffer(req))
 	} else {
 		return nil, fmt.Errorf("invalid method %s, expected GET or POST", *method)
 	}
+	if err != nil {
+		return nil, err
+	}
+	httpRequest.Header.Add("Content-Type", "application/ocsp-request")
+	if *hostOverride != "" {
+		httpRequest.Host = *hostOverride
+	}
+	return http.DefaultClient.Do(httpRequest)
 }
 
 func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {

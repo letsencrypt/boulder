@@ -1,8 +1,8 @@
 package wfe2
 
 import (
+	"bytes"
 	"crypto/x509"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,11 +15,14 @@ import (
 	"strings"
 	"time"
 
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -27,6 +30,8 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -309,6 +314,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -534,13 +540,210 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 	return !missingNames, nil
 }
 
-// RevokeCertificate is used by clients to request the revocation of a cert.
-func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	// RevokeCertificate is a NOP for WFEv2 at the present time. It needs unique JWS
-	// validation compared to other ACME v2 endpoints.
-	wfe.sendError(response, logEvent,
-		probs.ServerInternal("RevokeCertificate is not presently implemented for ACME v2"), nil)
-	return
+// authorizedToRevokeCert is a callback function that can be used to validate if
+// a given requester is authorized to revoke the certificate parsed out of the
+// revocation request from the inner JWS. If the requester is not authorized to
+// revoke the certificate a problem is returned. It is expected to be a closure
+// containing additional state (an account ID or key) that will be used to make
+// the decision.
+type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
+
+// processRevocation accepts the payload for a revocation request along with
+// an account ID and a callback used to decide if the requester is authorized to
+// revoke a given certificate. If the request can not  be authenticated or the
+// requester is not authorized to revoke the certificate requested a problem is
+// returned. Otherwise the certificate is marked revoked through the SA.
+func (wfe *WebFrontEndImpl) processRevocation(
+	ctx context.Context,
+	jwsBody []byte,
+	acctID int64,
+	authorizedToRevoke authorizedToRevokeCert,
+	request *http.Request,
+	logEvent *requestEvent) *probs.ProblemDetails {
+	// Read the revoke request from the JWS payload
+	var revokeRequest struct {
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
+	}
+	if err := json.Unmarshal(jwsBody, &revokeRequest); err != nil {
+		return probs.Malformed("Unable to JSON parse revoke request")
+	}
+
+	// Parse the provided certificate
+	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
+	if err != nil {
+		return probs.Malformed("Unable to parse certificate DER")
+	}
+
+	// Compute and record the serial number of the provided certificate
+	serial := core.SerialToString(providedCert.SerialNumber)
+	logEvent.Extra["ProvidedCertificateSerial"] = serial
+
+	// Lookup the certificate by the serial. If the certificate wasn't found, or
+	// it wasn't a byte-for-byte match to the certificate requested for
+	// revocation, return an error
+	cert, err := wfe.SA.GetCertificate(ctx, serial)
+	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+		return probs.NotFound("No such certificate")
+	}
+
+	// Parse the certificate into memory
+	parsedCertificate, err := x509.ParseCertificate(cert.DER)
+	if err != nil {
+		// InternalServerError because cert.DER came from our own DB.
+		return probs.ServerInternal("invalid parse of stored certificate")
+	}
+	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+
+	// Check the certificate status for the provided certificate to see if it is
+	// already revoked
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
+	if err != nil {
+		return probs.NotFound("Certificate status not yet available")
+	}
+	logEvent.Extra["CertificateStatus"] = certStatus.Status
+
+	if certStatus.Status == core.OCSPStatusRevoked {
+		return probs.Conflict("Certificate already revoked")
+	}
+
+	// Validate that the requester is authenticated to revoke the given certificate
+	prob := authorizedToRevoke(parsedCertificate)
+	if prob != nil {
+		return prob
+	}
+
+	// Verify the revocation reason supplied is allowed
+	reason := revocation.Reason(0)
+	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
+			return probs.Malformed("unsupported revocation reason code provided")
+		}
+		reason = *revokeRequest.Reason
+	}
+
+	// Revoke the certificate. AcctID may be 0 if there is no associated account
+	// (e.g. it was a self-authenticated JWS using the certificate public key)
+	if err := wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID); err != nil {
+		return problemDetailsForError(err, "Failed to revoke certificate")
+	}
+
+	wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+	return nil
+}
+
+// revokeCertByKeyID processes an outer JWS as a revocation request that is
+// authenticated by a KeyID and the associated account.
+func (wfe *WebFrontEndImpl) revokeCertByKeyID(
+	ctx context.Context,
+	outerJWS *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *requestEvent) *probs.ProblemDetails {
+	// For Key ID revocations we authenticate the outer JWS by using
+	// `validJWSForAccount` similar to other WFE endpoints
+	jwsBody, _, acct, prob := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
+	if prob != nil {
+		return prob
+	}
+	// For Key ID revocations we decide if an account is able to revoke a specific
+	// certificate by checking that the account has valid authorizations for all
+	// of the names in the certificate
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
+		if err != nil {
+			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
+		}
+		if !valid {
+			return probs.Unauthorized(
+				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
+		}
+		return nil
+	}
+	return wfe.processRevocation(ctx, jwsBody, acct.ID, authorizedToRevoke, request, logEvent)
+}
+
+// revokeCertByJWK processes an outer JWS as a revocation request that is
+// authenticated by an embedded JWK. E.g. in the case where someone is
+// requesting a revocation by using the keypair associated with the certificate
+// to be revoked
+func (wfe *WebFrontEndImpl) revokeCertByJWK(
+	ctx context.Context,
+	outerJWS *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *requestEvent) *probs.ProblemDetails {
+	// We maintain the requestKey as a var that is closed-over by the
+	// `authorizedToRevoke` function to use
+	var requestKey *jose.JSONWebKey
+	// For embedded JWK revocations we authenticate the outer JWS by using
+	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
+	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
+	// read the HTTP request body in `parseJWSRequest` and it is now empty.
+	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(outerJWS, request, logEvent)
+	if prob != nil {
+		return prob
+	}
+	requestKey = jwk
+	// For embedded JWK revocations we decide if a requester is able to revoke a specific
+	// certificate by checking that to-be-revoked certificate has the same public
+	// key as the JWK that was used to authenticate the request
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
+			return probs.Unauthorized(
+				"JWK embedded in revocation request must be the same public key as the cert to be revoked")
+		}
+		return nil
+	}
+	// We use `0` as the account ID provided to `processRevocation` because this
+	// is a self-authenticated request.
+	return wfe.processRevocation(ctx, jwsBody, 0, authorizedToRevoke, request, logEvent)
+}
+
+// RevokeCertificate is used by clients to request the revocation of a cert. The
+// revocation request is handled uniquely based on the method of authentication
+// used.
+func (wfe *WebFrontEndImpl) RevokeCertificate(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	// The ACME specification handles the verification of revocation requests
+	// differently from other endpoints. For this reason we do *not* immediately
+	// call `wfe.validPOSTForAccount` like all of the other endpoints.
+	// For this endpoint we need to accept a JWS with an embedded JWK, or a JWS
+	// with an embedded key ID, handling each case differently in terms of which
+	// certificates are authorized to be revoked by the requester
+
+	// Parse the JWS from the HTTP Request
+	jws, prob := wfe.parseJWSRequest(request)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Figure out which type of authentication this JWS uses
+	authType, prob := checkJWSAuthType(jws)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Handle the revocation request according to how it is authenticated, or if
+	// the authentication type is unknown, error immediately
+	if authType == embeddedKeyID {
+		prob = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
+		addRequesterHeader(response, logEvent.Requester)
+	} else if authType == embeddedJWK {
+		prob = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
+	} else {
+		prob = probs.Malformed("Malformed JWS, no KeyID or embedded JWK")
+	}
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+	response.WriteHeader(http.StatusOK)
 }
 
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, account core.Registration) {
@@ -586,7 +789,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if berrors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1192,6 +1395,8 @@ type orderJSON struct {
 	Expires        time.Time
 	CSR            core.JSONBuffer
 	Authorizations []string
+	Certificate    string `json:",omitempty"`
+	Error          string `json:",omitempty"`
 }
 
 // NewOrder is used by clients to create a new order object from a CSR
@@ -1255,19 +1460,69 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
-	for i, authz := range order.Authorizations {
-		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
 	}
 
-	// TODO(#2985): This location header points to a non-existent path, remove
-	// comment once the order handler is added
-	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
+	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
+		return
+	}
+}
+
+// Order is used to retrieve a existing order object
+func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	fields := strings.SplitN(request.URL.Path, "/", 2)
+	if len(fields) != 2 {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+		return
+	}
+	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		return
+	}
+	orderID, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
+		return
+	}
+
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			return
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if *order.RegistrationID != acctID {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		return
+	}
+
+	respObj := orderJSON{
+		Status:         core.AcmeStatus(*order.Status),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
+		CSR:            core.JSONBuffer(order.Csr),
+		Authorizations: make([]string, len(order.Authorizations)),
+		Certificate:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, *order.CertificateSerial)),
+		Error:          string(order.Error),
+	}
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return

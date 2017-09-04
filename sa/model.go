@@ -10,6 +10,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -360,4 +361,18 @@ type orderModel struct {
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID string
+}
+
+func modelToOrder(om *orderModel) *corepb.Order {
+	expires := om.Expires.UnixNano()
+	status := string(om.Status)
+	return &corepb.Order{
+		Id:                &om.ID,
+		RegistrationID:    &om.RegistrationID,
+		Expires:           &expires,
+		Csr:               om.CSR,
+		Error:             om.Error,
+		CertificateSerial: &om.CertificateSerial,
+		Status:            &status,
+	}
 }
