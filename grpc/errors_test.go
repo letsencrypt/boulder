@@ -9,7 +9,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/probs"
@@ -44,7 +43,6 @@ func TestErrorWrapping(t *testing.T) {
 	client := testproto.NewChillerClient(conn)
 
 	for _, tc := range []error{
-		core.MalformedRequestError("yup"),
 		&probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"},
 		berrors.MalformedError("yup"),
 	} {

@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -27,17 +26,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		problem    probs.ProblemType
 		detail     string
 	}{
-		// boulder/core error types:
-		//   Internal server errors expect just the `errMsg` in detail.
-		{core.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},
-		//   Other errors expect the full detail message
-		{core.MalformedRequestError(detailMsg), 400, probs.MalformedProblem, fullDetail},
-		{core.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
-		{core.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
 		{signatureValidationError(detailMsg), 400, probs.MalformedProblem, fullDetail},
-		{core.RateLimitedError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
-		//    The content length error has its own specific detail message
-		{core.LengthRequiredError(detailMsg), 411, probs.MalformedProblem, "missing Content-Length header"},
 		// boulder/errors error types
 		//   Internal server errors expect just the `errMsg` in detail.
 		{berrors.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},

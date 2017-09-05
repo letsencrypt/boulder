@@ -2,9 +2,7 @@ package wfe
 
 import (
 	"fmt"
-	"net/http"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -46,18 +44,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return problemDetailsForBoulderError(e, msg)
 	case signatureValidationError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case core.MalformedRequestError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case core.UnauthorizedError:
-		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
-	case core.NotFoundError:
-		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
-	case core.LengthRequiredError:
-		prob := probs.Malformed("missing Content-Length header")
-		prob.HTTPStatus = http.StatusLengthRequired
-		return prob
-	case core.RateLimitedError:
-		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

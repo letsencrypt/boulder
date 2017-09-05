@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -24,9 +23,9 @@ const (
 	_
 	UnauthorizedError
 	NotFoundError
-	LengthRequiredError
+	__
 	RateLimitedError
-	NoSuchRegistrationError
+	___
 	InternalServerError
 	ProblemDetails
 )
@@ -38,20 +37,6 @@ var (
 
 func errorToCode(err error) codes.Code {
 	switch err.(type) {
-	case core.MalformedRequestError:
-		return MalformedRequestError
-	case core.UnauthorizedError:
-		return UnauthorizedError
-	case core.NotFoundError:
-		return NotFoundError
-	case core.LengthRequiredError:
-		return LengthRequiredError
-	case core.RateLimitedError:
-		return RateLimitedError
-	case core.NoSuchRegistrationError:
-		return NoSuchRegistrationError
-	case core.InternalServerError:
-		return InternalServerError
 	case *probs.ProblemDetails:
 		return ProblemDetails
 	default:
@@ -126,20 +111,6 @@ func unwrapError(err error, md metadata.MD) error {
 	code := grpc.Code(err)
 	errBody := grpc.ErrorDesc(err)
 	switch code {
-	case InternalServerError:
-		return core.InternalServerError(errBody)
-	case MalformedRequestError:
-		return core.MalformedRequestError(errBody)
-	case UnauthorizedError:
-		return core.UnauthorizedError(errBody)
-	case NotFoundError:
-		return core.NotFoundError(errBody)
-	case NoSuchRegistrationError:
-		return core.NoSuchRegistrationError(errBody)
-	case RateLimitedError:
-		return core.RateLimitedError(errBody)
-	case LengthRequiredError:
-		return core.LengthRequiredError(errBody)
 	case ProblemDetails:
 		pd := probs.ProblemDetails{}
 		if json.Unmarshal([]byte(errBody), &pd) != nil {
