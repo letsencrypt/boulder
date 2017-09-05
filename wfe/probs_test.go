@@ -48,7 +48,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.RateLimitError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
 		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
-		{berrors.ConnectionFailureError(detailMsg), 400, probs.ConnectionProblem, fullDetail},
 	}
 	for _, c := range testCases {
 		p := problemDetailsForError(c.err, errMsg)

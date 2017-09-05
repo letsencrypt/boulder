@@ -11,14 +11,6 @@ import (
 
 func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs.ProblemDetails {
 	switch err.Type {
-	case berrors.NotSupported:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
-	case berrors.ConnectionFailure:
-		return probs.ConnectionFailure(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Malformed:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:

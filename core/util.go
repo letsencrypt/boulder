@@ -54,9 +54,6 @@ func init() {
 // constraints have been violated.
 type InternalServerError string
 
-// NotSupportedError indicates a method is not yet supported
-type NotSupportedError string
-
 // MalformedRequestError indicates the user data was improper
 type MalformedRequestError string
 
@@ -80,7 +77,6 @@ type RateLimitedError string
 type TooManyRPCRequestsError string
 
 func (e InternalServerError) Error() string     { return string(e) }
-func (e NotSupportedError) Error() string       { return string(e) }
 func (e MalformedRequestError) Error() string   { return string(e) }
 func (e UnauthorizedError) Error() string       { return string(e) }
 func (e NotFoundError) Error() string           { return string(e) }

@@ -7,7 +7,7 @@ type ErrorType int
 
 const (
 	InternalServer ErrorType = iota
-	NotSupported
+	_
 	Malformed
 	Unauthorized
 	NotFound
@@ -46,10 +46,6 @@ func Is(err error, errType ErrorType) bool {
 
 func InternalServerError(msg string, args ...interface{}) error {
 	return New(InternalServer, msg, args...)
-}
-
-func NotSupportedError(msg string, args ...interface{}) error {
-	return New(NotSupported, msg, args...)
 }
 
 func MalformedError(msg string, args ...interface{}) error {

@@ -92,7 +92,6 @@ func TestCertificateRequest(t *testing.T) {
 func TestErrors(t *testing.T) {
 	testMessage := "test"
 	errors := []error{
-		NotSupportedError(testMessage),
 		MalformedRequestError(testMessage),
 		UnauthorizedError(testMessage),
 		NotFoundError(testMessage),
