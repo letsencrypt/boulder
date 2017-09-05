@@ -44,55 +44,6 @@ func init() {
 	expvar.NewString("BuildTime").Set(BuildTime)
 }
 
-// Errors
-
-// InternalServerError indicates that something has gone wrong unrelated to the
-// user's input, and will be considered by the Load Balancer as an indication
-// that this Boulder instance may be malfunctioning. Minimally, returning this
-// will cause an error page to be generated at the CDN/LB for the client.
-// Consequently, you should only use this error when Boulder's internal
-// constraints have been violated.
-type InternalServerError string
-
-// NotSupportedError indicates a method is not yet supported
-type NotSupportedError string
-
-// MalformedRequestError indicates the user data was improper
-type MalformedRequestError string
-
-// UnauthorizedError indicates the user did not satisfactorily prove identity
-type UnauthorizedError string
-
-// NotFoundError indicates the destination was unknown. Whoa oh oh ohhh.
-type NotFoundError string
-
-// LengthRequiredError indicates a POST was sent with no Content-Length.
-type LengthRequiredError string
-
-// NoSuchRegistrationError indicates that a registration could not be found.
-type NoSuchRegistrationError string
-
-// RateLimitedError indicates the user has hit a rate limit
-type RateLimitedError string
-
-// TooManyRPCRequestsError indicates an RPC server has hit it's concurrent request
-// limit
-type TooManyRPCRequestsError string
-
-// BadNonceError indicates an empty of invalid nonce was provided
-type BadNonceError string
-
-func (e InternalServerError) Error() string     { return string(e) }
-func (e NotSupportedError) Error() string       { return string(e) }
-func (e MalformedRequestError) Error() string   { return string(e) }
-func (e UnauthorizedError) Error() string       { return string(e) }
-func (e NotFoundError) Error() string           { return string(e) }
-func (e LengthRequiredError) Error() string     { return string(e) }
-func (e NoSuchRegistrationError) Error() string { return string(e) }
-func (e RateLimitedError) Error() string        { return string(e) }
-func (e TooManyRPCRequestsError) Error() string { return string(e) }
-func (e BadNonceError) Error() string           { return string(e) }
-
 // Random stuff
 
 type randSource interface {
