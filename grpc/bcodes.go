@@ -26,6 +26,7 @@ const (
 	_
 	RateLimitedError
 	_
+	_
 	InternalServerError
 	ProblemDetails
 )
