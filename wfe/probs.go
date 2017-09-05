@@ -17,6 +17,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 			Detail:     fmt.Sprintf("%s :: %s", msg, err),
 			HTTPStatus: http.StatusNotImplemented,
 		}
+	case berrors.ConnectionFailure:
+		return probs.ConnectionFailure(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Malformed:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
@@ -54,12 +56,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case core.MalformedRequestError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case core.NotSupportedError:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
 	case core.UnauthorizedError:
 		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
 	case core.NotFoundError:
@@ -70,8 +66,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return prob
 	case core.RateLimitedError:
 		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case core.BadNonceError:
-		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

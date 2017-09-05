@@ -31,19 +31,16 @@ func TestProblemDetailsFromError(t *testing.T) {
 		//   Internal server errors expect just the `errMsg` in detail.
 		{core.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},
 		//   Other errors expect the full detail message
-		{core.NotSupportedError(detailMsg), 501, probs.ServerInternalProblem, fullDetail},
 		{core.MalformedRequestError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{core.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{core.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
 		{core.RateLimitedError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
-		{core.BadNonceError(detailMsg), 400, probs.BadNonceProblem, fullDetail},
 		//    The content length error has its own specific detail message
 		{core.LengthRequiredError(detailMsg), 411, probs.MalformedProblem, "missing Content-Length header"},
 		// boulder/errors error types
 		//   Internal server errors expect just the `errMsg` in detail.
 		{berrors.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},
 		//   Other errors expect the full detail message
-		{berrors.NotSupportedError(detailMsg), 501, probs.ServerInternalProblem, fullDetail},
 		{berrors.MalformedError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},

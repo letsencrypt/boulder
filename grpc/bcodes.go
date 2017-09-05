@@ -21,12 +21,11 @@ import (
 // TODO(#2507): Deprecated, remove once boulder/errors code is deployed
 const (
 	MalformedRequestError = iota + 100
-	NotSupportedError
+	_
 	UnauthorizedError
 	NotFoundError
 	LengthRequiredError
 	RateLimitedError
-	BadNonceError
 	NoSuchRegistrationError
 	InternalServerError
 	ProblemDetails
@@ -41,8 +40,6 @@ func errorToCode(err error) codes.Code {
 	switch err.(type) {
 	case core.MalformedRequestError:
 		return MalformedRequestError
-	case core.NotSupportedError:
-		return NotSupportedError
 	case core.UnauthorizedError:
 		return UnauthorizedError
 	case core.NotFoundError:
@@ -51,8 +48,6 @@ func errorToCode(err error) codes.Code {
 		return LengthRequiredError
 	case core.RateLimitedError:
 		return RateLimitedError
-	case core.BadNonceError:
-		return BadNonceError
 	case core.NoSuchRegistrationError:
 		return NoSuchRegistrationError
 	case core.InternalServerError:
@@ -133,8 +128,6 @@ func unwrapError(err error, md metadata.MD) error {
 	switch code {
 	case InternalServerError:
 		return core.InternalServerError(errBody)
-	case NotSupportedError:
-		return core.NotSupportedError(errBody)
 	case MalformedRequestError:
 		return core.MalformedRequestError(errBody)
 	case UnauthorizedError:
@@ -147,8 +140,6 @@ func unwrapError(err error, md metadata.MD) error {
 		return core.RateLimitedError(errBody)
 	case LengthRequiredError:
 		return core.LengthRequiredError(errBody)
-	case BadNonceError:
-		return core.BadNonceError(errBody)
 	case ProblemDetails:
 		pd := probs.ProblemDetails{}
 		if json.Unmarshal([]byte(errBody), &pd) != nil {

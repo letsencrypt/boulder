@@ -79,9 +79,6 @@ type RateLimitedError string
 // limit
 type TooManyRPCRequestsError string
 
-// BadNonceError indicates an empty of invalid nonce was provided
-type BadNonceError string
-
 func (e InternalServerError) Error() string     { return string(e) }
 func (e NotSupportedError) Error() string       { return string(e) }
 func (e MalformedRequestError) Error() string   { return string(e) }
@@ -91,7 +88,6 @@ func (e LengthRequiredError) Error() string     { return string(e) }
 func (e NoSuchRegistrationError) Error() string { return string(e) }
 func (e RateLimitedError) Error() string        { return string(e) }
 func (e TooManyRPCRequestsError) Error() string { return string(e) }
-func (e BadNonceError) Error() string           { return string(e) }
 
 // Random stuff
 
