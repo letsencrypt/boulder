@@ -23,9 +23,9 @@ const (
 	_
 	UnauthorizedError
 	NotFoundError
-	__
+	_
 	RateLimitedError
-	___
+	_
 	InternalServerError
 	ProblemDetails
 )
