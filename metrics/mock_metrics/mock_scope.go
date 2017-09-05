@@ -6,55 +6,64 @@ package mock_metrics
 import (
 	gomock "github.com/golang/mock/gomock"
 	metrics "github.com/letsencrypt/boulder/metrics"
-	prometheus "github.com/prometheus/client_golang/prometheus"
+	prometheus "github.com/letsencrypt/boulder/vendor/github.com/prometheus/client_golang/prometheus"
 	time "time"
 )
 
-// Mock of Scope interface
+// MockScope is a mock of Scope interface
 type MockScope struct {
 	ctrl     *gomock.Controller
-	recorder *_MockScopeRecorder
+	recorder *MockScopeMockRecorder
 }
 
-// Recorder for MockScope (not exported)
-type _MockScopeRecorder struct {
+// MockScopeMockRecorder is the mock recorder for MockScope
+type MockScopeMockRecorder struct {
 	mock *MockScope
 }
 
+// NewMockScope creates a new mock instance
 func NewMockScope(ctrl *gomock.Controller) *MockScope {
 	mock := &MockScope{ctrl: ctrl}
-	mock.recorder = &_MockScopeRecorder{mock}
+	mock.recorder = &MockScopeMockRecorder{mock}
 	return mock
 }
 
-func (_m *MockScope) EXPECT() *_MockScopeRecorder {
+// EXPECT returns an object that allows the caller to indicate expected use
+func (_m *MockScope) EXPECT() *MockScopeMockRecorder {
 	return _m.recorder
 }
 
+// Gauge mocks base method
 func (_m *MockScope) Gauge(_param0 string, _param1 int64) {
 	_m.ctrl.Call(_m, "Gauge", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) Gauge(arg0, arg1 interface{}) *gomock.Call {
+// Gauge indicates an expected call of Gauge
+func (_mr *MockScopeMockRecorder) Gauge(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Gauge", arg0, arg1)
 }
 
+// GaugeDelta mocks base method
 func (_m *MockScope) GaugeDelta(_param0 string, _param1 int64) {
 	_m.ctrl.Call(_m, "GaugeDelta", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) GaugeDelta(arg0, arg1 interface{}) *gomock.Call {
+// GaugeDelta indicates an expected call of GaugeDelta
+func (_mr *MockScopeMockRecorder) GaugeDelta(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "GaugeDelta", arg0, arg1)
 }
 
+// Inc mocks base method
 func (_m *MockScope) Inc(_param0 string, _param1 int64) {
 	_m.ctrl.Call(_m, "Inc", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) Inc(arg0, arg1 interface{}) *gomock.Call {
+// Inc indicates an expected call of Inc
+func (_mr *MockScopeMockRecorder) Inc(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Inc", arg0, arg1)
 }
 
+// MustRegister mocks base method
 func (_m *MockScope) MustRegister(_param0 ...prometheus.Collector) {
 	_s := []interface{}{}
 	for _, _x := range _param0 {
@@ -63,10 +72,12 @@ func (_m *MockScope) MustRegister(_param0 ...prometheus.Collector) {
 	_m.ctrl.Call(_m, "MustRegister", _s...)
 }
 
-func (_mr *_MockScopeRecorder) MustRegister(arg0 ...interface{}) *gomock.Call {
+// MustRegister indicates an expected call of MustRegister
+func (_mr *MockScopeMockRecorder) MustRegister(arg0 ...interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "MustRegister", arg0...)
 }
 
+// NewScope mocks base method
 func (_m *MockScope) NewScope(_param0 ...string) metrics.Scope {
 	_s := []interface{}{}
 	for _, _x := range _param0 {
@@ -77,30 +88,37 @@ func (_m *MockScope) NewScope(_param0 ...string) metrics.Scope {
 	return ret0
 }
 
-func (_mr *_MockScopeRecorder) NewScope(arg0 ...interface{}) *gomock.Call {
+// NewScope indicates an expected call of NewScope
+func (_mr *MockScopeMockRecorder) NewScope(arg0 ...interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "NewScope", arg0...)
 }
 
+// SetInt mocks base method
 func (_m *MockScope) SetInt(_param0 string, _param1 int64) {
 	_m.ctrl.Call(_m, "SetInt", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) SetInt(arg0, arg1 interface{}) *gomock.Call {
+// SetInt indicates an expected call of SetInt
+func (_mr *MockScopeMockRecorder) SetInt(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "SetInt", arg0, arg1)
 }
 
+// Timing mocks base method
 func (_m *MockScope) Timing(_param0 string, _param1 int64) {
 	_m.ctrl.Call(_m, "Timing", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) Timing(arg0, arg1 interface{}) *gomock.Call {
+// Timing indicates an expected call of Timing
+func (_mr *MockScopeMockRecorder) Timing(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Timing", arg0, arg1)
 }
 
+// TimingDuration mocks base method
 func (_m *MockScope) TimingDuration(_param0 string, _param1 time.Duration) {
 	_m.ctrl.Call(_m, "TimingDuration", _param0, _param1)
 }
 
-func (_mr *_MockScopeRecorder) TimingDuration(arg0, arg1 interface{}) *gomock.Call {
+// TimingDuration indicates an expected call of TimingDuration
+func (_mr *MockScopeMockRecorder) TimingDuration(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "TimingDuration", arg0, arg1)
 }

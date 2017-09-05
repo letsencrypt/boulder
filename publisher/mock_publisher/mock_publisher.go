@@ -4,47 +4,53 @@
 package mock_publisher
 
 import (
+	context "context"
 	gomock "github.com/golang/mock/gomock"
-	context "golang.org/x/net/context"
 )
 
-// Mock of Publisher interface
+// MockPublisher is a mock of Publisher interface
 type MockPublisher struct {
 	ctrl     *gomock.Controller
-	recorder *_MockPublisherRecorder
+	recorder *MockPublisherMockRecorder
 }
 
-// Recorder for MockPublisher (not exported)
-type _MockPublisherRecorder struct {
+// MockPublisherMockRecorder is the mock recorder for MockPublisher
+type MockPublisherMockRecorder struct {
 	mock *MockPublisher
 }
 
+// NewMockPublisher creates a new mock instance
 func NewMockPublisher(ctrl *gomock.Controller) *MockPublisher {
 	mock := &MockPublisher{ctrl: ctrl}
-	mock.recorder = &_MockPublisherRecorder{mock}
+	mock.recorder = &MockPublisherMockRecorder{mock}
 	return mock
 }
 
-func (_m *MockPublisher) EXPECT() *_MockPublisherRecorder {
+// EXPECT returns an object that allows the caller to indicate expected use
+func (_m *MockPublisher) EXPECT() *MockPublisherMockRecorder {
 	return _m.recorder
 }
 
+// SubmitToCT mocks base method
 func (_m *MockPublisher) SubmitToCT(_param0 context.Context, _param1 []byte) error {
 	ret := _m.ctrl.Call(_m, "SubmitToCT", _param0, _param1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-func (_mr *_MockPublisherRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.Call {
+// SubmitToCT indicates an expected call of SubmitToCT
+func (_mr *MockPublisherMockRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "SubmitToCT", arg0, arg1)
 }
 
+// SubmitToSingleCT mocks base method
 func (_m *MockPublisher) SubmitToSingleCT(_param0 context.Context, _param1 string, _param2 string, _param3 []byte) error {
 	ret := _m.ctrl.Call(_m, "SubmitToSingleCT", _param0, _param1, _param2, _param3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-func (_mr *_MockPublisherRecorder) SubmitToSingleCT(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+// SubmitToSingleCT indicates an expected call of SubmitToSingleCT
+func (_mr *MockPublisherMockRecorder) SubmitToSingleCT(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "SubmitToSingleCT", arg0, arg1, arg2, arg3)
 }
