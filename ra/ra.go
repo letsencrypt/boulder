@@ -464,7 +464,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	noKey := ""
 	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
-		return berrors.RateLimitedError("Too many invalid authorizations recently.")
+		return berrors.RateLimitError("Too many invalid authorizations recently.")
 	}
 	return nil
 }
