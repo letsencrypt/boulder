@@ -1669,7 +1669,10 @@ func TestAuthorization(t *testing.T) {
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
 // Challenge Problem Types works as expected
 func TestAuthorizationChallengeNamespace(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, clk := setupWFE(t)
+
+	mockSA := &mocks.SAWithFailedChallenges{Clk: clk}
+	wfe.SA = mockSA
 
 	// For "oldNS" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type already prefixed by the v1 error NS
