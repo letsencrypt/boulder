@@ -1,7 +1,6 @@
 package grpc
 
 import (
-	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -11,24 +10,6 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/probs"
-)
-
-// gRPC error codes used by Boulder. While the gRPC codes
-// end at 16 we start at 100 to provide a little leeway
-// in case they ever decide to add more
-// TODO(#2507): Deprecated, remove once boulder/errors code is deployed
-const (
-	MalformedRequestError = iota + 100
-	_
-	UnauthorizedError
-	NotFoundError
-	_
-	RateLimitedError
-	_
-	_
-	InternalServerError
-	ProblemDetails
 )
 
 var (
@@ -36,22 +17,11 @@ var (
 	errIncompleteResponse = errors.New("Incomplete gRPC response message")
 )
 
-func errorToCode(err error) codes.Code {
-	switch err.(type) {
-	case *probs.ProblemDetails:
-		return ProblemDetails
-	default:
-		return codes.Unknown
-	}
-}
-
 // wrapError wraps the internal error types we use for transport across the gRPC
 // layer and appends an appropriate errortype to the gRPC trailer via the provided
-// context. core.XXXError and probs.ProblemDetails error types are encoded using the gRPC
-// error status code which has been deprecated (#2507). errors.BoulderError error types
-// are encoded using the grpc/metadata in the context.Context for the RPC which is
-// considered to be the 'proper' method of encoding custom error types (grpc/grpc#4543
-// and grpc/grpc-go#478)
+// context. errors.BoulderError error types are encoded using the grpc/metadata
+// in the context.Context for the RPC which is considered to be the 'proper'
+// method of encoding custom error types (grpc/grpc#4543 and grpc/grpc-go#478)
 func wrapError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
@@ -63,29 +33,13 @@ func wrapError(ctx context.Context, err error) error {
 		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
-	// TODO(2589): deprecated, remove once boulder/errors code has been deployed
-	code := errorToCode(err)
-	var body string
-	if code == ProblemDetails {
-		pd := err.(*probs.ProblemDetails)
-		bodyBytes, jsonErr := json.Marshal(pd)
-		if jsonErr != nil {
-			// Since gRPC will wrap this itself using grpc.Errorf(codes.Unknown, ...)
-			// we just pass the original error back to the caller
-			return err
-		}
-		body = string(bodyBytes)
-	} else {
-		body = err.Error()
-	}
-	return grpc.Errorf(code, body)
+	return grpc.Errorf(codes.Unknown, err.Error())
 }
 
 // unwrapError unwraps errors returned from gRPC client calls which were wrapped
 // with wrapError to their proper internal error type. If the provided metadata
 // object has an "errortype" field, that will be used to set the type of the
-// error. If the error is a core.XXXError or a probs.ProblemDetails the type
-// is determined using the gRPC error code which has been deprecated (#2507).
+// error.
 func unwrapError(err error, md metadata.MD) error {
 	if err == nil {
 		return nil
@@ -108,17 +62,5 @@ func unwrapError(err error, md metadata.MD) error {
 		}
 		return berrors.New(berrors.ErrorType(errType), unwrappedErr)
 	}
-	// TODO(2589): deprecated, remove once boulder/errors code has been deployed
-	code := grpc.Code(err)
-	errBody := grpc.ErrorDesc(err)
-	switch code {
-	case ProblemDetails:
-		pd := probs.ProblemDetails{}
-		if json.Unmarshal([]byte(errBody), &pd) != nil {
-			return err
-		}
-		return &pd
-	default:
-		return err
-	}
+	return err
 }

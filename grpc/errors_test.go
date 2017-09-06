@@ -11,7 +11,6 @@ import (
 
 	berrors "github.com/letsencrypt/boulder/errors"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -42,13 +41,8 @@ func TestErrorWrapping(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := testproto.NewChillerClient(conn)
 
-	for _, tc := range []error{
-		&probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"},
-		berrors.MalformedError("yup"),
-	} {
-		es.err = tc
-		_, err := client.Chill(context.Background(), &testproto.Time{})
-		test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
-		test.AssertDeepEquals(t, err, tc)
-	}
+	es.err = berrors.MalformedError("yup")
+	_, err = client.Chill(context.Background(), &testproto.Time{})
+	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
+	test.AssertDeepEquals(t, err, es.err)
 }
