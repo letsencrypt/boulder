@@ -620,11 +620,6 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 			updater.log.AuditErr(fmt.Sprintf("Failed to get certificate: %s", err))
 			continue
 		}
-
-		// If the feature flag is enabled, only send the certificate to the missing
-		// logs using the `SubmitToSingleCT` endpoint that was added for this
-		// purpose
-
 		for _, log := range missingLogs {
 			_ = updater.pubc.SubmitToSingleCT(ctx, log.uri, log.key, cert.DER)
 		}
