@@ -28,7 +28,7 @@ func TestErrorWrapping(t *testing.T) {
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	es := &errorServer{}
 	testproto.RegisterChillerServer(srv, es)
-	lis, err := net.Listen("tcp", ":")
+	lis, err := net.Listen("tcp", "127.0.0.1:")
 	test.AssertNotError(t, err, "Failed to create listener")
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
