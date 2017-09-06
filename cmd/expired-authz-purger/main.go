@@ -30,7 +30,7 @@ type eapConfig struct {
 
 		GracePeriod cmd.ConfigDuration
 		BatchSize   int
-		Parallelism int
+		Parallelism uint
 
 		Features map[string]bool
 	}
