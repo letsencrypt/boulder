@@ -1144,11 +1144,13 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		changed = true
 	}
 
-	if features.Enabled(features.AllowKeyRollover) && input.Key != nil {
-		sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
-		if !sameKey {
-			r.Key = input.Key
-			changed = true
+	if input.Key != nil {
+		if r.Key != nil {
+			sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
+			if !sameKey {
+				r.Key = input.Key
+				changed = true
+			}
 		}
 	}
 

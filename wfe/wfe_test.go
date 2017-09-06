@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -38,7 +40,6 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -678,8 +679,6 @@ func TestDirectory(t *testing.T) {
 	// This tests to ensure the `Host` in the following `http.Request` is not
 	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
 	// and expecting `localhost` in the JSON result.
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
@@ -798,8 +797,6 @@ func (cr noopCAA) IsCAAValid(
 }
 
 func TestRelativeDirectory(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1676,8 +1673,6 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 	responseWriter := httptest.NewRecorder()
