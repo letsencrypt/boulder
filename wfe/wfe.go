@@ -819,8 +819,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 
 	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
 	if err != nil {
+		logEvent.AddError("unable to get certificate status: %s", err)
 		// TODO(#991): handle db errors
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate status not available"), err)
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate status not yet available"), err)
 		return
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
@@ -1477,13 +1478,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	// Parse as JWS
 	newKey, parsedJWS, err := wfe.extractJWSKey(string(body))
 	if err != nil {
-		logEvent.AddError(err.Error())
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)
 		return
 	}
 	payload, err := parsedJWS.Verify(newKey)
 	if err != nil {
-		logEvent.AddError("verification of the inner JWS with the inner JWK failed: %v", err)
 		wfe.sendError(response, logEvent, probs.Malformed("JWS verification error"), err)
 		return
 	}
@@ -1493,25 +1492,21 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	}
 	err = json.Unmarshal(payload, &rolloverRequest)
 	if err != nil {
-		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Request payload did not parse as JSON"), nil)
 		return
 	}
 
 	if wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
-		logEvent.AddError("incorrect account URL provided")
 		wfe.sendError(response, logEvent, probs.Malformed("Incorrect account URL provided in payload"), nil)
 		return
 	}
 
 	keysEqual, err := core.PublicKeysEqual(rolloverRequest.NewKey.Key, newKey.Key)
 	if err != nil {
-		logEvent.AddError("unable to marshal new key: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Unable to marshal new JWK"), nil)
 		return
 	}
 	if !keysEqual {
-		logEvent.AddError("new key in inner payload doesn't match key used to sign inner JWS")
 		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
 		return
 	}
@@ -1519,14 +1514,12 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 	// Update registration key
 	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
 	if err != nil {
-		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update registration"), err)
 		return
 	}
 
 	jsonReply, err := marshalIndent(updatedReg)
 	if err != nil {
-		logEvent.AddError("unable to marshal updated registration: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
@@ -1538,7 +1531,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *requestEv
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *requestEvent) {
 	err := wfe.RA.DeactivateRegistration(ctx, reg)
 	if err != nil {
-		logEvent.AddError("unable to deactivate registration", err)
 		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating registration"), err)
 		return
 	}
@@ -1547,7 +1539,6 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, reg)
 	if err != nil {
 		// ServerInternal because registration is from DB and should be fine
-		logEvent.AddError("unable to marshal updated registration: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
