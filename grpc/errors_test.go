@@ -45,4 +45,7 @@ func TestErrorWrapping(t *testing.T) {
 	_, err = client.Chill(context.Background(), &testproto.Time{})
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
+
+	test.AssertEquals(t, wrapError(nil, nil), nil)
+	test.AssertEquals(t, unwrapError(nil, nil), nil)
 }
