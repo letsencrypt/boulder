@@ -178,7 +178,6 @@ func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
 // https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 func initTables(dbMap *gorp.DbMap) {
 	var regTable *gorp.TableMap
-
 	regTable = dbMap.AddTableWithName(regModelv2{}, "registrations").SetKeys(true, "ID")
 
 	regTable.SetVersionCol("LockCol")

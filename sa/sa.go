@@ -125,7 +125,6 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	const query = "WHERE id = ?"
 	var model interface{}
 	var err error
-
 	model, err = selectRegistrationv2(ssa.dbMap, query, id)
 
 	if err == sql.ErrNoRows {
