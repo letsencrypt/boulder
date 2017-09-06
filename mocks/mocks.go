@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -493,4 +494,48 @@ func (m *Mailer) Close() error {
 // Connect is a mock
 func (m *Mailer) Connect() error {
 	return nil
+}
+
+// mockSAWithFailedChallenges is a mocks.StorageAuthority that has
+// a `GetAuthorization` implementation that can return authorizations with
+// failed challenges.
+type SAWithFailedChallenges struct {
+	StorageAuthority
+	Clk clock.FakeClock
+}
+
+func (sa *SAWithFailedChallenges) GetAuthorization(_ context.Context, id string) (core.Authorization, error) {
+	authz := core.Authorization{
+		ID:             "valid",
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Challenges: []core.Challenge{
+			{
+				ID:   23,
+				Type: "dns",
+			},
+		},
+	}
+	prob := &probs.ProblemDetails{
+		Type:       "things:are:whack",
+		Detail:     "whack attack",
+		HTTPStatus: 555,
+	}
+	exp := sa.Clk.Now().AddDate(100, 0, 0)
+	authz.Expires = &exp
+	// "oldNS" returns an authz with a failed challenge that has the problem type
+	// statically prefixed by the V1ErrorNS
+	if id == "oldNS" {
+		prob.Type = probs.V1ErrorNS + prob.Type
+		authz.Challenges[0].Error = prob
+		return authz, nil
+	}
+	// "failed" returns an authz with a failed challenge that has no error
+	// namespace on the problem type.
+	if id == "failed" {
+		authz.Challenges[0].Error = prob
+		return authz, nil
+	}
+	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
 }

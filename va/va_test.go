@@ -813,7 +813,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 		"empty-txts.com",
 		chalDNS,
 		core.Authorization{})
-	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
+	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT records found for DNS challenge")
 }
 
 func TestPerformValidationValid(t *testing.T) {
