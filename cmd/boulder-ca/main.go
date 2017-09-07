@@ -183,7 +183,7 @@ func main() {
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
 		go func() {
-			err = s.Serve(l)
+			err = cmd.FilterShutdownErrors(s.Serve(l))
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
 		caSrv = s
@@ -195,7 +195,7 @@ func main() {
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
 		go func() {
-			err = s.Serve(l)
+			err = cmd.FilterShutdownErrors(s.Serve(l))
 			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
 		}()
 		ocspSrv = s
