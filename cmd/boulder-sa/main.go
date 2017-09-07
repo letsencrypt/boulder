@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 
-	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -55,7 +54,7 @@ func main() {
 
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger, scope)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	var grpcSrv *grpc.Server

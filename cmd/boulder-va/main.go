@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmhodges/clock"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -96,7 +94,7 @@ func main() {
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
-	clk := clock.Default()
+	clk := cmd.Clock()
 	caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
 	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 	var resolver bdns.DNSClient

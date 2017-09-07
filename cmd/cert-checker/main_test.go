@@ -50,7 +50,7 @@ func BenchmarkCheckCert(b *testing.B) {
 		test.ResetSATestDatabase(b)()
 	}()
 
-	checker := newChecker(saDbMap, clock.Default(), pa, expectedValidityPeriod)
+	checker := newChecker(saDbMap, cmd.Clock(), pa, expectedValidityPeriod)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)

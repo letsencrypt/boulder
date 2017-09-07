@@ -277,8 +277,11 @@ def test_single_ocsp():
     p.send_signal(signal.SIGTERM)
     p.wait()
 
+def fakeclock(date):
+    return date.strftime("%a %b %d %H:%M:%S UTC %Y")
+
 def get_future_output(cmd, date):
-    return run(cmd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")})
+    return run(cmd, env={'FAKECLOCK': fakeclock(date)})
 
 def test_expired_authz_purger():
     def expect(target_time, num, table):
@@ -395,23 +398,25 @@ def main():
     if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, or --custom")
 
-    # Keep track of whether we started the Boulder servers and need to shut them down.
-    started_servers = False
-    # Check if WFE is already running.
-    try:
-        urllib2.urlopen("http://localhost:4000/directory")
-    except urllib2.URLError:
-        # WFE not running, start all of Boulder.
-        started_servers = True
-        if not startservers.start(race_detection=True):
-            raise Exception("startservers failed")
+    now = datetime.datetime.utcnow()
+    seventy_days_ago = now+datetime.timedelta(days=-70)
+    if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
+        raise Exception("startservers failed (mocking seventy days ago)")
+    startservers.stop()
+
+    five_days_ago = now+datetime.timedelta(days=-5)
+    if not startservers.start(race_detection=True, fakeclock=fakeclock(five_days_ago)):
+        raise Exception("startservers failed (mocking five days ago)")
+    startservers.stop()
+
+    if not startservers.start(race_detection=True):
+        raise Exception("startservers failed")
 
     if args.run_all or args.run_chisel:
         run_chisel()
 
-    # Simulate a disconnection from RabbitMQ to make sure reconnects work.
-    if started_servers:
-        startservers.bounce_forward()
+    # Simulate a disconnection to make sure gRPC reconnects work.
+    startservers.bounce_forward()
 
     if args.run_all or args.run_certbot:
         run_client_tests()
@@ -419,7 +424,7 @@ def main():
     if args.custom:
         run(args.custom)
 
-    if started_servers and not startservers.check():
+    if not startservers.check():
         raise Exception("startservers.check failed")
 
     global exit_status

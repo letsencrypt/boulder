@@ -772,7 +772,7 @@ func main() {
 
 	updater, err := newUpdater(
 		scope,
-		clock.Default(),
+		cmd.Clock(),
 		dbMap,
 		cac,
 		pubc,
