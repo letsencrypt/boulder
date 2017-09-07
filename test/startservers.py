@@ -167,8 +167,10 @@ def stop():
     # When we are about to exit, send SIGTERM to each subprocess and wait for
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
+    global processes
     for p in processes:
         if p.poll() is None:
             p.send_signal(signal.SIGTERM)
     for p in processes:
         p.wait()
+    processes = []
