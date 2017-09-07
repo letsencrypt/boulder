@@ -742,7 +742,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 			}
 			message = message + pd.Detail
 		}
-		return berrors.UnauthorizedError(message)
+		return berrors.CAAError(message)
 	}
 	return nil
 }

@@ -97,7 +97,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0)
 
 	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 
 func TestParseResults(t *testing.T) {
