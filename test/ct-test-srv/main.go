@@ -21,6 +21,7 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTLS "github.com/google/certificate-transparency-go/tls"
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
@@ -159,5 +160,5 @@ func main() {
 	go func() { log.Fatal(sA.ListenAndServe()) }()
 	go func() { log.Fatal(sB.ListenAndServe()) }()
 
-	select {}
+	cmd.CatchSignals(nil, nil)
 }
