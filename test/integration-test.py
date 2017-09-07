@@ -8,6 +8,7 @@ import json
 import os
 import random
 import re
+import requests
 import shutil
 import subprocess
 import signal
@@ -31,6 +32,17 @@ class ProcInfo:
     def __init__(self, cmd, proc):
         self.cmd = cmd
         self.proc = proc
+
+old_authzs = []
+
+def setup_seventy_days_ago():
+    """Do any setup that needs to happen 70 days in the past, for tests that
+       will run in the 'present'.
+    """
+    # Issue a certificate with the clock set back, and save the authzs to check
+    # later that they are expired (404).
+    global old_authzs
+    _, old_authzs = auth_and_issue([random_domain()])
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
@@ -205,9 +217,9 @@ def random_domain():
 
 def test_expiration_mailer():
     email_addr = "integration.%x@boulder.local" % random.randrange(2**16)
-    cert = auth_and_issue([random_domain()], email=email_addr).body
+    cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
-    expiry = datetime.datetime.strptime(cert.get_notAfter(), '%Y%m%d%H%M%SZ')
+    expiry = datetime.datetime.strptime(cert.body.get_notAfter(), '%Y%m%d%H%M%SZ')
     no_reminder = expiry + datetime.timedelta(days=-31)
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
@@ -227,7 +239,7 @@ def test_expiration_mailer():
 def test_revoke_by_account():
     cert_file_pem = os.path.join(tempdir, "revokeme.pem")
     client = chisel.make_client()
-    cert = auth_and_issue([random_domain()], client=client).body
+    cert, _ = auth_and_issue([random_domain()], client=client)
     client.revoke(cert.body)
 
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
@@ -348,14 +360,23 @@ def test_certificates_per_name():
     chisel.expect_problem("urn:acme:error:rateLimited",
         lambda: auth_and_issue(["lim.it"]))
 
+def test_expired_authzs_404():
+    if len(old_authzs) == 0:
+        raise Exception("Old authzs not prepared for test_expired_authzs_404")
+    for a in old_authzs:
+        response = requests.get(a.uri)
+        if response.status_code != 404:
+            raise Exception("Unexpected response for expired authz: ",
+                response.status_code)
+
 default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
 if default_config_dir == '':
     default_config_dir = 'test/config'
 
 def test_admin_revoker_cert():
     cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
-    cert = auth_and_issue([random_domain()], cert_output=cert_file_pem).body
-    serial = "%x" % cert.get_serial_number()
+    cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
+    serial = "%x" % cert.body.get_serial_number()
     # Revoke certificate by serial
     run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
         default_config_dir, serial, 1))
@@ -402,11 +423,7 @@ def main():
     seventy_days_ago = now+datetime.timedelta(days=-70)
     if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
         raise Exception("startservers failed (mocking seventy days ago)")
-    startservers.stop()
-
-    five_days_ago = now+datetime.timedelta(days=-5)
-    if not startservers.start(race_detection=True, fakeclock=fakeclock(five_days_ago)):
-        raise Exception("startservers failed (mocking five days ago)")
+    setup_seventy_days_ago()
     startservers.stop()
 
     if not startservers.start(race_detection=True):
@@ -446,6 +463,7 @@ def run_chisel():
     test_single_ocsp()
     test_dns_challenge()
     test_renewal_exemption()
+    test_expired_authzs_404()
 
 if __name__ == "__main__":
     try:
