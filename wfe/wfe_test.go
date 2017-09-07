@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -468,7 +468,7 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
 			assertJSONEquals(t,
 				rw.Body.String(),
-				`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+				`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 		}
 		nonce := rw.Header().Get("Replay-Nonce")
 		test.AssertNotEquals(t, nonce, lastNonce)
@@ -479,7 +479,7 @@ func TestHandleFunc(t *testing.T) {
 	// Disallowed method returns error JSON in body
 	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	assertJSONEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
@@ -493,7 +493,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	assertJSONEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -893,7 +893,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -905,14 +905,14 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -920,7 +920,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
@@ -929,7 +929,7 @@ func TestIssueCertificate(t *testing.T) {
 			signRequest(t, "{}", wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Request payload does not specify a resource","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload does not specify a resource","status":400}`)
 
 	// Valid, signed JWS body, payload is '{"resource":"new-cert"}'
 	responseWriter.Body.Reset()
@@ -937,7 +937,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
 
 	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
@@ -952,7 +952,7 @@ func TestIssueCertificate(t *testing.T) {
     }`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url
@@ -965,7 +965,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -1018,7 +1018,7 @@ func TestIssueCertificate(t *testing.T) {
     }`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 
 	// Test the CSR signature type counter works
 	test.AssertEquals(t, test.CountCounter("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
@@ -1099,7 +1099,7 @@ func TestChallenge(t *testing.T) {
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
 
 	// Challenge Not found
 	challengeURL = ""
@@ -1109,7 +1109,7 @@ func TestChallenge(t *testing.T) {
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"No such challenge","status":404}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such challenge","status":404}`)
 
 	// Unspecified database error
 	errorURL := "error_result/24"
@@ -1119,7 +1119,7 @@ func TestChallenge(t *testing.T) {
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:serverInternal","detail":"Problem getting authorization","status":500}`)
+		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Problem getting authorization","status":500}`)
 
 }
 
@@ -1172,7 +1172,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSARegistration(t *testing.T) {
@@ -1211,7 +1211,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
@@ -1244,7 +1244,7 @@ func TestEmptyRegistration(t *testing.T) {
 		makePostRequestWithPath("1", emptyBody.FullSerialize()))
 
 	// There should be no error
-	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.V1ErrorNS)
 
 	// We should get back a populated Registration
 	var reg core.Registration
@@ -1280,7 +1280,7 @@ func TestNewRegistration(t *testing.T) {
 				Method: "GET",
 				URL:    mustParseURL(newRegPath),
 			},
-			`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"Method not allowed","status":405}`,
 		},
 
 		// POST, but no body.
@@ -1292,19 +1292,19 @@ func TestNewRegistration(t *testing.T) {
 					"Content-Length": {"0"},
 				},
 			},
-			`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"No body on POST","status":400}`,
 		},
 
 		// POST, but body that isn't valid JWS
 		{
 			makePostRequestWithPath(newRegPath, "hi"),
-			`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
 			makePostRequestWithPath(newRegPath, fooBody.FullSerialize()),
-			`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
@@ -1324,11 +1324,11 @@ func TestNewRegistration(t *testing.T) {
 				"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
 			}
 		`),
-			`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"JWS verification error","status":400}`,
 		},
 		{
 			makePostRequestWithPath(newRegPath, wrongAgreementBody.FullSerialize()),
-			`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]","status":400}`,
+			`{"type":"` + probs.V1ErrorNS + `malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]","status":400}`,
 		},
 	}
 	for _, rt := range regErrTests {
@@ -1375,7 +1375,7 @@ func TestNewRegistration(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/reg/1")
@@ -1495,7 +1495,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
 
 	responseWriter = httptest.NewRecorder()
 	unsupported = revocation.Reason(100)
@@ -1506,7 +1506,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
@@ -1546,7 +1546,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 403)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by the account key of an account that holds valid authorizations for all names in the certificate.","status":403}`)
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by the account key of an account that holds valid authorizations for all names in the certificate.","status":403}`)
 }
 
 // Valid revocation request for already-revoked cert
@@ -1583,7 +1583,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 409)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Certificate already revoked","status":409}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
 }
 
 func TestRevokeCertificateWithAuthz(t *testing.T) {
@@ -1614,7 +1614,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(newAuthzPath),
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -1624,12 +1624,12 @@ func TestAuthorization(t *testing.T) {
 			"Content-Length": {"0"},
 		},
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -1637,7 +1637,7 @@ func TestAuthorization(t *testing.T) {
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -1658,7 +1658,7 @@ func TestAuthorization(t *testing.T) {
 		`))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"JWS verification error","status":400}`)
 
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
@@ -1686,7 +1686,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
@@ -1695,7 +1695,48 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 	})
 	assertJSONEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to find authorization","status":404}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Unable to find authorization","status":404}`)
+}
+
+// TestAuthorizationChallengeNamespace tests that the runtime prefixing of
+// Challenge Problem Types works as expected
+func TestAuthorizationChallengeNamespace(t *testing.T) {
+	wfe, clk := setupWFE(t)
+
+	mockSA := &mocks.SAWithFailedChallenges{Clk: clk}
+	wfe.SA = mockSA
+
+	// For "oldNS" the SA mock returns an authorization with a failed challenge
+	// that has an error with the type already prefixed by the v1 error NS
+	authzURL := "oldNS"
+	responseWriter := httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzURL),
+	})
+
+	var authz core.Authorization
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
+	test.AssertEquals(t, len(authz.Challenges), 1)
+	// The Challenge Error Type should have its prefix unmodified
+	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V1ErrorNS+"things:are:whack")
+
+	// For "failed" the SA mock returns an authorization with a failed challenge
+	// that has an error with the type not prefixed by an error namespace.
+	authzURL = "failed"
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzURL),
+	})
+
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
+	test.AssertEquals(t, len(authz.Challenges), 1)
+	// The Challenge Error Type should have had the probs.V1ErrorNS prefix added
+	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V1ErrorNS+"things:are:whack")
+	responseWriter.Body.Reset()
 }
 
 func contains(s []string, e string) bool {
@@ -1720,7 +1761,7 @@ func TestRegistration(t *testing.T) {
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
 
 	// Test GET proper entry returns 405
@@ -1730,14 +1771,14 @@ func TestRegistration(t *testing.T) {
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
 	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
@@ -1752,7 +1793,7 @@ func TestRegistration(t *testing.T) {
 		makePostRequestWithPath("2", result.FullSerialize()))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"No registration exists matching provided key","status":403}`)
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"No registration exists matching provided key","status":403}`)
 	responseWriter.Body.Reset()
 
 	key = loadPrivateKey(t, []byte(test1KeyPrivatePEM))
@@ -1768,7 +1809,7 @@ func TestRegistration(t *testing.T) {
 		makePostRequestWithPath("1", result.FullSerialize()))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
@@ -1776,7 +1817,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", result.FullSerialize()))
-	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.V1ErrorNS)
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
@@ -1788,7 +1829,7 @@ func TestRegistration(t *testing.T) {
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("/a/bunch/of/garbage/1", result.FullSerialize()))
 	test.AssertContains(t, responseWriter.Body.String(), "400")
-	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
+	test.AssertContains(t, responseWriter.Body.String(), probs.V1ErrorNS+"malformed")
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with old agreement URL)
@@ -1798,7 +1839,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", result.FullSerialize()))
-	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.V1ErrorNS)
 	links = responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
@@ -1887,7 +1928,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
@@ -1899,7 +1940,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1907,7 +1948,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 }
 
 func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
@@ -2010,7 +2051,7 @@ func TestBadKeyCSR(t *testing.T) {
 
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
@@ -2107,7 +2148,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		makePostRequestWithPath("valid", signRequest(t, `{"resource":"authz","status":""}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "urn:acme:error:malformed","detail": "Invalid status value","status": 400}`)
+		`{"type": "`+probs.V1ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
 
 	responseWriter.Body.Reset()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
@@ -2133,15 +2174,13 @@ func TestDeactivateAuthorization(t *testing.T) {
 func TestDeactivateRegistration(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"asd"}`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "urn:acme:error:malformed","detail": "Invalid value provided for status field","status": 400}`)
+		`{"type": "`+probs.V1ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
 
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
@@ -2201,7 +2240,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "type": "urn:acme:error:unauthorized",
+		  "type": "`+probs.V1ErrorNS+`unauthorized",
 		  "detail": "Registration is not valid, has status 'deactivated'",
 		  "status": 403
 		}`)
@@ -2210,8 +2249,6 @@ func TestDeactivateRegistration(t *testing.T) {
 func TestKeyRollover(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 
 	key := loadPrivateKey(t, []byte(test3KeyPrivatePEM))
 	rsaKey, ok := key.(*rsa.PrivateKey)
@@ -2222,7 +2259,7 @@ func TestKeyRollover(t *testing.T) {
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "type": "urn:acme:error:malformed",
+		  "type": "`+probs.V1ErrorNS+`malformed",
 		  "detail": "Parse error reading JWS",
 		  "status": 400
 		}`)
@@ -2235,7 +2272,7 @@ func TestKeyRollover(t *testing.T) {
 			// Missing account URL
 			"{}",
 			`{
-		     "type": "urn:acme:error:malformed",
+		     "type": "` + probs.V1ErrorNS + `malformed",
 		     "detail": "Incorrect account URL provided in payload",
 		     "status": 400
 		   }`,
@@ -2244,7 +2281,7 @@ func TestKeyRollover(t *testing.T) {
 		{
 			`{"account":"http://localhost/acme/reg/1"}`,
 			`{
-		     "type": "urn:acme:error:malformed",
+		     "type": "` + probs.V1ErrorNS + `malformed",
 		     "detail": "Unable to marshal new JWK",
 		     "status": 400
 		   }`,
@@ -2253,7 +2290,7 @@ func TestKeyRollover(t *testing.T) {
 		{
 			`{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/reg/1"}`,
 			`{
-		     "type": "urn:acme:error:malformed",
+		     "type": "` + probs.V1ErrorNS + `malformed",
 		     "detail": "New JWK in inner payload doesn't match key used to sign inner JWS",
 		     "status": 400
 		   }`,

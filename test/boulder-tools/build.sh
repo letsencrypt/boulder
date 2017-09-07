@@ -5,7 +5,7 @@ apt-get update
 
 apt-get install -y --no-install-recommends \
   libltdl-dev \
-  mariadb-client-core-10.0 \
+  mariadb-client-core-10.1 \
   rpm \
   ruby \
   ruby-dev \
@@ -61,10 +61,10 @@ git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
   cd - && rm -r /tmp/pkcs11-proxy
 
 # Setup SoftHSM
-echo "0:/var/lib/softhsm/slot0.db" > /etc/softhsm/softhsm.conf
-echo "1:/var/lib/softhsm/slot1.db" >> /etc/softhsm/softhsm.conf
-softhsm --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
-softhsm --slot 1 --init-token --label root --pin 5678 --so-pin 1234
+echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
+mkdir -p /var/lib/softhsm/tokens
+softhsm2-util --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
+softhsm2-util --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
 gem install fpm
 

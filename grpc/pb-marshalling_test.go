@@ -239,7 +239,7 @@ func TestRegistration(t *testing.T) {
 		Contact:   &contacts,
 		Agreement: "yup",
 		InitialIP: net.ParseIP("1.1.1.1"),
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().Round(0),
 		Status:    core.StatusValid,
 	}
 	pbReg, err := registrationToPB(inReg)
@@ -319,7 +319,7 @@ func TestSCT(t *testing.T) {
 }
 
 func TestCert(t *testing.T) {
-	now := time.Now()
+	now := time.Now().Round(0)
 	cert := core.Certificate{
 		RegistrationID: 1,
 		Serial:         "serial",
