@@ -77,6 +77,6 @@ func ConnectionFailureError(msg string, args ...interface{}) error {
 	return New(ConnectionFailure, msg, args...)
 }
 
-func WrongAuthzStateError(msg string, args ...interface{}) error {
+func WrongAuthorizationStateError(msg string, args ...interface{}) error {
 	return New(WrongAuthorizationState, msg, args...)
 }

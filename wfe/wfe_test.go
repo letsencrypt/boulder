@@ -1129,11 +1129,11 @@ type MockRAStrictUpdateAuthz struct {
 }
 
 // UpdateAuthorization for a MockRAStrictUpdateAuthz returns a
-// berrors.WrongAuthzStateError when told to update a non-pending authz. It
-// returns the authz unchanged for all other cases.
+// berrors.WrongAuthorizationStateError when told to update a non-pending authz.
+// It returns the authz unchanged for all other cases.
 func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
 	if authz.Status != core.StatusPending {
-		return core.Authorization{}, berrors.WrongAuthzStateError("authorization is not pending")
+		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization is not pending")
 	}
 	return authz, nil
 }
