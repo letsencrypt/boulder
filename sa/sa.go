@@ -780,12 +780,12 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("authorization is not pending")
+		err = berrors.WrongAuthzStateError("authorization is not pending")
 		return Rollback(tx, err)
 	}
 
 	if existingFinal(tx, authz.ID) {
-		err = berrors.InternalServerError("cannot update a finalized authorization")
+		err = berrors.WrongAuthzStateError("cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 

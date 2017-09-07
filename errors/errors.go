@@ -15,6 +15,7 @@ const (
 	RejectedIdentifier
 	InvalidEmail
 	ConnectionFailure
+	WrongAuthorizationState
 )
 
 // BoulderError represents internal Boulder errors
@@ -74,4 +75,8 @@ func InvalidEmailError(msg string, args ...interface{}) error {
 
 func ConnectionFailureError(msg string, args ...interface{}) error {
 	return New(ConnectionFailure, msg, args...)
+}
+
+func WrongAuthzStateError(msg string, args ...interface{}) error {
+	return New(WrongAuthorizationState, msg, args...)
 }
