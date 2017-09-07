@@ -13,7 +13,7 @@
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
-    "checkMalformedCSR": true,
+    "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8000",
     "tls": {
@@ -28,24 +28,18 @@
     "saService": {
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
+    },
+    "features": {
+      "AllowAccountDeactivation": true,
+      "AllowKeyRollover": true,
+      "RandomDirectoryEntry": true,
+      "DirectoryMeta": true
     }
   },
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
-  },
-
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
-  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "syslog": {
-    "stdoutlevel": 6
+    "stdoutlevel": 6,
+    "sysloglevel": 4
   },
 
   "common": {
