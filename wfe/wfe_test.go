@@ -1152,7 +1152,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
-  "type": "urn:acme:error:malformed",
+  "type": "`+probs.V1ErrorNS+`malformed",
   "detail": "Unable to update challenge :: authorization is not pending",
   "status": 400
 }`)
