@@ -1,7 +1,6 @@
 package mocks
 
 import (
-	"database/sql"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -89,39 +88,46 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		return core.Registration{}, err
 	}
 
-	// Return a populated registration with contacts for ID == 1
 	contacts := []string{"mailto:person@mail.com"}
-	if id == 1 {
-		return core.Registration{
-			ID:        1,
-			Key:       &parsedKey,
-			Agreement: agreementURL,
-			Contact:   &contacts,
-			Status:    core.StatusValid,
-		}, nil
-	}
-
-	var test3KeyPublic jose.JSONWebKey
-	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
-	if id == 3 {
-		// deactivated registration
-		return core.Registration{
-			ID:        3,
-			Key:       &test3KeyPublic,
-			Agreement: agreementURL,
-			Contact:   &contacts,
-			Status:    core.StatusDeactivated,
-		}, nil
-	}
-
-	return core.Registration{
+	goodReg := core.Registration{
 		ID:        id,
 		Key:       &parsedKey,
 		Agreement: agreementURL,
-		InitialIP: net.ParseIP("5.6.7.8"),
-		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
+		Contact:   &contacts,
 		Status:    core.StatusValid,
-	}, nil
+	}
+
+	// Return a populated registration with contacts for ID == 1 or ID == 5
+	if id == 1 || id == 5 {
+		return goodReg, nil
+	}
+
+	var test2KeyPublic jose.JSONWebKey
+	_ = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	if id == 2 {
+		goodReg.Key = &test2KeyPublic
+		return goodReg, nil
+	}
+
+	var test3KeyPublic jose.JSONWebKey
+	_ = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
+	// deactivated registration
+	if id == 3 {
+		goodReg.Key = &test3KeyPublic
+		goodReg.Status = core.StatusDeactivated
+		return goodReg, nil
+	}
+
+	var test4KeyPublic jose.JSONWebKey
+	_ = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
+	if id == 4 {
+		goodReg.Key = &test4KeyPublic
+		return goodReg, nil
+	}
+
+	goodReg.InitialIP = net.ParseIP("5.6.7.8")
+	goodReg.CreatedAt = time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
+	return goodReg, nil
 }
 
 // GetRegistrationByKey is a mock
@@ -232,7 +238,7 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		return core.Authorization{}, fmt.Errorf("Unspecified database error")
 	}
 
-	return core.Authorization{}, sql.ErrNoRows
+	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
 // RevokeAuthorizationsByDomain is a mock
@@ -361,7 +367,7 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 		return auths, nil
 	} else if regID == 2 {
 		return map[string]*core.Authorization{}, nil
-	} else if regID == 5 {
+	} else if regID == 5 || regID == 4 {
 		return map[string]*core.Authorization{"bad.example.com": nil}, nil
 	}
 	return nil, nil
@@ -410,6 +416,29 @@ func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) e
 // NewOrder is a mock
 func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
 	return order, nil
+}
+
+// Order is a mock
+func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	if *req.Id == 2 {
+		return nil, berrors.NotFoundError("bad")
+	} else if *req.Id == 3 {
+		return nil, errors.New("very bad")
+	}
+	status := string(core.StatusPending)
+	one := int64(1)
+	zero := int64(0)
+	serial := "serial"
+	return &corepb.Order{
+		Id:                req.Id,
+		RegistrationID:    &one,
+		Expires:           &zero,
+		Csr:               []byte{1, 3, 3, 7},
+		Status:            &status,
+		Authorizations:    []string{"hello"},
+		CertificateSerial: &serial,
+		Error:             []byte("error"),
+	}, nil
 }
 
 // Publisher is a mock
