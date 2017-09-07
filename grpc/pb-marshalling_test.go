@@ -296,7 +296,7 @@ func TestAuthz(t *testing.T) {
 
 	pbAuthz, err := AuthzToPB(inAuthz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
-	outAuthz, err := pbToAuthz(pbAuthz)
+	outAuthz, err := PBToAuthz(pbAuthz)
 	test.AssertNotError(t, err, "pbToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 }

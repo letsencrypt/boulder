@@ -373,7 +373,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}, nil
 }
 
-func pbToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
+func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
 		chall, err := pbToChallenge(c)

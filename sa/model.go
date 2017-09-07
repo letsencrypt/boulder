@@ -72,17 +72,6 @@ func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, e
 	return &model, err
 }
 
-// selectAuthzs selects all fields of multiple authorization objects
-func selectAuthzs(s dbSelector, q string, args ...interface{}) ([]*core.Authorization, error) {
-	var models []*core.Authorization
-	_, err := s.Select(
-		&models,
-		"SELECT "+authzFields+" FROM authz "+q,
-		args...,
-	)
-	return models, err
-}
-
 // selectSctReceipt selects all fields of one SignedCertificateTimestamp object
 func selectSctReceipt(s dbOneSelector, q string, args ...interface{}) (core.SignedCertificateTimestamp, error) {
 	var model core.SignedCertificateTimestamp

@@ -442,6 +442,21 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	}, nil
 }
 
+// GetAuthorizations is a mock
+func (sa *StorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return &sapb.Authorizations{}, nil
+}
+
+// CountInvalidAuthorizations is a mock
+func (sa *StorageAuthority) CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error) {
+	return &sapb.Count{}, nil
+}
+
+// AddPendingAuthorizations is a mock
+func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	return &sapb.AuthorizationIDs{}, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty

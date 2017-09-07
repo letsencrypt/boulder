@@ -488,21 +488,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return core.Authorization{}, err
 	}
 
-	if identifier.Type == core.IdentifierDNS {
-		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
-		if err != nil {
-			outErr := berrors.InternalServerError("unable to determine if domain was safe")
-			ra.log.Warning(fmt.Sprintf("%s: %s", outErr, err))
-			return core.Authorization{}, outErr
-		}
-		if !isSafeResp.GetIsSafe() {
-			return core.Authorization{}, berrors.UnauthorizedError(
-				"%q was considered an unsafe domain by a third-party API",
-				identifier.Value,
-			)
-		}
-	}
-
 	if ra.reuseValidAuthz {
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
@@ -559,34 +544,17 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		// Fall through to normal creation flow.
 	}
 
-	// Create challenges. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(identifier)
+	authz, err := ra.createPendingAuthz(ctx, regID, identifier)
+	if err != nil {
+		return core.Authorization{}, err
+	}
 
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-
-	authz, err := ra.SA.NewPendingAuthorization(ctx, core.Authorization{
-		Identifier:     identifier,
-		RegistrationID: regID,
-		Status:         core.StatusPending,
-		Combinations:   combinations,
-		Challenges:     challenges,
-		Expires:        &expires,
-	})
+	authz, err = ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = berrors.InternalServerError("invalid authorization request: %s", err)
 		return core.Authorization{}, err
-	}
-
-	// Check each challenge for sanity.
-	for _, challenge := range authz.Challenges {
-		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
-			// berrors.InternalServerError because we generated these challenges, they should
-			// be OK.
-			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
-			return core.Authorization{}, err
-		}
 	}
 
 	return authz, err
@@ -1424,18 +1392,54 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// TODO(#2955): Replace this with the batched methods
+	now := ra.clk.Now().UnixNano()
+	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
+		RegistrationID: req.RegistrationID,
+		Now:            &now,
+		Domains:        parsedCSR.DNSNames,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	gotAuthzFor := make(map[string]struct{}, len(parsedCSR.DNSNames))
+	for _, v := range existingAuthz.Authz {
+		gotAuthzFor[*v.Domain] = struct{}{}
+		order.Authorizations = append(order.Authorizations, *v.Authz.Id)
+	}
+
+	var newAuthz []*corepb.Authorization
 	for _, name := range parsedCSR.DNSNames {
-		authz, err := ra.NewAuthorization(ctx, core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: name,
-			},
-		}, *req.RegistrationID)
+		if _, present := gotAuthzFor[name]; present {
+			continue
+		}
+		identifier := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
+		if err := ra.PA.WillingToIssue(identifier); err != nil {
+			return nil, err
+		}
+		if err := ra.checkPendingAuthorizationLimit(ctx, *req.RegistrationID); err != nil {
+			return nil, err
+		}
+		if err := ra.checkInvalidAuthorizationLimit(ctx, *req.RegistrationID, identifier.Value); err != nil {
+			return nil, err
+		}
+		pa, err := ra.createPendingAuthz(ctx, *req.RegistrationID, identifier)
 		if err != nil {
 			return nil, err
 		}
-		order.Authorizations = append(order.Authorizations, authz.ID)
+		paPB, err := bgrpc.AuthzToPB(pa)
+		if err != nil {
+			return nil, err
+		}
+		newAuthz = append(newAuthz, paPB)
+	}
+
+	if len(newAuthz) > 0 {
+		authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthz})
+		if err != nil {
+			return nil, err
+		}
+		order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
 	}
 
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
@@ -1444,4 +1448,43 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	return storedOrder, nil
+}
+
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (core.Authorization, error) {
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+	authz := core.Authorization{
+		Identifier:     identifier,
+		RegistrationID: reg,
+		Status:         core.StatusPending,
+		Expires:        &expires,
+	}
+
+	if identifier.Type == core.IdentifierDNS {
+		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
+		if err != nil {
+			outErr := berrors.InternalServerError("unable to determine if domain was safe")
+			ra.log.Warning(fmt.Sprintf("%s: %s", outErr, err))
+			return core.Authorization{}, outErr
+		}
+		if !isSafeResp.GetIsSafe() {
+			return core.Authorization{}, berrors.UnauthorizedError(
+				"%q was considered an unsafe domain by a third-party API",
+				identifier.Value,
+			)
+		}
+	}
+
+	// Create challenges. The WFE will  update them with URIs before sending them out.
+	challenges, combinations := ra.PA.ChallengesFor(identifier)
+	// Check each challenge for sanity.
+	for _, challenge := range authz.Challenges {
+		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
+			// berrors.InternalServerError because we generated these challenges, they should
+			// be OK.
+			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
+			return core.Authorization{}, err
+		}
+	}
+	authz.Challenges, authz.Combinations = challenges, combinations
+	return authz, nil
 }
