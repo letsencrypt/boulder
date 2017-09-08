@@ -394,6 +394,30 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
+type mockSAFailsNewRegistration struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAFailsNewRegistration) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("too bad")
+}
+
+func TestNewRegistrationSAFailure(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAFailsNewRegistration{}
+	input := core.Registration{
+		Contact:   &[]string{"mailto:test@example.com"},
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	result, err := ra.NewRegistration(ctx, input)
+	if err == nil {
+		t.Fatalf("NewRegistration should have failed when SA.NewRegistration failed %#v", result.Key)
+	}
+}
+
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
