@@ -1995,8 +1995,82 @@ func TestLengthRequired(t *testing.T) {
 	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
 }
 
-type mockSADifferentStoredKey struct {
+type mockSAGetRegByKeyFails struct {
 	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("whoops")
+}
+
+// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
+// return internal server errors.
+func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, prob := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if prob == nil {
+		t.Fatalf("No error returned when GetRegByKey failed with generic error.")
+	}
+	if prob.Type != probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob)
+	}
+}
+
+// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewRegistration should
+// return internal server errors.
+func TestNewRegWhenGetRegByKeyFails(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	var prob probs.ProblemDetails
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+	test.AssertNotError(t, err, "unmarshalling response")
+	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
+}
+
+type mockSAGetRegByKeyNotFound struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, berrors.NotFoundError("not found")
+}
+
+// When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
+// regCheck = false (i.e. during a NewRegistration) should succeed.
+func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, err := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if err != nil {
+		t.Fatalf("Expected verifyPOST with regCheck=false to succeed when SA.GetRegistrationByKey returned NotFound, get %v", err)
+	}
+}
+
+// When SA.GetRegistrationByKey returns NotFound, NewRegistration should
+// succeed.
+func TestNewRegWhenGetRegByKeyNotFound(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	if responseWriter.Code != http.StatusCreated {
+		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
+	}
 }
 
 // TestLogPayload ensures that verifyPOST sets the Payload field of the logEvent
@@ -2012,6 +2086,10 @@ func TestLogPayload(t *testing.T) {
 	}
 
 	test.AssertEquals(t, event.Payload, payload)
+}
+
+type mockSADifferentStoredKey struct {
+	core.StorageGetter
 }
 
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
