@@ -359,9 +359,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	// Store the authorization object, then return it
 	reg, err := ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError(err.Error())
+		return core.Registration{}, err
 	}
 
 	ra.stats.Inc("NewRegistrations", 1)
