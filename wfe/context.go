@@ -8,10 +8,12 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type requestEvent struct {
+	ID            string    `json:",omitempty"`
 	RealIP        string    `json:",omitempty"`
 	Endpoint      string    `json:",omitempty"`
 	Method        string    `json:",omitempty"`
@@ -49,11 +51,13 @@ type topHandler struct {
 
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &requestEvent{
+		ID:        core.NewToken(),
 		RealIP:    r.Header.Get("X-Real-IP"),
 		Method:    r.Method,
 		UserAgent: r.Header.Get("User-Agent"),
 		Extra:     make(map[string]interface{}, 0),
 	}
+	w.Header().Set("Boulder-Request-ID", logEvent.ID)
 	defer th.logEvent(logEvent)
 
 	th.wfe.ServeHTTP(logEvent, w, r)

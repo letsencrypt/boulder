@@ -2028,6 +2028,20 @@ func TestVerifyPOSTInvalidJWK(t *testing.T) {
 	test.AssertEquals(t, http.StatusBadRequest, prob.HTTPStatus)
 }
 
+func TestHeaderBoulderRequestId(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux := wfe.Handler()
+	responseWriter := httptest.NewRecorder()
+
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(directoryPath),
+	})
+
+	requestID := responseWriter.Header().Get("Boulder-Request-ID")
+	test.Assert(t, len(requestID) > 0, "Boulder-Request-ID header is empty")
+}
+
 func TestHeaderBoulderRequester(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
