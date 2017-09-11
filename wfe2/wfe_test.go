@@ -1911,7 +1911,7 @@ func TestKeyRollover(t *testing.T) {
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})

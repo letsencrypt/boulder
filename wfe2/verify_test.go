@@ -414,7 +414,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 			test.AssertEquals(t, prob.HTTPStatus, tc.HTTPStatus)
 			test.AssertEquals(t, prob.Detail, tc.ProblemDetail)
-			test.AssertEquals(t, test.CountCounter(
+			test.AssertEquals(t, test.CountCounterVec(
 				"type", tc.ErrorStatType, wfe.stats.httpErrorCount), 1)
 		})
 	}
@@ -512,7 +512,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -582,7 +582,7 @@ func TestValidNonce(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -701,7 +701,7 @@ func TestValidPOSTURL(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -857,7 +857,7 @@ func TestParseJWSRequest(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -1047,7 +1047,7 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -1178,7 +1178,7 @@ func TestValidJWSForKey(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -1274,7 +1274,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -1379,7 +1379,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})
@@ -1462,7 +1462,7 @@ func TestMatchJWSURLs(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounter(
+				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
 		})

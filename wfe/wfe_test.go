@@ -1021,7 +1021,7 @@ func TestIssueCertificate(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 
 	// Test the CSR signature type counter works
-	test.AssertEquals(t, test.CountCounter("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
+	test.AssertEquals(t, test.CountCounterVec("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
 }
 
 func TestGetChallenge(t *testing.T) {

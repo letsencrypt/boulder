@@ -766,8 +766,8 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 func issueCertificateSubTestMustStapleWhenDisabled(t *testing.T, i *TestCertificateIssuance) {
 	// With ca.enableMustStaple = false, should issue successfully and not add
 	// Must Staple.
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, i.cert), 0)
 }
@@ -776,20 +776,20 @@ func issueCertificateSubTestMustStapleWhenEnabled(t *testing.T, i *TestCertifica
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert. Even if there are multiple TLS Feature extensions, only
 	// one extension should be included.
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
 }
 
 func issueCertificateSubTestTLSFeatureUnknown(t *testing.T, ca *CertificateAuthorityImpl, _ *mockSA) {
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeature, ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeatureInvalid, ca.csrExtensionCount), 1)
 }
 
 func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
 	// Unsupported extensions in the CSR should be silently ignored.
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
@@ -806,7 +806,7 @@ func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIs
 	// unknown extension, whether it has a valid or invalid value. The check
 	// for whether or not the poison extension is present in the issued
 	// certificate/precertificate is done in the caller.
-	test.AssertEquals(t, test.CountCounter(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
+	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
 	test.AssertEquals(t, signatureCountByPurpose("cert", i.ca.signatureCount), 1)
 }
 
@@ -820,5 +820,5 @@ func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.
 }
 
 func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
-	return test.CountCounter("purpose", signatureType, signatureCount)
+	return test.CountCounterVec("purpose", signatureType, signatureCount)
 }
