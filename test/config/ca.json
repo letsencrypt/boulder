@@ -4,6 +4,7 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
+    "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ca.boulder/cert.pem",
@@ -53,7 +54,7 @@
             "backdate": "1h",
             "ca_constraint": { "is_ca": false },
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://boulder:4430/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
@@ -127,14 +128,10 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 100000
-  },
-
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
+    "maxConcurrentRPCServerRequests": 100000,
+    "features": {
+        "GenerateOCSPEarly": true
+    }
   },
 
   "pa": {
@@ -145,13 +142,9 @@
     }
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "syslog": {
-    "stdoutlevel": 6
+    "stdoutlevel": 6,
+    "sysloglevel": 4
   },
 
   "common": {
