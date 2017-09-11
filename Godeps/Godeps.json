@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.8",
+	"GoVersion": "go1.9",
 	"GodepVersion": "v79",
 	"Packages": [
 		"./..."
@@ -104,11 +104,13 @@
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
-			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
+			"Comment": "v1.0.0-17-g18f6dd1",
+			"Rev": "18f6dd13ccdd227b8ebc546ca95cd62a02f3970c"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/mockgen/model",
-			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
+			"Comment": "v1.0.0-17-g18f6dd1",
+			"Rev": "18f6dd13ccdd227b8ebc546ca95cd62a02f3970c"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",

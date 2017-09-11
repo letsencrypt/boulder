@@ -59,7 +59,7 @@ type RemoteVA struct {
 type vaMetrics struct {
 	validationTime           *prometheus.HistogramVec
 	remoteValidationTime     *prometheus.HistogramVec
-	remoteValidationFailures *prometheus.HistogramVec
+	remoteValidationFailures prometheus.Counter
 }
 
 func initMetrics(stats metrics.Scope) *vaMetrics {
@@ -77,11 +77,11 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(remoteValidationTime)
-	remoteValidationFailures := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
+	remoteValidationFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
 			Name: "remote_validation_failures",
-			Help: "Number of remote VAs that failed during challenge validation",
-		}, nil)
+			Help: "Number of validations failed due to remote VAs returning failure",
+		})
 	stats.MustRegister(remoteValidationFailures)
 
 	return &vaMetrics{
@@ -851,7 +851,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 		"type":   string(challenge.Type),
 		"result": state,
 	}).Observe(va.clk.Since(s).Seconds())
-	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(bad))
 }
 
 // PerformValidation validates the given challenge. It always returns a list of
@@ -893,6 +892,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
 			logEvent.Error = prob.Error()
+			va.log.Info(fmt.Sprintf(
+				"Validation failed due to remote failures: identifier=%v err=%s",
+				authz.Identifier, prob))
+			va.metrics.remoteValidationFailures.Inc()
 		} else {
 			challenge.Status = core.StatusValid
 		}

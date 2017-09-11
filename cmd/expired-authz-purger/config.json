@@ -6,6 +6,7 @@
         "dbConnectFile": "test/secrets/purger_dburl",
         "maxDBConns": 10,
         "gracePeriod": "168h",
-        "batchSize": 1000
+        "batchSize": 1000,
+        "parallelism": 20
     }
 }

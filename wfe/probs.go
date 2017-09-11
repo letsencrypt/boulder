@@ -2,21 +2,13 @@ package wfe
 
 import (
 	"fmt"
-	"net/http"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 )
 
 func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs.ProblemDetails {
 	switch err.Type {
-	case berrors.NotSupported:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
 	case berrors.Malformed:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
@@ -33,6 +25,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InvalidEmail:
 		return probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.WrongAuthorizationState:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
@@ -52,26 +46,6 @@ func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
 		return problemDetailsForBoulderError(e, msg)
 	case signatureValidationError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case core.MalformedRequestError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
-	case core.NotSupportedError:
-		return &probs.ProblemDetails{
-			Type:       probs.ServerInternalProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: http.StatusNotImplemented,
-		}
-	case core.UnauthorizedError:
-		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
-	case core.NotFoundError:
-		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
-	case core.LengthRequiredError:
-		prob := probs.Malformed("missing Content-Length header")
-		prob.HTTPStatus = http.StatusLengthRequired
-		return prob
-	case core.RateLimitedError:
-		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
-	case core.BadNonceError:
-		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

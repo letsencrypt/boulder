@@ -394,6 +394,30 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
+type mockSAFailsNewRegistration struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAFailsNewRegistration) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("too bad")
+}
+
+func TestNewRegistrationSAFailure(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAFailsNewRegistration{}
+	input := core.Registration{
+		Contact:   &[]string{"mailto:test@example.com"},
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	result, err := ra.NewRegistration(ctx, input)
+	if err == nil {
+		t.Fatalf("NewRegistration should have failed when SA.NewRegistration failed %#v", result.Key)
+	}
+}
+
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -412,15 +436,6 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-
-	id := result.ID
-	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
-		ID:  33,
-		Key: &ShortKey,
-	})
-	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
-	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -859,6 +874,36 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
+}
+
+func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a finalized authorization
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not create pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize pending authorization")
+
+	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
+	va.RecordsReturn = []core.ValidationRecord{
+		{Hostname: "example.com"}}
+	va.ProblemReturn = nil
+
+	// A subsequent call to update the authorization should return the expected error
+	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
+	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
+		"FinalizeAuthorization of valid authz didn't return a berrors.WrongAuthorizationState")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
@@ -1400,15 +1445,8 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
 
 	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
+
 	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
-	}
-
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
-	changed = mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with empty update")
 	}
@@ -1665,8 +1703,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -1808,6 +1844,8 @@ func TestRecheckCAAFail(t *testing.T) {
 	err := ra.recheckCAA(context.Background(), names)
 	if err == nil {
 		t.Errorf("expected err, got nil")
+	} else if err.(*berrors.BoulderError).Type != berrors.Unauthorized {
+		t.Errorf("expected Unauthorized, got %v", err.(*berrors.BoulderError).Type)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
 		t.Errorf("expected error to contain error for a.com, got %q", err)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {
