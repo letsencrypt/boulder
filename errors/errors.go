@@ -15,6 +15,7 @@ const (
 	RejectedIdentifier
 	InvalidEmail
 	ConnectionFailure
+	WrongAuthorizationState
 	CAA
 )
 
@@ -77,6 +78,9 @@ func ConnectionFailureError(msg string, args ...interface{}) error {
 	return New(ConnectionFailure, msg, args...)
 }
 
+func WrongAuthorizationStateError(msg string, args ...interface{}) error {
+	return New(WrongAuthorizationState, msg, args...)
+}
+
 func CAAError(msg string, args ...interface{}) error {
 	return New(CAA, msg, args...)
-}

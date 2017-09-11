@@ -25,6 +25,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InvalidEmail:
 		return probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.WrongAuthorizationState:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.CAA:
 		return probs.CAA(fmt.Sprintf("%s :: %s", msg, err))
 	default:

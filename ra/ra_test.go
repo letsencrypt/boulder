@@ -394,6 +394,30 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
+type mockSAFailsNewRegistration struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAFailsNewRegistration) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("too bad")
+}
+
+func TestNewRegistrationSAFailure(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAFailsNewRegistration{}
+	input := core.Registration{
+		Contact:   &[]string{"mailto:test@example.com"},
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	result, err := ra.NewRegistration(ctx, input)
+	if err == nil {
+		t.Fatalf("NewRegistration should have failed when SA.NewRegistration failed %#v", result.Key)
+	}
+}
+
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -850,6 +874,36 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
+}
+
+func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a finalized authorization
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not create pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize pending authorization")
+
+	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
+	va.RecordsReturn = []core.ValidationRecord{
+		{Hostname: "example.com"}}
+	va.ProblemReturn = nil
+
+	// A subsequent call to update the authorization should return the expected error
+	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
+	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
+		"FinalizeAuthorization of valid authz didn't return a berrors.WrongAuthorizationState")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {

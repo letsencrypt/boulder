@@ -1021,7 +1021,7 @@ func TestIssueCertificate(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 
 	// Test the CSR signature type counter works
-	test.AssertEquals(t, test.CountCounter("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
+	test.AssertEquals(t, test.CountCounterVec("type", "SHA256-RSA", wfe.csrSignatureAlgs), 4)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -1121,6 +1121,41 @@ func TestChallenge(t *testing.T) {
 	assertJSONEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Problem getting authorization","status":500}`)
 
+}
+
+// MockRAStrictUpdateAuthz is a mock RA that enforces authz status in `UpdateAuthorization`
+type MockRAStrictUpdateAuthz struct {
+	MockRegistrationAuthority
+}
+
+// UpdateAuthorization for a MockRAStrictUpdateAuthz returns a
+// berrors.WrongAuthorizationStateError when told to update a non-pending authz.
+// It returns the authz unchanged for all other cases.
+func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
+	if authz.Status != core.StatusPending {
+		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization is not pending")
+	}
+	return authz, nil
+}
+
+// TestUpdateChallengeFinalizedAuthz tests that POSTing a challenge associated
+// with an already valid authorization returns the expected Malformed problem.
+func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.RA = &MockRAStrictUpdateAuthz{}
+	responseWriter := httptest.NewRecorder()
+
+	path := "valid/23"
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath(path,
+			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+
+	body := responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `{
+  "type": "`+probs.V1ErrorNS+`malformed",
+  "detail": "Unable to update challenge :: authorization is not pending",
+  "status": 400
+}`)
 }
 
 func TestBadNonce(t *testing.T) {

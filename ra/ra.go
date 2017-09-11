@@ -359,9 +359,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	// Store the authorization object, then return it
 	reg, err := ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError(err.Error())
+		return core.Registration{}, err
 	}
 
 	ra.stats.Inc("NewRegistrations", 1)
@@ -1219,7 +1217,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
 		ra.log.Warning(fmt.Sprintf(
 			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
-		return core.Authorization{}, berrors.InternalServerError("could not update pending authorization")
+		return core.Authorization{}, err
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
 

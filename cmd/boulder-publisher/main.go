@@ -95,7 +95,7 @@ func main() {
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)
 		go func() {
-			err = s.Serve(l)
+			err = cmd.FilterShutdownErrors(s.Serve(l))
 			cmd.FailOnError(err, "Publisher gRPC service failed")
 		}()
 		grpcSrv = s
