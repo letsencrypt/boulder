@@ -5,11 +5,10 @@ import (
 )
 
 func TestModelToRegistrationNilContact(t *testing.T) {
-	reg, err := modelToRegistration(&regModelv2{
-		regModelv1: regModelv1{
-			Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
-			Contact: nil,
-		}})
+	reg, err := modelToRegistration(&regModel{
+		Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
+		Contact: nil,
+	})
 	if err != nil {
 		t.Errorf("Got error from modelToRegistration: %s", err)
 	}
@@ -22,11 +21,10 @@ func TestModelToRegistrationNilContact(t *testing.T) {
 }
 
 func TestModelToRegistrationNonNilContact(t *testing.T) {
-	reg, err := modelToRegistration(&regModelv2{
-		regModelv1: regModelv1{
-			Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
-			Contact: []string{},
-		}})
+	reg, err := modelToRegistration(&regModel{
+		Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
+		Contact: []string{},
+	})
 	if err != nil {
 		t.Errorf("Got error from modelToRegistration: %s", err)
 	}

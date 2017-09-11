@@ -25,26 +25,16 @@ type dbSelector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
-const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
-const regFieldsv2 = regFields + ", status"
+const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModelv1, error) {
-	var model regModelv1
+func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModel, error) {
+	var model regModel
 	err := s.SelectOne(
 		&model,
 		"SELECT "+regFields+" FROM registrations "+q,
 		args...,
 	)
-	return &model, err
-}
-
-// selectRegistrationv2 selects all fields (including v2 migrated fields) of one registration model
-func selectRegistrationv2(s dbOneSelector, q string, args ...interface{}) (*regModelv2, error) {
-	var model regModelv2
-	err := s.SelectOne(
-		&model,
-		"SELECT "+regFieldsv2+" FROM registrations "+q, args...)
 	return &model, err
 }
 
@@ -149,9 +139,8 @@ type issuedNameModel struct {
 	Serial       string    `db:"serial"`
 }
 
-// regModelv1 is the description of a core.Registration in the database before
-// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
-type regModelv1 struct {
+// regModel is the description of a core.Registration in the database before
+type regModel struct {
 	ID        int64    `db:"id"`
 	Key       []byte   `db:"jwk"`
 	KeySHA256 string   `db:"jwk_sha256"`
@@ -162,13 +151,7 @@ type regModelv1 struct {
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
-}
-
-// regModelv2 is the description of a core.Registration in the database after
-// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
-type regModelv2 struct {
-	regModelv1
-	Status string `db:"status"`
+	Status    string `db:"status"`
 }
 
 type certStatusModel struct {
@@ -232,7 +215,7 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 	if r.Contact == nil {
 		r.Contact = &[]string{}
 	}
-	rm := regModelv1{
+	rm := regModel{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
@@ -240,18 +223,14 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
+		Status:    string(r.Status),
 	}
 
-	return &regModelv2{
-		regModelv1: rm,
-		Status:     string(r.Status),
-	}, nil
+	return &rm, nil
 }
 
 func modelToRegistration(ri interface{}) (core.Registration, error) {
-	var rm *regModelv1
-	r2 := ri.(*regModelv2)
-	rm = &r2.regModelv1
+	rm := ri.(*regModel)
 
 	k := &jose.JSONWebKey{}
 	err := json.Unmarshal(rm.Key, k)
@@ -275,7 +254,7 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 		Agreement: rm.Agreement,
 		InitialIP: net.IP(rm.InitialIP),
 		CreatedAt: rm.CreatedAt,
-		Status:    core.AcmeStatus(r2.Status),
+		Status:    core.AcmeStatus(rm.Status),
 	}
 
 	return r, nil
