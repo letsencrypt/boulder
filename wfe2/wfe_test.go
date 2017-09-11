@@ -2201,10 +2201,16 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk 
 func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
 	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
-	request := signAndPost(t, "/new-account", "http://localhost/new-account", payload, 1, wfe.nonceService)
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	if responseWriter.Code != 500 {
+		t.Fatalf("Wrong response code %d for NewAccount with failing GetRegByKey (wanted 500)", responseWriter.Code)
+	}
 	var prob probs.ProblemDetails
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
 	test.AssertNotError(t, err, "unmarshalling response")
@@ -2226,10 +2232,13 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
 	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
-	request := signAndPost(t, "/new-account", "http://localhost/new-account", payload, 1, wfe.nonceService)
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	if responseWriter.Code != http.StatusCreated {
 		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
 	}
