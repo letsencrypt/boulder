@@ -256,6 +256,9 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	// Set the AD bit in the query header so that the resolver knows that
 	// we are interested in this bit in the response header. If this isn't
 	// set the AD bit in the response is useless (RFC 6840 Section 5.7).
+	// This has no security implications, it simply allows us to gather
+	// metrics about the percentage of responses that are secured with
+	// DNSSEC.
 	m.AuthenticatedData = true
 
 	if len(dnsClient.servers) < 1 {
