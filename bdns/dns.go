@@ -253,6 +253,10 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
+	// Set the AD bit in the query header so that the resolver knows that
+	// we are interested in this bit in the response header. If this isn't
+	// set the AD bit in the response is useless (RFC 6840 Section 5.7).
+	m.AuthenticatedData = true
 
 	if len(dnsClient.servers) < 1 {
 		return nil, fmt.Errorf("Not configured with at least one DNS Server")
