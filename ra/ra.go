@@ -1402,9 +1402,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	gotAuthzFor := make(map[string]struct{}, len(parsedCSR.DNSNames))
+	gotAuthzFor := make(map[string]bool, len(parsedCSR.DNSNames))
 	for _, v := range existingAuthz.Authz {
-		gotAuthzFor[*v.Domain] = struct{}{}
+		gotAuthzFor[*v.Domain] = true
 		order.Authorizations = append(order.Authorizations, *v.Authz.Id)
 	}
 

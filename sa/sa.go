@@ -52,6 +52,16 @@ type authzModel struct {
 	core.Authorization
 }
 
+const (
+	authorizationTable        = "authz"
+	pendingAuthorizationTable = "pendingAuthorizations"
+)
+
+var authorizationTables = []string{
+	authorizationTable,
+	pendingAuthorizationTable,
+}
+
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(
@@ -214,7 +224,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(ctx, "authz", string(core.StatusValid), registrationID, names, now)
+	return ssa.getAuthorizations(ctx, authorizationTable, string(core.StatusValid), registrationID, names, now)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -812,7 +822,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	results := []int64{0, 0}
 
 	now := ssa.clk.Now()
-	for i, table := range []string{"authz", "pendingAuthorizations"} {
+	for i, table := range authorizationTables {
 		for {
 			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
 			if err != nil {
@@ -1197,10 +1207,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
-	table := "authz"
+	table := authorizationTable
 	oldStatus := core.StatusValid
 	if existingPending(tx, id) {
-		table = "pendingAuthorizations"
+		table = pendingAuthorizationTable
 		oldStatus = core.StatusPending
 	}
 
@@ -1288,8 +1298,8 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	return order, nil
 }
 
-func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-
+func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
+	registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, berrors.InternalServerError("no names received")
 	}
@@ -1312,9 +1322,9 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		fmt.Sprintf(`SELECT %s FROM %s
 	WHERE registrationID = ? AND
 	expires > ? AND
-	identifier IN (%s) AND
-	status = '%s'`, authzFields, table, strings.Join(qmarks, ","), status),
-		append([]interface{}{registrationID, now}, params...)...)
+	status = ? AND
+	identifier IN (%s)`, authzFields, table, strings.Join(qmarks, ",")),
+		append([]interface{}{registrationID, now, status}, params...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1339,7 +1349,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 }
 
 func (ssa *SQLStorageAuthority) getPendingAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(ctx, "pendingAuthorizations", string(core.StatusPending), registrationID, names, now)
+	return ssa.getAuthorizations(ctx, pendingAuthorizationTable, string(core.StatusPending), registrationID, names, now)
 }
 
 func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
