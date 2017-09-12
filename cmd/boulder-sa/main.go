@@ -68,7 +68,7 @@ func main() {
 		gw := bgrpc.NewStorageAuthorityServer(sai)
 		sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
 		go func() {
-			err = grpcSrv.Serve(listener)
+			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 			cmd.FailOnError(err, "SA gRPC service failed")
 		}()
 	}

@@ -419,7 +419,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	if !ca.enablePrecertificateFlow {
-		return nil, berrors.NotSupportedError("Precertificate flow is disabled")
+		return nil, berrors.InternalServerError("Precertificate flow is disabled")
 	}
 
 	if issueReq.RegistrationID == nil {

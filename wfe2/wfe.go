@@ -406,8 +406,10 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 
 // sendError sends an error response represented by the given ProblemDetails,
 // and, if the ProblemDetails.Type is ServerInternalProblem, audit logs the
-// internal ierr.
+// internal ierr. The rendered Problem will have its Type prefixed with the ACME
+// v2 error namespace.
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, prob *probs.ProblemDetails, ierr error) {
+	// Determine the HTTP status code to use for this problem
 	code := probs.ProblemDetailsToStatusCode(prob)
 
 	// Record details to the log event
@@ -423,23 +425,21 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 		}
 	}
 
+	// Increment a stat for this problem type
+	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
+
+	// Prefix the problem type with the ACME V2 error namespace and marshal to JSON
+	prob.Type = probs.V2ErrorNS + prob.Type
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	// Paraphrased from
-	// https://golang.org/src/net/http/server.go#L1272
+	// Write the JSON problem response
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
 	response.Write(problemDoc)
-
-	problemSegments := strings.Split(string(prob.Type), ":")
-	if len(problemSegments) > 0 {
-		probType := problemSegments[len(problemSegments)-1]
-		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": probType}).Inc()
-	}
 }
 
 func link(url, relation string) string {
@@ -826,12 +826,20 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URI field and clearing its ID field.
-// TODO: Come up with a cleaner way to do this.
-// https://github.com/letsencrypt/boulder/issues/761
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
+	// Update the challenge URI to be relative to the HTTP request Host
 	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
+	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
+
+	// Historically the Type field of a problem was always prefixed with a static
+	// error namespace. To support the V2 API and migrating to the correct IETF
+	// namespace we now prefix the Type with the correct namespace at runtime when
+	// we write the problem JSON to the user. We skip this process if the
+	// challenge error type has already been prefixed with the V1ErrorNS.
+	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
+		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
+	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for

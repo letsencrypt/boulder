@@ -359,9 +359,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	// Store the authorization object, then return it
 	reg, err := ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError(err.Error())
+		return core.Registration{}, err
 	}
 
 	ra.stats.Inc("NewRegistrations", 1)
@@ -464,7 +462,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	noKey := ""
 	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
-		return core.RateLimitedError("Too many invalid authorizations recently.")
+		return berrors.RateLimitError("Too many invalid authorizations recently.")
 	}
 	return nil
 }
@@ -742,7 +740,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 			}
 			message = message + pd.Detail
 		}
-		return berrors.ConnectionFailureError(message)
+		return berrors.UnauthorizedError(message)
 	}
 	return nil
 }
@@ -1144,11 +1142,13 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 		changed = true
 	}
 
-	if features.Enabled(features.AllowKeyRollover) && input.Key != nil {
-		sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
-		if !sameKey {
-			r.Key = input.Key
-			changed = true
+	if input.Key != nil {
+		if r.Key != nil {
+			sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
+			if !sameKey {
+				r.Key = input.Key
+				changed = true
+			}
 		}
 	}
 
@@ -1217,7 +1217,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
 		ra.log.Warning(fmt.Sprintf(
 			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
-		return core.Authorization{}, berrors.InternalServerError("could not update pending authorization")
+		return core.Authorization{}, err
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
 

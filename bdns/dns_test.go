@@ -601,7 +601,7 @@ func TestRetry(t *testing.T) {
 			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
 		}
 		if tc.metricsAllRetries > 0 {
-			test.AssertEquals(t, test.CountCounter(
+			test.AssertEquals(t, test.CountCounterVec(
 				"qtype",
 				"TXT",
 				dr.usedAllRetriesCounter), tc.metricsAllRetries)
@@ -635,7 +635,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
-	test.AssertEquals(t, test.CountCounter(
+	test.AssertEquals(t, test.CountCounterVec(
 		"qtype",
 		"TXT",
 		dr.cancelCounter), 3)
