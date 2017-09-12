@@ -32,18 +32,30 @@ func TestFindAlias(t *testing.T) {
 }
 
 func TestTreeClimbingLookupCAASimpleSuccess(t *testing.T) {
+	target := "www.present-with-parameter.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got %s", target, prob)
+	}
 }
 
 func TestTreeClimbingLookupCAALimitHit(t *testing.T) {
+	target := "blog.cname-to-subdomain.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got %s", target, prob)
+	}
 }
 
 func TestCNAMEToReserved(t *testing.T) {
-	err := features.Set(map[string]bool{"LegacyCAA": true})
-	if err != nil {
-		t.Fatal("Failed to set feature:", err)
-	}
+	target := "cname-to-reserved.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
-	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "cname-to-reserved.com"})
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob == nil {
 		t.Fatalf("Expected error for cname-to-reserved.com, got none")
 	}

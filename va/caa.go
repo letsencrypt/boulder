@@ -138,7 +138,13 @@ func parent(fqdn string) string {
 	}
 }
 
-// Implement pre-erratum 5065 style tree-climbing CAA.
+// Implement pre-erratum 5065 style tree-climbing CAA. Note: a strict
+// interpretation of pre-5065 indicates a linear lookup path - if there is any
+// CNAME at all, that precludes further tree-climbing on the original FQDN. This
+// is clearly wrong. We implement a hybrid approach that is strictly more
+// conservative: We always do full tree-climbing on the original FQDN (by virtue
+// of parallelCAALookup. When the LegacyCAA flag is enabled, we also
+// do linear tree climbing on single-level aliases.
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, []*dns.CNAME, error) {
 	target := fqdn
 	// Limit CNAME chasing to break CNAME loops
