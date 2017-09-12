@@ -54,7 +54,7 @@ func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
 		AllowECDSANISTP384: true,
 	}
 	if weakKeyFile != "" {
-		keyList, err := loadSuffixes(weakKeyFile)
+		keyList, err := LoadWeakRSASuffixes(weakKeyFile)
 		if err != nil {
 			return KeyPolicy{}, err
 		}

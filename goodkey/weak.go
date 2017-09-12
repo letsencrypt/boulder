@@ -20,7 +20,7 @@ type weakKeys struct {
 	suffixes map[truncatedHash]struct{}
 }
 
-func loadSuffixes(path string) (*weakKeys, error) {
+func LoadWeakRSASuffixes(path string) (*weakKeys, error) {
 	f, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err

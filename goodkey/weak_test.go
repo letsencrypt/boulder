@@ -40,7 +40,7 @@ func TestLoadKeys(t *testing.T) {
 	err = ioutil.WriteFile(tempPath, []byte("[\"8df20e6961a16398b85a\"]"), os.ModePerm)
 	test.AssertNotError(t, err, "Failed to create temporary file")
 
-	wk, err := loadSuffixes(tempPath)
+	wk, err := LoadWeakRSASuffixes(tempPath)
 	test.AssertNotError(t, err, "Failed to load suffixes from directory")
 	test.Assert(t, wk.Known(&testKey), "weakKeys.Known failed to find suffix that has been added")
 }
