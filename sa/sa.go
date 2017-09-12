@@ -123,10 +123,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	const query = "WHERE id = ?"
-	var model interface{}
-	var err error
-	model, err = selectRegistrationv2(ssa.dbMap, query, id)
-
+	model, err := selectRegistration(ssa.dbMap, query, id)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 	}
@@ -139,8 +136,6 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
 	const query = "WHERE jwk_sha256 = ?"
-	var model interface{}
-	var err error
 	if key == nil {
 		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
 	}
@@ -148,7 +143,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if err != nil {
 		return core.Registration{}, err
 	}
-	model, err = selectRegistrationv2(ssa.dbMap, query, sha)
+	model, err := selectRegistration(ssa.dbMap, query, sha)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
@@ -622,9 +617,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
-	var model interface{}
-	var err error
-	model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
+	_, err := selectRegistration(ssa.dbMap, query, reg.ID)
 	if err == sql.ErrNoRows {
 		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
@@ -633,15 +626,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	if err != nil {
 		return err
 	}
-
-	// Since registrationToModel has to return an interface so that we can use either model
-	// version we need to cast both the updated and existing model to their proper types
-	// so that we can copy over the LockCol from one to the other. Once we have copied
-	// that field we reassign to the interface so gorp can properly update it.
-	erm := model.(*regModelv2)
-	urm := updatedRegModel.(*regModelv2)
-	urm.LockCol = erm.LockCol
-	updatedRegModel = urm
 
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
