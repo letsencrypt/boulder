@@ -199,7 +199,7 @@ const getChallengesQuery = `
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration
-func registrationToModel(r *core.Registration) (interface{}, error) {
+func registrationToModel(r *core.Registration) (*regModel, error) {
 	key, err := json.Marshal(r.Key)
 	if err != nil {
 		return nil, err
@@ -229,11 +229,9 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 	return &rm, nil
 }
 
-func modelToRegistration(ri interface{}) (core.Registration, error) {
-	rm := ri.(*regModel)
-
+func modelToRegistration(reg *regModel) (core.Registration, error) {
 	k := &jose.JSONWebKey{}
-	err := json.Unmarshal(rm.Key, k)
+	err := json.Unmarshal(reg.Key, k)
 	if err != nil {
 		err = fmt.Errorf("unable to unmarshal JSONWebKey in db: %s", err)
 		return core.Registration{}, err
@@ -242,19 +240,19 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 	// Contact can be nil when the DB contains the literal string "null". We
 	// prefer to represent this in memory as a pointer to an empty slice rather
 	// than a nil pointer.
-	if rm.Contact == nil {
+	if reg.Contact == nil {
 		contact = &[]string{}
 	} else {
-		contact = &rm.Contact
+		contact = &reg.Contact
 	}
 	r := core.Registration{
-		ID:        rm.ID,
+		ID:        reg.ID,
 		Key:       k,
 		Contact:   contact,
-		Agreement: rm.Agreement,
-		InitialIP: net.IP(rm.InitialIP),
-		CreatedAt: rm.CreatedAt,
-		Status:    core.AcmeStatus(rm.Status),
+		Agreement: reg.Agreement,
+		InitialIP: net.IP(reg.InitialIP),
+		CreatedAt: reg.CreatedAt,
+		Status:    core.AcmeStatus(reg.Status),
 	}
 
 	return r, nil
