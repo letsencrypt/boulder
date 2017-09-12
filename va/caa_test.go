@@ -12,6 +12,16 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestTreeClimbNotPresent(t *testing.T) {
+	target := "deep-cname.not-present.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got %s", target, prob)
+	}
+}
+
 func TestDeepTreeClimb(t *testing.T) {
 	target := "deep-cname.present-with-parameter.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})

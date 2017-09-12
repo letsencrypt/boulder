@@ -96,6 +96,11 @@ func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.C
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
 		return nil, nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
+	case "deep-cname.not-present.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "target.not-present.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
 	case "deep-cname.present-with-parameter.com":
 		cnameRecord := new(dns.CNAME)
 		cnameRecord.Hdr = dns.RR_Header{Name: domain}

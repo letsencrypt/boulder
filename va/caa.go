@@ -117,9 +117,11 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
+// withParents returns a list containing the input fqdn, and all parent domains
+// in order.
 func withParents(fqdn string) []string {
 	var result []string
-	labels := strings.Split(fqdn, ".")
+	labels := strings.Split(strings.TrimRight(fqdn, "."), ".")
 	for i := 0; i < len(labels); i++ {
 		result = append(result, strings.Join(labels[i:], "."))
 	}
