@@ -535,9 +535,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		// If the lookup was successful, use that key.
 		key = reg.Key
 		logEvent.Requester = reg.ID
-		if reg.Contact != nil && len(*reg.Contact) > 0 {
-			logEvent.Contacts = reg.Contact
-		}
+		logEvent.Contacts = reg.Contact
 	}
 
 	// Only check for validity if we are actually checking the registration
@@ -684,9 +682,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	}
 	logEvent.Requester = reg.ID
 	addRequesterHeader(response, reg.ID)
-	if reg.Contact != nil && len(*reg.Contact) > 0 {
-		logEvent.Contacts = reg.Contact
-	}
+	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
