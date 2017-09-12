@@ -43,26 +43,26 @@ If the Travis tests are failing on your branch, you should look at the logs to f
 
 All errors must be addressed in some way: That may be simply by returning an
 error up the stack, or by handling it in some intelligent way where it is
-generated, or explicitly ignored by assigning it to `_`. We use the `errcheck`
+generated, or by explicitly ignoring it and assigning to `_`. We use the `errcheck`
 tool in our integration tests to make sure all errors are addressed. Note that
-even in tests, errors should not be ignored, since they may generate
+ignoring errors, even in tests, should be rare, since they may generate
 hard-to-debug problems.
 
-We define two special types of error. BoulderErrors, defined in
-errors/errors.go, are used specifically when an typed error needs to be passed
+We define two special types of error. `BoulderError`, defined in
+errors/errors.go, is used specifically when an typed error needs to be passed
 across an RPC boundary. For instance, if the SA returns "not found", callers
 need to be able to distinguish that from a network error. Not every error that
 may pass across an RPC boundary needs to be a BoulderError, only those errors
 that need to be handled by type elsewhere. Handling by type may be as simple as
 turning a BoulderError into a specific type of ProblemDetail.
 
-The other special type of error is ProblemDetail. We try to treat these as a
+The other special type of error is `ProblemDetails`. We try to treat these as a
 presentation-layer detail, and use them only in parts of the system that are
 responsible for rendering ProblemDetails to end-users, i.e. wfe and wfe2. Note
-one exception: The VA RPC layer defines its own ProblemDetail type, which is
+one exception: The VA RPC layer defines its own `ProblemDetails` type, which is
 returned to RA and stored as part of a challenge.
 
-Within WFE and WFE2, ProblemDetails are send to the client by calling `sendError()`, which
+Within WFE and WFE2, ProblemDetails are sent to the client by calling `sendError()`, which
 also logs the error. For internal errors like timeout, or any error type that we
 haven't specifically turned into a ProblemDetail, we return a ServerInternal
 error. This avoids unnecessarily exposing internals. It possible to add
