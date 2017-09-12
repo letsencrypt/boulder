@@ -84,3 +84,4 @@ func WrongAuthorizationStateError(msg string, args ...interface{}) error {
 
 func CAAError(msg string, args ...interface{}) error {
 	return New(CAA, msg, args...)
+}
