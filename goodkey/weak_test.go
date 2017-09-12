@@ -20,12 +20,12 @@ func TestKnown(t *testing.T) {
 	testKey := rsa.PublicKey{N: mod}
 	otherKey := rsa.PublicKey{N: big.NewInt(2020)}
 
-	wk := &weakKeys{suffixes: make(map[truncatedHash]struct{})}
+	wk := &WeakRSAKeys{suffixes: make(map[truncatedHash]struct{})}
 	err = wk.addSuffix("8df20e6961a16398b85a")
 	// a3853d0c563765e504c18df20e6961a16398b85a
-	test.AssertNotError(t, err, "weakKeys.addSuffix failed")
-	test.Assert(t, wk.Known(&testKey), "weakKeys.Known failed to find suffix that has been added")
-	test.Assert(t, !wk.Known(&otherKey), "weakKeys.Known found a suffix that has not been added")
+	test.AssertNotError(t, err, "WeakRSAKeys.addSuffix failed")
+	test.Assert(t, wk.Known(&testKey), "WeakRSAKeys.Known failed to find suffix that has been added")
+	test.Assert(t, !wk.Known(&otherKey), "WeakRSAKeys.Known found a suffix that has not been added")
 }
 
 func TestLoadKeys(t *testing.T) {
@@ -42,5 +42,5 @@ func TestLoadKeys(t *testing.T) {
 
 	wk, err := LoadWeakRSASuffixes(tempPath)
 	test.AssertNotError(t, err, "Failed to load suffixes from directory")
-	test.Assert(t, wk.Known(&testKey), "weakKeys.Known failed to find suffix that has been added")
+	test.Assert(t, wk.Known(&testKey), "WeakRSAKeys.Known failed to find suffix that has been added")
 }

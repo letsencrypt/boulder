@@ -16,11 +16,11 @@ import (
 
 type truncatedHash [10]byte
 
-type weakKeys struct {
+type WeakRSAKeys struct {
 	suffixes map[truncatedHash]struct{}
 }
 
-func LoadWeakRSASuffixes(path string) (*weakKeys, error) {
+func LoadWeakRSASuffixes(path string) (*WeakRSAKeys, error) {
 	f, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func LoadWeakRSASuffixes(path string) (*weakKeys, error) {
 		return nil, err
 	}
 
-	wk := &weakKeys{suffixes: make(map[truncatedHash]struct{})}
+	wk := &WeakRSAKeys{suffixes: make(map[truncatedHash]struct{})}
 	for _, suffix := range suffixList {
 		err := wk.addSuffix(suffix)
 		if err != nil {
@@ -42,7 +42,7 @@ func LoadWeakRSASuffixes(path string) (*weakKeys, error) {
 	return wk, nil
 }
 
-func (wk *weakKeys) addSuffix(str string) error {
+func (wk *WeakRSAKeys) addSuffix(str string) error {
 	var suffix truncatedHash
 	decoded, err := hex.DecodeString(str)
 	if err != nil {
@@ -56,7 +56,7 @@ func (wk *weakKeys) addSuffix(str string) error {
 	return nil
 }
 
-func (wk *weakKeys) Known(key *rsa.PublicKey) bool {
+func (wk *WeakRSAKeys) Known(key *rsa.PublicKey) bool {
 	// Hash input is in the format "Modulus={upper-case hex of modulus}\n"
 	hash := sha1.Sum([]byte(fmt.Sprintf("Modulus=%X\n", key.N.Bytes())))
 	var suffix truncatedHash
