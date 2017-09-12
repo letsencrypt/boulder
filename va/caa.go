@@ -7,6 +7,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
@@ -116,7 +117,38 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
-func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper func(context.Context, string) ([]*dns.CAA, error)) []caaResult {
+// If the fqdn has a direct alias among the list of CNAMEs, return it; otherwise
+// return "". Note that RFC 6844 only asks for tree-climbing on direct aliases,
+// not recursive aliases.
+func findAlias(source string, cnames []*dns.CNAME) string {
+	for _, cname := range cnames {
+		if cname.Header().Name == source {
+			return cname.Target
+		}
+	}
+	return ""
+}
+
+// Implement pre-erratum 5065 style tree-climbing CAA.
+func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, []*dns.CNAME, error) {
+	target := fqdn
+	// Limit CNAME chasing to break CNAME loops
+	for i := 0; i < 8 && target != ""; i++ {
+		caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
+		if err != nil {
+			return nil, nil, err
+		} else if len(caas) > 0 {
+			return caas, nil, nil
+		} else if len(cnames) > 0 {
+			target = findAlias(target, cnames)
+		}
+	}
+	return nil, nil, nil
+}
+
+type lookuperFunc func(context.Context, string) ([]*dns.CAA, []*dns.CNAME, error)
+
+func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper lookuperFunc) []caaResult {
 	labels := strings.Split(name, ".")
 	results := make([]caaResult, len(labels))
 	var wg sync.WaitGroup
@@ -125,7 +157,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
-			r.records, r.err = lookuper(ctx, name)
+			r.records, _, r.err = lookuper(ctx, name)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
@@ -137,6 +169,11 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
+	lookuper := va.dnsClient.LookupCAA
+	if features.Enabled(features.LegacyCAA) {
+		lookuper = va.treeClimbingLookupCAA
+	}
+
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
 	// Essentially: check CAA records for the FDQN to be issued, and all
 	// parent domains.
@@ -145,7 +182,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.dnsClient.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname, lookuper)
 	return parseResults(results)
 }
 
