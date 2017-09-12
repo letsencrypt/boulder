@@ -39,6 +39,38 @@ request into the body of the commit message.
 
 If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
 
+# Error handling
+
+All errors must be addressed in some way: That may be simply by returning an
+error up the stack, or by handling it in some intelligent way where it is
+generated, or explicitly ignored by assigning it to `_`. We use the `errcheck`
+tool in our integration tests to make sure all errors are addressed. Note that
+even in tests, errors should not be ignored, since they may generate
+hard-to-debug problems.
+
+We define two special types of error. BoulderErrors, defined in
+errors/errors.go, are used specifically when an typed error needs to be passed
+across an RPC boundary. For instance, if the SA returns "not found", callers
+need to be able to distinguish that from a network error. Not every error that
+may pass across an RPC boundary needs to be a BoulderError, only those errors
+that need to be handled by type elsewhere. Handling by type may be as simple as
+turning a BoulderError into a specific type of ProblemDetail.
+
+The other special type of error is ProblemDetail. We try to treat these as a
+presentation-layer detail, and use them only in parts of the system that are
+responsible for rendering ProblemDetails to end-users, i.e. wfe and wfe2. Note
+one exception: The VA RPC layer defines its own ProblemDetail type, which is
+returned to RA and stored as part of a challenge.
+
+Within WFE and WFE2, ProblemDetails are send to the client by calling `sendError()`, which
+also logs the error. For internal errors like timeout, or any error type that we
+haven't specifically turned into a ProblemDetail, we return a ServerInternal
+error. This avoids unnecessarily exposing internals. It possible to add
+additional errors to a logEvent using `.AddError()`, but only do this when there
+is internal-only information to log that isn't redundant with the ProblemDetails sent
+to the user. Note that the final argument to `sendError()`, `ierr`, will
+automatically get added to the logEvent for ServerInternal errors.
+
 # Deployability
 
 We want to ensure that a new Boulder revision can be deployed to the currently running Boulder production instance without requiring config changes first. We also want to ensure that during a deploy, services can be restarted in any order. That means two things:
