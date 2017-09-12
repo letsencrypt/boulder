@@ -129,18 +129,35 @@ func findAlias(source string, cnames []*dns.CNAME) string {
 	return ""
 }
 
+func parent(fqdn string) string {
+	labels := strings.Split(fqdn, ".")
+	if len(labels) > 1 {
+		return strings.Join(labels[1:], ".")
+	} else {
+		return ""
+	}
+}
+
 // Implement pre-erratum 5065 style tree-climbing CAA.
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, []*dns.CNAME, error) {
 	target := fqdn
 	// Limit CNAME chasing to break CNAME loops
 	for i := 0; i < 8 && target != ""; i++ {
-		caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
+		caas, cnames, err := va.dnsClient.LookupCAA(ctx, target)
 		if err != nil {
 			return nil, nil, err
 		} else if len(caas) > 0 {
 			return caas, nil, nil
 		} else if len(cnames) > 0 {
 			target = findAlias(target, cnames)
+		} else if i == 0 {
+			// Special case: If there are no CNAMEs or CAAs on the very first lookup,
+			// skip the tree-climbing, since that's already implemented by parallelCAALookup.
+			// This minimizes duplicate lookups.
+			return nil, nil, nil
+		} else {
+			// If we're not on the first iteration (i.e. we've found a CNAME), do tree climbing.
+			target = parent(target)
 		}
 	}
 	return nil, nil, nil

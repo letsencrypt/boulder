@@ -101,6 +101,11 @@ func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.C
 		cnameRecord.Hdr = dns.RR_Header{Name: "cname-to-reserved.com"}
 		cnameRecord.Target = "reserved.com"
 		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "cname-to-child-of-reserved.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: "cname-to-reserved.com"}
+		cnameRecord.Target = "www.reserved.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"

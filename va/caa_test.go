@@ -7,9 +7,54 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestFindAlias(t *testing.T) {
+	var cnames []*dns.CNAME
+	alias := findAlias("foo.com", cnames)
+	if alias != "" {
+		t.Errorf("Got alias and didn't expect one: %q", alias)
+	}
+	cnames = append(cnames, &dns.CNAME{
+		Hdr:    dns.RR_Header{Name: "quux.com"},
+		Target: "szyzygy.com",
+	}, &dns.CNAME{
+		Hdr:    dns.RR_Header{Name: "bar.com"},
+		Target: "quux.com",
+	})
+	alias2 := findAlias("bar.com", cnames)
+	if alias2 != "quux.com" {
+		t.Errorf("Got alias of %q, expected %q", alias2, "quux.com")
+	}
+}
+
+func TestTreeClimbingLookupCAASimpleSuccess(t *testing.T) {
+}
+
+func TestTreeClimbingLookupCAALimitHit(t *testing.T) {
+}
+
+func TestCNAMEToReserved(t *testing.T) {
+	err := features.Set(map[string]bool{"LegacyCAA": true})
+	if err != nil {
+		t.Fatal("Failed to set feature:", err)
+	}
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "cname-to-reserved.com"})
+	if prob == nil {
+		t.Fatalf("Expected error for cname-to-reserved.com, got none")
+	}
+	if prob.Type != probs.ConnectionProblem {
+		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, prob.Type)
+	}
+	expected := "CAA record for cname-to-reserved.com prevents issuance"
+	if prob.Detail != expected {
+		t.Errorf("checkCAA: got %#v, expected %#v", prob.Detail, expected)
+	}
+}
 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
