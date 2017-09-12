@@ -12,22 +12,13 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestFindAlias(t *testing.T) {
-	var cnames []*dns.CNAME
-	alias := findAlias("foo.com", cnames)
-	if alias != "" {
-		t.Errorf("Got alias and didn't expect one: %q", alias)
-	}
-	cnames = append(cnames, &dns.CNAME{
-		Hdr:    dns.RR_Header{Name: "quux.com"},
-		Target: "szyzygy.com",
-	}, &dns.CNAME{
-		Hdr:    dns.RR_Header{Name: "bar.com"},
-		Target: "quux.com",
-	})
-	alias2 := findAlias("bar.com", cnames)
-	if alias2 != "quux.com" {
-		t.Errorf("Got alias of %q, expected %q", alias2, "quux.com")
+func TestDeepTreeClimb(t *testing.T) {
+	target := "deep-cname.present-with-parameter.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob == nil {
+		t.Fatalf("Expected error for %q, got none", target)
 	}
 }
 

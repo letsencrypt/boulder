@@ -117,25 +117,13 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
-// If the fqdn has a direct alias among the list of CNAMEs, return it; otherwise
-// return "". Note that RFC 6844 only asks for tree-climbing on direct aliases,
-// not recursive aliases.
-func findAlias(source string, cnames []*dns.CNAME) string {
-	for _, cname := range cnames {
-		if cname.Header().Name == source {
-			return cname.Target
-		}
-	}
-	return ""
-}
-
-func parent(fqdn string) string {
+func withParents(fqdn string) []string {
+	var result []string
 	labels := strings.Split(fqdn, ".")
-	if len(labels) > 1 {
-		return strings.Join(labels[1:], ".")
-	} else {
-		return ""
+	for i := 0; i < len(labels); i++ {
+		result = append(result, strings.Join(labels[i:], "."))
 	}
+	return result
 }
 
 // Implement pre-erratum 5065 style tree-climbing CAA. Note: a strict
@@ -145,31 +133,38 @@ func parent(fqdn string) string {
 // conservative: We always do full tree-climbing on the original FQDN (by virtue
 // of parallelCAALookup. When the LegacyCAA flag is enabled, we also
 // do linear tree climbing on single-level aliases.
-func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, []*dns.CNAME, error) {
-	target := fqdn
-	// Limit CNAME chasing to break CNAME loops
-	for i := 0; i < 8 && target != ""; i++ {
-		caas, cnames, err := va.dnsClient.LookupCAA(ctx, target)
-		if err != nil {
-			return nil, nil, err
-		} else if len(caas) > 0 {
-			return caas, nil, nil
-		} else if len(cnames) > 0 {
-			target = findAlias(target, cnames)
-		} else if i == 0 {
-			// Special case: If there are no CNAMEs or CAAs on the very first lookup,
-			// skip the tree-climbing, since that's already implemented by parallelCAALookup.
-			// This minimizes duplicate lookups.
-			return nil, nil, nil
-		} else {
-			// If we're not on the first iteration (i.e. we've found a CNAME), do tree climbing.
-			target = parent(target)
-		}
-	}
-	return nil, nil, nil
+func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
+	// We will do a maximum of 8 tree-climbing queries to avoid CNAME/CAA hybrid
+	// loops
+	maxAttempts := 8
+	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts)
 }
 
-type lookuperFunc func(context.Context, string) ([]*dns.CAA, []*dns.CNAME, error)
+func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, maxAttempts *int) ([]*dns.CAA, error) {
+	if *maxAttempts < 1 {
+		return nil, nil
+	}
+	*maxAttempts--
+	caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
+	if err != nil {
+		return nil, err
+	} else if len(caas) > 0 {
+		return caas, nil
+	} else if len(cnames) > 0 {
+		for _, cname := range cnames {
+			newTargets := withParents(cname.Target)
+			for _, newTarget := range newTargets {
+				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, maxAttempts)
+				if len(caas) != 0 || err != nil {
+					return caas, err
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
+type lookuperFunc func(context.Context, string) ([]*dns.CAA, error)
 
 func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper lookuperFunc) []caaResult {
 	labels := strings.Split(name, ".")
@@ -180,7 +175,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
-			r.records, _, r.err = lookuper(ctx, name)
+			r.records, r.err = lookuper(ctx, name)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
@@ -192,7 +187,10 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
-	lookuper := va.dnsClient.LookupCAA
+	lookuper := func(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
+		caas, _, err := va.dnsClient.LookupCAA(ctx, fqdn)
+		return caas, err
+	}
 	if features.Enabled(features.LegacyCAA) {
 		lookuper = va.treeClimbingLookupCAA
 	}
