@@ -465,12 +465,12 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 	var CAAs []*dns.CAA
 	var CNAMEs []*dns.CNAME
 	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dnsType {
-			if caaR, ok := answer.(*dns.CAA); ok {
-				CAAs = append(CAAs, caaR)
-			} else if cnameR, ok := answer.(*dns.CNAME); ok {
-				CNAMEs = append(CNAMEs, cnameR)
-			}
+		if caaR, ok := answer.(*dns.CAA); ok {
+			CAAs = append(CAAs, caaR)
+		} else if _, ok := answer.(*dns.DNAME); ok {
+			return nil, nil, fmt.Errorf("Got DNAME when looking up CNAME. DNAMEs not supported.")
+		} else if cnameR, ok := answer.(*dns.CNAME); ok {
+			CNAMEs = append(CNAMEs, cnameR)
 		}
 	}
 	return CAAs, CNAMEs, nil
