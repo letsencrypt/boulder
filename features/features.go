@@ -27,6 +27,7 @@ const (
 	DirectoryMeta
 	AllowRenewalFirstRL
 	RecheckCAA
+	LegacyCAA
 )
 
 // List of features and their default value, protected by fMu
@@ -45,6 +46,7 @@ var features = map[FeatureFlag]bool{
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
+	LegacyCAA:                false,
 }
 
 var fMu = new(sync.RWMutex)
