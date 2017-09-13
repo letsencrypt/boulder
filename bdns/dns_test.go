@@ -139,6 +139,12 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Flag = 1
 				appendAnswer(record)
 			}
+			if q.Name == "dname.example.com." {
+				appendAnswer(&dns.DNAME{
+					Hdr:    dns.RR_Header{Name: "dname.example.com.", Rrtype: dns.TypeDNAME, Class: dns.ClassINET, Ttl: 0},
+					Target: "dname.example.net.",
+				})
+			}
 		case dns.TypeTXT:
 			if q.Name == "split-txt.letsencrypt.org." {
 				record := new(dns.TXT)
@@ -401,6 +407,10 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, _, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+
+	_, cnames, err := obj.LookupCAA(context.Background(), "dname.example.com")
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(cnames) > 0, "Should treate DNAME as CNAME")
 }
 
 func TestDNSTXTAuthorities(t *testing.T) {

@@ -465,12 +465,18 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 	var CAAs []*dns.CAA
 	var CNAMEs []*dns.CNAME
 	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dnsType {
-			if caaR, ok := answer.(*dns.CAA); ok {
-				CAAs = append(CAAs, caaR)
-			} else if cnameR, ok := answer.(*dns.CNAME); ok {
-				CNAMEs = append(CNAMEs, cnameR)
-			}
+		if caaR, ok := answer.(*dns.CAA); ok {
+			CAAs = append(CAAs, caaR)
+		} else if dnameR, ok := answer.(*dns.DNAME); ok {
+			// Note: The legacy CAA spec erroneously treats DNAMEs as equivalent to
+			// CNAMEs. DNAMEs are extremely rare, but to be strict, we'll copy them
+			// into the CNAME list.
+			CNAMEs = append(CNAMEs, &dns.CNAME{
+				Hdr:    dnameR.Hdr,
+				Target: dnameR.Target,
+			})
+		} else if cnameR, ok := answer.(*dns.CNAME); ok {
+			CNAMEs = append(CNAMEs, cnameR)
 		}
 	}
 	return CAAs, CNAMEs, nil
