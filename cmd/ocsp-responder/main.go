@@ -69,11 +69,11 @@ type dbResponse struct {
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
-func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
+func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	// Check that this request is for the proper CA
 	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
 		src.log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
-		return nil, false
+		return nil, nil, cfocsp.ErrNotFound
 	}
 
 	serialString := core.SerialToString(req.SerialNumber)
@@ -94,14 +94,14 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		src.log.AuditErr(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
 	}
 	if err != nil {
-		return nil, false
+		return nil, nil, cfocsp.ErrNotFound
 	}
 	if response.OCSPLastUpdated.IsZero() {
 		src.log.Debug(fmt.Sprintf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
-		return nil, false
+		return nil, nil, cfocsp.ErrNotFound
 	}
 
-	return response.OCSPResponse, true
+	return response.OCSPResponse, nil, nil
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSource, error) {
