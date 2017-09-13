@@ -279,10 +279,6 @@ func NewCertificateAuthorityImpl(
 		ca.backdate = time.Hour
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
 	ca.maxNames = config.MaxNames
 
 	return ca, nil
