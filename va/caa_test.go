@@ -23,6 +23,9 @@ func TestTreeClimbNotPresent(t *testing.T) {
 }
 
 func TestDeepTreeClimb(t *testing.T) {
+	// The ultimate target of the CNAME has a CAA record preventing issuance, but
+	// the parent of the FQDN has a CAA record permitting. The target of the CNAME
+	// takes precedence.
 	target := "deep-cname.present-with-parameter.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
@@ -47,8 +50,8 @@ func TestTreeClimbingLookupCAALimitHit(t *testing.T) {
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
-	if prob != nil {
-		t.Fatalf("Expected success for %q, got %s", target, prob)
+	if prob == nil {
+		t.Fatalf("Expected failure for %q, got success", target)
 	}
 }
 
@@ -58,7 +61,7 @@ func TestCNAMEToReserved(t *testing.T) {
 	va, _ := setup(nil, 0)
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob == nil {
-		t.Fatalf("Expected error for cname-to-reserved.com, got none")
+		t.Fatalf("Expected error for cname-to-reserved.com, got success")
 	}
 	if prob.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, prob.Type)

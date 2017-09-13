@@ -117,12 +117,12 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
-// withParents returns a list containing the input fqdn, and all parent domains
-// in order.
-func withParents(fqdn string) []string {
+// parentsDomains returns a list of all parent domains, in order from longest to
+// shortest.
+func parentDomains(fqdn string) []string {
 	var result []string
 	labels := strings.Split(strings.TrimRight(fqdn, "."), ".")
-	for i := 0; i < len(labels); i++ {
+	for i := 1; i < len(labels); i++ {
 		result = append(result, strings.Join(labels[i:], "."))
 	}
 	return result
@@ -136,15 +136,15 @@ func withParents(fqdn string) []string {
 // of parallelCAALookup. When the LegacyCAA flag is enabled, we also
 // do linear tree climbing on single-level aliases.
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
-	// We will do a maximum of 8 tree-climbing queries to avoid CNAME/CAA hybrid
-	// loops
-	maxAttempts := 8
+	// We will do an (arbitrary) maximum of 15 tree-climbing queries to avoid CNAME/CAA
+	// hybrid loops
+	maxAttempts := 15
 	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts)
 }
 
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, maxAttempts *int) ([]*dns.CAA, error) {
 	if *maxAttempts < 1 {
-		return nil, nil
+		return nil, fmt.Errorf("too many CNAMEs when looking up CAA")
 	}
 	*maxAttempts--
 	caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
@@ -153,8 +153,15 @@ func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Co
 	} else if len(caas) > 0 {
 		return caas, nil
 	} else if len(cnames) > 0 {
-		for _, cname := range cnames {
-			newTargets := withParents(cname.Target)
+		// CNAMEs are returned in order from the original fqdn to the ultimate
+		// target. However, CAA wants us to check them in order from the ultimate
+		// target back to the original FQDN.
+		for i := len(cnames) - 1; i >= 0; i-- {
+			// Start the tree climbing directly with the parent domains of each
+			// target, because the target itself has already been queried by Unbound
+			// as part of the original LookupCAA, and any CNAMEs are already in this
+			// list.
+			newTargets := parentDomains(cnames[i].Target)
 			for _, newTarget := range newTargets {
 				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, maxAttempts)
 				if len(caas) != 0 || err != nil {
