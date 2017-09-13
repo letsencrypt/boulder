@@ -757,9 +757,9 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, auditlogger := cmd.StatsAndLogging(c.Syslog)
-	defer auditlogger.AuditPanic()
-	auditlogger.Info(cmd.VersionString())
+	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString())
 
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
@@ -772,7 +772,7 @@ func main() {
 
 	updater, err := newUpdater(
 		scope,
-		clock.Default(),
+		cmd.Clock(),
 		dbMap,
 		cac,
 		pubc,
@@ -781,7 +781,7 @@ func main() {
 		conf,
 		c.Common.CT.Logs,
 		c.Common.IssuerCert,
-		auditlogger,
+		logger,
 	)
 
 	cmd.FailOnError(err, "Failed to create updater")
@@ -790,11 +790,12 @@ func main() {
 		go func(loop *looper) {
 			err = loop.loop()
 			if err != nil {
-				auditlogger.AuditErr(err.Error())
+				logger.AuditErr(err.Error())
 			}
 		}(l)
 	}
 
+	go cmd.CatchSignals(logger, nil)
 	go cmd.DebugServer(conf.DebugAddr)
 	go cmd.ProfileCmd(scope)
 

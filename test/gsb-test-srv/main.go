@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	gsb "github.com/letsencrypt/boulder/test/gsb-test-srv/proto"
 )
 
@@ -410,7 +411,5 @@ func main() {
 	ts := newTestServer(*key, defaultUnsafeURLs)
 	ts.start(*listen)
 
-	// Block on an empty channel
-	forever := make(chan bool, 1)
-	<-forever
+	cmd.CatchSignals(nil, nil)
 }

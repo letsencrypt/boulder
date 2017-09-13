@@ -332,7 +332,7 @@ func main() {
 
 	checker := newChecker(
 		saDbMap,
-		clock.Default(),
+		cmd.Clock(),
 		pa,
 		config.CertChecker.CheckPeriod.Duration,
 	)

@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/facebookgo/httpdown"
-	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -105,7 +104,7 @@ func main() {
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clock.Default(), kp, logger)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(c, logger, scope)
 	wfe.RA = rac

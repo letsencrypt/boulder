@@ -15,7 +15,6 @@ import (
 
 	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	"github.com/facebookgo/httpdown"
-	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -254,5 +253,5 @@ func mux(scope metrics.Scope, responderPath string, source cfocsp.Source) http.H
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return measured_http.New(&ocspMux{h}, clock.Default())
+	return measured_http.New(&ocspMux{h}, cmd.Clock())
 }
