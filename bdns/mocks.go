@@ -90,12 +90,61 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
+func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, []*dns.CNAME, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
+		return nil, nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
+	case "deep-cname.not-present.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "target.not-present.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "deep-cname.present-with-parameter.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "cname-to-reserved.com"
+		return []*dns.CAA{
+				&dns.CAA{
+					Tag:   "issue",
+					Value: "ca.com",
+				},
+			}, []*dns.CNAME{
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: domain},
+					Target: "cname-to-reserved.com",
+				},
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: "cname-to-reserved.com"},
+					Target: "reserved.com",
+				},
+			}, nil
+	case "blog.cname-to-subdomain.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "www.blog.cname-to-subdomain.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "cname-to-reserved.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "reserved.com"
+		return []*dns.CAA{
+				&dns.CAA{
+					Tag:   "issue",
+					Value: "ca.com",
+				},
+			}, []*dns.CNAME{
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: domain},
+					Target: "reserved.com",
+				},
+			}, nil
+	case "cname-to-child-of-reserved.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "www.reserved.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"
@@ -111,9 +160,9 @@ func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.C
 		results = append(results, &record)
 	case "com":
 		// com has no CAA records.
-		return nil, nil
+		return nil, nil, nil
 	case "servfail.com", "servfail.present.com":
-		return results, fmt.Errorf("SERVFAIL")
+		return results, nil, fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -146,9 +195,9 @@ func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.C
 		record.Value = ";"
 		results = append(results, &record)
 	case "bad-local-resolver.com":
-		return nil, &DNSError{dns.TypeCAA, domain, MockTimeoutError(), -1}
+		return nil, nil, &DNSError{dns.TypeCAA, domain, MockTimeoutError(), -1}
 	}
-	return results, nil
+	return results, nil, nil
 }
 
 // LookupMX is a mock

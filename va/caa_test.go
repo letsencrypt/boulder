@@ -7,9 +7,85 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestParentDomains(t *testing.T) {
+	pd := parentDomains("")
+	if len(pd) != 0 {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "", pd)
+	}
+	pd = parentDomains("com")
+	if len(pd) != 0 {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "com", pd)
+	}
+	pd = parentDomains("blog.example.com")
+	if len(pd) != 2 || pd[0] != "example.com" || pd[1] != "com" {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "blog.example.com", pd)
+	}
+}
+
+func TestTreeClimbNotPresent(t *testing.T) {
+	target := "deep-cname.not-present.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got %s", target, prob)
+	}
+}
+
+func TestDeepTreeClimb(t *testing.T) {
+	// The ultimate target of the CNAME has a CAA record preventing issuance, but
+	// the parent of the FQDN has a CAA record permitting. The target of the CNAME
+	// takes precedence.
+	target := "deep-cname.present-with-parameter.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob == nil {
+		t.Fatalf("Expected error for %q, got none", target)
+	}
+}
+
+func TestTreeClimbingLookupCAASimpleSuccess(t *testing.T) {
+	target := "www.present-with-parameter.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got %s", target, prob)
+	}
+}
+
+func TestTreeClimbingLookupCAALimitHit(t *testing.T) {
+	target := "blog.cname-to-subdomain.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob == nil {
+		t.Fatalf("Expected failure for %q, got success", target)
+	}
+}
+
+func TestCNAMEToReserved(t *testing.T) {
+	target := "cname-to-reserved.com"
+	_ = features.Set(map[string]bool{"LegacyCAA": true})
+	va, _ := setup(nil, 0)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
+	if prob == nil {
+		t.Fatalf("Expected error for cname-to-reserved.com, got success")
+	}
+	if prob.Type != probs.ConnectionProblem {
+		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, prob.Type)
+	}
+	expected := "CAA record for cname-to-reserved.com prevents issuance"
+	if prob.Detail != expected {
+		t.Errorf("checkCAA: got %#v, expected %#v", prob.Detail, expected)
+	}
+}
 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)

@@ -147,7 +147,7 @@ var (
 type DNSClient interface {
 	LookupTXT(context.Context, string) (txts []string, authorities []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
-	LookupCAA(context.Context, string) ([]*dns.CAA, error)
+	LookupCAA(context.Context, string) ([]*dns.CAA, []*dns.CNAME, error)
 	LookupMX(context.Context, string) ([]string, error)
 }
 
@@ -438,12 +438,13 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
-// the provided hostname.
-func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, error) {
+// the provided hostname. It also returns all CNAMEs that were part of the
+// response, for using in CAA tree climbing.
+func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, []*dns.CNAME, error) {
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
-		return nil, &DNSError{dnsType, hostname, err, -1}
+		return nil, nil, &DNSError{dnsType, hostname, err, -1}
 	}
 
 	// If the resolver returns SERVFAIL for a certain list of FQDNs, return an
@@ -452,24 +453,27 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 	// That is since fixed, but we have a handful of other domains that still return
 	// SERVFAIL, but will need certificate renewals. After a suitable notice
 	// period we will remove these exceptions.
-	var CAAs []*dns.CAA
 	if r.Rcode == dns.RcodeServerFailure {
 		if dnsClient.caaSERVFAILExceptions == nil ||
 			dnsClient.caaSERVFAILExceptions[hostname] {
-			return nil, nil
+			return nil, nil, nil
 		} else {
-			return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
+			return nil, nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 		}
 	}
 
+	var CAAs []*dns.CAA
+	var CNAMEs []*dns.CNAME
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dnsType {
 			if caaR, ok := answer.(*dns.CAA); ok {
 				CAAs = append(CAAs, caaR)
+			} else if cnameR, ok := answer.(*dns.CNAME); ok {
+				CNAMEs = append(CNAMEs, cnameR)
 			}
 		}
 	}
-	return CAAs, nil
+	return CAAs, CNAMEs, nil
 }
 
 // LookupMX sends a DNS query to find a MX record associated hostname and returns the
