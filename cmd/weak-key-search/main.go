@@ -73,9 +73,11 @@ type config struct {
 	cmd.SyslogConfig
 	cmd.DBConfig
 	WeakKeyFile    string
-	Parallelism    int
+	Parallelism    uint
 	IssuedMoreThan string
 	IssuedLessThan string
+	BufferSize     uint
+	BatchSize      uint
 }
 
 func main() {
@@ -84,29 +86,36 @@ func main() {
 
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
-	cmd.FailOnError(err, "Failed to read and parse configuration file")
+	cmd.FailOnError(err, fmt.Sprintf("Failed to read and parse configuration file %q", *configFile))
 
 	if c.Parallelism == 0 {
 		log.Fatal("parallelism must be > 0")
+	}
+	bufferSize := 5000
+	if c.BufferSize > 0 {
+		bufferSize = int(c.BatchSize)
+	}
+	if c.BatchSize > 0 {
+		limit = int(c.BatchSize)
 	}
 
 	_, log := cmd.StatsAndLogging(c.SyslogConfig)
 
 	moreThan, err := time.Parse(time.RFC3339, c.IssuedMoreThan)
-	cmd.FailOnError(err, "failed to parse issuedMoreThan")
+	cmd.FailOnError(err, fmt.Sprintf("failed to parse issuedMoreThan %q", c.IssuedMoreThan))
 	lessThan, err := time.Parse(time.RFC3339, c.IssuedLessThan)
-	cmd.FailOnError(err, "failed to parse issuedLessThan")
+	cmd.FailOnError(err, fmt.Sprintf("failed to parse issuedLessThan %q", c.IssuedLessThan))
 
 	wkl, err := goodkey.LoadWeakRSASuffixes(c.WeakKeyFile)
-	cmd.FailOnError(err, "failed to load weak key list")
+	cmd.FailOnError(err, fmt.Sprintf("failed to load weak key list %q", c.WeakKeyFile))
 
 	uri, err := c.DBConfig.URL()
 	cmd.FailOnError(err, "Failed to load DB URI")
 	db, err := sql.Open("mysql", uri)
 	cmd.FailOnError(err, "failed to connect to DB")
 
-	work := make(chan certInfo, 5000)
+	work := make(chan certInfo, bufferSize)
 
 	go getCerts(work, moreThan, lessThan, db)
-	doWork(work, c.Parallelism, wkl, log)
+	doWork(work, int(c.Parallelism), wkl, log)
 }
