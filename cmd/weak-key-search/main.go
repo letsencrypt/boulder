@@ -34,7 +34,7 @@ func getCerts(work chan certInfo, moreThan, lessThan time.Time, db *sql.DB) {
 		} else if err == sql.ErrNoRows {
 			break
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		prev := i
 		for rows.Next() {
 			i++
