@@ -101,7 +101,7 @@ type CAConfig struct {
 	Expiry string
 	// How far back certificates should be backdated, should match backdate
 	// field in cfssl config.
-	Backdate string
+	Backdate ConfigDuration
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
