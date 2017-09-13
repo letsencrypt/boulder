@@ -410,7 +410,7 @@ func TestDNSLookupCAA(t *testing.T) {
 
 	_, cnames, err := obj.LookupCAA(context.Background(), "dname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
-	test.Assert(t, len(cnames) > 0, "Should treate DNAME as CNAME")
+	test.Assert(t, len(cnames) > 0, "Should treat DNAME as CNAME")
 }
 
 func TestDNSTXTAuthorities(t *testing.T) {
