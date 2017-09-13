@@ -142,11 +142,11 @@ func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fq
 	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts)
 }
 
-func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, maxAttempts *int) ([]*dns.CAA, error) {
-	if *maxAttempts < 1 {
+func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, attemptsRemaining *int) ([]*dns.CAA, error) {
+	if *attemptsRemaining < 1 {
 		return nil, fmt.Errorf("too many CNAMEs when looking up CAA")
 	}
-	*maxAttempts--
+	*attemptsRemaining--
 	caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
 	if err != nil {
 		return nil, err
@@ -163,7 +163,7 @@ func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Co
 			// list.
 			newTargets := parentDomains(cnames[i].Target)
 			for _, newTarget := range newTargets {
-				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, maxAttempts)
+				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, attemptsRemaining)
 				if len(caas) != 0 || err != nil {
 					return caas, err
 				}

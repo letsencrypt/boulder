@@ -12,6 +12,21 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestParentDomains(t *testing.T) {
+	pd := parentDomains("")
+	if len(pd) != 0 {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "", pd)
+	}
+	pd = parentDomains("com")
+	if len(pd) != 0 {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "com", pd)
+	}
+	pd = parentDomains("blog.example.com")
+	if len(pd) != 2 || pd[0] != "example.com" || pd[1] != "com" {
+		t.Errorf("Incorrect result from parentDomains(%q): %s", "blog.example.com", pd)
+	}
+}
+
 func TestTreeClimbNotPresent(t *testing.T) {
 	target := "deep-cname.not-present.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
