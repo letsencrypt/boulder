@@ -1,4 +1,4 @@
-package wfe
+package web
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestProblemDetailsFromError(t *testing.T) {
-	// errMsg is used as the msg argument for `problemDetailsForError` and is
+	// errMsg is used as the msg argument for `ProblemDetailsForError` and is
 	// always returned in the problem detail.
 	const errMsg = "testError"
 	// detailMsg is used as the msg argument for the individual error types and is
@@ -26,7 +26,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 		problem    probs.ProblemType
 		detail     string
 	}{
-		{signatureValidationError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		// boulder/errors error types
 		//   Internal server errors expect just the `errMsg` in detail.
 		{berrors.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},
@@ -39,7 +38,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
 	for _, c := range testCases {
-		p := problemDetailsForError(c.err, errMsg)
+		p := ProblemDetailsForError(c.err, errMsg)
 		if p.HTTPStatus != c.statusCode {
 			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, p.HTTPStatus)
 		}
@@ -56,6 +55,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 		HTTPStatus: 200,
 		Detail:     "gotcha",
 	}
-	p := problemDetailsForError(expected, "k")
+	p := ProblemDetailsForError(expected, "k")
 	test.AssertDeepEquals(t, expected, p)
 }
