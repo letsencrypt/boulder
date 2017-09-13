@@ -58,18 +58,21 @@ turning a BoulderError into a specific type of ProblemDetail.
 
 The other special type of error is `ProblemDetails`. We try to treat these as a
 presentation-layer detail, and use them only in parts of the system that are
-responsible for rendering ProblemDetails to end-users, i.e. wfe and wfe2. Note
+responsible for rendering errors to end-users, i.e. wfe and wfe2. Note
 one exception: The VA RPC layer defines its own `ProblemDetails` type, which is
-returned to RA and stored as part of a challenge.
+returned to the RA and stored as part of a challenge (to eventually be rendered
+to the user).
 
-Within WFE and WFE2, ProblemDetails are sent to the client by calling `sendError()`, which
-also logs the error. For internal errors like timeout, or any error type that we
-haven't specifically turned into a ProblemDetail, we return a ServerInternal
-error. This avoids unnecessarily exposing internals. It possible to add
-additional errors to a logEvent using `.AddError()`, but only do this when there
-is internal-only information to log that isn't redundant with the ProblemDetails sent
-to the user. Note that the final argument to `sendError()`, `ierr`, will
-automatically get added to the logEvent for ServerInternal errors.
+Within WFE and WFE2, ProblemDetails are sent to the client by calling
+`sendError()`, which also logs the error. For internal errors like timeout,
+or any error type that we haven't specifically turned into a ProblemDetail, we
+return a ServerInternal error. This avoids unnecessarily exposing internals.
+It's possible to add additional errors to a logEvent using `.AddError()`, but
+this should only be done when there is is internal-only information to log
+that isn't redundant with the ProblemDetails sent to the user. Note that the
+final argument to `sendError()`, `ierr`, will automatically get added to the
+logEvent for ServerInternal errors, so when sending a ServerInternal error it's
+not necessary to separately call `.AddError`.
 
 # Deployability
 
