@@ -431,7 +431,8 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
-// the provided hostname.
+// the provided hostname. It also returns all CNAMEs that were part of the
+// response, for using in CAA tree climbing.
 func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, []*dns.CNAME, error) {
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
