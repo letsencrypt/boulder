@@ -37,6 +37,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/web"
 )
 
 const (
@@ -403,7 +404,7 @@ func TestHandleFunc(t *testing.T) {
 		mux = http.NewServeMux()
 		rw = httptest.NewRecorder()
 		stubCalled = false
-		wfe.HandleFunc(mux, "/test", func(context.Context, *requestEvent, http.ResponseWriter, *http.Request) {
+		wfe.HandleFunc(mux, "/test", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
 			stubCalled = true
 		}, allowed...)
 		req.URL = mustParseURL("/test")
@@ -1563,8 +1564,8 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	test.AssertEquals(t, 0, len(body))
 }
 
-func newRequestEvent() *requestEvent {
-	return &requestEvent{Extra: make(map[string]interface{})}
+func newRequestEvent() *web.RequestEvent {
+	return &web.RequestEvent{Extra: make(map[string]interface{})}
 }
 
 func TestHeaderBoulderRequester(t *testing.T) {

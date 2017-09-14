@@ -1,4 +1,4 @@
-package wfe
+package web
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-type requestEvent struct {
+type RequestEvent struct {
 	RealIP        string    `json:",omitempty"`
 	Endpoint      string    `json:",omitempty"`
 	Method        string    `json:",omitempty"`
@@ -26,29 +26,29 @@ type requestEvent struct {
 	Extra         map[string]interface{} `json:",omitempty"`
 }
 
-func (e *requestEvent) AddError(msg string, args ...interface{}) {
+func (e *RequestEvent) AddError(msg string, args ...interface{}) {
 	e.Errors = append(e.Errors, fmt.Sprintf(msg, args...))
 }
 
-type wfeHandlerFunc func(context.Context, *requestEvent, http.ResponseWriter, *http.Request)
+type WFEHandlerFunc func(context.Context, *RequestEvent, http.ResponseWriter, *http.Request)
 
-func (f wfeHandlerFunc) ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request) {
+func (f WFEHandlerFunc) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request) {
 	ctx := context.TODO()
 	f(ctx, e, w, r)
 }
 
 type wfeHandler interface {
-	ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request)
+	ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request)
 }
 
-type topHandler struct {
-	wfe wfeHandler
-	log blog.Logger
-	clk clock.Clock
+type TopHandler struct {
+	WFE wfeHandler
+	Log blog.Logger
+	Clk clock.Clock
 }
 
-func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	logEvent := &requestEvent{
+func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	logEvent := &RequestEvent{
 		RealIP:    r.Header.Get("X-Real-IP"),
 		Method:    r.Method,
 		UserAgent: r.Header.Get("User-Agent"),
@@ -56,10 +56,10 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer th.logEvent(logEvent)
 
-	th.wfe.ServeHTTP(logEvent, w, r)
+	th.WFE.ServeHTTP(logEvent, w, r)
 }
 
-func (th *topHandler) logEvent(logEvent *requestEvent) {
+func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	var msg string
 	if len(logEvent.Errors) != 0 {
 		msg = "Terminated request"
@@ -68,17 +68,17 @@ func (th *topHandler) logEvent(logEvent *requestEvent) {
 	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.Log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
 		return
 	}
-	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
+	th.Log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
 }
 
 // Comma-separated list of HTTP clients involved in making this
 // request, starting with the original requestor and ending with the
 // remote end of our TCP connection (which is typically our own
 // proxy).
-func getClientAddr(r *http.Request) string {
+func GetClientAddr(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return xff + "," + r.RemoteAddr
 	}

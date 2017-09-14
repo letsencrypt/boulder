@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/web"
 )
 
 var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
@@ -162,7 +163,7 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 // provided logEvent is mutated to set the observed RequestNonce.
 // NOTE: this function assumes the JWS has already been verified with the
 // correct public key.
-func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *requestEvent) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *web.RequestEvent) *probs.ProblemDetails {
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
 	header := jws.Signatures[0].Header
@@ -366,7 +367,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	jws *jose.JSONWebSignature,
 	ctx context.Context,
 	request *http.Request,
-	logEvent *requestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
 	if prob := wfe.enforceJWSAuthType(jws, embeddedKeyID); prob != nil {
@@ -427,7 +428,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	jws *jose.JSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
 	if err := checkAlgorithm(jwk, jws); err != nil {
@@ -484,7 +485,7 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	jws *jose.JSONWebSignature,
 	request *http.Request,
 	ctx context.Context,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
 	if prob != nil {
@@ -505,7 +506,7 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
@@ -528,7 +529,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	jws *jose.JSONWebSignature,
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Extract the embedded JWK from the parsed JWS
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
@@ -554,7 +555,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 // using `validSelfAuthenticatedJWS`.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
@@ -588,7 +589,7 @@ type rolloverRequest struct {
 func (wfe *WebFrontEndImpl) validKeyRollover(
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
-	logEvent *requestEvent) (*rolloverRequest, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) (*rolloverRequest, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS
 	jwk, prob := wfe.extractJWK(innerJWS)
@@ -616,7 +617,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
 	}
-	// NOTE(@cpu): we do not stomp the requestEvent's payload here since that is set
+	// NOTE(@cpu): we do not stomp the web.RequestEvent's payload here since that is set
 	// from the outerJWS in validPOSTForAccount and contains the inner JWS and inner
 	// payload already.
 

@@ -136,7 +136,7 @@ func NewWebFrontEndImpl(
 // * Never send a body in response to a HEAD request. Anything
 // written by the handler will be discarded if the method is HEAD.
 // Also, all handlers that accept GET automatically accept HEAD.
-func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfeHandlerFunc, methods ...string) {
+func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web.WFEHandlerFunc, methods ...string) {
 	methodsMap := make(map[string]bool)
 	for _, m := range methods {
 		methodsMap[m] = true
@@ -147,10 +147,10 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	handler := http.StripPrefix(pattern, &topHandler{
-		log: wfe.log,
-		clk: clock.Default(),
-		wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	handler := http.StripPrefix(pattern, &web.TopHandler{
+		Log: wfe.log,
+		Clk: clock.Default(),
+		WFE: web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
@@ -206,7 +206,7 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *requestEvent, status int, v interface{}) error {
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v interface{}) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
@@ -319,10 +319,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
-	m.Handle("/", &topHandler{
-		log: wfe.log,
-		clk: clock.Default(),
-		wfe: wfeHandlerFunc(wfe.Index),
+	m.Handle("/", &web.TopHandler{
+		Log: wfe.log,
+		Clk: clock.Default(),
+		WFE: web.WFEHandlerFunc(wfe.Index),
 	})
 	return measured_http.New(m, wfe.clk)
 }
@@ -330,7 +330,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 // Method implementations
 
 // Index serves a simple identification page. It is not part of the ACME spec.
-func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
@@ -373,7 +373,7 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // Directory is an HTTP request handler that provides the directory
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
-func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
 		"new-account": newAcctPath,
 		"revoke-cert": revokeCertPath,
@@ -409,7 +409,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 // and, if the ProblemDetails.Type is ServerInternalProblem, audit logs the
 // internal ierr. The rendered Problem will have its Type prefixed with the ACME
 // v2 error namespace.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, prob *probs.ProblemDetails, ierr error) {
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
 	// Determine the HTTP status code to use for this problem
 	code := probs.ProblemDetailsToStatusCode(prob)
 
@@ -450,7 +450,7 @@ func link(url, relation string) string {
 // NewAccount is used by clients to submit a new account
 func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -560,7 +560,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	acctID int64,
 	authorizedToRevoke authorizedToRevokeCert,
 	request *http.Request,
-	logEvent *requestEvent) *probs.ProblemDetails {
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
 	// Read the revoke request from the JWS payload
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
@@ -640,7 +640,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	logEvent *requestEvent) *probs.ProblemDetails {
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
 	// For Key ID revocations we authenticate the outer JWS by using
 	// `validJWSForAccount` similar to other WFE endpoints
 	jwsBody, _, acct, prob := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
@@ -672,7 +672,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	logEvent *requestEvent) *probs.ProblemDetails {
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
 	// We maintain the requestKey as a var that is closed-over by the
 	// `authorizedToRevoke` function to use
 	var requestKey *jose.JSONWebKey
@@ -705,7 +705,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 // used.
 func (wfe *WebFrontEndImpl) RevokeCertificate(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -753,7 +753,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 		CSR          string
 		Registration core.Registration
 	}{
-		ClientAddr:   getClientAddr(request),
+		ClientAddr:   web.GetClientAddr(request),
 		CSR:          hex.EncodeToString(cr.Bytes),
 		Registration: account,
 	}
@@ -764,7 +764,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 // responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -863,7 +863,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	request *http.Request,
 	authz core.Authorization,
 	challenge *core.Challenge,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
@@ -887,7 +887,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	request *http.Request,
 	authz core.Authorization,
 	challengeIndex int,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
@@ -951,7 +951,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 // Account is used by a client to submit an update to their account.
 func (wfe *WebFrontEndImpl) Account(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -1056,7 +1056,7 @@ func (wfe *WebFrontEndImpl) Account(
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
 	authz *core.Authorization,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) bool {
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -1099,7 +1099,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
-func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
@@ -1147,7 +1147,7 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
-func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 
 	serial := request.URL.Path
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
@@ -1195,12 +1195,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 
 // Terms is used by the client to obtain the current Terms of Service /
 // Subscriber Agreement to which the subscriber must agree.
-func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
-func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
@@ -1211,7 +1211,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, 
 }
 
 // BuildID tells the requestor what build we're running.
-func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
@@ -1279,7 +1279,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	// Validate the outer JWS on the key rollover in standard fashion using
@@ -1364,7 +1364,7 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	acct core.Registration,
 	response http.ResponseWriter,
 	request *http.Request,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 	err := wfe.RA.DeactivateRegistration(ctx, acct)
 	if err != nil {
 		logEvent.AddError("unable to deactivate account", err)
@@ -1411,7 +1411,7 @@ type orderJSON struct {
 // NewOrder is used by clients to create a new order object from a CSR
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -1487,7 +1487,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 }
 
 // Order is used to retrieve a existing order object
-func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	fields := strings.SplitN(request.URL.Path, "/", 2)
 	if len(fields) != 2 {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
