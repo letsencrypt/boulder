@@ -2,6 +2,7 @@ package ra
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"net"
@@ -544,12 +545,16 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		// Fall through to normal creation flow.
 	}
 
-	authz, err := ra.createPendingAuthz(ctx, regID, identifier)
+	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		return core.Authorization{}, err
 	}
 
-	authz, err = ra.SA.NewPendingAuthorization(ctx, authz)
+	result, err := ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -557,7 +562,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return core.Authorization{}, err
 	}
 
-	return authz, err
+	return result, err
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -1391,6 +1396,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
+	for _, name := range parsedCSR.DNSNames {
+		if err := ra.PA.WillingToIssue(core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}); err != nil {
+			return nil, err
+		}
+	}
 
 	now := ra.clk.Now().UnixNano()
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
@@ -1408,30 +1418,27 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		order.Authorizations = append(order.Authorizations, *v.Authz.Id)
 	}
 
+	if len(gotAuthzFor) < len(parsedCSR.DNSNames) {
+		if err := ra.checkPendingAuthorizationLimit(ctx, *req.RegistrationID); err != nil {
+			return nil, err
+		}
+	}
+
 	var newAuthz []*corepb.Authorization
 	for _, name := range parsedCSR.DNSNames {
 		if _, present := gotAuthzFor[name]; present {
 			continue
 		}
 		identifier := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if err := ra.PA.WillingToIssue(identifier); err != nil {
-			return nil, err
-		}
-		if err := ra.checkPendingAuthorizationLimit(ctx, *req.RegistrationID); err != nil {
-			return nil, err
-		}
+		// TODO(#3069): Batch this check
 		if err := ra.checkInvalidAuthorizationLimit(ctx, *req.RegistrationID, identifier.Value); err != nil {
 			return nil, err
 		}
-		pa, err := ra.createPendingAuthz(ctx, *req.RegistrationID, identifier)
+		pb, err := ra.createPendingAuthz(ctx, *req.RegistrationID, identifier)
 		if err != nil {
 			return nil, err
 		}
-		paPB, err := bgrpc.AuthzToPB(pa)
-		if err != nil {
-			return nil, err
-		}
-		newAuthz = append(newAuthz, paPB)
+		newAuthz = append(newAuthz, pb)
 	}
 
 	if len(newAuthz) > 0 {
@@ -1450,12 +1457,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	return storedOrder, nil
 }
 
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (core.Authorization, error) {
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-	authz := core.Authorization{
-		Identifier:     identifier,
-		RegistrationID: reg,
-		Status:         core.StatusPending,
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (*corepb.Authorization, error) {
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).UnixNano()
+	status := string(core.StatusPending)
+	authz := &corepb.Authorization{
+		Identifier:     &identifier.Value,
+		RegistrationID: &reg,
+		Status:         &status,
 		Expires:        &expires,
 	}
 
@@ -1464,10 +1472,10 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		if err != nil {
 			outErr := berrors.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", outErr, err))
-			return core.Authorization{}, outErr
+			return nil, outErr
 		}
 		if !isSafeResp.GetIsSafe() {
-			return core.Authorization{}, berrors.UnauthorizedError(
+			return nil, berrors.UnauthorizedError(
 				"%q was considered an unsafe domain by a third-party API",
 				identifier.Value,
 			)
@@ -1477,14 +1485,23 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	// Create challenges. The WFE will  update them with URIs before sending them out.
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
 	// Check each challenge for sanity.
-	for _, challenge := range authz.Challenges {
+	for _, challenge := range challenges {
 		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
-			return core.Authorization{}, err
+			return nil, err
 		}
+		challPB, err := bgrpc.ChallengeToPB(challenge)
+		if err != nil {
+			return nil, err
+		}
+		authz.Challenges = append(authz.Challenges, challPB)
 	}
-	authz.Challenges, authz.Combinations = challenges, combinations
+	comboBytes, err := json.Marshal(combinations)
+	if err != nil {
+		return nil, err
+	}
+	authz.Combinations = comboBytes
 	return authz, nil
 }

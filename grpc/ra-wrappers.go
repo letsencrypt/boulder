@@ -103,7 +103,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 	if err != nil {
 		return core.Authorization{}, err
 	}
-	challPB, err := challengeToPB(chall)
+	challPB, err := ChallengeToPB(chall)
 	if err != nil {
 		return core.Authorization{}, err
 	}

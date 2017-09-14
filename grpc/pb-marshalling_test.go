@@ -106,8 +106,8 @@ func TestChallenge(t *testing.T) {
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
-	pb, err := challengeToPB(chall)
-	test.AssertNotError(t, err, "challengeToPB failed")
+	pb, err := ChallengeToPB(chall)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
 	recon, err := pbToChallenge(pb)
@@ -127,8 +127,8 @@ func TestChallenge(t *testing.T) {
 		},
 	}
 	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
-	pb, err = challengeToPB(chall)
-	test.AssertNotError(t, err, "challengeToPB failed")
+	pb, err = ChallengeToPB(chall)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
 	recon, err = pbToChallenge(pb)

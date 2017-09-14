@@ -1368,7 +1368,14 @@ func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 
 // GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
 func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authz, err := ssa.GetValidAuthorizations(ctx, *req.RegistrationID, req.Domains, time.Unix(0, *req.Now))
+	authz, err := ssa.getAuthorizations(
+		ctx,
+		authorizationTable,
+		string(core.StatusValid),
+		*req.RegistrationID,
+		req.Domains,
+		time.Unix(0, *req.Now),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1377,20 +1384,19 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	}
 
 	// remove names we already have authz for
-	for i, l := 0, len(req.Domains); i < l; i++ {
-		if _, present := authz[req.Domains[i]]; present {
-			req.Domains = append(req.Domains[:i], req.Domains[i+1:]...)
-			i--
-			l--
+	remainingNames := []string{}
+	for _, name := range req.Domains {
+		if _, present := authz[name]; !present {
+			remainingNames = append(remainingNames, name)
 		}
 	}
-	pendingAuthz, err := ssa.getPendingAuthorizations(ctx, *req.RegistrationID, req.Domains, time.Unix(0, *req.Now))
+	pendingAuthz, err := ssa.getPendingAuthorizations(ctx, *req.RegistrationID, remainingNames, time.Unix(0, *req.Now))
 	if err != nil {
 		return nil, err
 	}
 	// merge pending into valid
-	for n, a := range pendingAuthz {
-		authz[n] = a
+	for name, a := range pendingAuthz {
+		authz[name] = a
 	}
 	return authzMapToPB(authz)
 }
@@ -1403,11 +1409,11 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 		if err != nil {
 			return nil, err
 		}
-		authz, err = ssa.NewPendingAuthorization(ctx, authz)
+		result, err := ssa.NewPendingAuthorization(ctx, authz)
 		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, authz.ID)
+		ids = append(ids, result.ID)
 	}
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
 }
