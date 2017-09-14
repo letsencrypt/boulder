@@ -16,6 +16,7 @@ const (
 	InvalidEmail
 	ConnectionFailure
 	WrongAuthorizationState
+	CAA
 )
 
 // BoulderError represents internal Boulder errors
@@ -79,4 +80,8 @@ func ConnectionFailureError(msg string, args ...interface{}) error {
 
 func WrongAuthorizationStateError(msg string, args ...interface{}) error {
 	return New(WrongAuthorizationState, msg, args...)
+}
+
+func CAAError(msg string, args ...interface{}) error {
+	return New(CAA, msg, args...)
 }

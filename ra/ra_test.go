@@ -1844,8 +1844,8 @@ func TestRecheckCAAFail(t *testing.T) {
 	err := ra.recheckCAA(context.Background(), names)
 	if err == nil {
 		t.Errorf("expected err, got nil")
-	} else if err.(*berrors.BoulderError).Type != berrors.Unauthorized {
-		t.Errorf("expected Unauthorized, got %v", err.(*berrors.BoulderError).Type)
+	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
+		t.Errorf("expected CAA error, got %v", err.(*berrors.BoulderError).Type)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
 		t.Errorf("expected error to contain error for a.com, got %q", err)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {

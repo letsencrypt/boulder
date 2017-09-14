@@ -47,7 +47,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 		valid,
 	))
 	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
+		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
 	return nil
 }
