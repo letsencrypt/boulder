@@ -137,8 +137,6 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
-	case "bad-local-resolver.com":
-		return nil, nil, fmt.Errorf("error")
 	}
 	return results, nil, nil
 }
