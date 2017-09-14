@@ -3,11 +3,6 @@
     "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
-    "tls": {
-      "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
-    },
     "grpc": {
       "address": ":9091",
       "clientNames": [
@@ -15,19 +10,20 @@
         "ocsp-updater.boulder"
       ]
     },
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
+    },
     "saService": {
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     }
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "syslog": {
-    "stdoutlevel": 6
+    "stdoutlevel": 6,
+    "sysloglevel": 4
   },
 
   "common": {

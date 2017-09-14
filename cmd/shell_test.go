@@ -171,12 +171,9 @@ func TestReadConfigFile(t *testing.T) {
 			PasswordConfig
 			SMTPConfig
 		}
-		Statsd StatsdConfig
-		Syslog SyslogConfig
 	}
 	var c config
 	err = ReadConfigFile("../test/config/notify-mailer.json", &c)
 	test.AssertNotError(t, err, "ReadConfigFile(../test/config/notify-mailer.json) errored")
 	test.AssertEquals(t, c.NotifyMailer.SMTPConfig.Server, "localhost")
-	test.AssertEquals(t, c.Syslog.StdoutLevel, 6)
 }

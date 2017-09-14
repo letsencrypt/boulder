@@ -55,7 +55,12 @@
 //	- Handle different argument/return types (e.g. ..., chan, map, interface).
 package gomock
 
-import "sync"
+import (
+	"fmt"
+	"reflect"
+	"runtime"
+	"sync"
+)
 
 // A TestReporter is something that can be used to report test failures.
 // It is satisfied by the standard library's *testing.T.
@@ -81,6 +86,18 @@ func NewController(t TestReporter) *Controller {
 }
 
 func (ctrl *Controller) RecordCall(receiver interface{}, method string, args ...interface{}) *Call {
+	recv := reflect.ValueOf(receiver)
+	for i := 0; i < recv.Type().NumMethod(); i++ {
+		if recv.Type().Method(i).Name == method {
+			return ctrl.RecordCallWithMethodType(receiver, method, recv.Method(i).Type(), args...)
+		}
+	}
+	ctrl.t.Fatalf("gomock: failed finding method %s on %T", method, receiver)
+	// In case t.Fatalf does not panic.
+	panic(fmt.Sprintf("gomock: failed finding method %s on %T", method, receiver))
+}
+
+func (ctrl *Controller) RecordCallWithMethodType(receiver interface{}, method string, methodType reflect.Type, args ...interface{}) *Call {
 	// TODO: check arity, types.
 	margs := make([]Matcher, len(args))
 	for i, arg := range args {
@@ -98,7 +115,8 @@ func (ctrl *Controller) RecordCall(receiver interface{}, method string, args ...
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 
-	call := &Call{t: ctrl.t, receiver: receiver, method: method, args: margs, minCalls: 1, maxCalls: 1}
+	origin := callerInfo(2)
+	call := &Call{t: ctrl.t, receiver: receiver, method: method, methodType: methodType, args: margs, origin: origin, minCalls: 1, maxCalls: 1}
 
 	ctrl.expectedCalls.Add(call)
 	return call
@@ -108,9 +126,10 @@ func (ctrl *Controller) Call(receiver interface{}, method string, args ...interf
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 
-	expected := ctrl.expectedCalls.FindMatch(receiver, method, args)
-	if expected == nil {
-		ctrl.t.Fatalf("no matching expected call: %T.%v(%v)", receiver, method, args)
+	expected, err := ctrl.expectedCalls.FindMatch(receiver, method, args)
+	if err != nil {
+		origin := callerInfo(2)
+		ctrl.t.Fatalf("Unexpected call to %T.%v(%v) at %s because: %s", receiver, method, args, origin, err)
 	}
 
 	// Two things happen here:
@@ -164,4 +183,11 @@ func (ctrl *Controller) Finish() {
 	if failures {
 		ctrl.t.Fatalf("aborting test due to missing call(s)")
 	}
+}
+
+func callerInfo(skip int) string {
+	if _, file, line, ok := runtime.Caller(skip + 1); ok {
+		return fmt.Sprintf("%s:%d", file, line)
+	}
+	return "unknown file"
 }

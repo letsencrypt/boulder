@@ -11,6 +11,7 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 60,
     "pendingAuthorizationLifetimeDays": 7,
+    "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",
@@ -38,14 +39,13 @@
         "wfe.boulder",
         "admin-revoker.boulder"
       ]
+    },
+    "features": {
+      "AllowKeyRollover": true,
+      "CountCertificatesExact": true,
+      "RecheckCAA": true,
+      "ReusePendingAuthz": true
     }
-  },
-
-  "allowedSigningAlgos": {
-    "rsa": true,
-    "ecdsanistp256": true,
-    "ecdsanistp384": true,
-    "ecdsanistp521": false
   },
 
   "pa": {
@@ -56,13 +56,9 @@
     }
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "syslog": {
-    "stdoutlevel": 6
+    "stdoutlevel": 6,
+    "sysloglevel": 4
   },
 
   "common": {

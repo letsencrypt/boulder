@@ -223,7 +223,7 @@ func main() {
 		gw := bgrpc.NewRegistrationAuthorityServer(rai)
 		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
 		go func() {
-			err = grpcSrv.Serve(listener)
+			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 			cmd.FailOnError(err, "RA gRPC service failed")
 		}()
 	}

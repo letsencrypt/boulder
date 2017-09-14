@@ -9,10 +9,8 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -30,7 +28,7 @@ func TestErrorWrapping(t *testing.T) {
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	es := &errorServer{}
 	testproto.RegisterChillerServer(srv, es)
-	lis, err := net.Listen("tcp", ":")
+	lis, err := net.Listen("tcp", "127.0.0.1:")
 	test.AssertNotError(t, err, "Failed to create listener")
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
@@ -43,14 +41,11 @@ func TestErrorWrapping(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := testproto.NewChillerClient(conn)
 
-	for _, tc := range []error{
-		core.MalformedRequestError("yup"),
-		&probs.ProblemDetails{Type: probs.MalformedProblem, Detail: "yup"},
-		berrors.MalformedError("yup"),
-	} {
-		es.err = tc
-		_, err := client.Chill(context.Background(), &testproto.Time{})
-		test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
-		test.AssertDeepEquals(t, err, tc)
-	}
+	es.err = berrors.MalformedError("yup")
+	_, err = client.Chill(context.Background(), &testproto.Time{})
+	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
+	test.AssertDeepEquals(t, err, es.err)
+
+	test.AssertEquals(t, wrapError(nil, nil), nil)
+	test.AssertEquals(t, unwrapError(nil, nil), nil)
 }

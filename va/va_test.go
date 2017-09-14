@@ -813,7 +813,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 		"empty-txts.com",
 		chalDNS,
 		core.Authorization{})
-	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
+	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT records found for DNS challenge")
 }
 
 func TestPerformValidationValid(t *testing.T) {
@@ -1305,6 +1305,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
+	mockLog := blog.NewMock()
 	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob == nil {
@@ -1333,6 +1334,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// Local and remote 2 working, should fail
+	localVA.log = mockLog
 	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
@@ -1340,6 +1342,14 @@ func TestPerformRemoteValidation(t *testing.T) {
 	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
+	}
+	failLogs := mockLog.GetAllMatching(`Validation failed due to remote failures`)
+	if len(failLogs) == 0 {
+		t.Error("Expected log line about failure due to remote failures, didn't get it")
+	}
+	remoteFailMetric := test.CountCounter(localVA.metrics.remoteValidationFailures)
+	if remoteFailMetric != 1 {
+		t.Errorf("Expected remote_validation_failures to be incremented, but it wasn't")
 	}
 
 	// Local and remote 2 working with maxRemoteFailures == 1, should succeed
