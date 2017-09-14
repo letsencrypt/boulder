@@ -78,8 +78,8 @@ func TestCNAMEToReserved(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Expected error for cname-to-reserved.com, got success")
 	}
-	if prob.Type != probs.ConnectionProblem {
-		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, prob.Type)
+	if prob.Type != probs.CAAProblem {
+		t.Errorf("Expected CAA error type %s, got %s", probs.CAAProblem, prob.Type)
 	}
 	expected := "CAA record for cname-to-reserved.com prevents issuance"
 	if prob.Detail != expected {
