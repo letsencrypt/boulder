@@ -464,16 +464,20 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
+	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	if err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		// TODO(#595): check for missing account err
 		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
 		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
+		return
 	}
 
 	var init core.Registration
-	err := json.Unmarshal(body, &init)
+	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return

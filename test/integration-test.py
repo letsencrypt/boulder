@@ -249,7 +249,7 @@ def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not."""
     auth_and_issue(["good-caa-reserved.com"])
 
-    chisel.expect_problem("urn:acme:error:connection",
+    chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
 def run(cmd, **kwargs):

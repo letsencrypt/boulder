@@ -27,6 +27,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.WrongAuthorizationState:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.CAA:
+		return probs.CAA(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
