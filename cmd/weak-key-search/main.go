@@ -60,7 +60,7 @@ func doWork(work chan certInfo, parallelism int, wkl *goodkey.WeakRSAKeys, log b
 			for ci := range work {
 				cert, err := x509.ParseCertificate(ci.der)
 				cmd.FailOnError(err, "x509.ParseCertificate failed")
-				if rk := cert.PublicKey.(*rsa.PublicKey); wkl.Known(rk) {
+				if rk, ok := cert.PublicKey.(*rsa.PublicKey); ok && wkl.Known(rk) {
 					log.Info(fmt.Sprintf("cert contains weak key: %s", ci.serial))
 				}
 			}
