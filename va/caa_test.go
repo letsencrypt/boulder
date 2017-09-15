@@ -60,13 +60,13 @@ func TestTreeClimbingLookupCAASimpleSuccess(t *testing.T) {
 	}
 }
 
-func TestTreeClimbingLookupCAALimitHit(t *testing.T) {
+func TestTreeClimbingLookupCAALoop(t *testing.T) {
 	target := "blog.cname-to-subdomain.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
-	if prob == nil {
-		t.Fatalf("Expected failure for %q, got success", target)
+	if prob != nil {
+		t.Fatalf("Expected success for %q, got failure: %s", target, prob)
 	}
 }
 
