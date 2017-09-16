@@ -136,9 +136,9 @@ func parentDomains(fqdn string) []string {
 // of parallelCAALookup. When the LegacyCAA flag is enabled, we also
 // do linear tree climbing on single-level aliases.
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
-	// We will do an (arbitrary) maximum of 15 tree-climbing queries to avoid CNAME/CAA
+	// We will do an (arbitrary) maximum of 50 tree-climbing queries to avoid CNAME/CAA
 	// hybrid loops
-	maxAttempts := 15
+	maxAttempts := 50
 	targets := map[string]bool{}
 	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts, &targets)
 }
