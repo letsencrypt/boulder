@@ -1,7 +1,11 @@
 package va
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -11,6 +15,131 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
+
+// caaMockDNS implements the `dns.DNSClient` interface with a set of useful test
+// answers for CAA queries.
+type caaMockDNS struct{}
+
+func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+	ip := net.ParseIP("127.0.0.1")
+	return []net.IP{ip}, nil
+}
+
+func (mock caaMockDNS) LookupMX(_ context.Context, domain string) ([]string, error) {
+	return nil, nil
+}
+
+func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, []*dns.CNAME, error) {
+	var results []*dns.CAA
+	var record dns.CAA
+	switch strings.TrimRight(domain, ".") {
+	case "caa-timeout.com":
+		return nil, nil, fmt.Errorf("error")
+	case "deep-cname.not-present.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "target.not-present.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "deep-cname.present-with-parameter.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "cname-to-reserved.com"
+		return []*dns.CAA{
+				&dns.CAA{
+					Tag:   "issue",
+					Value: "ca.com",
+				},
+			}, []*dns.CNAME{
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: domain},
+					Target: "cname-to-reserved.com",
+				},
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: "cname-to-reserved.com"},
+					Target: "reserved.com",
+				},
+			}, nil
+	case "blog.cname-to-subdomain.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "www.blog.cname-to-subdomain.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "cname-to-reserved.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "reserved.com"
+		return []*dns.CAA{
+				&dns.CAA{
+					Tag:   "issue",
+					Value: "ca.com",
+				},
+			}, []*dns.CNAME{
+				&dns.CNAME{
+					Hdr:    dns.RR_Header{Name: domain},
+					Target: "reserved.com",
+				},
+			}, nil
+	case "cname-to-child-of-reserved.com":
+		cnameRecord := new(dns.CNAME)
+		cnameRecord.Hdr = dns.RR_Header{Name: domain}
+		cnameRecord.Target = "www.reserved.com"
+		return nil, []*dns.CNAME{cnameRecord}, nil
+	case "reserved.com":
+		record.Tag = "issue"
+		record.Value = "ca.com"
+		results = append(results, &record)
+	case "critical.com":
+		record.Flag = 1
+		record.Tag = "issue"
+		record.Value = "ca.com"
+		results = append(results, &record)
+	case "present.com", "present.servfail.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org"
+		results = append(results, &record)
+	case "com":
+		// com has no CAA records.
+		return nil, nil, nil
+	case "servfail.com", "servfail.present.com":
+		return results, nil, fmt.Errorf("SERVFAIL")
+	case "multi-crit-present.com":
+		record.Flag = 1
+		record.Tag = "issue"
+		record.Value = "ca.com"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Value = "letsencrypt.org"
+		results = append(results, &secondRecord)
+	case "unknown-critical.com":
+		record.Flag = 128
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "unknown-critical2.com":
+		record.Flag = 1
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "unknown-noncritical.com":
+		record.Flag = 0x7E // all bits we don't treat as meaning "critical"
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "present-with-parameter.com":
+		record.Tag = "issue"
+		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
+		results = append(results, &record)
+	case "unsatisfiable.com":
+		record.Tag = "issue"
+		record.Value = ";"
+		results = append(results, &record)
+	}
+	return results, nil, nil
+}
 
 func TestParentDomains(t *testing.T) {
 	pd := parentDomains("")
@@ -31,6 +160,7 @@ func TestTreeClimbNotPresent(t *testing.T) {
 	target := "deep-cname.not-present.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob != nil {
 		t.Fatalf("Expected success for %q, got %s", target, prob)
@@ -44,6 +174,7 @@ func TestDeepTreeClimb(t *testing.T) {
 	target := "deep-cname.present-with-parameter.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob == nil {
 		t.Fatalf("Expected error for %q, got none", target)
@@ -54,6 +185,7 @@ func TestTreeClimbingLookupCAASimpleSuccess(t *testing.T) {
 	target := "www.present-with-parameter.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob != nil {
 		t.Fatalf("Expected success for %q, got %s", target, prob)
@@ -64,6 +196,7 @@ func TestTreeClimbingLookupCAALoop(t *testing.T) {
 	target := "blog.cname-to-subdomain.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob != nil {
 		t.Fatalf("Expected success for %q, got failure: %s", target, prob)
@@ -74,6 +207,7 @@ func TestCNAMEToReserved(t *testing.T) {
 	target := "cname-to-reserved.com"
 	_ = features.Set(map[string]bool{"LegacyCAA": true})
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: target})
 	if prob == nil {
 		t.Fatalf("Expected error for cname-to-reserved.com, got success")
@@ -89,11 +223,12 @@ func TestCNAMEToReserved(t *testing.T) {
 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
-	expected := "DNS problem: query timed out looking up CAA for always.timeout"
+	expected := "error"
 	if err.Detail != expected {
 		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
 	}
@@ -131,6 +266,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
 	for _, caaTest := range tests {
 		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
@@ -171,6 +307,7 @@ func TestCAAFailure(t *testing.T) {
 	defer hs.Close()
 
 	va, _ := setup(hs, 0)
+	va.dnsClient = caaMockDNS{}
 
 	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
