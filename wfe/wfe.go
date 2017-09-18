@@ -671,7 +671,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.problemDetailsForError(err, "Error creating new registration"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new registration"), err)
 		return
 	}
 	logEvent.Requester = reg.ID
@@ -724,7 +724,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.problemDetailsForError(err, "Error creating new authz"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
 	logEvent.Extra["AuthzID"] = authz.ID
