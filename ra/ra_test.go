@@ -1770,8 +1770,6 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
@@ -1814,8 +1812,6 @@ func (cf *caaFailer) IsCAAValid(
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	err := ra.recheckCAA(context.Background(), nil)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -1825,8 +1821,6 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	names := []string{"a.com", "b.com", "c.com"}
 	err := ra.recheckCAA(context.Background(), names)
 	if err != nil {
@@ -1837,8 +1831,6 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	names := []string{"a.com", "b.com", "c.com"}
 	ra.caa = &caaFailer{}
 	err := ra.recheckCAA(context.Background(), names)
