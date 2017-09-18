@@ -2174,3 +2174,59 @@ func TestRevokeCertificateWithAuthz(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
+
+type mockSAGetRegByKeyFails struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("whoops")
+}
+
+// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewAccount should
+// return internal server errors.
+func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	if responseWriter.Code != 500 {
+		t.Fatalf("Wrong response code %d for NewAccount with failing GetRegByKey (wanted 500)", responseWriter.Code)
+	}
+	var prob probs.ProblemDetails
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+	test.AssertNotError(t, err, "unmarshalling response")
+	if prob.Type != probs.V2ErrorNS+probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
+}
+
+type mockSAGetRegByKeyNotFound struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, berrors.NotFoundError("not found")
+}
+
+// When SA.GetRegistrationByKey returns NotFound, NewAccount should
+// succeed.
+func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	if responseWriter.Code != http.StatusCreated {
+		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
+	}
+}

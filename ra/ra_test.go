@@ -1770,8 +1770,6 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
@@ -1814,8 +1812,6 @@ func (cf *caaFailer) IsCAAValid(
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	err := ra.recheckCAA(context.Background(), nil)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -1825,8 +1821,6 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	names := []string{"a.com", "b.com", "c.com"}
 	err := ra.recheckCAA(context.Background(), names)
 	if err != nil {
@@ -1837,15 +1831,13 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	names := []string{"a.com", "b.com", "c.com"}
 	ra.caa = &caaFailer{}
 	err := ra.recheckCAA(context.Background(), names)
 	if err == nil {
 		t.Errorf("expected err, got nil")
-	} else if err.(*berrors.BoulderError).Type != berrors.Unauthorized {
-		t.Errorf("expected Unauthorized, got %v", err.(*berrors.BoulderError).Type)
+	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
+		t.Errorf("expected CAA error, got %v", err.(*berrors.BoulderError).Type)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
 		t.Errorf("expected error to contain error for a.com, got %q", err)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {

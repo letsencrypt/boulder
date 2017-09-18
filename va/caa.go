@@ -47,7 +47,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 		valid,
 	))
 	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
+		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
 	return nil
 }
@@ -136,18 +136,23 @@ func parentDomains(fqdn string) []string {
 // of parallelCAALookup. When the LegacyCAA flag is enabled, we also
 // do linear tree climbing on single-level aliases.
 func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
-	// We will do an (arbitrary) maximum of 15 tree-climbing queries to avoid CNAME/CAA
+	// We will do an (arbitrary) maximum of 50 tree-climbing queries to avoid CNAME/CAA
 	// hybrid loops
-	maxAttempts := 15
-	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts)
+	maxAttempts := 50
+	targets := map[string]bool{}
+	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts, &targets)
 }
 
-func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, attemptsRemaining *int) ([]*dns.CAA, error) {
+func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, attemptsRemaining *int, targets *map[string]bool) ([]*dns.CAA, error) {
 	if *attemptsRemaining < 1 {
 		return nil, fmt.Errorf("too many CNAMEs when looking up CAA")
 	}
+	if _, present := (*targets)[fqdn]; present {
+		return nil, nil
+	}
 	*attemptsRemaining--
 	caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
+	(*targets)[fqdn] = true
 	if err != nil {
 		return nil, err
 	} else if len(caas) > 0 {
@@ -163,7 +168,7 @@ func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Co
 			// list.
 			newTargets := parentDomains(cnames[i].Target)
 			for _, newTarget := range newTargets {
-				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, attemptsRemaining)
+				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, attemptsRemaining, targets)
 				if len(caas) != 0 || err != nil {
 					return caas, err
 				}
