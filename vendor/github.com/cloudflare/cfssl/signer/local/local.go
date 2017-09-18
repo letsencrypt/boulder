@@ -29,6 +29,7 @@ import (
 	"github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	"golang.org/x/net/context"
+	"time"
 )
 
 // Signer contains a signer that uses the standard library to
@@ -96,14 +97,14 @@ func NewSignerFromFile(caFile, caKeyFile string, policy *config.Signing) (*Signe
 	return NewSigner(priv, parsedCa, signer.DefaultSigAlgo(priv), policy)
 }
 
-func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile) (cert []byte, err error) {
+func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile, notBefore time.Time, notAfter time.Time) (cert []byte, err error) {
 	var distPoints = template.CRLDistributionPoints
-	err = signer.FillTemplate(template, s.policy.Default, profile)
 	if distPoints != nil && len(distPoints) > 0 {
 		template.CRLDistributionPoints = distPoints
 	}
+	err = signer.FillTemplate(template, s.policy.Default, profile, notBefore, notAfter)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	var initRoot bool
@@ -342,7 +343,7 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		var poisonExtension = pkix.Extension{Id: signer.CTPoisonOID, Critical: true, Value: []byte{0x05, 0x00}}
 		var poisonedPreCert = certTBS
 		poisonedPreCert.ExtraExtensions = append(safeTemplate.ExtraExtensions, poisonExtension)
-		cert, err = s.sign(&poisonedPreCert, profile)
+		cert, err = s.sign(&poisonedPreCert, profile, req.NotBefore, req.NotAfter)
 		if err != nil {
 			return
 		}
@@ -382,17 +383,22 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		certTBS.ExtraExtensions = append(certTBS.ExtraExtensions, SCTListExtension)
 	}
 	var signedCert []byte
-	signedCert, err = s.sign(&certTBS, profile)
+	signedCert, err = s.sign(&certTBS, profile, req.NotBefore, req.NotAfter)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get the AKI from signedCert.  This is required to support Go 1.9+.
+	// In prior versions of Go, x509.CreateCertificate updated the
+	// AuthorityKeyId of certTBS.
+	parsedCert, _ := helpers.ParseCertificatePEM(signedCert)
 
 	if s.dbAccessor != nil {
 		var certRecord = certdb.CertificateRecord{
 			Serial: certTBS.SerialNumber.String(),
 			// this relies on the specific behavior of x509.CreateCertificate
-			// which updates certTBS AuthorityKeyId from the signer's SubjectKeyId
-			AKI:     hex.EncodeToString(certTBS.AuthorityKeyId),
+			// which sets the AuthorityKeyId from the signer's SubjectKeyId
+			AKI:     hex.EncodeToString(parsedCert.AuthorityKeyId),
 			CALabel: req.Label,
 			Status:  "good",
 			Expiry:  certTBS.NotAfter,
@@ -450,6 +456,11 @@ func (s *Signer) SetPolicy(policy *config.Signing) {
 // SetDBAccessor sets the signers' cert db accessor
 func (s *Signer) SetDBAccessor(dba certdb.Accessor) {
 	s.dbAccessor = dba
+}
+
+// GetDBAccessor returns the signers' cert db accessor
+func (s *Signer) GetDBAccessor() certdb.Accessor {
+	return s.dbAccessor
 }
 
 // SetReqModifier does nothing for local

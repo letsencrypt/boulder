@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -215,6 +216,8 @@ func main() {
 			log.Fatalln("Couldn't start HTTP server", err)
 		}
 	}()
+
+	go cmd.CatchSignals(nil, nil)
 
 	err = srv.serveSMTP(l)
 	if err != nil {

@@ -28,16 +28,18 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(cmd, race_detection):
+def run(cmd, race_detection, fakeclock):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
+    if fakeclock is not None:
+        e.setdefault("FAKECLOCK", fakeclock)
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec ./bin/%s""" % cmd
     p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
 
-def start(race_detection):
+def start(race_detection, fakeclock=None):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -85,7 +87,7 @@ def start(race_detection):
         return False
     for prog in progs:
         try:
-            processes.append(run(prog, race_detection))
+            processes.append(run(prog, race_detection, fakeclock))
         except Exception as e:
             print(e)
             return False
@@ -165,8 +167,10 @@ def stop():
     # When we are about to exit, send SIGTERM to each subprocess and wait for
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
+    global processes
     for p in processes:
         if p.poll() is None:
             p.send_signal(signal.SIGTERM)
     for p in processes:
         p.wait()
+    processes = []

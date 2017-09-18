@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/cloudflare/cfssl/helpers"
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
 	"google.golang.org/grpc"
 
@@ -170,7 +169,7 @@ func main() {
 		c.CA,
 		sa,
 		pa,
-		clock.Default(),
+		cmd.Clock(),
 		scope,
 		issuers,
 		kp,
