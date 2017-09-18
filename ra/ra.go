@@ -685,10 +685,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 		}
 	}
 
-	if features.Enabled(features.RecheckCAA) {
-		if err = ra.recheckCAA(ctx, recheckNames); err != nil {
-			return err
-		}
+	if err = ra.recheckCAA(ctx, recheckNames); err != nil {
+		return err
 	}
 
 	if len(badNames) > 0 {
