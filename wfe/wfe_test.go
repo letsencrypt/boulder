@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -693,11 +693,8 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change", "meta": {"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
-	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
-	// the correct terms-of-service URL.
-	_ = features.Set(map[string]bool{"DirectoryMeta": true})
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	mux.ServeHTTP(responseWriter, &http.Request{
@@ -709,8 +706,7 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
-	// Even with the DirectoryMeta flag enabled, if the UA is
-	// LetsEncryptPythonClient we expect to *not* see the meta entry.
+	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
@@ -806,15 +802,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
 	}
 
 	for _, tt := range dirTests {
