@@ -405,7 +405,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 		// need to add a new endpoint or meta element.
 		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
 	}
-	if features.Enabled(features.DirectoryMeta) && !clientDirChangeIntolerant {
+	if !clientDirChangeIntolerant {
 		// ACME since draft-02 describes an optional "meta" directory entry. The
 		// meta entry may optionally contain a "terms-of-service" URI for the
 		// current ToS.
