@@ -416,6 +416,24 @@ func addHeadIfGet(s []string) []string {
 	return s
 }
 
+func removeRandomKey(b []byte) []byte {
+	var gotMap map[string]interface{}
+	var _ = json.Unmarshal(b, &gotMap)
+	var key string
+	for k, v := range gotMap {
+		if v == randomDirKeyExplanationLink {
+			key = k
+			break
+		}
+	}
+	if key != "" {
+		delete(gotMap, key)
+		b, _ = json.Marshal(gotMap)
+		return b
+	}
+	return b
+}
+
 func assertJSONEquals(t *testing.T, got, expected string) {
 	var gotMap, expectedMap map[string]interface{}
 	err := json.Unmarshal([]byte(got), &gotMap)
@@ -693,7 +711,8 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change", "meta": {"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	body := removeRandomKey(responseWriter.Body.Bytes())
+	assertJSONEquals(t, string(body), `{"key-change":"http://localhost:4300/acme/key-change", "new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
@@ -704,7 +723,8 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	body = removeRandomKey(responseWriter.Body.Bytes())
+	assertJSONEquals(t, string(body), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 
 	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry.
 	responseWriter.Body.Reset()
@@ -724,8 +744,6 @@ func TestDirectory(t *testing.T) {
 }
 
 func TestRandomDirectoryKey(t *testing.T) {
-	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 
@@ -831,7 +849,8 @@ func TestRelativeDirectory(t *testing.T) {
 		})
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-		assertJSONEquals(t, responseWriter.Body.String(), tt.result)
+		body := removeRandomKey(responseWriter.Body.Bytes())
+		assertJSONEquals(t, string(body), tt.result)
 	}
 }
 
