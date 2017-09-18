@@ -68,6 +68,7 @@ var (
 
 // Key management algorithms
 const (
+	ED25519            = KeyAlgorithm("ED25519")
 	RSA1_5             = KeyAlgorithm("RSA1_5")             // RSA-PKCS1v1.5
 	RSA_OAEP           = KeyAlgorithm("RSA-OAEP")           // RSA-OAEP-SHA1
 	RSA_OAEP_256       = KeyAlgorithm("RSA-OAEP-256")       // RSA-OAEP-SHA256
@@ -89,6 +90,7 @@ const (
 
 // Signature algorithms
 const (
+	EdDSA = SignatureAlgorithm("EdDSA")
 	HS256 = SignatureAlgorithm("HS256") // HMAC using SHA-256
 	HS384 = SignatureAlgorithm("HS384") // HMAC using SHA-384
 	HS512 = SignatureAlgorithm("HS512") // HMAC using SHA-512
@@ -295,6 +297,9 @@ func (parsed rawHeader) getCritical() ([]string, error) {
 // sanitized produces a cleaned-up header object from the raw JSON.
 func (parsed rawHeader) sanitized() (h Header, err error) {
 	for k, v := range parsed {
+		if v == nil {
+			continue
+		}
 		switch k {
 		case headerJWK:
 			var jwk *JSONWebKey

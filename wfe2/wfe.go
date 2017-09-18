@@ -502,7 +502,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	acct, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
-		logEvent.AddError("unable to create new account: %s", err)
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
@@ -522,7 +521,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err != nil {
 		// ServerInternal because we just created this account, and it
 		// should be OK.
-		logEvent.AddError("unable to marshal account: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 		return
 	}
@@ -804,7 +802,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// After expiring, challenges are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
-		logEvent.AddError("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -879,7 +876,6 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
-		logEvent.AddError("unable to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
 		return
 	}
@@ -911,7 +907,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Check that the account ID matching the key used matches
 	// the account ID on the authz object
 	if currAcct.ID != authz.RegistrationID {
-		logEvent.AddError("User account id: %d != Authorization account id: %v", currAcct.ID, authz.RegistrationID)
 		wfe.sendError(response,
 			logEvent,
 			probs.Unauthorized("User account ID doesn't match account ID in authorization"),
@@ -922,7 +917,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	var challengeUpdate core.Challenge
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		logEvent.AddError("error JSON unmarshaling challenge response: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
 	}
@@ -930,7 +924,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Ask the RA to update this authorization
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
-		logEvent.AddError("unable to update challenge: %s", err)
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 		return
 	}
@@ -946,7 +939,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
-		logEvent.AddError("failed to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
 		return
 	}
@@ -971,16 +963,13 @@ func (wfe *WebFrontEndImpl) Account(
 	idStr := request.URL.Path
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		logEvent.AddError("account ID must be an integer, was %#v", idStr)
 		wfe.sendError(response, logEvent, probs.Malformed("Account ID must be an integer"), err)
 		return
 	} else if id <= 0 {
 		msg := fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	} else if id != currAcct.ID {
-		logEvent.AddError("Request signing key did not match account key: %d != %d", id, currAcct.ID)
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Request signing key did not match account key"), nil)
 		return
@@ -989,7 +978,6 @@ func (wfe *WebFrontEndImpl) Account(
 	var update core.Registration
 	err = json.Unmarshal(body, &update)
 	if err != nil {
-		logEvent.AddError("unable to JSON parse account: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 		return
 	}
@@ -1023,7 +1011,6 @@ func (wfe *WebFrontEndImpl) Account(
 		update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
 			update.Agreement, wfe.SubscriberAgreementURL)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
@@ -1037,7 +1024,6 @@ func (wfe *WebFrontEndImpl) Account(
 
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
 	if err != nil {
-		logEvent.AddError("unable to update account: %s", err)
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Unable to update account"), err)
 		return
@@ -1050,7 +1036,6 @@ func (wfe *WebFrontEndImpl) Account(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
 	if err != nil {
 		// ServerInternal because we just generated the account, it should be OK
-		logEvent.AddError("unable to marshal updated account: %s", err)
 		wfe.sendError(response, logEvent,
 			probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -1070,7 +1055,6 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		return false
 	}
 	if acct.ID != authz.RegistrationID {
-		logEvent.AddError("account ID doesn't match ID for authorization")
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
 		return false
@@ -1084,13 +1068,11 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		return false
 	}
 	if req.Status != core.StatusDeactivated {
-		logEvent.AddError("invalid status value")
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
 	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
 	if err != nil {
-		logEvent.AddError("unable to deactivate authorization", err)
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
@@ -1108,7 +1090,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
-		logEvent.AddError("No such authorization at id %s", id)
 		// TODO(#1199): handle db errors
 		wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
 		return
@@ -1121,8 +1102,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
-		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -1141,7 +1120,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
-		logEvent.AddError("Failed to JSON marshal authz: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
 		return
 	}
@@ -1179,7 +1157,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		logEvent.AddError("unable to parse certificate: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 		return
 	}
@@ -1220,7 +1197,6 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *requestEvent,
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		logEvent.AddError("unable to print build information: %s", err)
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
@@ -1358,7 +1334,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
-		logEvent.AddError("failed to marshal updated account: %q", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
 	}
 }
@@ -1371,7 +1346,6 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	logEvent *requestEvent) {
 	err := wfe.RA.DeactivateRegistration(ctx, acct)
 	if err != nil {
-		logEvent.AddError("unable to deactivate account", err)
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error deactivating account"), err)
 		return
@@ -1381,7 +1355,6 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
 		// ServerInternal because account is from DB and should be fine
-		logEvent.AddError("unable to marshal updated account: %s", err)
 		wfe.sendError(response, logEvent,
 			probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -1431,7 +1404,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// in the request
 	err := json.Unmarshal(body, &rawCSR)
 	if err != nil {
-		logEvent.AddError("unable to JSON unmarshal order request: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling order request"), err)
 		return
 	}
@@ -1443,7 +1415,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// and encoding/asn1 will refuse to parse it. If this is the case exit early
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
-		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
 		wfe.sendError(
 			response,
 			logEvent,
@@ -1456,7 +1427,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// Check for a malformed CSR early to avoid unnecessary RPCs
 	_, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
-		logEvent.AddError("unable to parse CSR: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
 		return
 	}
@@ -1466,7 +1436,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Csr:            rawCSR.CSR,
 	})
 	if err != nil {
-		logEvent.AddError("unable to create order: %s", err)
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
