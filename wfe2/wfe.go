@@ -32,6 +32,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/web"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -502,7 +503,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	acct, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Error creating new account"), err)
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
 	}
 	logEvent.Requester = acct.ID
@@ -628,7 +629,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// Revoke the certificate. AcctID may be 0 if there is no associated account
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
 	if err := wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID); err != nil {
-		return problemDetailsForError(err, "Failed to revoke certificate")
+		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
 	}
 
 	wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
@@ -923,7 +924,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Ask the RA to update this authorization
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update challenge"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 		return
 	}
 
@@ -1024,7 +1025,7 @@ func (wfe *WebFrontEndImpl) Account(
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
 	if err != nil {
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Unable to update account"), err)
+			web.ProblemDetailsForError(err, "Unable to update account"), err)
 		return
 	}
 
@@ -1072,7 +1073,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	}
 	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
 	if err != nil {
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating authorization"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
 	// Since the authorization passed to DeactivateAuthorization isn't
@@ -1327,7 +1328,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
 	if err != nil {
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Unable to update account with new key"), err)
+			web.ProblemDetailsForError(err, "Unable to update account with new key"), err)
 		return
 	}
 
@@ -1346,7 +1347,7 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	err := wfe.RA.DeactivateRegistration(ctx, acct)
 	if err != nil {
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Error deactivating account"), err)
+			web.ProblemDetailsForError(err, "Error deactivating account"), err)
 		return
 	}
 	acct.Status = core.StatusDeactivated
@@ -1435,7 +1436,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Csr:            rawCSR.CSR,
 	})
 	if err != nil {
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new order"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
 

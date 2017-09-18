@@ -22,7 +22,7 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", signatureValidationError("no signature algorithms suitable for given key type")
+	return "", fmt.Errorf("no signature algorithms suitable for given key type")
 }
 
 const (
@@ -43,16 +43,14 @@ func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) (str
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return invalidJWSAlgorithm, signatureValidationError(fmt.Sprintf(
+		return invalidJWSAlgorithm, fmt.Errorf(
 			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 			jwsAlgorithm,
-		))
+		)
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return invalidAlgorithmOnKey, signatureValidationError(fmt.Sprintf(
-			"algorithm '%s' on JWK is unacceptable",
-			key.Algorithm,
-		))
+		return invalidAlgorithmOnKey, fmt.Errorf("algorithm '%s' on JWK is unacceptable",
+			key.Algorithm)
 	}
 	return "", nil
 }

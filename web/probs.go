@@ -1,4 +1,4 @@
-package wfe
+package web
 
 import (
 	"fmt"
@@ -40,14 +40,12 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 // case of returning the same error back if its already a ProblemDetails. If the
 // error is of an type unknown to ProblemDetailsForError, it will return a
 // ServerInternal ProblemDetails.
-func problemDetailsForError(err error, msg string) *probs.ProblemDetails {
+func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	switch e := err.(type) {
 	case *probs.ProblemDetails:
 		return e
 	case *berrors.BoulderError:
 		return problemDetailsForBoulderError(e, msg)
-	case signatureValidationError:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
