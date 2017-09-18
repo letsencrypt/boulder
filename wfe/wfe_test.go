@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
