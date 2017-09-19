@@ -1368,7 +1368,7 @@ func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 
 // GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
 func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authz, err := ssa.getAuthorizations(
+	authzMap, err := ssa.getAuthorizations(
 		ctx,
 		authorizationTable,
 		string(core.StatusValid),
@@ -1379,14 +1379,14 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	if err != nil {
 		return nil, err
 	}
-	if len(authz) == len(req.Domains) {
-		return authzMapToPB(authz)
+	if len(authzMap) == len(req.Domains) {
+		return authzMapToPB(authzMap)
 	}
 
 	// remove names we already have authz for
 	remainingNames := []string{}
 	for _, name := range req.Domains {
-		if _, present := authz[name]; !present {
+		if _, present := authzMap[name]; !present {
 			remainingNames = append(remainingNames, name)
 		}
 	}
@@ -1396,9 +1396,9 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	}
 	// merge pending into valid
 	for name, a := range pendingAuthz {
-		authz[name] = a
+		authzMap[name] = a
 	}
-	return authzMapToPB(authz)
+	return authzMapToPB(authzMap)
 }
 
 // AddPendingAuthorizations creates a batch of pending authorizations and returns their IDs
