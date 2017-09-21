@@ -280,7 +280,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
-		if features.Enabled(features.RandomDirectoryEntry) && v == randomDirKeyExplanationLink {
+		if v == randomDirKeyExplanationLink {
 			relativeDir[k] = v
 			continue
 		}
@@ -393,7 +393,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	if !clientDirChangeIntolerant {
 		directoryEndpoints["key-change"] = rolloverPath
 	}
-	if features.Enabled(features.RandomDirectoryEntry) && !clientDirChangeIntolerant {
+	if !clientDirChangeIntolerant {
 		// Add a random key to the directory in order to make sure that clients don't hardcode an
 		// expected set of keys. This ensures that we can properly extend the directory when we
 		// need to add a new endpoint or meta element.
