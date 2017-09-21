@@ -25,10 +25,11 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 
 	if prob != nil {
 		typ := string(prob.Type)
+		detail := fmt.Sprintf("%s : %s", *req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: &typ,
-				Detail:      &prob.Detail,
+				Detail:      &detail,
 			},
 		}, nil
 	}
