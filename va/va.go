@@ -380,13 +380,15 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			if err != nil {
 				return err
 			}
-			if reqPort <= 0 || reqPort > 65535 {
-				return fmt.Errorf("Invalid port number %d in redirect", reqPort)
+			if reqPort != va.httpPort && reqPort != va.httpsPort {
+				return fmt.Errorf(
+					"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
+					va.httpPort, va.httpsPort, reqPort)
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			reqPort = 443
+			reqPort = va.httpsPort
 		} else {
-			reqPort = 80
+			reqPort = va.httpPort
 		}
 
 		dialer, err := va.resolveAndConstructDialer(ctx, reqHost, reqPort)
@@ -713,6 +715,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
 		return probs.ConnectionFailure("Timeout")
+	}
+	if strings.HasPrefix(err.Error(), "Invalid port in redirect target") {
+		return probs.ConnectionFailure(err.Error())
 	}
 
 	return probs.ConnectionFailure("Error getting validation data")

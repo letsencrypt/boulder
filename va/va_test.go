@@ -81,7 +81,7 @@ const path404 = "404"
 const path500 = "500"
 const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
 const pathMoved = "5J4FIMrWNfmvHZo-QpKZngmuhqZGwRm21-oEgUDstJM"
-const pathRedirectPort = "port-redirect"
+const pathRedirectInvalidPort = "port-redirect"
 const pathWait = "wait"
 const pathWaitLong = "wait-long"
 const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
@@ -136,12 +136,14 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
 			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid/%s", path500), 301)
+			port := getPort(server)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/%s", port, path500), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
-		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
+			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
 		} else if r.Header.Get("User-Agent") == rejectUserAgent {
 			w.WriteHeader(http.StatusBadRequest)
@@ -396,12 +398,12 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectPort)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost"), chall)
-	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	setChallengeToken(&chall, pathRedirectInvalidPort)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Fetching http://other.valid:8080/path: Invalid port in redirect target. "+
+			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing
 	// HTTP 500 errors. The test case is ensuring that the connection error
@@ -410,7 +412,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Connection refused")
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Invalid response from http://localhost:%d/.well-known/acme-challenge/re-to-failing-url [127.0.0.1]: 500",
+		va.httpPort))
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
