@@ -518,6 +518,7 @@ func (sas StorageAuthorityClientWrapper) AddPendingAuthorizations(ctx context.Co
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
+	// TODO(#3119): Don't use core.StorageAuthority
 	inner core.StorageAuthority
 }
 
