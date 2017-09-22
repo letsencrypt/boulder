@@ -252,6 +252,24 @@ def test_caa():
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
+def test_account_update():
+    """
+    Create a new ACME client/account with one contact email. Then update the
+    account to a different contact emails.
+    """
+    emails=("initial-email@example.com", "updated-email@example.com", "another-update@example.com")
+    client = chisel.make_client(email=emails[0])
+
+    for email in emails[1:]:
+        result = chisel.update_email(client, email=email)
+        # We expect one contact in the result
+        if len(result.body.contact) != 1:
+            raise Exception("\nUpdate account failed: expected one contact in result, got 0")
+        # We expect it to be the email we just updated to
+        actual = result.body.contact[0]
+        if actual != "mailto:"+email:
+            raise Exception("\nUpdate account failed: expected contact %s, got %s" % (email, actual))
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
 
@@ -464,6 +482,7 @@ def run_chisel():
     test_dns_challenge()
     test_renewal_exemption()
     test_expired_authzs_404()
+    test_account_update()
 
 if __name__ == "__main__":
     try:

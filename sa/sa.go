@@ -617,7 +617,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
-	_, err := selectRegistration(ssa.dbMap, query, reg.ID)
+	model, err := selectRegistration(ssa.dbMap, query, reg.ID)
 	if err == sql.ErrNoRows {
 		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
@@ -627,6 +627,9 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		return err
 	}
 
+	// Copy the existing registration model's LockCol to the new updated
+	// registration model's LockCol
+	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
 		return err
