@@ -1427,7 +1427,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	var newAuthzs []*corepb.Authorization
 	for _, name := range names {
-		if _, present := gotAuthzFor[name]; present {
+		if gotAuthzFor[name] {
 			continue
 		}
 		identifier := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
