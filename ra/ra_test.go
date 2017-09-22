@@ -1359,6 +1359,68 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 }
 
+// TestCheckExactCertificateLimit tests that the duplicate certificate limit
+// applied to FQDN sets is respected.
+func TestCheckExactCertificateLimit(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a rate limit with a small threshold
+	const dupeCertLimit = 3
+	rlp := ratelimit.RateLimitPolicy{
+		Threshold: dupeCertLimit,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+	}
+
+	// Create a mock SA that has a count of already issued certificates for some
+	// test names
+	mockSA := &mockSAWithFQDNSet{
+		nameCounts: map[string]*sapb.CountByNames_MapElement{
+			"under.example.com": nameCount("under.example.com", dupeCertLimit-1),
+			"equal.example.com": nameCount("equal.example.com", dupeCertLimit),
+			"over.example.com":  nameCount("over.example.com", dupeCertLimit+1),
+		},
+		t: t,
+	}
+	ra.SA = mockSA
+
+	testCases := []struct {
+		Name        string
+		Domain      string
+		ExpectedErr error
+	}{
+		{
+			Name:        "FQDN set issuances less than limit",
+			Domain:      "under.example.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "FQDN set issuances equal to limit",
+			Domain:      "equal.example.com",
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com"),
+		},
+		{
+			Name:        "FQDN set issuances above limit",
+			Domain:      "over.example.com",
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com"),
+		},
+	}
+
+	// For each test case we check that the certificatesPerFQDNSetLimit is applied
+	// as we expect
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := ra.checkCertificatesPerFQDNSetLimit(ctx, []string{tc.Domain}, rlp, 0)
+			if tc.ExpectedErr == nil {
+				test.AssertNotError(t, result, fmt.Sprintf("Expected no error for %q", tc.Domain))
+			} else {
+				test.AssertError(t, result, fmt.Sprintf("Expected error for %q", tc.Domain))
+				test.AssertEquals(t, result.Error(), tc.ExpectedErr.Error())
+			}
+		})
+	}
+}
+
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL := "http://old.invalid"
 	newURL := "http://new.invalid"
@@ -1507,6 +1569,16 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names [
 		}
 	}
 	return results, nil
+}
+
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
+	var count int64
+	for _, name := range names {
+		if entry, ok := m.nameCounts[name]; ok {
+			count += *entry.Count
+		}
+	}
+	return count, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
