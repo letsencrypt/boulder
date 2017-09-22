@@ -1396,7 +1396,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range parsedCSR.DNSNames {
+	names := core.UniqueLowerNames(parsedCSR.DNSNames)
+	for _, name := range names {
 		if err := ra.PA.WillingToIssue(core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}); err != nil {
 			return nil, err
 		}
@@ -1406,26 +1407,26 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID: req.RegistrationID,
 		Now:            &now,
-		Domains:        parsedCSR.DNSNames,
+		Domains:        names,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	gotAuthzFor := make(map[string]bool, len(parsedCSR.DNSNames))
+	gotAuthzFor := make(map[string]bool, len(names))
 	for _, v := range existingAuthz.Authz {
 		gotAuthzFor[*v.Domain] = true
 		order.Authorizations = append(order.Authorizations, *v.Authz.Id)
 	}
 
-	if len(gotAuthzFor) < len(parsedCSR.DNSNames) {
+	if len(gotAuthzFor) < len(names) {
 		if err := ra.checkPendingAuthorizationLimit(ctx, *req.RegistrationID); err != nil {
 			return nil, err
 		}
 	}
 
-	var newAuthz []*corepb.Authorization
-	for _, name := range parsedCSR.DNSNames {
+	var newAuthzs []*corepb.Authorization
+	for _, name := range names {
 		if _, present := gotAuthzFor[name]; present {
 			continue
 		}
@@ -1438,11 +1439,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			return nil, err
 		}
-		newAuthz = append(newAuthz, pb)
+		newAuthzs = append(newAuthzs, pb)
 	}
 
-	if len(newAuthz) > 0 {
-		authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthz})
+	if len(newAuthzs) > 0 {
+		authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
 		if err != nil {
 			return nil, err
 		}
@@ -1457,6 +1458,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	return storedOrder, nil
 }
 
+// createPendingAuthz checks that a name is allowed for issuance and creates the
+// necessary challenges for it and puts this and all of the relevant information
+// into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).UnixNano()
 	status := string(core.StatusPending)
