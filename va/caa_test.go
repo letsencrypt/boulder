@@ -323,7 +323,7 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// The result's Problem should not be nil
 	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
 	// The result's Problem should be an error message that includes the domain.
-	test.AssertEquals(t, *resp.Problem.Detail, fmt.Sprintf("%s : error", domain))
+	test.AssertEquals(t, *resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s : error", domain))
 }
 
 func TestCAAFailure(t *testing.T) {
