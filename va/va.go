@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -381,7 +382,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 				return err
 			}
 			if reqPort != va.httpPort && reqPort != va.httpsPort {
-				return fmt.Errorf(
+				return berrors.ConnectionFailureError(
 					"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
 					va.httpPort, va.httpsPort, reqPort)
 			}
@@ -687,7 +688,8 @@ var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
 // detailedError returns a ProblemDetails corresponding to an error
 // that occurred during HTTP-01 or TLS-SNI domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
-// meaningful.
+// meaningful. It additionally handles `berrors.ConnectionFailure` errors by
+// passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	if urlErr, ok := err.(*url.Error); ok {
@@ -716,7 +718,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	if err, ok := err.(net.Error); ok && err.Timeout() {
 		return probs.ConnectionFailure("Timeout")
 	}
-	if strings.HasPrefix(err.Error(), "Invalid port in redirect target") {
+	if berrors.Is(err, berrors.ConnectionFailure) {
 		return probs.ConnectionFailure(err.Error())
 	}
 
