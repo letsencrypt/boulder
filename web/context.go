@@ -7,7 +7,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -42,9 +41,15 @@ type wfeHandler interface {
 }
 
 type TopHandler struct {
-	WFE wfeHandler
-	Log blog.Logger
-	Clk clock.Clock
+	wfe wfeHandler
+	log blog.Logger
+}
+
+func NewTopHandler(log blog.Logger, wfe wfeHandler) *TopHandler {
+	return &TopHandler{
+		wfe: wfe,
+		log: log,
+	}
 }
 
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +61,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer th.logEvent(logEvent)
 
-	th.WFE.ServeHTTP(logEvent, w, r)
+	th.wfe.ServeHTTP(logEvent, w, r)
 }
 
 func (th *TopHandler) logEvent(logEvent *RequestEvent) {
@@ -68,10 +73,10 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.Log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
 		return
 	}
-	th.Log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
+	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
 }
 
 // Comma-separated list of HTTP clients involved in making this

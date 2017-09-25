@@ -159,10 +159,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	handler := http.StripPrefix(pattern, &web.TopHandler{
-		Log: wfe.log,
-		Clk: clock.Default(),
-		WFE: web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
+		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
@@ -210,7 +208,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			h(ctx, logEvent, response, request)
 			cancel()
 		}),
-	})
+	))
 	mux.Handle(pattern, handler)
 }
 
@@ -324,11 +322,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
-	m.Handle("/", &web.TopHandler{
-		Log: wfe.log,
-		Clk: clock.Default(),
-		WFE: web.WFEHandlerFunc(wfe.Index),
-	})
+	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
 	return measured_http.New(m, wfe.clk)
 }
 
