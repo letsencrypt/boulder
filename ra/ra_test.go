@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -1930,7 +1931,7 @@ func TestNewOrder(t *testing.T) {
 
 	req := &x509.CertificateRequest{
 		Subject:  pkix.Name{CommonName: "a.com"},
-		DNSNames: []string{"b.com", "c.com"},
+		DNSNames: []string{"b.com", "b.com", "C.COM"},
 	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Failed to generate test key")
@@ -1948,6 +1949,41 @@ func TestNewOrder(t *testing.T) {
 	test.AssertByteEquals(t, order.Csr, csr)
 	test.AssertEquals(t, *order.Id, int64(1))
 	test.AssertEquals(t, len(order.Authorizations), 3)
+
+	// Reuse all existing authorizations
+	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Csr:            csr,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, *orderB.RegistrationID, int64(1))
+	test.AssertEquals(t, *orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertByteEquals(t, orderB.Csr, csr)
+	test.AssertEquals(t, *orderB.Id, int64(2))
+	test.AssertEquals(t, len(orderB.Authorizations), 3)
+	sort.Strings(order.Authorizations)
+	sort.Strings(orderB.Authorizations)
+	test.AssertDeepEquals(t, orderB.Authorizations, order.Authorizations)
+
+	// Reuse all of the existing authorizations from the previous order and
+	// add a new one
+	req.DNSNames = append(req.DNSNames, "d.com")
+	csr, err = x509.CreateCertificateRequest(rand.Reader, req, key)
+	test.AssertNotError(t, err, "Failed to generate test CSR")
+	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Csr:            csr,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, *orderC.RegistrationID, int64(1))
+	test.AssertEquals(t, *orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertByteEquals(t, orderC.Csr, csr)
+	test.AssertEquals(t, *orderC.Id, int64(3))
+	test.AssertEquals(t, len(orderC.Authorizations), 4)
+	// Abuse the order of the queries used to extract the reused authorizations
+	existing := orderC.Authorizations[:3]
+	sort.Strings(existing)
+	test.AssertDeepEquals(t, existing, order.Authorizations)
 }
 
 var CAkeyPEM = `

@@ -60,7 +60,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 		return core.Authorization{}, errIncompleteResponse
 	}
 
-	return pbToAuthz(response)
+	return PBToAuthz(response)
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64) (core.Certificate, error) {
@@ -103,7 +103,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 	if err != nil {
 		return core.Authorization{}, err
 	}
-	challPB, err := challengeToPB(chall)
+	challPB, err := ChallengeToPB(chall)
 	if err != nil {
 		return core.Authorization{}, err
 	}
@@ -123,7 +123,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 		return core.Authorization{}, errIncompleteResponse
 	}
 
-	return pbToAuthz(response)
+	return PBToAuthz(response)
 }
 
 func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
@@ -221,7 +221,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 	if request == nil || !authorizationValid(request.Authz) || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
-	authz, err := pbToAuthz(request.Authz)
+	authz, err := PBToAuthz(request.Authz)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.C
 	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil || request.Response == nil {
 		return nil, errIncompleteRequest
 	}
-	authz, err := pbToAuthz(request.Authz)
+	authz, err := PBToAuthz(request.Authz)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 	if request == nil || !authorizationValid(request) {
 		return nil, errIncompleteRequest
 	}
-	authz, err := pbToAuthz(request)
+	authz, err := PBToAuthz(request)
 	if err != nil {
 		return nil, err
 	}

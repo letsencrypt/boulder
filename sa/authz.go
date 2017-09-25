@@ -10,11 +10,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-var authorizationTables = []string{
-	"authz",
-	"pendingAuthorizations",
-}
-
 const getAuthorizationIDsMax = 1000
 
 func getAuthorizationIDsByDomain(db *gorp.DbMap, tableName string, ident string, now time.Time) ([]string, error) {
