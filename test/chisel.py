@@ -43,13 +43,41 @@ def make_client(email=None):
     client = acme_client.Client(DIRECTORY, key=key, net=net)
     account = client.register(messages.NewRegistration.from_data(email=email))
     client.agree_to_tos(account)
+    client.account = account
     return client
+
+class NoClientError(ValueError):
+    """
+    An error that occurs when no acme.Client is provided to a function that
+    requires one.
+    """
+    pass
+
+class EmailRequiredError(ValueError):
+    """
+    An error that occurs when a None email is provided to update_email.
+    """
+
+def update_email(client, email):
+    """
+    Use a provided acme.Client to update the client's account to the specified
+    email.
+    """
+    if client is None:
+        raise NoClientError("update_email requires a valid acme.Client argument")
+    if email is None:
+        raise EmailRequiredError("update_email requires an email argument")
+    if not email.startswith("mailto:"):
+        email = "mailto:"+ email
+    acct = client.account
+    updatedAcct = acct.update(body=acct.body.update(contact=(email,)))
+    return client.update_registration(updatedAcct)
 
 def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise "No %s challenge found" % typ
+    raise Exception("No %s challenge found" % typ)
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""
@@ -169,7 +197,7 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
     try:
         cert_resource = issue(client, authzs, cert_output)
         client.fetch_chain(cert_resource)
-        return cert_resource
+        return cert_resource, authzs
     finally:
         cleanup()
 

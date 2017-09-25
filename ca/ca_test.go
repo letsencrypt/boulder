@@ -202,6 +202,10 @@ func setup(t *testing.T) *testCtx {
 		ECDSAProfile: ecdsaProfileName,
 		SerialPrefix: 17,
 		Expiry:       "8760h",
+		// TODO(briansmith): When the defaulting of Backdate is removed, this
+		// will need to be uncommented. Leave it commented for now to test the
+		// defaulting logic.
+		// Backdate:     cmd.ConfigDuration{Duration: time.Hour},
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
 		CFSSL: cfsslConfig.Config{
@@ -318,6 +322,7 @@ func TestIssueCertificate(t *testing.T) {
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
 		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
+		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestValidityUsesCAClock},
 		{"AllowNoCN", NoCNCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
 		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
@@ -407,13 +412,6 @@ func TestIssueCertificate(t *testing.T) {
 
 func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
-
-	// Although the CA generally uses its own clock (ca.clk) to generate
-	// timestamps, the notBefore date is set based on the current system time.
-	// That's wrong, but work around it for now by syncing the fake clock with
-	// the system clock.
-	testCtx.fc.Set(clock.New().Now())
-
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -451,6 +449,11 @@ func issueCertificateSubTestIssueCertificate(t *testing.T, i *TestCertificateIss
 	if cert.Subject.SerialNumber != serialString {
 		t.Errorf("SerialNumber: want %#v, got %#v", serialString, cert.Subject.SerialNumber)
 	}
+}
+
+func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
+	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
+	test.AssertEquals(t, i.cert.NotAfter, i.cert.NotBefore.Add(i.ca.validityPeriod))
 }
 
 // Test issuing when multiple issuers are present.

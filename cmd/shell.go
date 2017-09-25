@@ -272,13 +272,17 @@ func CatchSignals(logger blog.Logger, callback func()) {
 	signal.Notify(sigChan, syscall.SIGHUP)
 
 	sig := <-sigChan
-	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+	if logger != nil {
+		logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+	}
 
 	if callback != nil {
 		callback()
 	}
 
-	logger.Info("Exiting")
+	if logger != nil {
+		logger.Info("Exiting")
+	}
 	os.Exit(0)
 }
 
