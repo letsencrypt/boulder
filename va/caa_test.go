@@ -14,6 +14,8 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 // caaMockDNS implements the `dns.DNSClient` interface with a set of useful test
@@ -299,6 +301,29 @@ func TestCAAChecking(t *testing.T) {
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
+}
+
+// TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
+// includes the domain name that was being checked in the failure detail.
+func TestIsCAAValidErrMessage(t *testing.T) {
+	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
+
+	// Call IsCAAValid with a domain we know fails with a generic error from the
+	// caaMockDNS.
+	domain := "caa-timeout.com"
+	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain: &domain,
+	})
+
+	// The lookup itself should not return an error
+	test.AssertNotError(t, err, "Unexpected error calling IsCAAValidRequest")
+	// The result should not be nil
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	// The result's Problem should not be nil
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	// The result's Problem should be an error message that includes the domain.
+	test.AssertEquals(t, *resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
 }
 
 func TestCAAFailure(t *testing.T) {
