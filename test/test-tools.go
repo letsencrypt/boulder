@@ -169,8 +169,7 @@ func CountCounter(counter prometheus.Counter) int {
 	var m prometheus.Metric
 	select {
 	case <-time.After(time.Second):
-		fmt.Println("timed out collecting metrics")
-		return 0
+		panic("timed out collecting metrics")
 	case m = <-ch:
 	}
 	var iom io_prometheus_client.Metric
@@ -184,8 +183,7 @@ func CountHistogramSamples(hist prometheus.Histogram) int {
 	var m prometheus.Metric
 	select {
 	case <-time.After(time.Second):
-		fmt.Println("timed out collecting metrics")
-		return 0
+		panic("timed out collecting metrics")
 	case m = <-ch:
 	}
 	var iom io_prometheus_client.Metric
