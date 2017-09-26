@@ -82,7 +82,6 @@ func (s *challSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		token := requestPath[len(wellKnownPath):]
 		if auth, found := s.getHTTPOneChallenge(token); found {
 			fmt.Fprintf(w, "%s", auth)
-			s.deleteHTTPOneChallenge(token)
 		}
 	}
 }
