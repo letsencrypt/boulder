@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 
@@ -785,27 +786,21 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 func TestPerformValidationInvalid(t *testing.T) {
 	va, _ := setup(nil, 0)
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
-
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "invalid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestDNSValidationEmpty(t *testing.T) {
 	va, _ := setup(nil, 0)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -814,17 +809,18 @@ func TestDNSValidationEmpty(t *testing.T) {
 		chalDNS,
 		core.Authorization{})
 	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT records found for DNS challenge")
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "invalid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestPerformValidationValid(t *testing.T) {
 	va, _ := setup(nil, 0)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -832,6 +828,14 @@ func TestPerformValidationValid(t *testing.T) {
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "success",
+	}))
+	if samples != 0 {
+		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestDNSValidationFailure(t *testing.T) {
