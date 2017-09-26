@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/letsencrypt/boulder/web"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -457,7 +458,7 @@ func TestHandleFunc(t *testing.T) {
 		mux = http.NewServeMux()
 		rw = httptest.NewRecorder()
 		stubCalled = false
-		wfe.HandleFunc(mux, "/test", func(context.Context, *requestEvent, http.ResponseWriter, *http.Request) {
+		wfe.HandleFunc(mux, "/test", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
 			stubCalled = true
 		}, allowed...)
 		req.URL = mustParseURL("/test")
@@ -752,7 +753,7 @@ func TestRandomDirectoryKey(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/directory")
-	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+	wfe.Directory(ctx, &web.RequestEvent{}, responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
 		Host:   "127.0.0.1:4300",
@@ -778,7 +779,7 @@ func TestRandomDirectoryKey(t *testing.T) {
 	headers := map[string][]string{
 		"User-Agent": {"LetsEncryptPythonClient"},
 	}
-	wfe.Directory(ctx, &requestEvent{}, responseWriter, &http.Request{
+	wfe.Directory(ctx, &web.RequestEvent{}, responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
 		Host:   "127.0.0.1:4300",
@@ -2182,8 +2183,8 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	test.AssertEquals(t, 0, len(body))
 }
 
-func newRequestEvent() *requestEvent {
-	return &requestEvent{Extra: make(map[string]interface{})}
+func newRequestEvent() *web.RequestEvent {
+	return &web.RequestEvent{Extra: make(map[string]interface{})}
 }
 
 func TestVerifyPOSTInvalidJWK(t *testing.T) {
