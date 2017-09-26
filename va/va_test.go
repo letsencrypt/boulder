@@ -831,9 +831,9 @@ func TestPerformValidationValid(t *testing.T) {
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
 		"type":   "dns-01",
-		"result": "success",
+		"result": "valid",
 	}))
-	if samples != 0 {
+	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
 	}
 }
