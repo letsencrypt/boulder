@@ -412,7 +412,6 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, latest time.Time, query string) (int, error) {
-	var count int64
 	const max = 10000
 	var serials []string
 	_, err := ssa.dbMap.Select(
@@ -428,7 +427,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		return 0, nil
 	} else if err != nil {
 		return 0, err
-	} else if count > max {
+	} else if len(serials) > max {
 		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 
