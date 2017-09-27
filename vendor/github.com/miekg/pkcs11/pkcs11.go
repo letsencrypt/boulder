@@ -15,6 +15,8 @@ package pkcs11
 #cgo linux LDFLAGS: -Wl,--no-as-needed -lltdl -ldl
 #cgo darwin CFLAGS: -I/usr/local/share/libtool
 #cgo darwin LDFLAGS: -lltdl -L/usr/local/lib/ -I/usr/local/share/libtool
+#cgo openbsd CFLAGS: -I/usr/local/include/
+#cgo openbsd LDFLAGS: -lltdl -L/usr/local/lib/
 #cgo LDFLAGS: -lltdl
 #define CK_PTR *
 #define CK_DEFINE_FUNCTION(returnType, name) returnType name
@@ -776,7 +778,7 @@ func (c *Ctx) Destroy() {
 
 /* Initialize initializes the Cryptoki library. */
 func (c *Ctx) Initialize() error {
-	args := &C.CK_C_INITIALIZE_ARGS{nil, nil, nil, nil, C.CKF_OS_LOCKING_OK, nil}
+	args := &C.CK_C_INITIALIZE_ARGS{CreateMutex: nil, DestroyMutex: nil, LockMutex: nil, UnlockMutex: nil, flags: C.CKF_OS_LOCKING_OK, pReserved: nil}
 	e := C.Initialize(c.ctx, C.CK_VOID_PTR(args))
 	return toError(e)
 }

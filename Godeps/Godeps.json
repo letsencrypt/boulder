@@ -187,7 +187,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
-			"Rev": "c1e7dca180dc5948d8af317f2fe62baba07769c4"
+			"Rev": "eda1d775a087f2a96fec7c7876ea94dea43e6027"
 		},
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",
