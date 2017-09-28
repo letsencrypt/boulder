@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/revocation"
-	sa "github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -70,7 +69,7 @@ func (sac StorageAuthorityClientWrapper) GetAuthorization(ctx context.Context, a
 		return core.Authorization{}, errIncompleteResponse
 	}
 
-	return pbToAuthz(response)
+	return PBToAuthz(response)
 }
 
 func (sac StorageAuthorityClientWrapper) GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*core.Authorization, error) {
@@ -94,7 +93,7 @@ func (sac StorageAuthorityClientWrapper) GetValidAuthorizations(ctx context.Cont
 		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
 			return nil, errIncompleteResponse
 		}
-		authz, err := pbToAuthz(element.Authz)
+		authz, err := PBToAuthz(element.Authz)
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +267,7 @@ func (sac StorageAuthorityClientWrapper) GetPendingAuthorization(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	authz, err := pbToAuthz(authzPB)
+	authz, err := PBToAuthz(authzPB)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +365,7 @@ func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Con
 		return core.Authorization{}, errIncompleteResponse
 	}
 
-	return pbToAuthz(response)
+	return PBToAuthz(response)
 }
 
 func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
@@ -490,12 +489,40 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	return resp, nil
 }
 
-// StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
-type StorageAuthorityServerWrapper struct {
-	inner *sa.SQLStorageAuthority
+func (sas StorageAuthorityClientWrapper) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	resp, err := sas.inner.GetAuthorizations(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Authz == nil {
+		return nil, errIncompleteResponse
+	}
+	for _, element := range resp.Authz {
+		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
+			return nil, errIncompleteResponse
+		}
+	}
+	return resp, nil
 }
 
-func NewStorageAuthorityServer(inner *sa.SQLStorageAuthority) *StorageAuthorityServerWrapper {
+func (sas StorageAuthorityClientWrapper) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	resp, err := sas.inner.AddPendingAuthorizations(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Ids == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
+// StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
+type StorageAuthorityServerWrapper struct {
+	// TODO(#3119): Don't use core.StorageAuthority
+	inner core.StorageAuthority
+}
+
+func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
 	return &StorageAuthorityServerWrapper{inner}
 }
 
@@ -799,7 +826,7 @@ func (sas StorageAuthorityServerWrapper) NewPendingAuthorization(ctx context.Con
 		return nil, errIncompleteRequest
 	}
 
-	authz, err := pbToAuthz(request)
+	authz, err := PBToAuthz(request)
 	if err != nil {
 		return nil, err
 	}
@@ -817,7 +844,7 @@ func (sas StorageAuthorityServerWrapper) UpdatePendingAuthorization(ctx context.
 		return nil, errIncompleteRequest
 	}
 
-	authz, err := pbToAuthz(request)
+	authz, err := PBToAuthz(request)
 	if err != nil {
 		return nil, err
 	}
@@ -835,7 +862,7 @@ func (sas StorageAuthorityServerWrapper) FinalizeAuthorization(ctx context.Conte
 		return nil, errIncompleteRequest
 	}
 
-	authz, err := pbToAuthz(request)
+	authz, err := PBToAuthz(request)
 	if err != nil {
 		return nil, err
 	}
@@ -940,4 +967,20 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 	}
 
 	return sas.inner.GetOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetAuthorizations(ctx context.Context, request *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if request == nil || request.RegistrationID == nil || request.Domains == nil || request.Now == nil {
+		return nil, errIncompleteRequest
+	}
+
+	return sas.inner.GetAuthorizations(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) AddPendingAuthorizations(ctx context.Context, request *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	if request == nil || request.Authz != nil {
+		return nil, errIncompleteRequest
+	}
+
+	return sas.inner.AddPendingAuthorizations(ctx, request)
 }

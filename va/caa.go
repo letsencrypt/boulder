@@ -25,10 +25,11 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 
 	if prob != nil {
 		typ := string(prob.Type)
+		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: &typ,
-				Detail:      &prob.Detail,
+				Detail:      &detail,
 			},
 		}, nil
 	}
@@ -47,7 +48,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 		valid,
 	))
 	if !valid {
-		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
+		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
 	return nil
 }

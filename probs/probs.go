@@ -18,6 +18,7 @@ const (
 	InvalidEmailProblem        = ProblemType("invalidEmail")
 	RejectedIdentifierProblem  = ProblemType("rejectedIdentifier")
 	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
+	CAAProblem                 = ProblemType("caa")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -64,7 +65,9 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
-	case UnauthorizedProblem:
+	case
+		UnauthorizedProblem,
+		CAAProblem:
 		return http.StatusForbidden
 	case RateLimitedProblem:
 		return statusTooManyRequests
@@ -220,5 +223,14 @@ func AccountDoesNotExist(detail string) *ProblemDetails {
 		Type:       AccountDoesNotExistProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// CAA returns a ProblemDetails representing a CAAProblem
+func CAA(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       CAAProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
 	}
 }

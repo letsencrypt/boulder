@@ -416,6 +416,27 @@ func addHeadIfGet(s []string) []string {
 	return s
 }
 
+const randomKey = "random-key"
+
+func replaceRandomKey(b []byte) []byte {
+	var gotMap map[string]interface{}
+	var _ = json.Unmarshal(b, &gotMap)
+	var key string
+	for k, v := range gotMap {
+		if v == randomDirKeyExplanationLink {
+			key = k
+			break
+		}
+	}
+	if key != "" {
+		delete(gotMap, key)
+		gotMap[randomKey] = randomDirKeyExplanationLink
+		b, _ = json.Marshal(gotMap)
+		return b
+	}
+	return b
+}
+
 func assertJSONEquals(t *testing.T, got, expected string) {
 	var gotMap, expectedMap map[string]interface{}
 	err := json.Unmarshal([]byte(got), &gotMap)
@@ -693,11 +714,9 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	body := replaceRandomKey(responseWriter.Body.Bytes())
+	assertJSONEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
 
-	// With the DirectoryMeta flag enabled we expect to see a "meta" entry with
-	// the correct terms-of-service URL.
-	_ = features.Set(map[string]bool{"DirectoryMeta": true})
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	mux.ServeHTTP(responseWriter, &http.Request{
@@ -707,10 +726,10 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	body = replaceRandomKey(responseWriter.Body.Bytes())
+	assertJSONEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
 
-	// Even with the DirectoryMeta flag enabled, if the UA is
-	// LetsEncryptPythonClient we expect to *not* see the meta entry.
+	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
@@ -728,8 +747,6 @@ func TestDirectory(t *testing.T) {
 }
 
 func TestRandomDirectoryKey(t *testing.T) {
-	_ = features.Set(map[string]bool{"RandomDirectoryEntry": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 
@@ -806,15 +823,15 @@ func TestRelativeDirectory(t *testing.T) {
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
+		{"", "", `{"key-change":"http://localhost/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","%s":"%s","revoke-cert":"http://localhost/acme/revoke-cert"}`},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","%s":"%s","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
+		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","meta":{"terms-of-service": "http://example.invalid/terms"},"new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
 	}
 
 	for _, tt := range dirTests {
@@ -835,7 +852,8 @@ func TestRelativeDirectory(t *testing.T) {
 		})
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-		assertJSONEquals(t, responseWriter.Body.String(), tt.result)
+		body := replaceRandomKey(responseWriter.Body.Bytes())
+		assertJSONEquals(t, string(body), fmt.Sprintf(tt.result, randomKey, randomDirKeyExplanationLink))
 	}
 }
 
@@ -1995,8 +2013,82 @@ func TestLengthRequired(t *testing.T) {
 	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
 }
 
-type mockSADifferentStoredKey struct {
+type mockSAGetRegByKeyFails struct {
 	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("whoops")
+}
+
+// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
+// return internal server errors.
+func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, prob := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if prob == nil {
+		t.Fatalf("No error returned when GetRegByKey failed with generic error.")
+	}
+	if prob.Type != probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob)
+	}
+}
+
+// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewRegistration should
+// return internal server errors.
+func TestNewRegWhenGetRegByKeyFails(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	var prob probs.ProblemDetails
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+	test.AssertNotError(t, err, "unmarshalling response")
+	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
+}
+
+type mockSAGetRegByKeyNotFound struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	return core.Registration{}, berrors.NotFoundError("not found")
+}
+
+// When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
+// regCheck = false (i.e. during a NewRegistration) should succeed.
+func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	event := newRequestEvent()
+	payload := `{"resource":"ima-payload"}`
+	_, _, _, err := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "ima-payload")
+	if err != nil {
+		t.Fatalf("Expected verifyPOST with regCheck=false to succeed when SA.GetRegistrationByKey returned NotFound, get %v", err)
+	}
+}
+
+// When SA.GetRegistrationByKey returns NotFound, NewRegistration should
+// succeed.
+func TestNewRegWhenGetRegByKeyNotFound(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	if responseWriter.Code != http.StatusCreated {
+		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
+	}
 }
 
 // TestLogPayload ensures that verifyPOST sets the Payload field of the logEvent
@@ -2012,6 +2104,10 @@ func TestLogPayload(t *testing.T) {
 	}
 
 	test.AssertEquals(t, event.Payload, payload)
+}
+
+type mockSADifferentStoredKey struct {
+	core.StorageGetter
 }
 
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
