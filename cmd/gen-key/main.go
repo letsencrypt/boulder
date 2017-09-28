@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
@@ -13,6 +15,12 @@ import (
 
 	"github.com/miekg/pkcs11"
 )
+
+type Ctx interface {
+	GetAttributeValue(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error)
+	SignInit(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error
+	Sign(pkcs11.SessionHandle, []byte) ([]byte, error)
+}
 
 func rsaArgs(label string, mod int) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
 	return []*pkcs11.Mechanism{
@@ -33,7 +41,7 @@ func rsaArgs(label string, mod int) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, [
 		}
 }
 
-func rsaPub(ctx *pkcs11.Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *rsa.PublicKey {
+func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *rsa.PublicKey {
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
@@ -58,6 +66,24 @@ func rsaPub(ctx *pkcs11.Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectH
 		panic("Couldn't retrieve modulus or exponent")
 	}
 	return pubKey
+}
+
+func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) {
+	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)}, object)
+	if err != nil {
+		panic(err)
+	}
+	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20} // SHA-256 prefix
+	hash := sha256.Sum256([]byte("hello"))
+	input = append(input, hash[:]...)
+	signature, err := ctx.Sign(session, input)
+	if err != nil {
+		panic(err)
+	}
+	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash[:], signature)
+	if err != nil {
+		panic(err)
+	}
 }
 
 var stringToCurve = map[string]elliptic.Curve{
@@ -95,7 +121,7 @@ func ecArgs(label string, curve elliptic.Curve) ([]*pkcs11.Mechanism, []*pkcs11.
 		}
 }
 
-func ecPub(ctx *pkcs11.Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve) *ecdsa.PublicKey {
+func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve) *ecdsa.PublicKey {
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC),
@@ -136,6 +162,32 @@ func ecPub(ctx *pkcs11.Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHa
 	return pubKey
 }
 
+var curveToHash = map[elliptic.Curve]crypto.Hash{
+	elliptic.P224(): crypto.SHA256,
+	elliptic.P256(): crypto.SHA256,
+	elliptic.P384(): crypto.SHA384,
+	elliptic.P521(): crypto.SHA512,
+}
+
+func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) {
+	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)}, object)
+	if err != nil {
+		panic(err)
+	}
+	hashFunc := curveToHash[pub.Curve].New()
+	hash := hashFunc.Sum([]byte("hello"))
+	signature, err := ctx.Sign(session, hash)
+	if err != nil {
+		panic(err)
+	}
+
+	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
+	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+	if !ecdsa.Verify(pub, hash[:], r, s) {
+		panic("failed to verify ECDSA signature over test data")
+	}
+}
+
 func main() {
 	module := flag.String("module", "", "PKCS#11 module to use")
 	keyType := flag.String("type", "", "Type of key to generate (RSA or ECDSA)")
@@ -143,7 +195,7 @@ func main() {
 	pin := flag.String("pin", "", "PIN for slot")
 	label := flag.String("label", "", "Key label")
 	rsaModLen := flag.Int("modulus-bits", 0, "Size of RSA modulus in bits. Only valid if --type=RSA")
-	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (). Only valid if --type=ECDSA")
+	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P224, P256, P384, P521). Only valid if --type=ECDSA")
 	flag.Parse()
 
 	if *module == "" {
@@ -188,11 +240,13 @@ func main() {
 			panic("--modulus-bits is required")
 		}
 		m, pubTmpl, privTmpl := rsaArgs(*label, *rsaModLen)
-		pub, _, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
+		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
 			panic(err)
 		}
-		pubKey = rsaPub(ctx, session, pub)
+		pk := rsaPub(ctx, session, pub)
+		rsaVerify(ctx, session, priv, pk)
+		pubKey = pk
 	case "ECDSA":
 		if *ecdsaCurve == "" {
 			panic("--ecdsaCurve is required")
@@ -202,11 +256,13 @@ func main() {
 			panic("curve not supported")
 		}
 		m, pubTmpl, privTmpl := ecArgs(*label, curve)
-		pub, _, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
+		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
 			panic(err)
 		}
-		pubKey = ecPub(ctx, session, pub, curve)
+		pk := ecPub(ctx, session, pub, curve)
+		ecVerify(ctx, session, priv, pk)
+		pubKey = pk
 	}
 
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
