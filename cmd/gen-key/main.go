@@ -1,15 +1,21 @@
+// gen-key is a tool for generating RSA or ECDSA keys on a HSM using PKCS#11.
+// After generating the key it attempts to extract and construct the public
+// key and verifies a test message that was signed using the generated private
+// key. Any action it takes should be thoroughly logged and documented.
 package main
 
 import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
 	"flag"
+	"log"
 	"math/big"
 	"os"
 
@@ -35,13 +41,17 @@ func rsaArgs(label string, mod int) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, [
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+			// Prevent attributes being retrieved
 			pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+			// Prevent the key being extracted from the device
 			pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
+			// Allow the key to sign data
 			pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
 		}
 }
 
 func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *rsa.PublicKey {
+	// Retrieve the public exponent and modulus for the generate public key
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
@@ -50,6 +60,7 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *
 		panic(err)
 	}
 
+	// Attempt to build the public key from the retrieved attributes
 	pubKey := &rsa.PublicKey{}
 	gotMod, gotExp := false, false
 	for _, a := range attrs {
@@ -57,11 +68,14 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *
 		case pkcs11.CKA_PUBLIC_EXPONENT:
 			pubKey.E = int(big.NewInt(0).SetBytes(a.Value).Int64())
 			gotExp = true
+			log.Printf("\tPublic exponent: %d\n", pubKey.E)
 		case pkcs11.CKA_MODULUS:
 			pubKey.N = big.NewInt(0).SetBytes(a.Value)
 			gotMod = true
+			log.Printf("\tModulus: %X\n", pubKey.N.Bytes())
 		}
 	}
+	// Fail if we are missing either the public exponent or modulus
 	if !gotExp || !gotMod {
 		panic("Couldn't retrieve modulus or exponent")
 	}
@@ -69,21 +83,32 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) *
 }
 
 func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) {
+	// Initialize a signing operation
 	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)}, object)
 	if err != nil {
 		panic(err)
 	}
 	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20} // SHA-256 prefix
-	hash := sha256.Sum256([]byte("hello"))
+	msg := make([]byte, 8)
+	_, err = rand.Read(msg)
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("\tConstructed random message: %X\n", msg)
+	hash := sha256.Sum256(msg)
+	log.Printf("\tMessage SHA-256 hash: %X\n", hash)
 	input = append(input, hash[:]...)
+	log.Println("\tSigning message")
 	signature, err := ctx.Sign(session, input)
 	if err != nil {
 		panic(err)
 	}
+	log.Printf("\tMessage signature: %X\n", signature)
 	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash[:], signature)
 	if err != nil {
 		panic(err)
 	}
+	log.Println("\tSignature verified")
 }
 
 var stringToCurve = map[string]elliptic.Curve{
@@ -115,8 +140,11 @@ func ecArgs(label string, curve elliptic.Curve) ([]*pkcs11.Mechanism, []*pkcs11.
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+			// Prevent attributes being retrieved
 			pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+			// Prevent the key being extracted from the device
 			pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
+			// Allow the key to sign data
 			pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
 		}
 }
@@ -153,6 +181,8 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 			}
 			pubKey.X, pubKey.Y = x, y
 			gotPoint = true
+			log.Printf("\tX: %X\n", pubKey.X.Bytes())
+			log.Printf("\tY: %X\n", pubKey.Y.Bytes())
 			break
 		}
 	}
@@ -169,23 +199,37 @@ var curveToHash = map[elliptic.Curve]crypto.Hash{
 	elliptic.P521(): crypto.SHA512,
 }
 
+var hashToString = map[crypto.Hash]string{
+	crypto.SHA256: "SHA-256",
+	crypto.SHA384: "SHA-384",
+	crypto.SHA512: "SHA-512",
+}
+
 func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) {
 	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)}, object)
 	if err != nil {
 		panic(err)
 	}
+	msg := make([]byte, 8)
+	_, err = rand.Read(msg)
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("\tConstructed random message: %X\n", msg)
 	hashFunc := curveToHash[pub.Curve].New()
-	hash := hashFunc.Sum([]byte("hello"))
+	hash := hashFunc.Sum(msg)
+	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve]], hash)
 	signature, err := ctx.Sign(session, hash)
 	if err != nil {
 		panic(err)
 	}
-
+	log.Printf("\tMessage signature: %X\n", signature)
 	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
 	if !ecdsa.Verify(pub, hash[:], r, s) {
 		panic("failed to verify ECDSA signature over test data")
 	}
+	log.Println("\tSignature verified")
 }
 
 func main() {
@@ -240,12 +284,18 @@ func main() {
 			panic("--modulus-bits is required")
 		}
 		m, pubTmpl, privTmpl := rsaArgs(*label, *rsaModLen)
+		log.Printf("Generating RSA key with %d bit modulus\n", *rsaModLen)
 		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
 			panic(err)
 		}
+		log.Println("Key generated")
+		log.Println("Extracting public key")
 		pk := rsaPub(ctx, session, pub)
+		log.Println("Extracted public key")
+		log.Println("Verifying public key")
 		rsaVerify(ctx, session, priv, pk)
+		log.Println("Key verified")
 		pubKey = pk
 	case "ECDSA":
 		if *ecdsaCurve == "" {
@@ -256,12 +306,18 @@ func main() {
 			panic("curve not supported")
 		}
 		m, pubTmpl, privTmpl := ecArgs(*label, curve)
+		log.Printf("Generating ECDSA key with curve %s\n", *ecdsaCurve)
 		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
 			panic(err)
 		}
+		log.Println("Key generated")
+		log.Println("Extracting public key")
 		pk := ecPub(ctx, session, pub, curve)
+		log.Println("Extracted public key")
+		log.Println("Verifying public key")
 		ecVerify(ctx, session, priv, pk)
+		log.Println("Key verified")
 		pubKey = pk
 	}
 
