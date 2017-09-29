@@ -6,18 +6,18 @@
 // When generating a key this tool follows the following steps:
 //   1. Constructs templates for the private and public keys consisting
 //      of the appropriate PKCS#11 attributes.
-//   2. Execute a PKCS#11 GenerateKeyPair operation with the constructed
+//   2. Executes a PKCS#11 GenerateKeyPair operation with the constructed
 //      templates and either CKM_RSA_PKCS_KEY_PAIR_GEN or CKM_EC_KEY_PAIR_GEN
 //      (or CKM_ECDSA_KEY_PAIR_GEN for pre-PKCS#11 2.0 devices).
-//   3. Extract the public key components from the returned public key object
+//   3. Extracts the public key components from the returned public key object
 //      handle and construct a Golang public key object from them.
-//   4. Generate 4 bytes of random data from the HSM using a PKCS#11 GenerateRandom
+//   4. Generates 4 bytes of random data from the HSM using a PKCS#11 GenerateRandom
 //      operation.
-//   5. Sign the random data with the private key object handle using a PKCS#11
+//   5. Signs the random data with the private key object handle using a PKCS#11
 //      SignInit/Sign operation.
-//   6. Verify the returned signature of the random data with the constructed
+//   6. Verifies the returned signature of the random data with the constructed
 //      public key.
-//   7. Marshal the public key into a PEM public key object and print it to STDOUT.
+//   7. Marshals the public key into a PEM public key object and print it to STDOUT.
 //
 package main
 
