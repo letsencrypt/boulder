@@ -246,19 +246,17 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 }
 
 type certificateRequestEvent struct {
-	ID                  string    `json:",omitempty"`
-	Requester           int64     `json:",omitempty"`
-	SerialNumber        string    `json:",omitempty"`
-	RequestMethod       string    `json:",omitempty"`
-	VerificationMethods []string  `json:",omitempty"`
-	VerifiedFields      []string  `json:",omitempty"`
-	CommonName          string    `json:",omitempty"`
-	Names               []string  `json:",omitempty"`
-	NotBefore           time.Time `json:",omitempty"`
-	NotAfter            time.Time `json:",omitempty"`
-	RequestTime         time.Time `json:",omitempty"`
-	ResponseTime        time.Time `json:",omitempty"`
-	Error               string    `json:",omitempty"`
+	ID             string    `json:",omitempty"`
+	Requester      int64     `json:",omitempty"`
+	SerialNumber   string    `json:",omitempty"`
+	VerifiedFields []string  `json:",omitempty"`
+	CommonName     string    `json:",omitempty"`
+	Names          []string  `json:",omitempty"`
+	NotBefore      time.Time `json:",omitempty"`
+	NotAfter       time.Time `json:",omitempty"`
+	RequestTime    time.Time `json:",omitempty"`
+	ResponseTime   time.Time `json:",omitempty"`
+	Error          string    `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -726,10 +724,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Construct the log event
 	logEvent := certificateRequestEvent{
-		ID:            core.NewToken(),
-		Requester:     regID,
-		RequestMethod: "online",
-		RequestTime:   ra.clk.Now(),
+		ID:          core.NewToken(),
+		Requester:   regID,
+		RequestTime: ra.clk.Now(),
 	}
 
 	// No matter what, log the request
