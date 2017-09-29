@@ -724,10 +724,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Construct the log event
 	logEvent := certificateRequestEvent{
-		ID:            core.NewToken(),
-		Requester:     regID,
-		RequestMethod: "online",
-		RequestTime:   ra.clk.Now(),
+		ID:          core.NewToken(),
+		Requester:   regID,
+		RequestTime: ra.clk.Now(),
 	}
 
 	// No matter what, log the request
