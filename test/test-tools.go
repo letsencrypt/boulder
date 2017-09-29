@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
@@ -156,12 +157,36 @@ func AssertBetween(t *testing.T, a, b, c int64) {
 	}
 }
 
+// CountCounterVec returns the count by label and value of a prometheus metric
+func CountCounterVec(labelName string, value string, counterVec *prometheus.CounterVec) int {
+	return CountCounter(counterVec.With(prometheus.Labels{labelName: value}))
+}
+
 // CountCounter returns the count by label and value of a prometheus metric
-func CountCounter(labelName string, value string, counter *prometheus.CounterVec) int {
+func CountCounter(counter prometheus.Counter) int {
 	ch := make(chan prometheus.Metric, 10)
-	counter.With(prometheus.Labels{labelName: value}).Collect(ch)
-	m := <-ch
+	counter.Collect(ch)
+	var m prometheus.Metric
+	select {
+	case <-time.After(time.Second):
+		panic("timed out collecting metrics")
+	case m = <-ch:
+	}
 	var iom io_prometheus_client.Metric
 	_ = m.Write(&iom)
 	return int(iom.Counter.GetValue())
+}
+
+func CountHistogramSamples(hist prometheus.Histogram) int {
+	ch := make(chan prometheus.Metric, 10)
+	hist.Collect(ch)
+	var m prometheus.Metric
+	select {
+	case <-time.After(time.Second):
+		panic("timed out collecting metrics")
+	case m = <-ch:
+	}
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+	return int(iom.Histogram.GetSampleCount())
 }

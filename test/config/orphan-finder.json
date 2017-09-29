@@ -3,11 +3,6 @@
     "stdoutlevel": 7
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "tls": {
     "caCertFile": "test/grpc-creds/minica.pem",
     "certFile": "test/grpc-creds/orphan-finder.boulder/cert.pem",

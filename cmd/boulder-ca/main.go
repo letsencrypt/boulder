@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/cloudflare/cfssl/helpers"
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
 	"google.golang.org/grpc"
 
@@ -170,7 +169,7 @@ func main() {
 		c.CA,
 		sa,
 		pa,
-		clock.Default(),
+		cmd.Clock(),
 		scope,
 		issuers,
 		kp,
@@ -184,7 +183,7 @@ func main() {
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
 		go func() {
-			err = s.Serve(l)
+			err = cmd.FilterShutdownErrors(s.Serve(l))
 			cmd.FailOnError(err, "CA gRPC service failed")
 		}()
 		caSrv = s
@@ -196,7 +195,7 @@ func main() {
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
 		go func() {
-			err = s.Serve(l)
+			err = cmd.FilterShutdownErrors(s.Serve(l))
 			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
 		}()
 		ocspSrv = s

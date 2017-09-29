@@ -23,6 +23,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 # Patch Guidelines
 * Please include helpful comments. No need to gratuitously comment clear code, but make sure it's clear why things are being done.
 * Include information in your pull request about what you're trying to accomplish with your patch.
+* Avoid named return values. See [#3017](https://github.com/letsencrypt/boulder/pull/3017) for an example of a subtle problem they can cause.
 * Do not include `XXX`s or naked `TODO`s. Use the formats:
 ```
 // TODO(<email-address>): Hoverboard + Time-machine unsupported until upstream patch.
@@ -37,6 +38,41 @@ When submitting a squash merge, the merger should copy the URL of the pull
 request into the body of the commit message.
 
 If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
+
+# Error handling
+
+All errors must be addressed in some way: That may be simply by returning an
+error up the stack, or by handling it in some intelligent way where it is
+generated, or by explicitly ignoring it and assigning to `_`. We use the `errcheck`
+tool in our integration tests to make sure all errors are addressed. Note that
+ignoring errors, even in tests, should be rare, since they may generate
+hard-to-debug problems.
+
+We define two special types of error. `BoulderError`, defined in
+errors/errors.go, is used specifically when an typed error needs to be passed
+across an RPC boundary. For instance, if the SA returns "not found", callers
+need to be able to distinguish that from a network error. Not every error that
+may pass across an RPC boundary needs to be a BoulderError, only those errors
+that need to be handled by type elsewhere. Handling by type may be as simple as
+turning a BoulderError into a specific type of ProblemDetail.
+
+The other special type of error is `ProblemDetails`. We try to treat these as a
+presentation-layer detail, and use them only in parts of the system that are
+responsible for rendering errors to end-users, i.e. wfe and wfe2. Note
+one exception: The VA RPC layer defines its own `ProblemDetails` type, which is
+returned to the RA and stored as part of a challenge (to eventually be rendered
+to the user).
+
+Within WFE and WFE2, ProblemDetails are sent to the client by calling
+`sendError()`, which also logs the error. For internal errors like timeout,
+or any error type that we haven't specifically turned into a ProblemDetail, we
+return a ServerInternal error. This avoids unnecessarily exposing internals.
+It's possible to add additional errors to a logEvent using `.AddError()`, but
+this should only be done when there is is internal-only information to log
+that isn't redundant with the ProblemDetails sent to the user. Note that the
+final argument to `sendError()`, `ierr`, will automatically get added to the
+logEvent for ServerInternal errors, so when sending a ServerInternal error it's
+not necessary to separately call `.AddError`.
 
 # Deployability
 

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/miekg/dns"
 )
 
@@ -175,6 +176,5 @@ func (ts *testSrv) serveTestResolver() {
 func main() {
 	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string]string)}
 	ts.serveTestResolver()
-	forever := make(chan bool, 1)
-	<-forever
+	cmd.CatchSignals(nil, nil)
 }

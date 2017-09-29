@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 
@@ -81,7 +82,7 @@ const path404 = "404"
 const path500 = "500"
 const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
 const pathMoved = "5J4FIMrWNfmvHZo-QpKZngmuhqZGwRm21-oEgUDstJM"
-const pathRedirectPort = "port-redirect"
+const pathRedirectInvalidPort = "port-redirect"
 const pathWait = "wait"
 const pathWaitLong = "wait-long"
 const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
@@ -136,12 +137,14 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
 			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid/%s", path500), 301)
+			port := getPort(server)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/%s", port, path500), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
-		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
+			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
 		} else if r.Header.Get("User-Agent") == rejectUserAgent {
 			w.WriteHeader(http.StatusBadRequest)
@@ -396,12 +399,12 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectPort)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost"), chall)
-	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	setChallengeToken(&chall, pathRedirectInvalidPort)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Fetching http://other.valid:8080/path: Invalid port in redirect target. "+
+			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing
 	// HTTP 500 errors. The test case is ensuring that the connection error
@@ -410,7 +413,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, "Fetching http://other.valid/500: Connection refused")
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Invalid response from http://localhost:%d/.well-known/acme-challenge/re-to-failing-url [127.0.0.1]: 500",
+		va.httpPort))
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
@@ -785,27 +790,21 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 func TestPerformValidationInvalid(t *testing.T) {
 	va, _ := setup(nil, 0)
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
-
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "invalid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestDNSValidationEmpty(t *testing.T) {
 	va, _ := setup(nil, 0)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.invalid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -813,18 +812,19 @@ func TestDNSValidationEmpty(t *testing.T) {
 		"empty-txts.com",
 		chalDNS,
 		core.Authorization{})
-	test.AssertEquals(t, prob.Error(), "urn:acme:error:unauthorized :: No TXT records found for DNS challenge")
+	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT records found for DNS challenge")
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "invalid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestPerformValidationValid(t *testing.T) {
 	va, _ := setup(nil, 0)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockScope := mock_metrics.NewMockScope(ctrl)
-	va.stats = mockScope
-	mockScope.EXPECT().TimingDuration("Validations.dns-01.valid", gomock.Any())
-	mockScope.EXPECT().Inc(gomock.Any(), gomock.Any()).AnyTimes()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -832,6 +832,14 @@ func TestPerformValidationValid(t *testing.T) {
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "valid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
 }
 
 func TestDNSValidationFailure(t *testing.T) {
@@ -1305,6 +1313,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
+	mockLog := blog.NewMock()
 	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob == nil {
@@ -1333,6 +1342,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// Local and remote 2 working, should fail
+	localVA.log = mockLog
 	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
@@ -1340,6 +1350,14 @@ func TestPerformRemoteValidation(t *testing.T) {
 	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
+	}
+	failLogs := mockLog.GetAllMatching(`Validation failed due to remote failures`)
+	if len(failLogs) == 0 {
+		t.Error("Expected log line about failure due to remote failures, didn't get it")
+	}
+	remoteFailMetric := test.CountCounter(localVA.metrics.remoteValidationFailures)
+	if remoteFailMetric != 1 {
+		t.Errorf("Expected remote_validation_failures to be incremented, but it wasn't")
 	}
 
 	// Local and remote 2 working with maxRemoteFailures == 1, should succeed

@@ -7,7 +7,7 @@ type ErrorType int
 
 const (
 	InternalServer ErrorType = iota
-	NotSupported
+	_
 	Malformed
 	Unauthorized
 	NotFound
@@ -15,6 +15,8 @@ const (
 	RejectedIdentifier
 	InvalidEmail
 	ConnectionFailure
+	WrongAuthorizationState
+	CAA
 )
 
 // BoulderError represents internal Boulder errors
@@ -48,10 +50,6 @@ func InternalServerError(msg string, args ...interface{}) error {
 	return New(InternalServer, msg, args...)
 }
 
-func NotSupportedError(msg string, args ...interface{}) error {
-	return New(NotSupported, msg, args...)
-}
-
 func MalformedError(msg string, args ...interface{}) error {
 	return New(Malformed, msg, args...)
 }
@@ -78,4 +76,12 @@ func InvalidEmailError(msg string, args ...interface{}) error {
 
 func ConnectionFailureError(msg string, args ...interface{}) error {
 	return New(ConnectionFailure, msg, args...)
+}
+
+func WrongAuthorizationStateError(msg string, args ...interface{}) error {
+	return New(WrongAuthorizationState, msg, args...)
+}
+
+func CAAError(msg string, args ...interface{}) error {
+	return New(CAA, msg, args...)
 }

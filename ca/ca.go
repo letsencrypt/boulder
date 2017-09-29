@@ -116,6 +116,7 @@ type CertificateAuthorityImpl struct {
 	stats                    metrics.Scope
 	prefix                   int // Prepended to the serial number
 	validityPeriod           time.Duration
+	backdate                 time.Duration
 	maxNames                 int
 	forceCNFromSAN           bool
 	enableMustStaple         bool
@@ -270,6 +271,14 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
+	// TODO(briansmith): Make the backdate setting mandatory after the
+	// production ca.json has been updated to include it. Until then, manually
+	// default to 1h, which is the backdating duration we currently use.
+	ca.backdate = config.Backdate.Duration
+	if ca.backdate == 0 {
+		ca.backdate = time.Hour
+	}
+
 	ca.maxNames = config.MaxNames
 
 	return ca, nil
@@ -404,12 +413,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
 	}
 
-	notAfter, serialBigInt, err := ca.generateNotAfterAndSerialNumber()
+	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert", nil)
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -419,19 +428,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	if !ca.enablePrecertificateFlow {
-		return nil, berrors.NotSupportedError("Precertificate flow is disabled")
+		return nil, berrors.InternalServerError("Precertificate flow is disabled")
 	}
 
 	if issueReq.RegistrationID == nil {
 		return nil, berrors.InternalServerError("RegistrationID is nil")
 	}
 
-	notAfter, serialBigInt, err := ca.generateNotAfterAndSerialNumber()
+	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, notAfter, serialBigInt, "cert", &ctPoisonExtension)
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", &ctPoisonExtension)
 	if err != nil {
 		return nil, err
 	}
@@ -447,9 +456,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
 }
 
-func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time, *big.Int, error) {
-	notAfter := ca.clk.Now().Add(ca.validityPeriod)
+type validity struct {
+	NotBefore time.Time
+	NotAfter  time.Time
+}
 
+func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
@@ -458,15 +470,21 @@ func (ca *CertificateAuthorityImpl) generateNotAfterAndSerialNumber() (time.Time
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
-		return time.Time{}, nil, err
+		return nil, validity{}, err
 	}
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	return notAfter, serialBigInt, nil
+	notBefore := ca.clk.Now().Add(-1 * ca.backdate)
+	validity := validity{
+		NotBefore: notBefore,
+		NotAfter:  notBefore.Add(ca.validityPeriod),
+	}
+
+	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, notAfter time.Time, serialBigInt *big.Int, certType string, addedExtension *signer.Extension) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string, addedExtension *signer.Extension) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -495,7 +513,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 
 	issuer := ca.defaultIssuer
 
-	if issuer.cert.NotAfter.Before(notAfter) {
+	if issuer.cert.NotAfter.Before(validity.NotAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return nil, err
@@ -529,6 +547,8 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		},
 		Serial:     serialBigInt,
 		Extensions: extensions,
+		NotBefore:  validity.NotBefore,
+		NotAfter:   validity.NotAfter,
 	}
 
 	serialHex := core.SerialToString(serialBigInt)

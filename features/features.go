@@ -27,6 +27,7 @@ const (
 	DirectoryMeta
 	AllowRenewalFirstRL
 	RecheckCAA
+	LegacyCAA
 	CAAValidationMethods
 )
 
@@ -46,6 +47,7 @@ var features = map[FeatureFlag]bool{
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
+	LegacyCAA:                false,
 	CAAValidationMethods:     false,
 }
 

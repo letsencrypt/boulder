@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -394,6 +395,30 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
+type mockSAFailsNewRegistration struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAFailsNewRegistration) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
+	return core.Registration{}, fmt.Errorf("too bad")
+}
+
+func TestNewRegistrationSAFailure(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAFailsNewRegistration{}
+	input := core.Registration{
+		Contact:   &[]string{"mailto:test@example.com"},
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
+	}
+
+	result, err := ra.NewRegistration(ctx, input)
+	if err == nil {
+		t.Fatalf("NewRegistration should have failed when SA.NewRegistration failed %#v", result.Key)
+	}
+}
+
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -412,15 +437,6 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-
-	id := result.ID
-	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
-		ID:  33,
-		Key: &ShortKey,
-	})
-	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
-	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -859,6 +875,36 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
+}
+
+func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a finalized authorization
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not create pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize pending authorization")
+
+	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
+	va.RecordsReturn = []core.ValidationRecord{
+		{Hostname: "example.com"}}
+	va.ProblemReturn = nil
+
+	// A subsequent call to update the authorization should return the expected error
+	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
+	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
+		"FinalizeAuthorization of valid authz didn't return a berrors.WrongAuthorizationState")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
@@ -1314,6 +1360,68 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 }
 
+// TestCheckExactCertificateLimit tests that the duplicate certificate limit
+// applied to FQDN sets is respected.
+func TestCheckExactCertificateLimit(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a rate limit with a small threshold
+	const dupeCertLimit = 3
+	rlp := ratelimit.RateLimitPolicy{
+		Threshold: dupeCertLimit,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+	}
+
+	// Create a mock SA that has a count of already issued certificates for some
+	// test names
+	mockSA := &mockSAWithFQDNSet{
+		nameCounts: map[string]*sapb.CountByNames_MapElement{
+			"under.example.com": nameCount("under.example.com", dupeCertLimit-1),
+			"equal.example.com": nameCount("equal.example.com", dupeCertLimit),
+			"over.example.com":  nameCount("over.example.com", dupeCertLimit+1),
+		},
+		t: t,
+	}
+	ra.SA = mockSA
+
+	testCases := []struct {
+		Name        string
+		Domain      string
+		ExpectedErr error
+	}{
+		{
+			Name:        "FQDN set issuances less than limit",
+			Domain:      "under.example.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "FQDN set issuances equal to limit",
+			Domain:      "equal.example.com",
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com"),
+		},
+		{
+			Name:        "FQDN set issuances above limit",
+			Domain:      "over.example.com",
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com"),
+		},
+	}
+
+	// For each test case we check that the certificatesPerFQDNSetLimit is applied
+	// as we expect
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := ra.checkCertificatesPerFQDNSetLimit(ctx, []string{tc.Domain}, rlp, 0)
+			if tc.ExpectedErr == nil {
+				test.AssertNotError(t, result, fmt.Sprintf("Expected no error for %q", tc.Domain))
+			} else {
+				test.AssertError(t, result, fmt.Sprintf("Expected error for %q", tc.Domain))
+				test.AssertEquals(t, result.Error(), tc.ExpectedErr.Error())
+			}
+		})
+	}
+}
+
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL := "http://old.invalid"
 	newURL := "http://new.invalid"
@@ -1400,15 +1508,8 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
 
 	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
+
 	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with features.AllowKeyRollover disabled and empty update")
-	}
-
-	_ = features.Set(map[string]bool{"AllowKeyRollover": true})
-	defer features.Reset()
-
-	changed = mergeUpdate(&rA, rB)
 	if changed {
 		t.Fatal("mergeUpdate changed the key with empty update")
 	}
@@ -1469,6 +1570,16 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names [
 		}
 	}
 	return results, nil
+}
+
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
+	var count int64
+	for _, name := range names {
+		if entry, ok := m.nameCounts[name]; ok {
+			count += *entry.Count
+		}
+	}
+	return count, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
@@ -1665,8 +1776,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateRegistration(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -1746,8 +1855,6 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
@@ -1790,8 +1897,6 @@ func (cf *caaFailer) IsCAAValid(
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	err := ra.recheckCAA(context.Background(), nil)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -1808,8 +1913,6 @@ func HTTP01Authorization(domain string) core.Authorization {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	auths := []core.Authorization{HTTP01Authorization("a.com"), HTTP01Authorization("b.com"), HTTP01Authorization("c.com")}
 	err := ra.recheckCAA(context.Background(), auths)
 	if err != nil {
@@ -1820,13 +1923,13 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_ = features.Set(map[string]bool{"RecheckCAA": true})
-	defer features.Reset()
 	auths := []core.Authorization{HTTP01Authorization("a.com"), HTTP01Authorization("b.com"), HTTP01Authorization("c.com")}
 	ra.caa = &caaFailer{}
 	err := ra.recheckCAA(context.Background(), auths)
 	if err == nil {
 		t.Errorf("expected err, got nil")
+	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
+		t.Errorf("expected CAA error, got %v", err.(*berrors.BoulderError).Type)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
 		t.Errorf("expected error to contain error for a.com, got %q", err)
 	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {
@@ -1847,7 +1950,7 @@ func TestNewOrder(t *testing.T) {
 
 	req := &x509.CertificateRequest{
 		Subject:  pkix.Name{CommonName: "a.com"},
-		DNSNames: []string{"b.com", "c.com"},
+		DNSNames: []string{"b.com", "b.com", "C.COM"},
 	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Failed to generate test key")
@@ -1865,6 +1968,41 @@ func TestNewOrder(t *testing.T) {
 	test.AssertByteEquals(t, order.Csr, csr)
 	test.AssertEquals(t, *order.Id, int64(1))
 	test.AssertEquals(t, len(order.Authorizations), 3)
+
+	// Reuse all existing authorizations
+	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Csr:            csr,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, *orderB.RegistrationID, int64(1))
+	test.AssertEquals(t, *orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertByteEquals(t, orderB.Csr, csr)
+	test.AssertEquals(t, *orderB.Id, int64(2))
+	test.AssertEquals(t, len(orderB.Authorizations), 3)
+	sort.Strings(order.Authorizations)
+	sort.Strings(orderB.Authorizations)
+	test.AssertDeepEquals(t, orderB.Authorizations, order.Authorizations)
+
+	// Reuse all of the existing authorizations from the previous order and
+	// add a new one
+	req.DNSNames = append(req.DNSNames, "d.com")
+	csr, err = x509.CreateCertificateRequest(rand.Reader, req, key)
+	test.AssertNotError(t, err, "Failed to generate test CSR")
+	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Csr:            csr,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, *orderC.RegistrationID, int64(1))
+	test.AssertEquals(t, *orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertByteEquals(t, orderC.Csr, csr)
+	test.AssertEquals(t, *orderC.Id, int64(3))
+	test.AssertEquals(t, len(orderC.Authorizations), 4)
+	// Abuse the order of the queries used to extract the reused authorizations
+	existing := orderC.Authorizations[:3]
+	sort.Strings(existing)
+	test.AssertDeepEquals(t, existing, order.Authorizations)
 }
 
 var CAkeyPEM = `

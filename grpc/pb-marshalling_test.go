@@ -106,8 +106,8 @@ func TestChallenge(t *testing.T) {
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
-	pb, err := challengeToPB(chall)
-	test.AssertNotError(t, err, "challengeToPB failed")
+	pb, err := ChallengeToPB(chall)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
 	recon, err := pbToChallenge(pb)
@@ -127,8 +127,8 @@ func TestChallenge(t *testing.T) {
 		},
 	}
 	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
-	pb, err = challengeToPB(chall)
-	test.AssertNotError(t, err, "challengeToPB failed")
+	pb, err = ChallengeToPB(chall)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
 	recon, err = pbToChallenge(pb)
@@ -239,7 +239,7 @@ func TestRegistration(t *testing.T) {
 		Contact:   &contacts,
 		Agreement: "yup",
 		InitialIP: net.ParseIP("1.1.1.1"),
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().Round(0),
 		Status:    core.StatusValid,
 	}
 	pbReg, err := registrationToPB(inReg)
@@ -296,7 +296,7 @@ func TestAuthz(t *testing.T) {
 
 	pbAuthz, err := AuthzToPB(inAuthz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
-	outAuthz, err := pbToAuthz(pbAuthz)
+	outAuthz, err := PBToAuthz(pbAuthz)
 	test.AssertNotError(t, err, "pbToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 }
@@ -319,7 +319,7 @@ func TestSCT(t *testing.T) {
 }
 
 func TestCert(t *testing.T) {
-	now := time.Now()
+	now := time.Now().Round(0)
 	cert := core.Certificate{
 		RegistrationID: 1,
 		Serial:         "serial",

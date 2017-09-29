@@ -20,6 +20,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -49,6 +50,16 @@ type pendingauthzModel struct {
 
 type authzModel struct {
 	core.Authorization
+}
+
+const (
+	authorizationTable        = "authz"
+	pendingAuthorizationTable = "pendingAuthorizations"
+)
+
+var authorizationTables = []string{
+	authorizationTable,
+	pendingAuthorizationTable,
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
@@ -123,13 +134,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	const query = "WHERE id = ?"
-	var model interface{}
-	var err error
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, id)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, id)
-	}
+	model, err := selectRegistration(ssa.dbMap, query, id)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 	}
@@ -142,8 +147,6 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
 	const query = "WHERE jwk_sha256 = ?"
-	var model interface{}
-	var err error
 	if key == nil {
 		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
 	}
@@ -151,11 +154,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if err != nil {
 		return core.Registration{}, err
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, sha)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, sha)
-	}
+	model, err := selectRegistration(ssa.dbMap, query, sha)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
@@ -167,23 +166,28 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 }
 
 // GetAuthorization obtains an Authorization by ID
-func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
+	authz := core.Authorization{}
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return authz, err
 	}
-
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", id)
 	if err != nil && err != sql.ErrNoRows {
-		err = Rollback(tx, err)
-		return
+		return authz, Rollback(tx, err)
 	}
 	if err == sql.ErrNoRows {
 		var fa authzModel
-		err = tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
-		if err != nil {
-			err = Rollback(tx, err)
-			return
+		err := tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		if err != nil && err != sql.ErrNoRows {
+			return authz, Rollback(tx, err)
+		} else if err == sql.ErrNoRows {
+			// If there was no result in either the pending authz table or the authz
+			// table then return a `berrors.NotFound` instance (or a rollback error if
+			// the transaction rollback fails)
+			return authz, Rollback(
+				tx,
+				berrors.NotFoundError("no authorization found with id %q", id))
 		}
 		authz = fa.Authorization
 	} else {
@@ -197,70 +201,25 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
-		err = Rollback(tx, err)
-		return
+		return authz, Rollback(tx, err)
 	}
 	var challs []core.Challenge
 	for _, c := range challObjs {
 		chall, err := modelToChallenge(&c)
 		if err != nil {
-			err = Rollback(tx, err)
-			return core.Authorization{}, err
+			return authz, Rollback(tx, err)
 		}
 		challs = append(challs, chall)
 	}
 	authz.Challenges = challs
 
-	err = tx.Commit()
-	return
+	return authz, tx.Commit()
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	if len(names) == 0 {
-		return nil, berrors.InternalServerError("no names received")
-	}
-
-	params := make([]interface{}, len(names))
-	qmarks := make([]string, len(names))
-	for i, name := range names {
-		id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-		idJSON, err := json.Marshal(id)
-		if err != nil {
-			return nil, err
-		}
-		params[i] = string(idJSON)
-		qmarks[i] = "?"
-	}
-
-	auths, err := selectAuthzs(ssa.dbMap,
-		"WHERE registrationID = ? "+
-			"AND expires > ? "+
-			"AND identifier IN ("+strings.Join(qmarks, ",")+") "+
-			"AND status = 'valid'",
-		append([]interface{}{registrationID, now}, params...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	byName := make(map[string]*core.Authorization)
-	for _, auth := range auths {
-		// No real life authorizations should have a nil expires. If we find them,
-		// don't consider them valid.
-		if auth.Expires == nil {
-			continue
-		}
-		if auth.Identifier.Type != core.IdentifierDNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
-		}
-		existing, present := byName[auth.Identifier.Value]
-		if !present || auth.Expires.After(*existing.Expires) {
-			byName[auth.Identifier.Value] = auth
-		}
-	}
-
-	return byName, nil
+	return ssa.getAuthorizations(ctx, authorizationTable, string(core.StatusValid), registrationID, names, now)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -627,13 +586,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
-	var model interface{}
-	var err error
-	if features.Enabled(features.AllowAccountDeactivation) {
-		model, err = selectRegistrationv2(ssa.dbMap, query, reg.ID)
-	} else {
-		model, err = selectRegistration(ssa.dbMap, query, reg.ID)
-	}
+	model, err := selectRegistration(ssa.dbMap, query, reg.ID)
 	if err == sql.ErrNoRows {
 		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
@@ -643,22 +596,9 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		return err
 	}
 
-	// Since registrationToModel has to return an interface so that we can use either model
-	// version we need to cast both the updated and existing model to their proper types
-	// so that we can copy over the LockCol from one to the other. Once we have copied
-	// that field we reassign to the interface so gorp can properly update it.
-	if features.Enabled(features.AllowAccountDeactivation) {
-		erm := model.(*regModelv2)
-		urm := updatedRegModel.(*regModelv2)
-		urm.LockCol = erm.LockCol
-		updatedRegModel = urm
-	} else {
-		erm := model.(*regModelv1)
-		urm := updatedRegModel.(*regModelv1)
-		urm.LockCol = erm.LockCol
-		updatedRegModel = urm
-	}
-
+	// Copy the existing registration model's LockCol to the new updated
+	// registration model's LockCol
+	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
 		return err
@@ -778,12 +718,12 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("authorization is not pending")
+		err = berrors.WrongAuthorizationStateError("authorization is not pending")
 		return Rollback(tx, err)
 	}
 
 	if existingFinal(tx, authz.ID) {
-		err = berrors.InternalServerError("cannot update a finalized authorization")
+		err = berrors.WrongAuthorizationStateError("cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 
@@ -869,7 +809,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	results := []int64{0, 0}
 
 	now := ssa.clk.Now()
-	for i, table := range []string{"authz", "pendingAuthorizations"} {
+	for i, table := range authorizationTables {
 		for {
 			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
 			if err != nil {
@@ -1254,10 +1194,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
-	table := "authz"
+	table := authorizationTable
 	oldStatus := core.StatusValid
 	if existingPending(tx, id) {
-		table = "pendingAuthorizations"
+		table = pendingAuthorizationTable
 		oldStatus = core.StatusPending
 	}
 
@@ -1294,10 +1234,10 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, err
 	}
 
-	for _, authz := range req.Authorizations {
+	for _, id := range req.Authorizations {
 		otoa := &orderToAuthzModel{
 			OrderID: order.ID,
-			AuthzID: *authz.Id,
+			AuthzID: id,
 		}
 		err = tx.Insert(otoa)
 		if err != nil {
@@ -1313,4 +1253,154 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	req.Id = &order.ID
 	return req, nil
+}
+
+func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
+	var ids []string
+	_, err := ssa.dbMap.Select(&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// GetOrder is used to retrieve an already existing order object
+func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	omObj, err := ssa.dbMap.Get(orderModel{}, *req.Id)
+	if err == sql.ErrNoRows || omObj == nil {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	order := modelToOrder(omObj.(*orderModel))
+	authzIDs, err := ssa.authzForOrder(*order.Id)
+	if err != nil {
+		return nil, err
+	}
+	for _, authzID := range authzIDs {
+		order.Authorizations = append(order.Authorizations, authzID)
+	}
+
+	return order, nil
+}
+
+func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
+	registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+	if len(names) == 0 {
+		return nil, berrors.InternalServerError("no names received")
+	}
+
+	params := make([]interface{}, len(names))
+	qmarks := make([]string, len(names))
+	for i, name := range names {
+		id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		idJSON, err := json.Marshal(id)
+		if err != nil {
+			return nil, err
+		}
+		params[i] = string(idJSON)
+		qmarks[i] = "?"
+	}
+
+	var auths []*core.Authorization
+	_, err := ssa.dbMap.Select(
+		&auths,
+		fmt.Sprintf(`SELECT %s FROM %s
+	WHERE registrationID = ? AND
+	expires > ? AND
+	status = ? AND
+	identifier IN (%s)`, authzFields, table, strings.Join(qmarks, ",")),
+		append([]interface{}{registrationID, now, status}, params...)...)
+	if err != nil {
+		return nil, err
+	}
+
+	byName := make(map[string]*core.Authorization)
+	for _, auth := range auths {
+		// No real life authorizations should have a nil expires. If we find them,
+		// don't consider them valid.
+		if auth.Expires == nil {
+			continue
+		}
+		if auth.Identifier.Type != core.IdentifierDNS {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
+		}
+		existing, present := byName[auth.Identifier.Value]
+		if !present || auth.Expires.After(*existing.Expires) {
+			byName[auth.Identifier.Value] = auth
+		}
+	}
+
+	return byName, nil
+}
+
+func (ssa *SQLStorageAuthority) getPendingAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+	return ssa.getAuthorizations(ctx, pendingAuthorizationTable, string(core.StatusPending), registrationID, names, now)
+}
+
+func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+	resp := &sapb.Authorizations{}
+	for k, v := range m {
+		authzPB, err := bgrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	}
+	return resp, nil
+}
+
+// GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
+func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	authzMap, err := ssa.getAuthorizations(
+		ctx,
+		authorizationTable,
+		string(core.StatusValid),
+		*req.RegistrationID,
+		req.Domains,
+		time.Unix(0, *req.Now),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(authzMap) == len(req.Domains) {
+		return authzMapToPB(authzMap)
+	}
+
+	// remove names we already have authz for
+	remainingNames := []string{}
+	for _, name := range req.Domains {
+		if _, present := authzMap[name]; !present {
+			remainingNames = append(remainingNames, name)
+		}
+	}
+	pendingAuthz, err := ssa.getPendingAuthorizations(ctx, *req.RegistrationID, remainingNames, time.Unix(0, *req.Now))
+	if err != nil {
+		return nil, err
+	}
+	// merge pending into valid
+	for name, a := range pendingAuthz {
+		authzMap[name] = a
+	}
+	return authzMapToPB(authzMap)
+}
+
+// AddPendingAuthorizations creates a batch of pending authorizations and returns their IDs
+func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	ids := []string{}
+	for _, authPB := range req.Authz {
+		authz, err := bgrpc.PBToAuthz(authPB)
+		if err != nil {
+			return nil, err
+		}
+		result, err := ssa.NewPendingAuthorization(ctx, authz)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, result.ID)
+	}
+	return &sapb.AuthorizationIDs{Ids: ids}, nil
 }

@@ -28,6 +28,7 @@
       "ServerURL": "http://boulder:6000"
     },
     "features": {
+      "LegacyCAA": true,
       "IPv6First": true,
       "CAAValidationMethods": true
     },

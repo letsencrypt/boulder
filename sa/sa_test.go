@@ -1061,8 +1061,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAccount(t *testing.T) {
-	_ = features.Set(map[string]bool{"AllowAccountDeactivation": true})
-	defer features.Reset()
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1291,20 +1289,13 @@ func TestNewOrder(t *testing.T) {
 	defer cleanup()
 
 	i := int64(1337)
-	serial := "serial"
-	a, b, c := "a", "b", "c"
 	status := string(core.StatusPending)
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:    &i,
-		Expires:           &i,
-		Csr:               []byte{0, 1, 2},
-		CertificateSerial: &serial,
-		Authorizations: []*corepb.Authorization{
-			&corepb.Authorization{Id: &a},
-			&corepb.Authorization{Id: &b},
-			&corepb.Authorization{Id: &c},
-		},
-		Status: &status,
+		RegistrationID: &i,
+		Expires:        &i,
+		Csr:            []byte{0, 1, 2},
+		Authorizations: []string{"a", "b", "c"},
+		Status:         &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
@@ -1315,4 +1306,127 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+}
+
+func TestOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := time.Now().Truncate(time.Second).UnixNano()
+	status := string(core.StatusPending)
+	empty := ""
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:    &i,
+		Expires:           &i,
+		Csr:               []byte{0, 1, 2},
+		Authorizations:    []string{"a"},
+		Status:            &status,
+		CertificateSerial: &empty,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	test.AssertEquals(t, *order.Id, int64(1))
+
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.Order failed")
+	test.AssertDeepEquals(t, storedOrder, order)
+}
+
+// TestGetAuthorizationNoRows ensures that the GetAuthorization function returns
+// the correct error when there are no results for the provided ID.
+func TestGetAuthorizationNoRows(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// An empty authz ID should result in `sql.ErrNoRows`
+	_, err := sa.GetAuthorization(ctx, "")
+	test.AssertError(t, err, "Didn't get an error looking up empty authz ID")
+	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetAuthorization did not return a berrors.NotFound error")
+}
+
+func TestGetAuthorizations(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().AddDate(0, 0, 1)
+	pa := core.Authorization{RegistrationID: reg.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "a"}, Status: core.StatusPending, Expires: &exp, Combinations: [][]int{[]int{0, 1}}}
+
+	paA, err := sa.NewPendingAuthorization(ctx, pa)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, paA.ID != "", "ID shouldn't be blank")
+
+	pa.Identifier.Value = "b"
+	paB, err := sa.NewPendingAuthorization(ctx, pa)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, paB.ID != "", "ID shouldn't be blank")
+
+	err = sa.UpdatePendingAuthorization(ctx, paB)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paB.ID)
+
+	paB.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, paB)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paB.ID)
+
+	now := fc.Now().UnixNano()
+	authz, err := sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Domains:        []string{"a", "b"},
+		Now:            &now,
+	})
+	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	test.AssertEquals(t, len(authz.Authz), 2)
+	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Domains:        []string{"a", "b", "c"},
+		Now:            &now,
+	})
+	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	test.AssertEquals(t, len(authz.Authz), 2)
+}
+
+func TestAddPendingAuthorizations(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour).UnixNano()
+	identA := `a`
+	identB := `a`
+	combo := []byte(`[[0]]`)
+	status := string(core.StatusPending)
+	empty := ""
+	authz := []*corepb.Authorization{
+		&corepb.Authorization{
+			Id:             &empty,
+			Identifier:     &identA,
+			RegistrationID: &reg.ID,
+			Status:         &status,
+			Expires:        &expires,
+			Combinations:   combo,
+		},
+		&corepb.Authorization{
+			Id:             &empty,
+			Identifier:     &identB,
+			RegistrationID: &reg.ID,
+			Status:         &status,
+			Expires:        &expires,
+			Combinations:   combo,
+		},
+	}
+
+	ids, err := sa.AddPendingAuthorizations(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: authz})
+	test.AssertNotError(t, err, "sa.AddPendingAuthorizations failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+
+	for _, id := range ids.Ids {
+		_, err := sa.GetAuthorization(context.Background(), id)
+		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+	}
 }

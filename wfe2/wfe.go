@@ -1,8 +1,8 @@
 package wfe2
 
 import (
+	"bytes"
 	"crypto/x509"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,11 +15,14 @@ import (
 	"strings"
 	"time"
 
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -27,6 +30,9 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/web"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -130,7 +136,7 @@ func NewWebFrontEndImpl(
 // * Never send a body in response to a HEAD request. Anything
 // written by the handler will be discarded if the method is HEAD.
 // Also, all handlers that accept GET automatically accept HEAD.
-func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfeHandlerFunc, methods ...string) {
+func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web.WFEHandlerFunc, methods ...string) {
 	methodsMap := make(map[string]bool)
 	for _, m := range methods {
 		methodsMap[m] = true
@@ -141,10 +147,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	handler := http.StripPrefix(pattern, &topHandler{
-		log: wfe.log,
-		clk: clock.Default(),
-		wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
+		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
@@ -192,7 +196,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			h(ctx, logEvent, response, request)
 			cancel()
 		}),
-	})
+	))
 	mux.Handle(pattern, handler)
 }
 
@@ -200,7 +204,7 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *requestEvent, status int, v interface{}) error {
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v interface{}) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
@@ -309,21 +313,18 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
-	m.Handle("/", &topHandler{
-		log: wfe.log,
-		clk: clock.Default(),
-		wfe: wfeHandlerFunc(wfe.Index),
-	})
+	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
 	return measured_http.New(m, wfe.clk)
 }
 
 // Method implementations
 
 // Index serves a simple identification page. It is not part of the ACME spec.
-func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
@@ -366,7 +367,7 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // Directory is an HTTP request handler that provides the directory
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
-func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
 		"new-account": newAcctPath,
 		"revoke-cert": revokeCertPath,
@@ -400,8 +401,10 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 
 // sendError sends an error response represented by the given ProblemDetails,
 // and, if the ProblemDetails.Type is ServerInternalProblem, audit logs the
-// internal ierr.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, prob *probs.ProblemDetails, ierr error) {
+// internal ierr. The rendered Problem will have its Type prefixed with the ACME
+// v2 error namespace.
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
+	// Determine the HTTP status code to use for this problem
 	code := probs.ProblemDetailsToStatusCode(prob)
 
 	// Record details to the log event
@@ -417,23 +420,21 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 		}
 	}
 
+	// Increment a stat for this problem type
+	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
+
+	// Prefix the problem type with the ACME V2 error namespace and marshal to JSON
+	prob.Type = probs.V2ErrorNS + prob.Type
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	// Paraphrased from
-	// https://golang.org/src/net/http/server.go#L1272
+	// Write the JSON problem response
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
 	response.Write(problemDoc)
-
-	problemSegments := strings.Split(string(prob.Type), ":")
-	if len(problemSegments) > 0 {
-		probType := problemSegments[len(problemSegments)-1]
-		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": probType}).Inc()
-	}
 }
 
 func link(url, relation string) string {
@@ -443,7 +444,7 @@ func link(url, relation string) string {
 // NewAccount is used by clients to submit a new account
 func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -457,16 +458,20 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
+	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	if err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		// TODO(#595): check for missing account err
 		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
 		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
+		return
 	}
 
 	var init core.Registration
-	err := json.Unmarshal(body, &init)
+	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
@@ -491,9 +496,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	acct, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
-		logEvent.AddError("unable to create new account: %s", err)
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Error creating new account"), err)
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
 	}
 	logEvent.Requester = acct.ID
@@ -511,7 +515,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err != nil {
 		// ServerInternal because we just created this account, and it
 		// should be OK.
-		logEvent.AddError("unable to marshal account: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 		return
 	}
@@ -534,13 +537,210 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 	return !missingNames, nil
 }
 
-// RevokeCertificate is used by clients to request the revocation of a cert.
-func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	// RevokeCertificate is a NOP for WFEv2 at the present time. It needs unique JWS
-	// validation compared to other ACME v2 endpoints.
-	wfe.sendError(response, logEvent,
-		probs.ServerInternal("RevokeCertificate is not presently implemented for ACME v2"), nil)
-	return
+// authorizedToRevokeCert is a callback function that can be used to validate if
+// a given requester is authorized to revoke the certificate parsed out of the
+// revocation request from the inner JWS. If the requester is not authorized to
+// revoke the certificate a problem is returned. It is expected to be a closure
+// containing additional state (an account ID or key) that will be used to make
+// the decision.
+type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
+
+// processRevocation accepts the payload for a revocation request along with
+// an account ID and a callback used to decide if the requester is authorized to
+// revoke a given certificate. If the request can not  be authenticated or the
+// requester is not authorized to revoke the certificate requested a problem is
+// returned. Otherwise the certificate is marked revoked through the SA.
+func (wfe *WebFrontEndImpl) processRevocation(
+	ctx context.Context,
+	jwsBody []byte,
+	acctID int64,
+	authorizedToRevoke authorizedToRevokeCert,
+	request *http.Request,
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
+	// Read the revoke request from the JWS payload
+	var revokeRequest struct {
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
+	}
+	if err := json.Unmarshal(jwsBody, &revokeRequest); err != nil {
+		return probs.Malformed("Unable to JSON parse revoke request")
+	}
+
+	// Parse the provided certificate
+	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
+	if err != nil {
+		return probs.Malformed("Unable to parse certificate DER")
+	}
+
+	// Compute and record the serial number of the provided certificate
+	serial := core.SerialToString(providedCert.SerialNumber)
+	logEvent.Extra["ProvidedCertificateSerial"] = serial
+
+	// Lookup the certificate by the serial. If the certificate wasn't found, or
+	// it wasn't a byte-for-byte match to the certificate requested for
+	// revocation, return an error
+	cert, err := wfe.SA.GetCertificate(ctx, serial)
+	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+		return probs.NotFound("No such certificate")
+	}
+
+	// Parse the certificate into memory
+	parsedCertificate, err := x509.ParseCertificate(cert.DER)
+	if err != nil {
+		// InternalServerError because cert.DER came from our own DB.
+		return probs.ServerInternal("invalid parse of stored certificate")
+	}
+	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+
+	// Check the certificate status for the provided certificate to see if it is
+	// already revoked
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
+	if err != nil {
+		return probs.NotFound("Certificate status not yet available")
+	}
+	logEvent.Extra["CertificateStatus"] = certStatus.Status
+
+	if certStatus.Status == core.OCSPStatusRevoked {
+		return probs.Conflict("Certificate already revoked")
+	}
+
+	// Validate that the requester is authenticated to revoke the given certificate
+	prob := authorizedToRevoke(parsedCertificate)
+	if prob != nil {
+		return prob
+	}
+
+	// Verify the revocation reason supplied is allowed
+	reason := revocation.Reason(0)
+	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
+			return probs.Malformed("unsupported revocation reason code provided")
+		}
+		reason = *revokeRequest.Reason
+	}
+
+	// Revoke the certificate. AcctID may be 0 if there is no associated account
+	// (e.g. it was a self-authenticated JWS using the certificate public key)
+	if err := wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID); err != nil {
+		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
+	}
+
+	wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+	return nil
+}
+
+// revokeCertByKeyID processes an outer JWS as a revocation request that is
+// authenticated by a KeyID and the associated account.
+func (wfe *WebFrontEndImpl) revokeCertByKeyID(
+	ctx context.Context,
+	outerJWS *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
+	// For Key ID revocations we authenticate the outer JWS by using
+	// `validJWSForAccount` similar to other WFE endpoints
+	jwsBody, _, acct, prob := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
+	if prob != nil {
+		return prob
+	}
+	// For Key ID revocations we decide if an account is able to revoke a specific
+	// certificate by checking that the account has valid authorizations for all
+	// of the names in the certificate
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
+		if err != nil {
+			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
+		}
+		if !valid {
+			return probs.Unauthorized(
+				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
+		}
+		return nil
+	}
+	return wfe.processRevocation(ctx, jwsBody, acct.ID, authorizedToRevoke, request, logEvent)
+}
+
+// revokeCertByJWK processes an outer JWS as a revocation request that is
+// authenticated by an embedded JWK. E.g. in the case where someone is
+// requesting a revocation by using the keypair associated with the certificate
+// to be revoked
+func (wfe *WebFrontEndImpl) revokeCertByJWK(
+	ctx context.Context,
+	outerJWS *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *web.RequestEvent) *probs.ProblemDetails {
+	// We maintain the requestKey as a var that is closed-over by the
+	// `authorizedToRevoke` function to use
+	var requestKey *jose.JSONWebKey
+	// For embedded JWK revocations we authenticate the outer JWS by using
+	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
+	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
+	// read the HTTP request body in `parseJWSRequest` and it is now empty.
+	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(outerJWS, request, logEvent)
+	if prob != nil {
+		return prob
+	}
+	requestKey = jwk
+	// For embedded JWK revocations we decide if a requester is able to revoke a specific
+	// certificate by checking that to-be-revoked certificate has the same public
+	// key as the JWK that was used to authenticate the request
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
+			return probs.Unauthorized(
+				"JWK embedded in revocation request must be the same public key as the cert to be revoked")
+		}
+		return nil
+	}
+	// We use `0` as the account ID provided to `processRevocation` because this
+	// is a self-authenticated request.
+	return wfe.processRevocation(ctx, jwsBody, 0, authorizedToRevoke, request, logEvent)
+}
+
+// RevokeCertificate is used by clients to request the revocation of a cert. The
+// revocation request is handled uniquely based on the method of authentication
+// used.
+func (wfe *WebFrontEndImpl) RevokeCertificate(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	// The ACME specification handles the verification of revocation requests
+	// differently from other endpoints. For this reason we do *not* immediately
+	// call `wfe.validPOSTForAccount` like all of the other endpoints.
+	// For this endpoint we need to accept a JWS with an embedded JWK, or a JWS
+	// with an embedded key ID, handling each case differently in terms of which
+	// certificates are authorized to be revoked by the requester
+
+	// Parse the JWS from the HTTP Request
+	jws, prob := wfe.parseJWSRequest(request)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Figure out which type of authentication this JWS uses
+	authType, prob := checkJWSAuthType(jws)
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Handle the revocation request according to how it is authenticated, or if
+	// the authentication type is unknown, error immediately
+	if authType == embeddedKeyID {
+		prob = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
+		addRequesterHeader(response, logEvent.Requester)
+	} else if authType == embeddedJWK {
+		prob = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
+	} else {
+		prob = probs.Malformed("Malformed JWS, no KeyID or embedded JWK")
+	}
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+	response.WriteHeader(http.StatusOK)
 }
 
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, account core.Registration) {
@@ -549,7 +749,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 		CSR          string
 		Registration core.Registration
 	}{
-		ClientAddr:   getClientAddr(request),
+		ClientAddr:   web.GetClientAddr(request),
 		CSR:          hex.EncodeToString(cr.Bytes),
 		Registration: account,
 	}
@@ -560,7 +760,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 // responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -586,7 +786,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if berrors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -596,7 +796,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// After expiring, challenges are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
-		logEvent.AddError("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -626,12 +825,20 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URI field and clearing its ID field.
-// TODO: Come up with a cleaner way to do this.
-// https://github.com/letsencrypt/boulder/issues/761
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
+	// Update the challenge URI to be relative to the HTTP request Host
 	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
+	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
+
+	// Historically the Type field of a problem was always prefixed with a static
+	// error namespace. To support the V2 API and migrating to the correct IETF
+	// namespace we now prefix the Type with the correct namespace at runtime when
+	// we write the problem JSON to the user. We skip this process if the
+	// challenge error type has already been prefixed with the V1ErrorNS.
+	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
+		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
+	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
@@ -651,7 +858,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	request *http.Request,
 	authz core.Authorization,
 	challenge *core.Challenge,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
@@ -663,7 +870,6 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
-		logEvent.AddError("unable to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
 		return
 	}
@@ -675,7 +881,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	request *http.Request,
 	authz core.Authorization,
 	challengeIndex int,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
@@ -695,7 +901,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Check that the account ID matching the key used matches
 	// the account ID on the authz object
 	if currAcct.ID != authz.RegistrationID {
-		logEvent.AddError("User account id: %d != Authorization account id: %v", currAcct.ID, authz.RegistrationID)
 		wfe.sendError(response,
 			logEvent,
 			probs.Unauthorized("User account ID doesn't match account ID in authorization"),
@@ -706,7 +911,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	var challengeUpdate core.Challenge
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		logEvent.AddError("error JSON unmarshaling challenge response: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
 	}
@@ -714,8 +918,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Ask the RA to update this authorization
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
-		logEvent.AddError("unable to update challenge: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Unable to update challenge"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 		return
 	}
 
@@ -730,7 +933,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
-		logEvent.AddError("failed to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
 		return
 	}
@@ -739,7 +941,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 // Account is used by a client to submit an update to their account.
 func (wfe *WebFrontEndImpl) Account(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -755,16 +957,13 @@ func (wfe *WebFrontEndImpl) Account(
 	idStr := request.URL.Path
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		logEvent.AddError("account ID must be an integer, was %#v", idStr)
 		wfe.sendError(response, logEvent, probs.Malformed("Account ID must be an integer"), err)
 		return
 	} else if id <= 0 {
 		msg := fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	} else if id != currAcct.ID {
-		logEvent.AddError("Request signing key did not match account key: %d != %d", id, currAcct.ID)
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Request signing key did not match account key"), nil)
 		return
@@ -773,7 +972,6 @@ func (wfe *WebFrontEndImpl) Account(
 	var update core.Registration
 	err = json.Unmarshal(body, &update)
 	if err != nil {
-		logEvent.AddError("unable to JSON parse account: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 		return
 	}
@@ -807,7 +1005,6 @@ func (wfe *WebFrontEndImpl) Account(
 		update.Agreement != wfe.SubscriberAgreementURL {
 		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
 			update.Agreement, wfe.SubscriberAgreementURL)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
@@ -821,9 +1018,8 @@ func (wfe *WebFrontEndImpl) Account(
 
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
 	if err != nil {
-		logEvent.AddError("unable to update account: %s", err)
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Unable to update account"), err)
+			web.ProblemDetailsForError(err, "Unable to update account"), err)
 		return
 	}
 
@@ -834,7 +1030,6 @@ func (wfe *WebFrontEndImpl) Account(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
 	if err != nil {
 		// ServerInternal because we just generated the account, it should be OK
-		logEvent.AddError("unable to marshal updated account: %s", err)
 		wfe.sendError(response, logEvent,
 			probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -844,7 +1039,7 @@ func (wfe *WebFrontEndImpl) Account(
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
 	authz *core.Authorization,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) bool {
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -854,7 +1049,6 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		return false
 	}
 	if acct.ID != authz.RegistrationID {
-		logEvent.AddError("account ID doesn't match ID for authorization")
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
 		return false
@@ -868,14 +1062,12 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		return false
 	}
 	if req.Status != core.StatusDeactivated {
-		logEvent.AddError("invalid status value")
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
 	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
 	if err != nil {
-		logEvent.AddError("unable to deactivate authorization", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error deactivating authorization"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
 	// Since the authorization passed to DeactivateAuthorization isn't
@@ -887,12 +1079,11 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
-func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
-		logEvent.AddError("No such authorization at id %s", id)
 		// TODO(#1199): handle db errors
 		wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
 		return
@@ -905,8 +1096,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
-		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		logEvent.AddError(msg)
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -925,7 +1114,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
-		logEvent.AddError("Failed to JSON marshal authz: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
 		return
 	}
@@ -935,7 +1123,7 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
-func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 
 	serial := request.URL.Path
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
@@ -963,7 +1151,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		logEvent.AddError("unable to parse certificate: %s", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
 		return
 	}
@@ -983,12 +1170,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 
 // Terms is used by the client to obtain the current Terms of Service /
 // Subscriber Agreement to which the subscriber must agree.
-func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
-func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
@@ -999,12 +1186,11 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, 
 }
 
 // BuildID tells the requestor what build we're running.
-func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		logEvent.AddError("unable to print build information: %s", err)
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
@@ -1067,7 +1253,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 // KeyRollover allows a user to change their signing key
 func (wfe *WebFrontEndImpl) KeyRollover(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	// Validate the outer JWS on the key rollover in standard fashion using
@@ -1136,13 +1322,12 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
 	if err != nil {
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Unable to update account with new key"), err)
+			web.ProblemDetailsForError(err, "Unable to update account with new key"), err)
 		return
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
-		logEvent.AddError("failed to marshal updated account: %q", err)
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
 	}
 }
@@ -1152,12 +1337,11 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	acct core.Registration,
 	response http.ResponseWriter,
 	request *http.Request,
-	logEvent *requestEvent) {
+	logEvent *web.RequestEvent) {
 	err := wfe.RA.DeactivateRegistration(ctx, acct)
 	if err != nil {
-		logEvent.AddError("unable to deactivate account", err)
 		wfe.sendError(response, logEvent,
-			problemDetailsForError(err, "Error deactivating account"), err)
+			web.ProblemDetailsForError(err, "Error deactivating account"), err)
 		return
 	}
 	acct.Status = core.StatusDeactivated
@@ -1165,7 +1349,6 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
 		// ServerInternal because account is from DB and should be fine
-		logEvent.AddError("unable to marshal updated account: %s", err)
 		wfe.sendError(response, logEvent,
 			probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -1192,12 +1375,14 @@ type orderJSON struct {
 	Expires        time.Time
 	CSR            core.JSONBuffer
 	Authorizations []string
+	Certificate    string `json:",omitempty"`
+	Error          string `json:",omitempty"`
 }
 
 // NewOrder is used by clients to create a new order object from a CSR
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
-	logEvent *requestEvent,
+	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -1213,7 +1398,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// in the request
 	err := json.Unmarshal(body, &rawCSR)
 	if err != nil {
-		logEvent.AddError("unable to JSON unmarshal order request: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling order request"), err)
 		return
 	}
@@ -1225,7 +1409,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// and encoding/asn1 will refuse to parse it. If this is the case exit early
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
-		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
 		wfe.sendError(
 			response,
 			logEvent,
@@ -1238,7 +1421,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// Check for a malformed CSR early to avoid unnecessary RPCs
 	_, err = x509.ParseCertificateRequest(rawCSR.CSR)
 	if err != nil {
-		logEvent.AddError("unable to parse CSR: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
 		return
 	}
@@ -1248,26 +1430,75 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Csr:            rawCSR.CSR,
 	})
 	if err != nil {
-		logEvent.AddError("unable to create order: %s", err)
-		wfe.sendError(response, logEvent, problemDetailsForError(err, "Error creating new order"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
 
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).Truncate(time.Second).UTC(),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
 		CSR:            core.JSONBuffer(order.Csr),
 		Authorizations: make([]string, len(order.Authorizations)),
 	}
-	for i, authz := range order.Authorizations {
-		respObj.Authorizations[i] = wfe.relativeEndpoint(request, authzPath+string(*authz.Id))
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
 	}
 
-	// TODO(#2985): This location header points to a non-existent path, remove
-	// comment once the order handler is added
-	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", orderPath, *order.Id)))
+	response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id)))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
+		return
+	}
+}
+
+// Order is used to retrieve a existing order object
+func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	fields := strings.SplitN(request.URL.Path, "/", 2)
+	if len(fields) != 2 {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+		return
+	}
+	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		return
+	}
+	orderID, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
+		return
+	}
+
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			return
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if *order.RegistrationID != acctID {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		return
+	}
+
+	respObj := orderJSON{
+		Status:         core.AcmeStatus(*order.Status),
+		Expires:        time.Unix(0, *order.Expires).UTC(),
+		CSR:            core.JSONBuffer(order.Csr),
+		Authorizations: make([]string, len(order.Authorizations)),
+		Certificate:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, *order.CertificateSerial)),
+		Error:          string(order.Error),
+	}
+	for i, authzID := range order.Authorizations {
+		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return

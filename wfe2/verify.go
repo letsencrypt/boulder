@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/web"
 )
 
 var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
@@ -162,7 +163,7 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 // provided logEvent is mutated to set the observed RequestNonce.
 // NOTE: this function assumes the JWS has already been verified with the
 // correct public key.
-func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *requestEvent) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *web.RequestEvent) *probs.ProblemDetails {
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
 	header := jws.Signatures[0].Header
@@ -366,7 +367,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	jws *jose.JSONWebSignature,
 	ctx context.Context,
 	request *http.Request,
-	logEvent *requestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
 	if prob := wfe.enforceJWSAuthType(jws, embeddedKeyID); prob != nil {
@@ -427,7 +428,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	jws *jose.JSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
 	if err := checkAlgorithm(jwk, jws); err != nil {
@@ -473,24 +474,18 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	return payload, nil
 }
 
-// validPOSTForAccount checks that a given POST request has a valid JWS
-// verified with the public key associated to a known account,
-// specified by the JWS key ID. If the request is valid (e.g. the JWS is well
-// formed, verifies with the JWK stored for the specified key ID, specifies the
-// correct URL, and has a valid nonce) then `validPOSTForAccount` returns the
-// validated JWS body, the parsed JSONWebSignature, and a pointer to the JWK's
-// associated account. If any of these conditions are not met or an error
-// occurs only a problem is returned.
-func (wfe *WebFrontEndImpl) validPOSTForAccount(
+// validJWSForAccount checks that a given JWS is valid and verifies with the
+// public key associated to a known account specified by the JWS Key ID. If the
+// JWS is valid (e.g. the JWS is well formed, verifies with the JWK stored for the
+// specified key ID, specifies the correct URL, and has a valid nonce) then
+// `validJWSForAccount` returns the validated JWS body, the parsed
+// JSONWebSignature, and a pointer to the JWK's associated account. If any of
+// these conditions are not met or an error occurs only a problem is returned.
+func (wfe *WebFrontEndImpl) validJWSForAccount(
+	jws *jose.JSONWebSignature,
 	request *http.Request,
 	ctx context.Context,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
-	// Parse the JWS from the POST request
-	jws, prob := wfe.parseJWSRequest(request)
-	if prob != nil {
-		return nil, nil, nil, prob
-	}
-
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
 	if prob != nil {
@@ -506,27 +501,35 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	return payload, jws, account, nil
 }
 
-// validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
-// verified with the JWK embedded in the JWS itself (e.g. self-authenticated).
-// This type of POST request is only used for creating new accounts or revoking a
-// certificate by signing the request with the private key corresponding to the
-// certificate's public key and embedding that public key in the JWS. All other
-// request should be validated using `validPOSTforAccount`. If the POST request
-// validates (e.g. the JWS is well formed, verifies with the JWK embedded in it,
-// the JWK meets policy/algorithm requirements, has the correct URL and includes a
-// valid nonce) then `validSelfAuthenticatedPOST` returns the validated JWS body
-// and the JWK that was embedded in the JWS. Otherwise if the valid JWS
-// conditions are not met or an error occurs only a problem is returned.
-func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
+// validPOSTForAccount checks that a given POST request has a valid JWS
+// using `validJWSForAccount`.
+func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
-	logEvent *requestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
-
+	ctx context.Context,
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, nil, nil, prob
 	}
+	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
+}
 
+// validSelfAuthenticatedJWS checks that a given JWS verifies with the JWK
+// embedded in the JWS itself (e.g. self-authenticated). This type of JWS
+// is only used for creating new accounts or revoking a certificate by signing
+// the request with the private key corresponding to the certificate's public
+// key and embedding that public key in the JWS. All other request should be
+// validated using `validJWSforAccount`. If the JWS validates (e.g. the JWS is
+// well formed, verifies with the JWK embedded in it, the JWK meets
+// policy/algorithm requirements, has the correct URL and includes a valid
+// nonce) then `validSelfAuthenticatedJWS` returns the validated JWS body and
+// the JWK that was embedded in the JWS. Otherwise if the valid JWS conditions
+// are not met or an error occurs only a problem is returned
+func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
+	jws *jose.JSONWebSignature,
+	request *http.Request,
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Extract the embedded JWK from the parsed JWS
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
@@ -546,6 +549,20 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	}
 
 	return payload, pubKey, nil
+}
+
+// validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
+// using `validSelfAuthenticatedJWS`.
+func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
+	request *http.Request,
+	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	// Parse the JWS from the POST request
+	jws, prob := wfe.parseJWSRequest(request)
+	if prob != nil {
+		return nil, nil, prob
+	}
+	// Extract and validate the embedded JWK from the parsed JWS
+	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
 }
 
 // rolloverRequest is a struct representing an ACME key rollover request
@@ -572,7 +589,7 @@ type rolloverRequest struct {
 func (wfe *WebFrontEndImpl) validKeyRollover(
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
-	logEvent *requestEvent) (*rolloverRequest, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) (*rolloverRequest, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS
 	jwk, prob := wfe.extractJWK(innerJWS)
@@ -600,7 +617,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
 	}
-	// NOTE(@cpu): we do not stomp the requestEvent's payload here since that is set
+	// NOTE(@cpu): we do not stomp the web.RequestEvent's payload here since that is set
 	// from the outerJWS in validPOSTForAccount and contains the inner JWS and inner
 	// payload already.
 

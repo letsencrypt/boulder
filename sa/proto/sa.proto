@@ -39,6 +39,9 @@ service StorageAuthority {
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
+        rpc GetOrder(OrderRequest) returns (core.Order) {}
+        rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
+        rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
 }
 
 message RegistrationID {
@@ -178,4 +181,30 @@ message RevokeAuthorizationsByDomainRequest {
 message RevokeAuthorizationsByDomainResponse {
         optional int64 finalized = 1;
         optional int64 pending = 2;
+}
+
+message OrderRequest {
+        optional int64 id = 1;
+}
+
+message GetAuthorizationsRequest {
+        optional int64 registrationID = 1;
+        repeated string domains = 2;
+        optional int64 now = 3; // Unix timestamp (nanoseconds)
+}
+
+message Authorizations {
+        message MapElement {
+                optional string domain = 1;
+                optional core.Authorization authz = 2;
+        }
+        repeated MapElement authz = 1;
+}
+
+message AddPendingAuthorizationsRequest {
+        repeated core.Authorization authz = 1;
+}
+
+message AuthorizationIDs {
+        repeated string ids = 1;
 }

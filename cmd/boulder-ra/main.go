@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -166,7 +165,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	rai := ra.NewRegistrationAuthorityImpl(
-		clock.Default(),
+		cmd.Clock(),
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
@@ -197,14 +196,14 @@ func main() {
 			[]string{c.Common.DNSResolver},
 			nil,
 			scope,
-			clock.Default(),
+			cmd.Clock(),
 			dnsTries)
 	} else {
 		rai.DNSClient = bdns.NewTestDNSClientImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
 			scope,
-			clock.Default(),
+			cmd.Clock(),
 			dnsTries)
 	}
 
@@ -223,7 +222,7 @@ func main() {
 		gw := bgrpc.NewRegistrationAuthorityServer(rai)
 		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
 		go func() {
-			err = grpcSrv.Serve(listener)
+			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 			cmd.FailOnError(err, "RA gRPC service failed")
 		}()
 	}

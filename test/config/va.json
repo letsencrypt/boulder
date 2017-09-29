@@ -8,7 +8,6 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
@@ -22,16 +21,20 @@
       "clientNames": [
         "ra.boulder"
       ]
+    },
+    "GoogleSafeBrowsing": {
+      "APIKey": "my-voice-is-my-passport",
+      "DataDir": "/tmp",
+      "ServerURL": "http://boulder:6000"
+    },
+    "features": {
+      "IPv6First": true
     }
   },
 
-  "statsd": {
-    "server": "localhost:8125",
-    "prefix": "Boulder"
-  },
-
   "syslog": {
-    "stdoutlevel": 6
+    "stdoutlevel": 6,
+    "sysloglevel": 4
   },
 
   "common": {

@@ -124,6 +124,9 @@ type StorageGetter interface {
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
+	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
+	CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error)
+	GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -140,6 +143,7 @@ type StorageAdder interface {
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 }
 
 // StorageAuthority interface represents a simple key/value

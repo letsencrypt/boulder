@@ -133,8 +133,8 @@ func TestErrorLog(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
-	_, found := src.Response(ocspReq)
-	test.Assert(t, !found, "Somehow found OCSP response")
+	_, _, err = src.Response(ocspReq)
+	test.AssertEquals(t, err, cfocsp.ErrNotFound)
 
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
 }

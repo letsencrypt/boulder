@@ -32,6 +32,7 @@ import (
 	"os/signal"
 	"path"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -271,12 +272,32 @@ func CatchSignals(logger blog.Logger, callback func()) {
 	signal.Notify(sigChan, syscall.SIGHUP)
 
 	sig := <-sigChan
-	logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+	if logger != nil {
+		logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+	}
 
 	if callback != nil {
 		callback()
 	}
 
-	logger.Info("Exiting")
+	if logger != nil {
+		logger.Info("Exiting")
+	}
 	os.Exit(0)
+}
+
+// FilterShutdownErrors returns the input error, with the exception of "use of
+// closed network connection," on which it returns nil
+// Per https://github.com/grpc/grpc-go/issues/1017, a gRPC server's `Serve()`
+// will always return an error, even when GracefulStop() is called. We don't
+// want to log graceful stops as errors, so we filter out the meaningless
+// error we get in that situation.
+func FilterShutdownErrors(err error) error {
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		return nil
+	}
+	return err
 }

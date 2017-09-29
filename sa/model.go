@@ -10,7 +10,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -25,26 +25,16 @@ type dbSelector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
-const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol"
-const regFieldsv2 = regFields + ", status"
+const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModelv1, error) {
-	var model regModelv1
+func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModel, error) {
+	var model regModel
 	err := s.SelectOne(
 		&model,
 		"SELECT "+regFields+" FROM registrations "+q,
 		args...,
 	)
-	return &model, err
-}
-
-// selectRegistrationv2 selects all fields (including v2 migrated fields) of one registration model
-func selectRegistrationv2(s dbOneSelector, q string, args ...interface{}) (*regModelv2, error) {
-	var model regModelv2
-	err := s.SelectOne(
-		&model,
-		"SELECT "+regFieldsv2+" FROM registrations "+q, args...)
 	return &model, err
 }
 
@@ -70,17 +60,6 @@ func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, e
 		args...,
 	)
 	return &model, err
-}
-
-// selectAuthzs selects all fields of multiple authorization objects
-func selectAuthzs(s dbSelector, q string, args ...interface{}) ([]*core.Authorization, error) {
-	var models []*core.Authorization
-	_, err := s.Select(
-		&models,
-		"SELECT "+authzFields+" FROM authz "+q,
-		args...,
-	)
-	return models, err
 }
 
 // selectSctReceipt selects all fields of one SignedCertificateTimestamp object
@@ -149,9 +128,8 @@ type issuedNameModel struct {
 	Serial       string    `db:"serial"`
 }
 
-// regModelv1 is the description of a core.Registration in the database before
-// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
-type regModelv1 struct {
+// regModel is the description of a core.Registration in the database before
+type regModel struct {
 	ID        int64    `db:"id"`
 	Key       []byte   `db:"jwk"`
 	KeySHA256 string   `db:"jwk_sha256"`
@@ -162,13 +140,7 @@ type regModelv1 struct {
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
-}
-
-// regModelv2 is the description of a core.Registration in the database after
-// sa/_db/migrations/20160818140745_AddRegStatus.sql is applied
-type regModelv2 struct {
-	regModelv1
-	Status string `db:"status"`
+	Status    string `db:"status"`
 }
 
 type certStatusModel struct {
@@ -216,7 +188,7 @@ const getChallengesQuery = `
 	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
 
 // newReg creates a reg model object from a core.Registration
-func registrationToModel(r *core.Registration) (interface{}, error) {
+func registrationToModel(r *core.Registration) (*regModel, error) {
 	key, err := json.Marshal(r.Key)
 	if err != nil {
 		return nil, err
@@ -232,7 +204,7 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 	if r.Contact == nil {
 		r.Contact = &[]string{}
 	}
-	rm := regModelv1{
+	rm := regModel{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
@@ -240,26 +212,15 @@ func registrationToModel(r *core.Registration) (interface{}, error) {
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
 		CreatedAt: r.CreatedAt,
+		Status:    string(r.Status),
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		return &regModelv2{
-			regModelv1: rm,
-			Status:     string(r.Status),
-		}, nil
-	}
+
 	return &rm, nil
 }
 
-func modelToRegistration(ri interface{}) (core.Registration, error) {
-	var rm *regModelv1
-	if features.Enabled(features.AllowAccountDeactivation) {
-		r2 := ri.(*regModelv2)
-		rm = &r2.regModelv1
-	} else {
-		rm = ri.(*regModelv1)
-	}
+func modelToRegistration(reg *regModel) (core.Registration, error) {
 	k := &jose.JSONWebKey{}
-	err := json.Unmarshal(rm.Key, k)
+	err := json.Unmarshal(reg.Key, k)
 	if err != nil {
 		err = fmt.Errorf("unable to unmarshal JSONWebKey in db: %s", err)
 		return core.Registration{}, err
@@ -268,23 +229,21 @@ func modelToRegistration(ri interface{}) (core.Registration, error) {
 	// Contact can be nil when the DB contains the literal string "null". We
 	// prefer to represent this in memory as a pointer to an empty slice rather
 	// than a nil pointer.
-	if rm.Contact == nil {
+	if reg.Contact == nil {
 		contact = &[]string{}
 	} else {
-		contact = &rm.Contact
+		contact = &reg.Contact
 	}
 	r := core.Registration{
-		ID:        rm.ID,
+		ID:        reg.ID,
 		Key:       k,
 		Contact:   contact,
-		Agreement: rm.Agreement,
-		InitialIP: net.IP(rm.InitialIP),
-		CreatedAt: rm.CreatedAt,
+		Agreement: reg.Agreement,
+		InitialIP: net.IP(reg.InitialIP),
+		CreatedAt: reg.CreatedAt,
+		Status:    core.AcmeStatus(reg.Status),
 	}
-	if features.Enabled(features.AllowAccountDeactivation) {
-		r2 := ri.(*regModelv2)
-		r.Status = core.AcmeStatus(r2.Status)
-	}
+
 	return r, nil
 }
 
@@ -360,4 +319,18 @@ type orderModel struct {
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID string
+}
+
+func modelToOrder(om *orderModel) *corepb.Order {
+	expires := om.Expires.UnixNano()
+	status := string(om.Status)
+	return &corepb.Order{
+		Id:                &om.ID,
+		RegistrationID:    &om.RegistrationID,
+		Expires:           &expires,
+		Csr:               om.CSR,
+		Error:             om.Error,
+		CertificateSerial: &om.CertificateSerial,
+		Status:            &status,
+	}
 }

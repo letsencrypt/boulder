@@ -54,7 +54,7 @@ func TestRejectsHS256(t *testing.T) {
 	}
 	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
 	if prob.Detail != expected {
-		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", prob, expected)
+		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got %q, wanted %q", prob, expected)
 	}
 }
 

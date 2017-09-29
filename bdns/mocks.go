@@ -90,77 +90,8 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
-	var results []*dns.CAA
-	var record dns.CAA
-	switch strings.TrimRight(domain, ".") {
-	case "caa-timeout.com":
-		return nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
-	case "reserved.com":
-		record.Tag = "issue"
-		record.Value = "ca.com"
-		results = append(results, &record)
-	case "critical.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "ca.com"
-		results = append(results, &record)
-	case "present.com", "present.servfail.com":
-		record.Tag = "issue"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
-	case "com":
-		// com has no CAA records.
-		return nil, nil
-	case "servfail.com", "servfail.present.com":
-		return results, fmt.Errorf("SERVFAIL")
-	case "multi-crit-present.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "ca.com"
-		results = append(results, &record)
-		secondRecord := record
-		secondRecord.Value = "letsencrypt.org"
-		results = append(results, &secondRecord)
-	case "unknown-critical.com":
-		record.Flag = 128
-		record.Tag = "foo"
-		record.Value = "bar"
-		results = append(results, &record)
-	case "unknown-critical2.com":
-		record.Flag = 1
-		record.Tag = "foo"
-		record.Value = "bar"
-		results = append(results, &record)
-	case "unknown-noncritical.com":
-		record.Flag = 0x7E // all bits we don't treat as meaning "critical"
-		record.Tag = "foo"
-		record.Value = "bar"
-		results = append(results, &record)
-	case "present-with-parameter.com":
-		record.Tag = "issue"
-		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
-		results = append(results, &record)
-	case "present-dns-only.com":
-		record.Tag = "issue"
-		record.Value = "  letsencrypt.org  ; validation-methods=dns-01"
-		results = append(results, &record)
-	case "present-http-only.com":
-		record.Tag = "issue"
-		record.Value = "  letsencrypt.org  ; validation-methods=http-01"
-		results = append(results, &record)
-	case "present-http-or-dns.com":
-		record.Tag = "issue"
-		record.Value = "  letsencrypt.org  ; validation-methods=http-01,dns-01"
-		results = append(results, &record)
-	case "unsatisfiable.com":
-		record.Tag = "issue"
-		record.Value = ";"
-		results = append(results, &record)
-	case "bad-local-resolver.com":
-		return nil, &DNSError{dns.TypeCAA, domain, MockTimeoutError(), -1}
-	}
-	return results, nil
+func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, []*dns.CNAME, error) {
+	return nil, nil, nil
 }
 
 // LookupMX is a mock

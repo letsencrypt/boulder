@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -59,7 +60,7 @@ type RemoteVA struct {
 type vaMetrics struct {
 	validationTime           *prometheus.HistogramVec
 	remoteValidationTime     *prometheus.HistogramVec
-	remoteValidationFailures *prometheus.HistogramVec
+	remoteValidationFailures prometheus.Counter
 }
 
 func initMetrics(stats metrics.Scope) *vaMetrics {
@@ -77,11 +78,11 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(remoteValidationTime)
-	remoteValidationFailures := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
+	remoteValidationFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
 			Name: "remote_validation_failures",
-			Help: "Number of remote VAs that failed during challenge validation",
-		}, nil)
+			Help: "Number of validations failed due to remote VAs returning failure",
+		})
 	stats.MustRegister(remoteValidationFailures)
 
 	return &vaMetrics{
@@ -380,13 +381,15 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			if err != nil {
 				return err
 			}
-			if reqPort <= 0 || reqPort > 65535 {
-				return fmt.Errorf("Invalid port number %d in redirect", reqPort)
+			if reqPort != va.httpPort && reqPort != va.httpsPort {
+				return berrors.ConnectionFailureError(
+					"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
+					va.httpPort, va.httpsPort, reqPort)
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			reqPort = 443
+			reqPort = va.httpsPort
 		} else {
-			reqPort = 80
+			reqPort = va.httpPort
 		}
 
 		dialer, err := va.resolveAndConstructDialer(ctx, reqHost, reqPort)
@@ -685,7 +688,8 @@ var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
 // detailedError returns a ProblemDetails corresponding to an error
 // that occurred during HTTP-01 or TLS-SNI domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
-// meaningful.
+// meaningful. It additionally handles `berrors.ConnectionFailure` errors by
+// passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	if urlErr, ok := err.(*url.Error); ok {
@@ -713,6 +717,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
 		return probs.ConnectionFailure("Timeout")
+	}
+	if berrors.Is(err, berrors.ConnectionFailure) {
+		return probs.ConnectionFailure(err.Error())
 	}
 
 	return probs.ConnectionFailure("Error getting validation data")
@@ -851,7 +858,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 		"type":   string(challenge.Type),
 		"result": state,
 	}).Observe(va.clk.Since(s).Seconds())
-	va.metrics.remoteValidationFailures.With(prometheus.Labels{}).Observe(float64(bad))
 }
 
 // PerformValidation validates the given challenge. It always returns a list of
@@ -893,6 +899,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
 			logEvent.Error = prob.Error()
+			va.log.Info(fmt.Sprintf(
+				"Validation failed due to remote failures: identifier=%v err=%s",
+				authz.Identifier, prob))
+			va.metrics.remoteValidationFailures.Inc()
 		} else {
 			challenge.Status = core.StatusValid
 		}
@@ -906,7 +916,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
 	}).Observe(time.Since(vStart).Seconds())
-	va.stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart))
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))

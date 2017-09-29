@@ -88,7 +88,7 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 	return prob, nil
 }
 
-func challengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
+func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	st := string(challenge.Status)
 	prob, err := problemDetailsToPB(challenge.Error)
 	if err != nil {
@@ -261,7 +261,7 @@ func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain strin
 }
 
 func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
-	pbChall, err := challengeToPB(challenge)
+	pbChall, err := ChallengeToPB(challenge)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +347,7 @@ func pbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	challs := make([]*corepb.Challenge, len(authz.Challenges))
 	for i, c := range authz.Challenges {
-		pbChall, err := challengeToPB(c)
+		pbChall, err := ChallengeToPB(c)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +373,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}, nil
 }
 
-func pbToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
+func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
 		chall, err := pbToChallenge(c)
@@ -388,15 +388,18 @@ func pbToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		return core.Authorization{}, err
 	}
 	expires := time.Unix(0, *pb.Expires)
-	return core.Authorization{
-		ID:             *pb.Id,
+	authz := core.Authorization{
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
 		Challenges:     challs,
 		Combinations:   combos,
-	}, nil
+	}
+	if pb.Id != nil {
+		authz.ID = *pb.Id
+	}
+	return authz, nil
 }
 
 func registrationValid(reg *corepb.Registration) bool {

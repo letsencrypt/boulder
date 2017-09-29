@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"golang.org/x/crypto/ed25519"
 	"gopkg.in/square/go-jose.v2/cipher"
 	"gopkg.in/square/go-jose.v2/json"
 )
@@ -47,6 +48,10 @@ type ecEncrypterVerifier struct {
 	publicKey *ecdsa.PublicKey
 }
 
+type edEncrypterVerifier struct {
+	publicKey ed25519.PublicKey
+}
+
 // A key generator for ECDH-ES
 type ecKeyGenerator struct {
 	size      int
@@ -57,6 +62,10 @@ type ecKeyGenerator struct {
 // A generic EC-based decrypter/signer
 type ecDecrypterSigner struct {
 	privateKey *ecdsa.PrivateKey
+}
+
+type edDecrypterSigner struct {
+	privateKey ed25519.PrivateKey
 }
 
 // newRSARecipient creates recipientKeyInfo based on the given key.
@@ -99,6 +108,25 @@ func newRSASigner(sigAlg SignatureAlgorithm, privateKey *rsa.PrivateKey) (recipi
 			Key: &privateKey.PublicKey,
 		},
 		signer: &rsaDecrypterSigner{
+			privateKey: privateKey,
+		},
+	}, nil
+}
+
+func newEd25519Signer(sigAlg SignatureAlgorithm, privateKey ed25519.PrivateKey) (recipientSigInfo, error) {
+	if sigAlg != EdDSA {
+		return recipientSigInfo{}, ErrUnsupportedAlgorithm
+	}
+
+	if privateKey == nil {
+		return recipientSigInfo{}, errors.New("invalid private key")
+	}
+	return recipientSigInfo{
+		sigAlg: sigAlg,
+		publicKey: &JSONWebKey{
+			Key: privateKey.Public(),
+		},
+		signer: &edDecrypterSigner{
 			privateKey: privateKey,
 		},
 	}, nil
@@ -437,6 +465,32 @@ func (ctx ecDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientI
 	}
 
 	return josecipher.KeyUnwrap(block, recipient.encryptedKey)
+}
+func (ctx edDecrypterSigner) signPayload(payload []byte, alg SignatureAlgorithm) (Signature, error) {
+	if alg != EdDSA {
+		return Signature{}, ErrUnsupportedAlgorithm
+	}
+
+	sig, err := ctx.privateKey.Sign(randReader, payload, crypto.Hash(0))
+	if err != nil {
+		return Signature{}, err
+	}
+
+	return Signature{
+		Signature: sig,
+		protected: &rawHeader{},
+	}, nil
+}
+
+func (ctx edEncrypterVerifier) verifyPayload(payload []byte, signature []byte, alg SignatureAlgorithm) error {
+	if alg != EdDSA {
+		return ErrUnsupportedAlgorithm
+	}
+	ok := ed25519.Verify(ctx.publicKey, payload, signature)
+	if !ok {
+		return errors.New("square/go-jose: ed25519 signature failed to verify")
+	}
+	return nil
 }
 
 // Sign the given payload
