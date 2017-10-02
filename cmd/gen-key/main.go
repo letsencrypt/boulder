@@ -31,6 +31,7 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -50,6 +51,7 @@ type Ctx interface {
 func rsaArgs(label string, modLen, exp uint) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
 	expSlice := make([]byte, 8)
 	binary.BigEndian.PutUint64(expSlice, uint64(exp))
+	log.Printf("\tEncoded public exponent (%d) as: %0X\n", exp, expSlice)
 	return []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil),
 		},
@@ -58,7 +60,7 @@ func rsaArgs(label string, modLen, exp uint) ([]*pkcs11.Mechanism, []*pkcs11.Att
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS_BITS, modLen),
-			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, expSlice), // 65537
+			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, expSlice),
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
@@ -71,14 +73,14 @@ func rsaArgs(label string, modLen, exp uint) ([]*pkcs11.Mechanism, []*pkcs11.Att
 		}
 }
 
-func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, modLen, exp uint) *rsa.PublicKey {
+func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, modLen, exp uint) (*rsa.PublicKey, error) {
 	// Retrieve the public exponent and modulus for the generated public key
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("Failed to retrieve key attributes: %s", err)
 	}
 
 	// Attempt to build the public key from the retrieved attributes
@@ -89,14 +91,15 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, m
 		case pkcs11.CKA_PUBLIC_EXPONENT:
 			pubKey.E = int(big.NewInt(0).SetBytes(a.Value).Int64())
 			if pubKey.E != int(exp) {
-				panic("Returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
+				return nil, errors.New("Returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
 			}
 			gotExp = true
 			log.Printf("\tPublic exponent: %d\n", pubKey.E)
 		case pkcs11.CKA_MODULUS:
 			pubKey.N = big.NewInt(0).SetBytes(a.Value)
 			if pubKey.N.BitLen() != int(modLen) {
-				panic("Returned CKA_MODULUS isn't of the expected bit length")
+				fmt.Println("asd", pubKey.N.BitLen())
+				return nil, errors.New("Returned CKA_MODULUS isn't of the expected bit length")
 			}
 			gotMod = true
 			log.Printf("\tModulus: (%d bits) %X\n", pubKey.N.BitLen(), pubKey.N.Bytes())
@@ -104,19 +107,22 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, m
 	}
 	// Fail if we are missing either the public exponent or modulus
 	if !gotExp || !gotMod {
-		panic("Couldn't retrieve modulus or exponent")
+		return nil, errors.New("Couldn't retrieve modulus or exponent")
 	}
-	return pubKey
+	return pubKey, nil
 }
 
-func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) {
+func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
 	// Initialize a signing operation
 	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)}, object)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("Failed to initialize signing operation: %s", err)
 	}
 	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20} // SHA-256 prefix
-	msg := getRandomBytes(ctx, session)
+	msg, err := getRandomBytes(ctx, session)
+	if err != nil {
+		return fmt.Errorf("Failed to retrieve random data: %s", err)
+	}
 	log.Printf("\tConstructed random number: %d (%X)\n", big.NewInt(0).SetBytes(msg), msg)
 	hash := sha256.Sum256(msg)
 	log.Printf("\tMessage SHA-256 hash: %X\n", hash)
@@ -124,14 +130,15 @@ func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle
 	log.Println("\tSigning message")
 	signature, err := ctx.Sign(session, input)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("Failed to sign data: %s", err)
 	}
 	log.Printf("\tMessage signature: %X\n", signature)
 	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash[:], signature)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("Failed to verify signature: %s", err)
 	}
 	log.Println("\tSignature verified")
+	return nil
 }
 
 var stringToCurve = map[string]elliptic.Curve{
@@ -153,6 +160,7 @@ func ecArgs(label string, curve elliptic.Curve) ([]*pkcs11.Mechanism, []*pkcs11.
 	if err != nil {
 		panic(err)
 	}
+	log.Printf("\tEncoded curve parameters as: %X\n", encodedCurve)
 	return []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil),
 		}, []*pkcs11.Attribute{
@@ -179,14 +187,14 @@ var oidDERToCurve = map[string]elliptic.Curve{
 	"06052B81040023":       elliptic.P521(),
 }
 
-func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve) *ecdsa.PublicKey {
+func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 	// Retrieve the curve and public point for the generated public key
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("Failed to retrieve key attributes: %s", err)
 	}
 
 	pubKey := &ecdsa.PublicKey{}
@@ -194,13 +202,13 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 	for _, a := range attrs {
 		switch a.Type {
 		case pkcs11.CKA_EC_PARAMS:
-			curve, present := oidDERToCurve[fmt.Sprintf("%X", a.Value)]
+			rCurve, present := oidDERToCurve[fmt.Sprintf("%X", a.Value)]
 			if !present {
-				panic("Unknown curve OID value returned")
+				return nil, errors.New("Unknown curve OID value returned")
 			}
-			pubKey.Curve = curve
+			pubKey.Curve = rCurve
 			if pubKey.Curve != curve {
-				panic("Returned CKA_EC_PARAMS doesn't match expected curve")
+				return nil, errors.New("Returned CKA_EC_PARAMS doesn't match expected curve")
 			}
 			gotCurve = true
 		case pkcs11.CKA_EC_POINT:
@@ -212,14 +220,15 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 				var point asn1.RawValue
 				_, err = asn1.Unmarshal(a.Value, &point)
 				if err != nil {
-					panic(err)
+					return nil, fmt.Errorf("Failed to unmarshal returned CKA_EC_POINT: %s", err)
 				}
 				if len(point.Bytes) == 0 {
-					panic("Invalid CKA_EC_POINT value returned")
+					return nil, errors.New("Invalid CKA_EC_POINT value returned")
 				}
 				x, y = elliptic.Unmarshal(curve, point.Bytes)
 				if x == nil {
-					panic("Invalid  CKA_EC_POINT value returned")
+					fmt.Println(point.Bytes)
+					return nil, errors.New("Invalid CKA_EC_POINT value returned")
 				}
 			}
 			pubKey.X, pubKey.Y = x, y
@@ -228,13 +237,10 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 			log.Printf("\tY: %X\n", pubKey.Y.Bytes())
 		}
 	}
-	if !gotPoint {
-		panic("Couldn't retrieve EC point")
+	if !gotPoint || !gotCurve {
+		return nil, errors.New("Couldn't retrieve EC point or EC parameters")
 	}
-	if !gotCurve {
-		panic("Couldn't retrieve EC params")
-	}
-	return pubKey
+	return pubKey, nil
 }
 
 var curveToHash = map[elliptic.Curve]crypto.Hash{
@@ -250,12 +256,15 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA512: "SHA-512",
 }
 
-func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) {
+func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
 	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)}, object)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to initialize signing operation: %s", err)
 	}
-	msg := getRandomBytes(ctx, session)
+	msg, err := getRandomBytes(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve random data: %s", err)
+	}
 	log.Printf("\tConstructed random number: %d (%X)\n", big.NewInt(0).SetBytes(msg), msg)
 	hashFunc := curveToHash[pub.Curve].New()
 	hashFunc.Write(msg)
@@ -263,23 +272,25 @@ func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle,
 	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve]], hash)
 	signature, err := ctx.Sign(session, hash)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to sign data: %s", err)
 	}
 	log.Printf("\tMessage signature: %X\n", signature)
 	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+	fmt.Println("post", r, s)
 	if !ecdsa.Verify(pub, hash[:], r, s) {
-		panic("failed to verify ECDSA signature over test data")
+		return errors.New("failed to verify ECDSA signature over test data")
 	}
 	log.Println("\tSignature verified")
+	return nil
 }
 
-func getRandomBytes(ctx Ctx, session pkcs11.SessionHandle) []byte {
+func getRandomBytes(ctx Ctx, session pkcs11.SessionHandle) ([]byte, error) {
 	r, err := ctx.GenerateRandom(session, 4)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return r
+	return r, nil
 }
 
 func main() {
@@ -334,18 +345,24 @@ func main() {
 		if *rsaModLen == 0 {
 			panic("--modulus-bits is required")
 		}
-		m, pubTmpl, privTmpl := rsaArgs(*label, *rsaModLen, *rsaExp)
 		log.Printf("Generating RSA key with %d bit modulus and public exponent %d\n", *rsaModLen, *rsaExp)
+		m, pubTmpl, privTmpl := rsaArgs(*label, *rsaModLen, *rsaExp)
 		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
 			panic(err)
 		}
 		log.Println("Key generated")
 		log.Println("Extracting public key")
-		pk := rsaPub(ctx, session, pub, *rsaModLen, *rsaExp)
+		pk, err := rsaPub(ctx, session, pub, *rsaModLen, *rsaExp)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
 		log.Println("Extracted public key")
 		log.Println("Verifying public key")
-		rsaVerify(ctx, session, priv, pk)
+		err = rsaVerify(ctx, session, priv, pk)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
 		log.Println("Key verified")
 		pubKey = pk
 	case "ECDSA":
@@ -356,18 +373,24 @@ func main() {
 		if !present {
 			panic("curve not supported")
 		}
-		m, pubTmpl, privTmpl := ecArgs(*label, curve)
 		log.Printf("Generating ECDSA key with curve %s\n", *ecdsaCurve)
+		m, pubTmpl, privTmpl := ecArgs(*label, curve)
 		pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		log.Println("Key generated")
 		log.Println("Extracting public key")
-		pk := ecPub(ctx, session, pub, curve)
+		pk, err := ecPub(ctx, session, pub, curve)
+		if err != nil {
+			log.Fatal(err)
+		}
 		log.Println("Extracted public key")
 		log.Println("Verifying public key")
-		ecVerify(ctx, session, priv, pk)
+		err = ecVerify(ctx, session, priv, pk)
+		if err != nil {
+			log.Fatal(err)
+		}
 		log.Println("Key verified")
 		pubKey = pk
 	}
