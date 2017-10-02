@@ -1832,9 +1832,21 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	names []string,
 	now time.Time) (map[string]*core.Authorization, error) {
 	return map[string]*core.Authorization{
-		"recent.com": &core.Authorization{Expires: &m.recent},
-		"older.com":  &core.Authorization{Expires: &m.older},
-		"older2.com": &core.Authorization{Expires: &m.older},
+		"recent.com": &core.Authorization{
+			Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "recent.com"},
+			Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			Expires:    &m.recent,
+		},
+		"older.com": &core.Authorization{
+			Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "older.com"},
+			Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			Expires:    &m.older,
+		},
+		"older2.com": &core.Authorization{
+			Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "older2.com"},
+			Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			Expires:    &m.older,
+		},
 	}, nil
 }
 
@@ -1891,11 +1903,18 @@ func TestRecheckCAAEmpty(t *testing.T) {
 	}
 }
 
+func HTTP01Authorization(domain string) core.Authorization {
+	return core.Authorization{
+		Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain},
+		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+	}
+}
+
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
-	err := ra.recheckCAA(context.Background(), names)
+	auths := []core.Authorization{HTTP01Authorization("a.com"), HTTP01Authorization("b.com"), HTTP01Authorization("c.com")}
+	err := ra.recheckCAA(context.Background(), auths)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
@@ -1904,9 +1923,9 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
+	auths := []core.Authorization{HTTP01Authorization("a.com"), HTTP01Authorization("b.com"), HTTP01Authorization("c.com")}
 	ra.caa = &caaFailer{}
-	err := ra.recheckCAA(context.Background(), names)
+	err := ra.recheckCAA(context.Background(), auths)
 	if err == nil {
 		t.Errorf("expected err, got nil")
 	} else if err.(*berrors.BoulderError).Type != berrors.CAA {

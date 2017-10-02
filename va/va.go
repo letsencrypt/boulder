@@ -769,7 +769,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		ch <- va.checkCAA(ctx, identifier, &challenge.Type)
 	}()
 
 	// TODO(#1292): send into another goroutine
