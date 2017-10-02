@@ -355,6 +355,8 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	}
 	close(work)
 	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	// We may perform up to 100 queries, depending on what's in the certificate
 	// request. Parallelize them so we don't hit our timeout, but limit the
 	// parallelism so we don't consume too many threads on the database.
@@ -363,10 +365,16 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 		go func() {
 			defer wg.Done()
 			for domain := range work {
+				select {
+				case <-ctx.Done():
+					results <- result{err: ctx.Err()}
+					return
+				}
 				currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
 				if err != nil {
 					results <- result{err: err}
-					// Skip any further work in this goroutine.
+					// Skip any further work
+					cancel()
 					return
 				}
 				results <- result{
