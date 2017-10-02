@@ -20,6 +20,9 @@ type config struct {
 		cmd.DBConfig
 
 		Features map[string]bool
+
+		// Max simultaneous SQL queries caused by a single RPC.
+		ParallelismPerRPC int
 	}
 
 	Syslog cmd.SyslogConfig
@@ -54,7 +57,11 @@ func main() {
 
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope)
+	parallel := saConf.ParallelismPerRPC
+	if parallel < 1 {
+		parallel = 1
+	}
+	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	var grpcSrv *grpc.Server
