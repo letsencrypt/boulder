@@ -31,7 +31,7 @@ func TestSearch(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	fc := clock.NewFake()
 	log := blog.UseMock()
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
 	test.AssertNotError(t, err, "sa.NewSQLStorageAuthority failed")
 	defer test.ResetSATestDatabase(t)
 
