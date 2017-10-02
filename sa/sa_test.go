@@ -552,20 +552,9 @@ func TestAddCertificate(t *testing.T) {
 	)
 }
 
-type slowCountSA struct {
-	*SQLStorageAuthority
-}
-
-func (s slowCountSA) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
-	time.Sleep(100 * time.Millisecond)
-	return s.SQLStorageAuthority.countCertificatesByName(domain, earliest, latest)
-}
-
 func TestCountCertificatesByNames(t *testing.T) {
-	ssa, clk, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
-
-	sa := slowCountSA{ssa}
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
 	certDER, err := ioutil.ReadFile("test-cert.der")
@@ -634,18 +623,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 		expectedCount := int64(expected[domain])
 		test.AssertEquals(t, actualCount, expectedCount)
 	}
-
-	begin := time.Now()
-	_, err = sa.CountCertificatesByNames(ctx, []string{
-		"example.com", "foo.com", "example.co.bn", "1.co", "2.co", "3.co", "4.co", "5.co", "6.co", "8.co", "9.co",
-		"10.co", "11.co",
-	}, yesterday, now.Add(10000*time.Hour))
-	test.AssertNotError(t, err, "Counting many certs")
-	elapsed := time.Since(begin)
-	if elapsed > time.Second {
-		t.Errorf("CountCertificatesByNames too slow; not parallelizing effectively.")
-	}
-
 }
 
 const (
