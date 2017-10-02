@@ -58,7 +58,7 @@ func main() {
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	parallel := saConf.ParallelismPerRPC
-	if parallel == 0 {
+	if parallel < 1 {
 		parallel = 1
 	}
 	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope, parallel)
