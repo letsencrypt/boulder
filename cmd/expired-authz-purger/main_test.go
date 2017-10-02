@@ -24,7 +24,7 @@ func TestPurgeAuthzs(t *testing.T) {
 	log := blog.UseMock()
 	fc := clock.NewFake()
 	fc.Add(time.Hour)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
