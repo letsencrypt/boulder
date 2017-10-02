@@ -369,6 +369,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 				case <-ctx.Done():
 					results <- result{err: ctx.Err()}
 					return
+				default:
 				}
 				currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
 				if err != nil {
