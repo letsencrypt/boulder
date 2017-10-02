@@ -366,7 +366,8 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 				currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
 				if err != nil {
 					results <- result{err: err}
-					continue
+					// Skip any further work in this goroutine.
+					return
 				}
 				results <- result{
 					count:  currentCount,
