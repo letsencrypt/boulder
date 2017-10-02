@@ -340,6 +340,8 @@ func (t TooManyCertificatesError) Error() string {
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
+// Queries will be run in parallel. If any of them error, only one error will
+// be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
 	work := make(chan string, len(domains))
 	type result struct {
@@ -353,7 +355,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	}
 	close(work)
 	var wg sync.WaitGroup
-	// We may perform up to 100 queries, depending on what's on the certificate
+	// We may perform up to 100 queries, depending on what's in the certificate
 	// request. Parallelize them so we don't hit our timeout, but limit the
 	// parallelism so we don't consume too many threads on the database.
 	for i := 0; i < ssa.parallelismPerRPC; i++ {
