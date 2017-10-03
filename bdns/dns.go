@@ -190,7 +190,7 @@ func NewDNSClientImpl(
 
 	// Set timeout for underlying net.Conn
 	dnsClient.ReadTimeout = readTimeout
-	dnsClient.Net = "tcp"
+	dnsClient.Net = "udp"
 
 	queryTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{

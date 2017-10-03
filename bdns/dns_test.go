@@ -178,7 +178,12 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveLoopResolver(stopChan chan bool) {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Second, WriteTimeout: time.Second}
+	server := &dns.Server{
+		Addr:         dnsLoopbackAddr,
+		Net:          "udp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
@@ -206,7 +211,7 @@ func pollServer() {
 			fmt.Fprintln(os.Stderr, "Timeout reached while testing for the dns server to come up")
 			os.Exit(1)
 		case <-ticker.C:
-			conn, _ := dns.DialTimeout("tcp", dnsLoopbackAddr, backoff)
+			conn, _ := dns.DialTimeout("udp", dnsLoopbackAddr, backoff)
 			if conn != nil {
 				_ = conn.Close()
 				return

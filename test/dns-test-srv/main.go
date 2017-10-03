@@ -149,7 +149,7 @@ func (ts *testSrv) serveTestResolver() {
 	dns.HandleFunc(".", ts.dnsHandler)
 	dnsServer := &dns.Server{
 		Addr:         "0.0.0.0:8053",
-		Net:          "tcp",
+		Net:          "udp",
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	}
