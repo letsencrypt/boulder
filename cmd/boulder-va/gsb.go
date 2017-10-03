@@ -112,10 +112,11 @@ func newGoogleSafeBrowsingV4(gsb *cmd.GoogleSafeBrowsingConfig, logger blog.Logg
 
 	dbFile := filepath.Join(gsb.DataDir, v4DbFilename)
 	sb, err := safebrowsingv4.NewSafeBrowser(safebrowsingv4.Config{
-		APIKey:    gsb.APIKey,
-		DBPath:    dbFile,
-		ServerURL: gsb.ServerURL,
-		Logger:    gsbLogAdapter{logger},
+		APIKey:         gsb.APIKey,
+		DBPath:         dbFile,
+		ServerURL:      gsb.ServerURL,
+		Logger:         gsbLogAdapter{logger},
+		RequestTimeout: 5 * time.Second,
 	})
 	if err != nil {
 		return nil, err
