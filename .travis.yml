@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.9
+  - 1.9.1
 
 go_import_path: github.com/letsencrypt/boulder
 
@@ -45,6 +45,8 @@ env:
     - RUN="unit"
     - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="coverage"
+    allow_failures:
+      - RUN="coverage"
 
 install:
   - ./test/travis-before-install.sh
