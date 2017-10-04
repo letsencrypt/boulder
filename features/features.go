@@ -28,7 +28,6 @@ const (
 	AllowRenewalFirstRL
 	RecheckCAA
 	LegacyCAA
-	CAAValidationMethods
 )
 
 // List of features and their default value, protected by fMu
@@ -48,7 +47,6 @@ var features = map[FeatureFlag]bool{
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
 	LegacyCAA:                false,
-	CAAValidationMethods:     false,
 }
 
 var fMu = new(sync.RWMutex)

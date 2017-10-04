@@ -29,8 +29,7 @@
     },
     "features": {
       "LegacyCAA": true,
-      "IPv6First": true,
-      "CAAValidationMethods": true
+      "IPv6First": true
     },
     "remoteVAs": [
       {

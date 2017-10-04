@@ -626,8 +626,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 // that won't expire before the certificate expires. Returns an error otherwise.
 func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
 	now := ra.clk.Now()
-	var badNames []string
-	var recheckAuths []core.Authorization
+	var badNames, recheckNames []string
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
@@ -653,11 +652,11 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		} else if authz.Expires.Before(caaRecheckTime) {
-			recheckAuths = append(recheckAuths, *authz)
+			recheckNames = append(recheckNames, name)
 		}
 	}
 
-	if err = ra.recheckCAA(ctx, recheckAuths); err != nil {
+	if err = ra.recheckCAA(ctx, recheckNames); err != nil {
 		return err
 	}
 
@@ -671,39 +670,28 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, auths []core.Authorization) error {
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	ra.stats.Inc("recheck_caa", 1)
-	ra.stats.Inc("recheck_caa_names", int64(len(auths)))
+	ra.stats.Inc("recheck_caa_names", int64(len(names)))
 	wg := sync.WaitGroup{}
-	ch := make(chan *probs.ProblemDetails, len(auths))
-	for _, authz := range auths {
+	ch := make(chan *probs.ProblemDetails, len(names))
+	for _, name := range names {
 		wg.Add(1)
-		go func(authz core.Authorization) {
+		go func(name string) {
 			defer wg.Done()
-			var method string
-			for _, challenge := range authz.Challenges {
-				if challenge.Status == core.StatusValid {
-					method = challenge.Type
+			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
+				Domain: &name,
+			})
+			if err != nil {
+				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
+				ch <- probs.ServerInternal("Internal error rechecking CAA for " + name)
+			} else if resp.Problem != nil {
+				ch <- &probs.ProblemDetails{
+					Type:   probs.ProblemType(*resp.Problem.ProblemType),
+					Detail: *resp.Problem.Detail,
 				}
 			}
-			if method == "" {
-				ch <- probs.ServerInternal("Internal error getting validation method for " + authz.Identifier.Value)
-			} else {
-				resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
-					Domain:           &authz.Identifier.Value,
-					ValidationMethod: &method,
-				})
-				if err != nil {
-					ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
-					ch <- probs.ServerInternal("Internal error rechecking CAA for " + authz.Identifier.Value)
-				} else if resp.Problem != nil {
-					ch <- &probs.ProblemDetails{
-						Type:   probs.ProblemType(*resp.Problem.ProblemType),
-						Detail: *resp.Problem.Detail,
-					}
-				}
-			}
-		}(authz)
+		}(name)
 	}
 	wg.Wait()
 	close(ch)

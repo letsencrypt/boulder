@@ -16,7 +16,6 @@ service CAA {
 
 message IsCAAValidRequest {
 	optional string domain = 1;
-	optional string validationMethod = 2;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty
