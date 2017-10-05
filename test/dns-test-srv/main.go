@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -147,30 +148,33 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 func (ts *testSrv) serveTestResolver() {
 	dns.HandleFunc(".", ts.dnsHandler)
-	dnsServer := &dns.Server{
+	type server interface {
+		ListenAndServe() error
+	}
+	udpServer := server(&dns.Server{
 		Addr:         "0.0.0.0:8053",
 		Net:          "udp",
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
-	}
-	go func() {
-		err := dnsServer.ListenAndServe()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}()
-	webServer := &http.Server{
+	})
+	tcpServer := server(&dns.Server{
+		Addr:         "0.0.0.0:8053",
+		Net:          "tcp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	})
+	webServer := server(&http.Server{
 		Addr:    "0.0.0.0:8055",
 		Handler: http.HandlerFunc(ts.setTXT),
+	})
+	for _, s := range []server{udpServer, tcpServer, webServer} {
+		go func(s server) {
+			err := s.ListenAndServe()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}(s)
 	}
-	go func() {
-		err := webServer.ListenAndServe()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}()
 }
 
 func main() {

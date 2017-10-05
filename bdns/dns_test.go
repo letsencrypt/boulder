@@ -3,6 +3,7 @@ package bdns
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -178,24 +179,35 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveLoopResolver(stopChan chan bool) {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{
+	tcpServer := &dns.Server{
+		Addr:         dnsLoopbackAddr,
+		Net:          "tcp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
+	udpServer := &dns.Server{
 		Addr:         dnsLoopbackAddr,
 		Net:          "udp",
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	}
 	go func() {
-		err := server.ListenAndServe()
+		err := tcpServer.ListenAndServe()
 		if err != nil {
-			fmt.Println(err)
-			return
+			log.Fatal(err)
+		}
+	}()
+	go func() {
+		err := udpServer.ListenAndServe()
+		if err != nil {
+			log.Fatal(err)
 		}
 	}()
 	go func() {
 		<-stopChan
 		err := server.Shutdown()
 		if err != nil {
-			fmt.Println(err)
+			log.Fatal(err)
 		}
 	}()
 }
