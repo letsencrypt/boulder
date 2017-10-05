@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 
 DATESTAMP=$(date +%Y-%m-%d)
 TAG_NAME="letsencrypt/boulder-tools:$DATESTAMP"
