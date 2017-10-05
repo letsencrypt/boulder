@@ -868,7 +868,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
-		Hostname:    authz.Identifier.Value,
+		Hostname:    domain,
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
