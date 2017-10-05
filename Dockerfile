@@ -8,13 +8,6 @@ EXPOSE 4000 4001 4002 4003 4430 4431 8053 8055
 ENV PATH /usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 ENV GOPATH /go
 
-RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt/boulder -q buser
-RUN chown -R buser /go/
-
 WORKDIR /go/src/github.com/letsencrypt/boulder
-
-RUN mkdir bin
-
-RUN chown -R buser /go/
 
 ENTRYPOINT [ "./test/entrypoint.sh" ]
