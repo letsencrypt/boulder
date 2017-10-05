@@ -406,6 +406,10 @@ func registrationValid(reg *corepb.Registration) bool {
 	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
 }
 
+func orderValid(order *corepb.Order) bool {
+	return !(order.Id == nil || order.RegistrationID == nil || order.Expires == nil || order.CertificateSerial == nil || order.Authorizations == nil || order.Status == nil || order.Names == nil)
+}
+
 func authorizationValid(authz *corepb.Authorization) bool {
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }

@@ -82,6 +82,9 @@ type RegistrationAuthority interface {
 	// [WebFrontEnd]
 	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)
 
+	// [WebFrontEnd]
+	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) error
+
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
@@ -125,6 +128,7 @@ type StorageGetter interface {
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
 	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
+	GetOrderAuthorizations(ctx context.Context, req *sapb.OrderAuthorizationsRequest) (map[string]*Authorization, error)
 	CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error)
 	GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
 }
@@ -143,6 +147,7 @@ type StorageAdder interface {
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	UpdateOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 }
 

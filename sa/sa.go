@@ -1219,7 +1219,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	order := &orderModel{
 		RegistrationID: *req.RegistrationID,
 		Expires:        time.Unix(0, *req.Expires),
-		CSR:            req.Csr,
 		Status:         core.AcmeStatus(*req.Status),
 	}
 
@@ -1246,12 +1245,59 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 	}
 
+	for _, name := range req.Names {
+		reqdName := &requestedNameModel{
+			OrderID:      order.ID,
+			ReversedName: ReverseName(name),
+		}
+		err = tx.Insert(reqdName)
+		if err != nil {
+			err = Rollback(tx, err)
+			return nil, err
+		}
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
 
 	req.Id = &order.ID
+	return req, nil
+}
+
+// UpdateOrder persists a changed *corepb.Order to the database returning it on
+// success or an error if unsuccessful.
+func (ssa *SQLStorageAuthority) UpdateOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+	order := &orderModel{
+		ID:                *req.Id,
+		RegistrationID:    *req.RegistrationID,
+		Expires:           time.Unix(0, *req.Expires),
+		Status:            core.AcmeStatus(*req.Status),
+		CertificateSerial: *req.CertificateSerial,
+	}
+
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	n, err := tx.Update(order)
+	if err != nil {
+		err = Rollback(tx, err)
+		return nil, err
+	}
+	if n == 0 {
+		err = berrors.InternalServerError("no order updated")
+		err = Rollback(tx, err)
+		return nil, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
 	return req, nil
 }
 
@@ -1262,6 +1308,20 @@ func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
 		return nil, err
 	}
 	return ids, nil
+}
+
+// namesForOrder finds all of the requested names associated with an order. The
+// names are returned in their reversed form (see `sa.ReverseName`).
+func (ssa *SQLStorageAuthority) namesForOrder(orderID int64) ([]string, error) {
+	var reversedNames []string
+	_, err := ssa.dbMap.Select(&reversedNames, `
+	SELECT reversedName
+	FROM requestedNames
+	WHERE orderID = ?`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return reversedNames, nil
 }
 
 // GetOrder is used to retrieve an already existing order object
@@ -1282,7 +1342,63 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 		order.Authorizations = append(order.Authorizations, authzID)
 	}
 
+	names, err := ssa.namesForOrder(*order.Id)
+	if err != nil {
+		return nil, err
+	}
+	// The requested names are stored reversed to improve indexing performance. We
+	// need to reverse the reversed names here before giving them back to the
+	// caller.
+	reversedNames := make([]string, len(names))
+	for i, n := range names {
+		reversedNames[i] = ReverseName(n)
+	}
+	order.Names = reversedNames
+
 	return order, nil
+}
+
+// GetOrderAuthorizations is used to find the valid, unexpired authorizations
+// associated with a specific order and account ID.
+func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
+	ctx context.Context,
+	req *sapb.OrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	now := ssa.clk.Now()
+	// Select the full authorization data for all *valid, unexpired*
+	// authorizations that are owned by the correct account ID and associated with
+	// the given order ID
+	var auths []*core.Authorization
+	_, err := ssa.dbMap.Select(
+		&auths,
+		fmt.Sprintf(`SELECT %s FROM %s AS authz
+	LEFT JOIN orderToAuthz
+	ON authz.ID = orderToAuthz.authzID
+	WHERE authz.registrationID = ? AND
+	authz.expires > ? AND
+	authz.status = ? AND
+	orderToAuthz.orderID = ?`, authzFields, authorizationTable),
+		*req.AcctID,
+		now,
+		string(core.StatusValid),
+		*req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collapse & dedupe the returned authorizations into a mapping from name to
+	// authorization
+	byName := make(map[string]*core.Authorization)
+	for _, auth := range auths {
+		// We only expect to get back DNS identifiers
+		if auth.Identifier.Type != core.IdentifierDNS {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
+		}
+		existing, present := byName[auth.Identifier.Value]
+		if !present || auth.Expires.After(*existing.Expires) {
+			byName[auth.Identifier.Value] = auth
+		}
+	}
+	return byName, nil
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,

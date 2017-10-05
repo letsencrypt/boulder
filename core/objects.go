@@ -576,7 +576,6 @@ type Order struct {
 	ID                int64
 	RegistrationID    int64
 	Expires           time.Time
-	CSR               []byte
 	Error             error
 	CertificateSerial string
 	Authorizations    []Authorization

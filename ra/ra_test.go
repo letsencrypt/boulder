@@ -5,7 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
+	//"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -1929,37 +1930,31 @@ func TestNewOrder(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	req := &x509.CertificateRequest{
-		Subject:  pkix.Name{CommonName: "a.com"},
-		DNSNames: []string{"b.com", "b.com", "C.COM"},
-	}
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key")
-	csr, err := x509.CreateCertificateRequest(rand.Reader, req, key)
-	test.AssertNotError(t, err, "Failed to generate test CSR")
-
 	id := int64(1)
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
-		Csr:            csr,
+		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, *order.RegistrationID, int64(1))
 	test.AssertEquals(t, *order.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertByteEquals(t, order.Csr, csr)
+	test.AssertEquals(t, len(order.Names), 3)
+	// We expect the order names to have been sorted, deduped, and lowercased
+	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, *order.Id, int64(1))
 	test.AssertEquals(t, len(order.Authorizations), 3)
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
-		Csr:            csr,
+		Names:          []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, *orderB.RegistrationID, int64(1))
 	test.AssertEquals(t, *orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertByteEquals(t, orderB.Csr, csr)
 	test.AssertEquals(t, *orderB.Id, int64(2))
+	test.AssertEquals(t, len(orderB.Names), 3)
+	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, len(orderB.Authorizations), 3)
 	sort.Strings(order.Authorizations)
 	sort.Strings(orderB.Authorizations)
@@ -1967,23 +1962,281 @@ func TestNewOrder(t *testing.T) {
 
 	// Reuse all of the existing authorizations from the previous order and
 	// add a new one
-	req.DNSNames = append(req.DNSNames, "d.com")
-	csr, err = x509.CreateCertificateRequest(rand.Reader, req, key)
-	test.AssertNotError(t, err, "Failed to generate test CSR")
+	order.Names = append(order.Names, "d.com")
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
-		Csr:            csr,
+		Names:          order.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, *orderC.RegistrationID, int64(1))
 	test.AssertEquals(t, *orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertByteEquals(t, orderC.Csr, csr)
+	test.AssertEquals(t, len(order.Names), 4)
+	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com", "d.com"})
 	test.AssertEquals(t, *orderC.Id, int64(3))
 	test.AssertEquals(t, len(orderC.Authorizations), 4)
 	// Abuse the order of the queries used to extract the reused authorizations
 	existing := orderC.Authorizations[:3]
 	sort.Strings(existing)
 	test.AssertDeepEquals(t, existing, order.Authorizations)
+
+	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Names:          []string{"example.com", "a"},
+	})
+	test.AssertError(t, err, "NewOrder with invalid names did not error")
+	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
+}
+
+func TestFinalizeOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
+
+	validStatus := "valid"
+	fakeRegID := int64(0xB00)
+	fakeOrderID := int64(0xABBA)
+	invalidOrderID := int64(-1337)
+
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	policyForbidCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		DNSNames:           []string{"example.org"},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating policy forbid CSR")
+
+	noNamesCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating no names CSR")
+
+	oneDomainCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		DNSNames:           []string{"example.com"},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating CSR with one DNS name")
+
+	twoDomainCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		DNSNames:           []string{"a.com", "a.org"},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating CSR with two DNS names")
+
+	threeDomainCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		DNSNames:           []string{"a.com", "a.org", "b.com"},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating CSR with three DNS names")
+
+	// Pick an expiry in the future
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+
+	// Create one finalized authorization for Registration.ID for not-example.com
+	finalAuthz := AuthzInitial
+	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Status = "valid"
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err = sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Create one finalized authorization for Registration.ID for www.not-example.org
+	finalAuthzB := AuthzInitial
+	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Status = "valid"
+	finalAuthzB.Expires = &exp
+	finalAuthzB.Challenges[0].Status = "valid"
+	finalAuthzB.RegistrationID = Registration.ID
+	finalAuthzB, err = sa.NewPendingAuthorization(ctx, finalAuthzB)
+	test.AssertNotError(t, err, "Could not store 2nd test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthzB)
+	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
+
+	// Create a new order referencing both of the above finalized authzs
+	pendingStatus := "pending"
+	expUnix := exp.Unix()
+	finalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &Registration.ID,
+		Expires:        &expUnix,
+		Names:          []string{"not-example.com", "www.not-example.com"},
+		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
+		Status:         &pendingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Swallowing errors here because the CSRPEM is hardcoded test data expected
+	// to parse in all instance
+	validCSRBlock, _ := pem.Decode(CSRPEM)
+	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
+
+	testCases := []struct {
+		Name           string
+		OrderReq       *rapb.FinalizeOrderRequest
+		ExpectedErrMsg string
+		ExpectIssuance bool
+	}{
+		{
+			Name: "No names in order",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &pendingStatus,
+					Names:  []string{},
+				},
+			},
+			ExpectedErrMsg: "Order has no associated names",
+		},
+		{
+			Name: "Wrong order state",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &validStatus,
+					Names:  []string{"example.com"},
+				},
+			},
+			ExpectedErrMsg: "Order's status (\"valid\") was not pending",
+		},
+		{
+			Name: "Invalid CSR",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &pendingStatus,
+					Names:  []string{"example.com"},
+				},
+				Csr: []byte{0xC0, 0xFF, 0xEE},
+			},
+			ExpectedErrMsg: "asn1: syntax error: truncated tag or length",
+		},
+		{
+			Name: "CSR that should be rejected",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"example.com"},
+					RegistrationID: &fakeRegID,
+				},
+				Csr: noNamesCSR,
+			},
+			ExpectedErrMsg: "at least one DNS name is required",
+		},
+		{
+			Name: "CSR and Order with diff number of names",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"example.com", "example.org"},
+					RegistrationID: &fakeRegID,
+				},
+				Csr: oneDomainCSR,
+			},
+			ExpectedErrMsg: "Order includes different number of names than CSR specifies",
+		},
+		{
+			Name: "CSR missing an order name",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"foobar.com"},
+					RegistrationID: &fakeRegID,
+				},
+				Csr: oneDomainCSR,
+			},
+			ExpectedErrMsg: "CSR is missing Order domain \"foobar.com\"",
+		},
+		{
+			Name: "CSR with policy forbidden name",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"example.org"},
+					RegistrationID: &fakeRegID,
+				},
+				Csr: policyForbidCSR,
+			},
+			ExpectedErrMsg: "policy forbids issuing for: \"example.org\"",
+		},
+		{
+			Name: "Order with invalid ID",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"a.com", "a.org"},
+					Id:             &invalidOrderID,
+					RegistrationID: &fakeRegID,
+				},
+				Csr: twoDomainCSR,
+			},
+			ExpectedErrMsg: fmt.Sprintf("invalid order ID: %d", invalidOrderID),
+		},
+		{
+			Name: "Order with missing registration",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"a.com", "a.org"},
+					Id:             &fakeOrderID,
+					RegistrationID: &fakeRegID,
+				},
+				Csr: twoDomainCSR,
+			},
+			ExpectedErrMsg: fmt.Sprintf("registration with ID '%d' not found", fakeRegID),
+		},
+		{
+			Name: "Order with missing authorizations",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status:         &pendingStatus,
+					Names:          []string{"a.com", "a.org", "b.com"},
+					Id:             &fakeOrderID,
+					RegistrationID: &Registration.ID,
+				},
+				Csr: threeDomainCSR,
+			},
+			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
+		},
+		{
+			Name: "Order with correct authorizations",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: finalOrder,
+				Csr:   validCSR.Raw,
+			},
+			ExpectIssuance: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := ra.FinalizeOrder(context.Background(), tc.OrderReq)
+			// If we don't expect issuance we expect an error
+			if !tc.ExpectIssuance {
+				// Check that the error happened and the message matches expected
+				test.AssertError(t, result, "FinalizeOrder did not fail when expected to")
+				test.AssertEquals(t, result.Error(), tc.ExpectedErrMsg)
+			} else {
+				// Otherwise we expect an issuance and no error
+				test.AssertNotError(t, result, fmt.Sprintf("FinalizeOrder result was %#v, expected nil", result))
+				// Check that the order now has a serial for the issued certificate
+				updatedOrder, err := sa.GetOrder(
+					context.Background(),
+					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
+				test.AssertNotError(t, err, "Error getting order to check serial")
+				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
+			}
+		})
+	}
 }
 
 var CAkeyPEM = `

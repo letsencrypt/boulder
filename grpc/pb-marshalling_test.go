@@ -334,3 +334,5 @@ func TestCert(t *testing.T) {
 
 	test.AssertDeepEquals(t, cert, outCert)
 }
+
+// TODO(@cpu): Test `orderValid`

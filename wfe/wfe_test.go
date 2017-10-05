@@ -262,6 +262,10 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOr
 	return nil, nil
 }
 
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.FinalizeOrderRequest) error {
+	return nil
+}
+
 type mockPA struct{}
 
 func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {

@@ -39,7 +39,9 @@ service StorageAuthority {
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
+        rpc UpdateOrder(core.Order) returns (core.Order) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
+        rpc GetOrderAuthorizations(OrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
 }
@@ -185,6 +187,11 @@ message RevokeAuthorizationsByDomainResponse {
 
 message OrderRequest {
         optional int64 id = 1;
+}
+
+message OrderAuthorizationsRequest {
+        optional int64 id = 1;
+        optional int64 acctID = 2;
 }
 
 message GetAuthorizationsRequest {
