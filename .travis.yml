@@ -17,9 +17,6 @@ sudo: required
 services:
   - docker
 
-matrix:
-  fast_finish: true
-
 # Only build pushes to the master branch, PRs, and branches beginning with
 # `test-`. You should not push branches beginning with `test-` to the
 # letsencrypt repository, but this is a convenient way to push branches to your
@@ -33,20 +30,18 @@ branches:
     - release
     - /^test-.*$/
 
-env:
-  global:
-    - PATH=$HOME/bin:$PATH # protoc gets installed here
-    - GO15VENDOREXPERIMENT=1
-  matrix:
-    - RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+matrix:
+  include:
+    - env: RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - RUN="unit"
-    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - RUN="coverage"
-    allow_failures:
-      - RUN="coverage"
+    - env: RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - env: RUN="unit"
+    - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+    - env: RUN="coverage"
+  fast_finish: true
+  allow_failures:
+    - env: RUN="coverage"
 
 install:
   - ./test/travis-before-install.sh
