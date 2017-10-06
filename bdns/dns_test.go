@@ -194,13 +194,13 @@ func serveLoopResolver(stopChan chan bool) {
 	go func() {
 		err := tcpServer.ListenAndServe()
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
 		}
 	}()
 	go func() {
 		err := udpServer.ListenAndServe()
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
 		}
 	}()
 	go func() {
