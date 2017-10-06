@@ -107,12 +107,12 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 					return nil, fmt.Errorf("Failed to unmarshal returned CKA_EC_POINT: %s", err)
 				}
 				if len(point.Bytes) == 0 {
-					return nil, errors.New("Invalid CKA_EC_POINT value returned")
+					return nil, errors.New("Invalid CKA_EC_POINT value returned, OCTET string is empty")
 				}
 				x, y = elliptic.Unmarshal(curve, point.Bytes)
 				if x == nil {
 					fmt.Println(point.Bytes)
-					return nil, errors.New("Invalid CKA_EC_POINT value returned")
+					return nil, errors.New("Invalid CKA_EC_POINT value returned, point is malformed")
 				}
 			}
 			pubKey.X, pubKey.Y = x, y

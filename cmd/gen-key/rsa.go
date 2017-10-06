@@ -55,6 +55,7 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, m
 		switch a.Type {
 		case pkcs11.CKA_PUBLIC_EXPONENT:
 			pubKey.E = int(big.NewInt(0).SetBytes(a.Value).Int64())
+			// Check the provided public exponent was used
 			if pubKey.E != int(exp) {
 				return nil, errors.New("Returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
 			}
@@ -62,6 +63,7 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, m
 			log.Printf("\tPublic exponent: %d\n", pubKey.E)
 		case pkcs11.CKA_MODULUS:
 			pubKey.N = big.NewInt(0).SetBytes(a.Value)
+			// Check the right length modulus was generated on the device
 			if pubKey.N.BitLen() != int(modLen) {
 				fmt.Println("asd", pubKey.N.BitLen())
 				return nil, errors.New("Returned CKA_MODULUS isn't of the expected bit length")
@@ -83,7 +85,9 @@ func rsaVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle
 	if err != nil {
 		return fmt.Errorf("Failed to initialize signing operation: %s", err)
 	}
-	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20} // SHA-256 prefix
+	// PKCS#11 requires a hash identifier prefix to the message in order to determine which hash was used.
+	// This prefix indicates SHA-256.
+	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20}
 	msg, err := getRandomBytes(ctx, session)
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve random data: %s", err)
