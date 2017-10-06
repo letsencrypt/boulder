@@ -205,7 +205,11 @@ func serveLoopResolver(stopChan chan bool) {
 	}()
 	go func() {
 		<-stopChan
-		err := server.Shutdown()
+		err := tcpServer.Shutdown()
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = udpServer.Shutdown()
 		if err != nil {
 			log.Fatal(err)
 		}
