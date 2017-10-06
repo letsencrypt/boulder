@@ -226,7 +226,7 @@ You can then add a migration with:
 
 `$ goose -path ./sa/_db/ create AddWizards sql`
 
-Finally, edit the resulting file (`sa/_db/20160915101011_WizardMigrations.sql`) to define your migration:
+Finally, edit the resulting file (`sa/_db/migrations/20160915101011_AddWizards.sql`) to define your migration:
 
 ```
 -- +goose Up
