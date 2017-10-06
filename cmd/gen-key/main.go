@@ -78,9 +78,10 @@ func main() {
 	slot := flag.Uint("slot", 0, "Slot to generate key in")
 	pin := flag.String("pin", "", "PIN for slot")
 	label := flag.String("label", "", "Key label")
-	rsaModLen := flag.Uint("modulus-bits", 0, "Size of RSA modulus in bits. Only valid if --type=RSA")
-	rsaExp := flag.Uint("public-exponent", 65537, "Public RSA exponent. Only valid if --type=RSA")
-	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P224, P256, P384, P521). Only valid if --type=ECDSA")
+	rsaModLen := flag.Uint("modulus-bits", 0, "Size of RSA modulus in bits. Only used if --type=RSA")
+	rsaExp := flag.Uint("public-exponent", 65537, "Public RSA exponent. Only used if --type=RSA")
+	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P224, P256, P384, P521). Only used if --type=ECDSA")
+	compatMode := flag.Bool("compat-mode", false, "Use pre PKCS#11 v2.11 style ECDSA parameters. Only used if --type=ECDSA")
 	flag.Parse()
 
 	if *module == "" {
@@ -118,7 +119,7 @@ func main() {
 		if *ecdsaCurve == "" {
 			panic("--ecdsaCurve is required")
 		}
-		pubKey, err = ecdsaGenerate(ctx, session, *label, *ecdsaCurve)
+		pubKey, err = ecdsaGenerate(ctx, session, *label, *ecdsaCurve, *compatMode)
 		if err != nil {
 			log.Fatalf("Failed to generate ECDSA key pair: %s", err)
 		}

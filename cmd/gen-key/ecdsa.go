@@ -27,19 +27,25 @@ var curveToOID = map[elliptic.Curve]asn1.ObjectIdentifier{
 	elliptic.P521(): asn1.ObjectIdentifier{1, 3, 132, 0, 35},
 }
 
-func ecArgs(label string, curve elliptic.Curve) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
+func ecArgs(label string, curve elliptic.Curve, compatMode bool) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
 	encodedCurve, err := asn1.Marshal(curveToOID[curve])
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("\tEncoded curve parameters as: %X\n", encodedCurve)
+	var paramType uint
+	if compatMode {
+		paramType = pkcs11.CKA_ECDSA_PARAMS
+	} else {
+		paramType = pkcs11.CKA_EC_PARAMS
+	}
 	return []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil),
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
-			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, encodedCurve),
+			pkcs11.NewAttribute(paramType, encodedCurve),
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
@@ -59,10 +65,16 @@ var oidDERToCurve = map[string]elliptic.Curve{
 	"06052B81040023":       elliptic.P521(),
 }
 
-func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
+func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, curve elliptic.Curve, compatMode bool) (*ecdsa.PublicKey, error) {
+	var paramType uint
+	if compatMode {
+		paramType = pkcs11.CKA_ECDSA_PARAMS
+	} else {
+		paramType = pkcs11.CKA_EC_PARAMS
+	}
 	// Retrieve the curve and public point for the generated public key
 	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
+		pkcs11.NewAttribute(paramType, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	})
 	if err != nil {
@@ -73,14 +85,14 @@ func ecPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, cu
 	gotCurve, gotPoint := false, false
 	for _, a := range attrs {
 		switch a.Type {
-		case pkcs11.CKA_EC_PARAMS:
+		case paramType:
 			rCurve, present := oidDERToCurve[fmt.Sprintf("%X", a.Value)]
 			if !present {
 				return nil, errors.New("Unknown curve OID value returned")
 			}
 			pubKey.Curve = rCurve
 			if pubKey.Curve != curve {
-				return nil, errors.New("Returned CKA_EC_PARAMS doesn't match expected curve")
+				return nil, errors.New("Returned EC parameters doesn't match expected curve")
 			}
 			gotCurve = true
 		case pkcs11.CKA_EC_POINT:
@@ -157,20 +169,20 @@ func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle,
 	return nil
 }
 
-func ecdsaGenerate(ctx Ctx, session pkcs11.SessionHandle, label, curveStr string) (*ecdsa.PublicKey, error) {
+func ecdsaGenerate(ctx Ctx, session pkcs11.SessionHandle, label, curveStr string, compatMode bool) (*ecdsa.PublicKey, error) {
 	curve, present := stringToCurve[curveStr]
 	if !present {
 		return nil, errors.New("curve not supported")
 	}
 	log.Printf("Generating ECDSA key with curve %s\n", curveStr)
-	m, pubTmpl, privTmpl := ecArgs(label, curve)
+	m, pubTmpl, privTmpl := ecArgs(label, curve, compatMode)
 	pub, priv, err := ctx.GenerateKeyPair(session, m, pubTmpl, privTmpl)
 	if err != nil {
 		return nil, err
 	}
 	log.Println("Key generated")
 	log.Println("Extracting public key")
-	pk, err := ecPub(ctx, session, pub, curve)
+	pk, err := ecPub(ctx, session, pub, curve, compatMode)
 	if err != nil {
 		return nil, err
 	}
