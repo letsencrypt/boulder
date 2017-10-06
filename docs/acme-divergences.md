@@ -2,9 +2,11 @@
 
 While Boulder attempts to implement the ACME specification as strictly as possible there are places at which we will diverge from the letter of the specification for various reasons.
 
-This document details these differences, since ACME is not yet finalized it will be updated as numbered drafts are published.
+Boulder evolved alongside the ACME specification and so there is not one exact draft number that can be referenced. Instead this document details these differences between what Boulder does and the most-recently published ACME draft. Since ACME is not yet finalized it will be updated as numbered drafts are published.
 
-Current draft: [`draft-ietf-acme-acme-07`](https://tools.ietf.org/html/draft-ietf-acme-acme-07).
+We refer to what Boulder presently implements as "ACME v1" and we are [actively working on "ACME v2"](https://letsencrypt.org/2017/06/14/acme-v2-api.html), an implementation with less divergences based on what will become the final ACME RFC.
+
+**Current draft: [`draft-ietf-acme-acme-07`](https://tools.ietf.org/html/draft-ietf-acme-acme-07).**
 
 ## [Section 6](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-6)
 
