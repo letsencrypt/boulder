@@ -36,7 +36,7 @@ Boulder does not implement the `caa` and `dnssec` errors.
 
 ## [Section 7.1](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1)
 
-Boulder does not implement the `new-order` resource. Instead of `new-order` Boulder implements the `new-cert` resource that is defined in [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
+Boulder does not implement the `new-order` resource (previously referred to as `new-application`). Instead of `new-order` Boulder implements the `new-cert` resource that is defined in [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5).
 
 Boulder also doesn't implement the `new-nonce` endpoint.
 
@@ -56,7 +56,7 @@ Boulder does not implement the `terms-of-service-agreed` or `orders` fields in t
 
 ## [Section 7.1.3](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1.3)
 
-Boulder does not implement orders, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of authorizations in the order response, Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
+Boulder does not implement orders (previously called `applications`), instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of authorizations in the order response, Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4).
 
 ## [Section 7.1.4](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1.4)
 
@@ -86,7 +86,7 @@ Boulder implements draft-05 style key roll-over with a few divergences. Since Bo
 
 ## [Section 7.4](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.4)
 
-Boulder does not implement orders, instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of authorizations in the order response, Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4). Certificates are not proactively issued, a user must request issuance via the `new-cert` endpoint instead of assuming a certificate will be created once all required authorizations are validated.
+Boulder does not implement orders (previously called `applications`), instead it implements the `new-cert` flow from [draft-ietf-acme-02 Section 6.5](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.5). Instead of authorizations in the order response, Boulder currently uses authorizations that are created using the `new-authz` flow from [draft-ietf-acme-02 Section 6.4](https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-6.4). Certificates are not proactively issued, a user must request issuance via the `new-cert` endpoint instead of assuming a certificate will be created once all required authorizations are validated.
 
 ## [Section 7.4.2](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.4.2)
 
