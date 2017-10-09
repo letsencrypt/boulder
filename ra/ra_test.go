@@ -26,6 +26,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	sagrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -1133,6 +1134,25 @@ func TestAuthzRateLimiting(t *testing.T) {
 	// Try to create a new authzRequest, should be fine now.
 	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
+}
+
+func TestAuthzFailedRateLimiting(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = &dummyRateLimitConfig{
+		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 1 * time.Hour},
+		},
+	}
+
+	// override with our mockInvalidAuthorizationsAuthority for this specific test
+	ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{})
+	// Should trigger rate limit
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertError(t, err, "NewAuthorization did not encounter expected rate limit error")
+	test.AssertEquals(t, err.Error(), "Too many failed authorizations recently.")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
