@@ -3,6 +3,7 @@ package bdns
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -178,19 +179,39 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveLoopResolver(stopChan chan bool) {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Second, WriteTimeout: time.Second}
+	tcpServer := &dns.Server{
+		Addr:         dnsLoopbackAddr,
+		Net:          "tcp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
+	udpServer := &dns.Server{
+		Addr:         dnsLoopbackAddr,
+		Net:          "udp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
 	go func() {
-		err := server.ListenAndServe()
+		err := tcpServer.ListenAndServe()
 		if err != nil {
 			fmt.Println(err)
-			return
+		}
+	}()
+	go func() {
+		err := udpServer.ListenAndServe()
+		if err != nil {
+			fmt.Println(err)
 		}
 	}()
 	go func() {
 		<-stopChan
-		err := server.Shutdown()
+		err := tcpServer.Shutdown()
 		if err != nil {
-			fmt.Println(err)
+			log.Fatal(err)
+		}
+		err = udpServer.Shutdown()
+		if err != nil {
+			log.Fatal(err)
 		}
 	}()
 }
@@ -206,7 +227,7 @@ func pollServer() {
 			fmt.Fprintln(os.Stderr, "Timeout reached while testing for the dns server to come up")
 			os.Exit(1)
 		case <-ticker.C:
-			conn, _ := dns.DialTimeout("tcp", dnsLoopbackAddr, backoff)
+			conn, _ := dns.DialTimeout("udp", dnsLoopbackAddr, backoff)
 			if conn != nil {
 				_ = conn.Close()
 				return
