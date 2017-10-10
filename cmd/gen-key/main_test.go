@@ -10,8 +10,8 @@ type mockCtx struct {
 	GenerateRandomFunc    func(pkcs11.SessionHandle, int) ([]byte, error)
 }
 
-func (mc mockCtx) GenerateKeyPair(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
-	return 0, 0, nil
+func (mc mockCtx) GenerateKeyPair(s pkcs11.SessionHandle, m []*pkcs11.Mechanism, a1 []*pkcs11.Attribute, a2 []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+	return mc.GenerateKeyPairFunc(s, m, a1, a2)
 }
 
 func (mc mockCtx) GetAttributeValue(s pkcs11.SessionHandle, o pkcs11.ObjectHandle, a []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {

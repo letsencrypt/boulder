@@ -8,7 +8,7 @@
 //      of the appropriate PKCS#11 attributes.
 //   2. Executes a PKCS#11 GenerateKeyPair operation with the constructed
 //      templates and either CKM_RSA_PKCS_KEY_PAIR_GEN or CKM_EC_KEY_PAIR_GEN
-//      (or CKM_ECDSA_KEY_PAIR_GEN for pre-PKCS#11 2.0 devices).
+//      (or CKM_ECDSA_KEY_PAIR_GEN for pre-PKCS#11 v2.11 devices).
 //   3. Extracts the public key components from the returned public key object
 //      handle and construct a Golang public key object from them.
 //   4. Generates 4 bytes of random data from the HSM using a PKCS#11 GenerateRandom
@@ -80,7 +80,7 @@ func main() {
 	label := flag.String("label", "", "Key label")
 	rsaModLen := flag.Uint("modulus-bits", 0, "Size of RSA modulus in bits. Only used if --type=RSA")
 	rsaExp := flag.Uint("public-exponent", 65537, "Public RSA exponent. Only used if --type=RSA")
-	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P224, P256, P384, P521). Only used if --type=ECDSA")
+	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P-224, P-256, P-384, P-521). Only used if --type=ECDSA")
 	compatMode := flag.Bool("compat-mode", false, "Use pre PKCS#11 v2.11 style ECDSA parameters. Only used if --type=ECDSA")
 	flag.Parse()
 
@@ -119,7 +119,7 @@ func main() {
 		if *ecdsaCurve == "" {
 			panic("--ecdsaCurve is required")
 		}
-		pubKey, err = ecdsaGenerate(ctx, session, *label, *ecdsaCurve, *compatMode)
+		pubKey, err = ecGenerate(ctx, session, *label, *ecdsaCurve, *compatMode)
 		if err != nil {
 			log.Fatalf("Failed to generate ECDSA key pair: %s", err)
 		}

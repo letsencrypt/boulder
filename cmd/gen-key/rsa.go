@@ -65,7 +65,6 @@ func rsaPub(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, m
 			pubKey.N = big.NewInt(0).SetBytes(a.Value)
 			// Check the right length modulus was generated on the device
 			if pubKey.N.BitLen() != int(modLen) {
-				fmt.Println("asd", pubKey.N.BitLen())
 				return nil, errors.New("Returned CKA_MODULUS isn't of the expected bit length")
 			}
 			gotMod = true

@@ -148,3 +148,64 @@ func TestECVerify(t *testing.T) {
 	err = ecVerify(ctx, 0, 0, &tk.PublicKey)
 	test.AssertNotError(t, err, "ecVerify failed with a valid signature")
 }
+
+func TestECGenerate(t *testing.T) {
+	ctx := mockCtx{}
+
+	// Test ecGenerate fails with unknown curve
+	_, err := ecGenerate(ctx, 0, "", "bad-curve", false)
+	test.AssertError(t, err, "ecGenerate accepted unknown curve")
+
+	// Test ecGenerate fails when GenerateKeyPair fails
+	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+		return 0, 0, errors.New("bad")
+	}
+	_, err = ecGenerate(ctx, 0, "", "P-256", false)
+	test.AssertError(t, err, "ecGenerate didn't fail on GenerateKeyPair error")
+
+	// Test ecGenerate fails when ecPub fails
+	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+		return 0, 0, nil
+	}
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return nil, errors.New("bad")
+	}
+	_, err = ecGenerate(ctx, 0, "", "P-256", false)
+	test.AssertError(t, err, "ecGenerate didn't fail on ecPub error")
+
+	// Test ecGenerate fails when ecVerify fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 71, 137, 101, 56, 44, 59, 172, 148, 152, 118, 61, 183, 215, 242, 168, 62, 77, 94, 246, 212, 164, 96, 210, 134, 87, 169, 142, 226, 189, 118, 137, 203, 117, 55, 2, 215, 177, 159, 42, 196, 33, 91, 92, 251, 98, 53, 137, 221, 167, 148, 25, 209, 1, 5, 90, 52, 43, 18, 7, 30, 33, 142, 228, 235}),
+		}, nil
+	}
+	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
+		return errors.New("yup")
+	}
+	_, err = ecGenerate(ctx, 0, "", "P-256", false)
+	test.AssertError(t, err, "ecGenerate didn't fail on ecVerify error")
+
+	// Test ecGenerate doesn't fail when everything works
+	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
+		return nil
+	}
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return []byte{1, 2, 3}, nil
+	}
+	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
+		return []byte{82, 33, 179, 118, 118, 141, 38, 154, 5, 20, 207, 140, 127, 221, 237, 139, 222, 74, 189, 107, 84, 133, 127, 80, 226, 169, 25, 110, 141, 226, 196, 69, 202, 51, 204, 77, 22, 198, 104, 91, 74, 120, 221, 156, 122, 11, 43, 54, 106, 10, 165, 202, 229, 71, 44, 18, 113, 236, 213, 47, 208, 239, 198, 33}, nil
+	}
+	_, err = ecGenerate(ctx, 0, "", "P-256", false)
+	test.AssertNotError(t, err, "ecGenerate didn't succeed when everything worked as expected")
+
+	// Test ecGenerate doesn't fail when everything works with compatibility mode
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_ECDSA_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 71, 137, 101, 56, 44, 59, 172, 148, 152, 118, 61, 183, 215, 242, 168, 62, 77, 94, 246, 212, 164, 96, 210, 134, 87, 169, 142, 226, 189, 118, 137, 203, 117, 55, 2, 215, 177, 159, 42, 196, 33, 91, 92, 251, 98, 53, 137, 221, 167, 148, 25, 209, 1, 5, 90, 52, 43, 18, 7, 30, 33, 142, 228, 235}),
+		}, nil
+	}
+	_, err = ecGenerate(ctx, 0, "", "P-256", true)
+	test.AssertNotError(t, err, "ecGenerate didn't succeed when everything worked as expected")
+}

@@ -14,33 +14,32 @@ import (
 )
 
 var stringToCurve = map[string]elliptic.Curve{
-	"P224": elliptic.P224(),
-	"P256": elliptic.P256(),
-	"P384": elliptic.P384(),
-	"P521": elliptic.P521(),
+	"P-224": elliptic.P224(),
+	"P-256": elliptic.P256(),
+	"P-384": elliptic.P384(),
+	"P-521": elliptic.P521(),
 }
 
-var curveToOID = map[elliptic.Curve]asn1.ObjectIdentifier{
-	elliptic.P224(): asn1.ObjectIdentifier{1, 3, 132, 0, 33},
-	elliptic.P256(): asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7},
-	elliptic.P384(): asn1.ObjectIdentifier{1, 3, 132, 0, 34},
-	elliptic.P521(): asn1.ObjectIdentifier{1, 3, 132, 0, 35},
+var curveToOID = map[elliptic.Curve][]byte{
+	elliptic.P224(): []byte{6, 5, 43, 129, 4, 0, 33},
+	elliptic.P256(): []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
+	elliptic.P384(): []byte{6, 5, 43, 129, 4, 0, 34},
+	elliptic.P521(): []byte{6, 5, 43, 129, 4, 0, 35},
 }
 
 func ecArgs(label string, curve elliptic.Curve, compatMode bool) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
-	encodedCurve, err := asn1.Marshal(curveToOID[curve])
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("\tEncoded curve parameters as: %X\n", encodedCurve)
-	var paramType uint
+	encodedCurve := curveToOID[curve]
+	log.Printf("\tEncoded curve parameters for %s: %X\n", curve.Params().Name, encodedCurve)
+	var genMech, paramType uint
 	if compatMode {
+		genMech = pkcs11.CKM_ECDSA_KEY_PAIR_GEN
 		paramType = pkcs11.CKA_ECDSA_PARAMS
 	} else {
+		genMech = pkcs11.CKM_EC_KEY_PAIR_GEN
 		paramType = pkcs11.CKA_EC_PARAMS
 	}
 	return []*pkcs11.Mechanism{
-			pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil),
+			pkcs11.NewMechanism(genMech, nil),
 		}, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
@@ -161,7 +160,6 @@ func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle,
 	log.Printf("\tMessage signature: %X\n", signature)
 	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-	fmt.Println("post", r, s)
 	if !ecdsa.Verify(pub, hash[:], r, s) {
 		return errors.New("failed to verify ECDSA signature over test data")
 	}
@@ -169,7 +167,7 @@ func ecVerify(ctx Ctx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle,
 	return nil
 }
 
-func ecdsaGenerate(ctx Ctx, session pkcs11.SessionHandle, label, curveStr string, compatMode bool) (*ecdsa.PublicKey, error) {
+func ecGenerate(ctx Ctx, session pkcs11.SessionHandle, label, curveStr string, compatMode bool) (*ecdsa.PublicKey, error) {
 	curve, present := stringToCurve[curveStr]
 	if !present {
 		return nil, errors.New("curve not supported")
