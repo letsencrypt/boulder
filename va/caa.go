@@ -21,7 +21,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
-	}, req.ValidationMethod)
+	})
 
 	if prob != nil {
 		typ := string(prob.Type)
@@ -36,8 +36,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier, challengeType *string) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, identifier, challengeType)
+func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
@@ -222,27 +222,17 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return parseResults(results)
 }
 
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier, challengeType *string) (present, valid bool, err error) {
+func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, err
 	}
-	present, valid = va.validateCAASet(caaSet, challengeType)
+	present, valid = va.validateCAASet(caaSet)
 	return present, valid, nil
 }
 
-func containsMethod(commaSeparatedMethods, method string) bool {
-	for _, m := range strings.Split(commaSeparatedMethods, ",") {
-		if method == m {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType *string) (present, valid bool) {
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("CAA.None", 1)
@@ -279,21 +269,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType 
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
-		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
-		caaMethods, caaMethodsSet := caaParameters["validation-methods"]
-
-		if caaIssuerDomain != va.issuerDomain {
-			continue
+		if extractIssuerDomain(caa) == va.issuerDomain {
+			va.stats.Inc("CAA.Authorized", 1)
+			return true, true
 		}
-
-		if features.Enabled(features.CAAValidationMethods) {
-			if caaMethodsSet && challengeType != nil && !containsMethod(caaMethods, *challengeType) {
-				continue
-			}
-		}
-
-		va.stats.Inc("CAA.Authorized", 1)
-		return true, true
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
@@ -301,29 +280,19 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, challengeType 
 	return true, false
 }
 
-func isIssueSpace(r rune) bool {
-	return r == '\t' || r == ' '
-}
-
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
 // that is, a domain name with zero or more additional key-value parameters.
-// Returns the domain name, which may be "" (unsatisfiable), and a tag-value map of parameters.
-func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
-	v := strings.SplitN(caa.Value, ";", 2)
-	domain = strings.TrimFunc(v[0], isIssueSpace)
-	parameters = make(map[string]string)
-
-	if len(v) == 2 {
-		parameterStrings := strings.FieldsFunc(v[1], isIssueSpace)
-
-		for _, str := range parameterStrings {
-			kv := strings.SplitN(str, "=", 2)
-
-			if len(kv) == 2 {
-				parameters[kv[0]] = kv[1]
-			}
-		}
+// Returns the domain name, which may be "" (unsatisfiable).
+func extractIssuerDomain(caa *dns.CAA) string {
+	v := caa.Value
+	v = strings.Trim(v, " \t") // Value can start and end with whitespace.
+	idx := strings.IndexByte(v, ';')
+	if idx < 0 {
+		return v // no parameters; domain only
 	}
 
-	return domain, parameters
+	// Currently, ignore parameters. Unfortunately, the RFC makes no statement on
+	// whether any parameters are critical. Treat unknown parameters as
+	// non-critical.
+	return strings.Trim(v[0:idx], " \t")
 }

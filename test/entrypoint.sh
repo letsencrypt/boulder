@@ -47,8 +47,4 @@ if [[ $# -eq 0 ]]; then
     exec ./start.py
 fi
 
-# TODO(jsha): Change to an unprivileged user before running commands. Currently,
-# running as an unprivileged user causes the certbot integration test to fail
-# during the test of the manual plugin. There's a call to killpg in there that
-# kills the whole test, but only when run under `su buser -c "..."`
 exec $@

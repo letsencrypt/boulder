@@ -769,7 +769,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier, &challenge.Type)
+		ch <- va.checkCAA(ctx, identifier)
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -868,7 +868,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
-		Hostname:    authz.Identifier.Value,
+		Hostname:    domain,
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()

@@ -824,7 +824,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, mockLog := setup(nil, 0)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01()
@@ -839,6 +839,13 @@ func TestPerformValidationValid(t *testing.T) {
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
+	resultLog := mockLog.GetAllMatching(`Validation result`)
+	if len(resultLog) != 1 {
+		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	}
+	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log validation hostname.")
 	}
 }
 
