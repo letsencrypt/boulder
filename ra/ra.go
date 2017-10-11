@@ -516,26 +516,24 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	if features.Enabled(features.ReusePendingAuthz) {
-		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
-		identifierTypeString := string(identifier.Type)
-		pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
-			RegistrationID:  &regID,
-			IdentifierType:  &identifierTypeString,
-			IdentifierValue: &identifier.Value,
-			ValidUntil:      &nowishNano,
-		})
-		if err != nil && !berrors.Is(err, berrors.NotFound) {
-			return core.Authorization{}, berrors.InternalServerError(
-				"unable to get pending authorization for regID: %d, identifier: %s: %s",
-				regID,
-				identifier.Value,
-				err)
-		} else if err == nil {
-			return *pendingAuth, nil
-		}
-		// Fall through to normal creation flow.
+	nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
+	identifierTypeString := string(identifier.Type)
+	pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &regID,
+		IdentifierType:  &identifierTypeString,
+		IdentifierValue: &identifier.Value,
+		ValidUntil:      &nowishNano,
+	})
+	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		return core.Authorization{}, berrors.InternalServerError(
+			"unable to get pending authorization for regID: %d, identifier: %s: %s",
+			regID,
+			identifier.Value,
+			err)
+	} else if err == nil {
+		return *pendingAuth, nil
 	}
+	// Fall through to normal creation flow.
 
 	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
 	if err != nil {
