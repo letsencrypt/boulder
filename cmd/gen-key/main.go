@@ -85,19 +85,19 @@ func main() {
 	flag.Parse()
 
 	if *module == "" {
-		panic("--module is required")
+		log.Fatal("--module is required")
 	}
 	if *keyType == "" {
-		panic("--type is required")
+		log.Fatal("--type is required")
 	}
 	if *keyType != "RSA" && *keyType != "ECDSA" {
-		panic("--type may only be RSA or ECDSA")
+		log.Fatal("--type may only be RSA or ECDSA")
 	}
 	if *pin == "" {
-		panic("--pin is required")
+		log.Fatal("--pin is required")
 	}
 	if *label == "" {
-		panic("--label is required")
+		log.Fatal("--label is required")
 	}
 
 	ctx, session, err := initialize(*module, *slot, *pin)
@@ -109,7 +109,7 @@ func main() {
 	switch *keyType {
 	case "RSA":
 		if *rsaModLen == 0 {
-			panic("--modulus-bits is required")
+			log.Fatal("--modulus-bits is required")
 		}
 		pubKey, err = rsaGenerate(ctx, session, *label, *rsaModLen, *rsaExp)
 		if err != nil {
@@ -117,7 +117,7 @@ func main() {
 		}
 	case "ECDSA":
 		if *ecdsaCurve == "" {
-			panic("--ecdsaCurve is required")
+			log.Fatal("--ecdsaCurve is required")
 		}
 		pubKey, err = ecGenerate(ctx, session, *label, *ecdsaCurve, *compatMode)
 		if err != nil {
@@ -127,11 +127,11 @@ func main() {
 
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to marshal public key: %s", err)
 	}
 
 	err = pem.Encode(os.Stdout, &pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to encode public key as PEM object: %s", err)
 	}
 }
