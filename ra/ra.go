@@ -82,7 +82,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg     int
 	maxNames              int
 	forceCNFromSAN        bool
-	reuseValidAuthz       bool
 	orderLifetime         time.Duration
 
 	regByIPStats         metrics.Scope
@@ -101,7 +100,6 @@ func NewRegistrationAuthorityImpl(
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
 	forceCNFromSAN bool,
-	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc core.Publisher,
@@ -120,7 +118,6 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
-		reuseValidAuthz:              reuseValidAuthz,
 		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
 		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
@@ -485,41 +482,40 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return core.Authorization{}, err
 	}
 
-	if ra.reuseValidAuthz {
-		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
+	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
+	if err != nil {
+		outErr := berrors.InternalServerError(
+			"unable to get existing validations for regID: %d, identifier: %s",
+			regID,
+			identifier.Value,
+		)
+		ra.log.Warning(outErr.Error())
+		return core.Authorization{}, outErr
+	}
+
+	if existingAuthz, ok := auths[identifier.Value]; ok {
+		// Use the valid existing authorization's ID to find a fully populated version
+		// The results from `GetValidAuthorizations` are most notably missing
+		// `Challenge` values that the client expects in the result.
+		populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
 		if err != nil {
 			outErr := berrors.InternalServerError(
-				"unable to get existing validations for regID: %d, identifier: %s",
-				regID,
-				identifier.Value,
+				"unable to get existing authorization for auth ID: %s",
+				existingAuthz.ID,
 			)
-			ra.log.Warning(outErr.Error())
+			ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 			return core.Authorization{}, outErr
 		}
 
-		if existingAuthz, ok := auths[identifier.Value]; ok {
-			// Use the valid existing authorization's ID to find a fully populated version
-			// The results from `GetValidAuthorizations` are most notably missing
-			// `Challenge` values that the client expects in the result.
-			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
-			if err != nil {
-				outErr := berrors.InternalServerError(
-					"unable to get existing authorization for auth ID: %s",
-					existingAuthz.ID,
-				)
-				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
-				return core.Authorization{}, outErr
-			}
-
-			// The existing authorization must not expire within the next 24 hours for
-			// it to be OK for reuse
-			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-			if populatedAuthz.Expires.After(reuseCutOff) {
-				ra.stats.Inc("ReusedValidAuthz", 1)
-				return populatedAuthz, nil
-			}
+		// The existing authorization must not expire within the next 24 hours for
+		// it to be OK for reuse
+		reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
+		if populatedAuthz.Expires.After(reuseCutOff) {
+			ra.stats.Inc("ReusedValidAuthz", 1)
+			return populatedAuthz, nil
 		}
 	}
+
 	if features.Enabled(features.ReusePendingAuthz) {
 		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
 		identifierTypeString := string(identifier.Type)
@@ -1147,12 +1143,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
-	// When configured with `reuseValidAuthz` we can expect some clients to try
-	// and update a challenge for an authorization that is already valid. In this
-	// case we don't need to process the challenge update. It wouldn't be helpful,
-	// the overall authorization is already good! We increment a stat for this
-	// case and return early.
-	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+	if authz.Status == core.StatusValid {
 		ra.stats.Inc("ReusedValidAuthzChallenge", 1)
 		return authz, nil
 	}

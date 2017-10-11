@@ -261,7 +261,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0)
+		1, testKeyPolicy, 0, true, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -606,9 +606,6 @@ func TestReuseValidAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Turn on AuthZ Reuse
-	ra.reuseValidAuthz = true
-
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
 	finalAuthz.Status = "valid"
@@ -716,9 +713,6 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Turn on AuthZ Reuse
-	ra.reuseValidAuthz = true
-
 	// Use a mock SA that always fails `GetValidAuthorizations`
 	mockSA := &mockSAWithBadGetValidAuthz{}
 	ra.SA = mockSA
@@ -729,42 +723,9 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
 }
 
-func TestReuseAuthorizationDisabled(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Create one finalized authorization
-	finalAuthz := AuthzInitial
-	finalAuthz.Status = "valid"
-	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = "valid"
-	finalAuthz.RegistrationID = Registration.ID
-	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
-	test.AssertNotError(t, err, "Could not store test pending authorization")
-	err = sa.FinalizeAuthorization(ctx, finalAuthz)
-	test.AssertNotError(t, err, "Could not finalize test pending authorization")
-
-	// Now create another authorization for the same Reg.ID/domain
-	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
-
-	// The second authz should not have the same ID as the previous AuthZ,
-	// because we have set `reuseValidAuthZ` to false. It should be a fresh
-	// & unique authz
-	test.AssertNotEquals(t, finalAuthz.ID, secondAuthz.ID)
-
-	// The second authz shouldn't be valid, but pending since it is a brand new
-	// authz, not a reused one
-	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
-}
-
 func TestReuseExpiringAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	// Turn on AuthZ Reuse
-	ra.reuseValidAuthz = true
 
 	// Create one finalized authorization that expires in 12 hours from now
 	expiringAuth := AuthzInitial
@@ -878,7 +839,7 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 }
 
 func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create a finalized authorization
@@ -893,18 +854,8 @@ func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize pending authorization")
 
-	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
+	_, err = makeResponse(finalAuthz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
-	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
-	va.RecordsReturn = []core.ValidationRecord{
-		{Hostname: "example.com"}}
-	va.ProblemReturn = nil
-
-	// A subsequent call to update the authorization should return the expected error
-	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
-	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
-		"FinalizeAuthorization of valid authz didn't return a berrors.WrongAuthorizationState")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
