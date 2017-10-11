@@ -1,4 +1,4 @@
-# PKCS#11 [![Build Status](https://travis-ci.org/miekg/pkcs11.png?branch=master)](https://travis-ci.org/miekg/pkcs11) [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](http://godoc.org/github.com/miekg/pkcs11)
+# PKCS#11 [![Build Status](https://travis-ci.org/miekg/pkcs11.png?branch=master)](https://travis-ci.org/miekg/pkcs11)
 
 This is a Go implementation of the PKCS#11 API. It wraps the library closely, but uses Go idiom
 were it makes sense. It has been tested with SoftHSM.
