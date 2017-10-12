@@ -117,7 +117,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority) {
+func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -125,7 +125,7 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-	scope, logger := cmd.StatsAndLogging(conf.Syslog)
+	logger := cmd.MakeLogger(conf.Syslog)
 
 	var tls *tls.Config
 	if conf.TLS.CertFile != nil {
@@ -133,10 +133,10 @@ func setup(configFile string) (metrics.Scope, blog.Logger, core.StorageAuthority
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	conn, err := bgrpc.ClientSetup(conf.SAService, tls, scope)
+	conn, err := bgrpc.ClientSetup(conf.SAService, tls, metrics.NewNoopScope())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-	return scope, logger, sac
+	return logger, sac
 }
 
 func main() {
@@ -166,7 +166,7 @@ func main() {
 
 	switch command {
 	case "parse-ca-log":
-		stats, logger, sa := setup(*configFile)
+		logger, sa := setup(*configFile)
 		if *logPath == "" {
 			usage()
 		}
@@ -186,13 +186,10 @@ func main() {
 			}
 		}
 		logger.Info(fmt.Sprintf("Found %d orphans and added %d to the database\n", orphansFound, orphansAdded))
-		stats.Inc("Found", orphansFound)
-		stats.Inc("Added", orphansAdded)
-		stats.Inc("AddingFailed", orphansFound-orphansAdded)
 
 	case "parse-der":
 		ctx := context.Background()
-		_, _, sa := setup(*configFile)
+		_, sa := setup(*configFile)
 		if *derPath == "" || *regID == 0 {
 			usage()
 		}

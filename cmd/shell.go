@@ -124,12 +124,12 @@ func (log promLogger) Println(args ...interface{}) {
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
 func StatsAndLogging(logConf SyslogConfig, addr string) (metrics.Scope, blog.Logger) {
-	logger := makeLogger(logConf)
+	logger := MakeLogger(logConf)
 	scope := makeStats(addr, logger)
 	return scope, logger
 }
 
-func makeLogger(logConf SyslogConfig) blog.Logger {
+func MakeLogger(logConf SyslogConfig) blog.Logger {
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
 		"",
@@ -157,14 +157,19 @@ func makeStats(addr string, logger blog.Logger) metrics.Scope {
 	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), "boulder"))
 
 	mux := http.NewServeMux()
+	reg := func(name string) {
+		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
+	}
+	reg("block")
+	reg("goroutine")
+	reg("heap")
+	reg("mutex")
+	reg("profile")
+	reg("threadcreate")
+	reg("trace")
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: promLogger{logger},
 	}))
-	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	mux.Handle("/debug/pprof/profile", pprof.Handler("profile"))
-	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-	mux.Handle("/debug/pprof/trace", pprof.Handler("trace"))
-	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 
 	server := http.Server{
 		Addr:    addr,

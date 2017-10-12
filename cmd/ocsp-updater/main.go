@@ -757,7 +757,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -796,7 +796,6 @@ func main() {
 	}
 
 	go cmd.CatchSignals(logger, nil)
-	go cmd.DebugServer(conf.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
 	// Sleep forever (until signaled)

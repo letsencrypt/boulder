@@ -43,7 +43,7 @@ func main() {
 	err = features.Set(c.SA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -85,7 +85,6 @@ func main() {
 		}
 	})
 
-	go cmd.DebugServer(c.SA.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
 	select {}
