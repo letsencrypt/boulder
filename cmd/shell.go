@@ -34,7 +34,6 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"time"
 
 	"google.golang.org/grpc/grpclog"
 
