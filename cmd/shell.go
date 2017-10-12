@@ -151,51 +151,6 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-// ProfileCmd runs forever, sending Go runtime statistics to StatsD.
-func ProfileCmd(stats metrics.Scope) {
-	stats = stats.NewScope("Gostats")
-	var memoryStats runtime.MemStats
-	prevNumGC := int64(0)
-	c := time.Tick(1 * time.Second)
-	for range c {
-		runtime.ReadMemStats(&memoryStats)
-
-		// Gather goroutine count
-		stats.Gauge("Goroutines", int64(runtime.NumGoroutine()))
-
-		// Gather various heap metrics
-		stats.Gauge("Heap.Alloc", int64(memoryStats.HeapAlloc))
-		stats.Gauge("Heap.Objects", int64(memoryStats.HeapObjects))
-		stats.Gauge("Heap.Idle", int64(memoryStats.HeapIdle))
-		stats.Gauge("Heap.InUse", int64(memoryStats.HeapInuse))
-		stats.Gauge("Heap.Released", int64(memoryStats.HeapReleased))
-
-		// Gather various GC related metrics
-		if memoryStats.NumGC > 0 {
-			totalRecentGC := uint64(0)
-			realBufSize := uint32(256)
-			if memoryStats.NumGC < 256 {
-				realBufSize = memoryStats.NumGC
-			}
-			for _, pause := range memoryStats.PauseNs {
-				totalRecentGC += pause
-			}
-			gcPauseAvg := totalRecentGC / uint64(realBufSize)
-			lastGC := memoryStats.PauseNs[(memoryStats.NumGC+255)%256]
-			stats.Timing("Gc.PauseAvg", int64(gcPauseAvg))
-			stats.Gauge("Gc.LastPause", int64(lastGC))
-		}
-		stats.Gauge("Gc.NextAt", int64(memoryStats.NextGC))
-		// Send both a counter and a gauge here we can much more easily observe
-		// the GC rate (versus the raw number of GCs) in graphing tools that don't
-		// like deltas
-		stats.Gauge("Gc.Count", int64(memoryStats.NumGC))
-		gcInc := int64(memoryStats.NumGC) - prevNumGC
-		stats.Inc("Gc.Rate", gcInc)
-		prevNumGC += gcInc
-	}
-}
-
 // LoadCert loads a PEM-formatted certificate from the provided path, returning
 // it as a byte array, or an error if it couldn't be decoded.
 func LoadCert(path string) (cert []byte, err error) {
