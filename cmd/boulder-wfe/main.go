@@ -150,18 +150,12 @@ func main() {
 
 	var tlsSrv *http.Server
 	if c.WFE.TLSListenAddress != "" {
-		cer, err := tls.LoadX509KeyPair(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
-		cmd.FailOnError(err, "Couldn't read WFE server certificate or key")
-		tlsConfig := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-		logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
 		tlsSrv = &http.Server{
-			Addr:      c.WFE.TLSListenAddress,
-			Handler:   wfe.Handler(),
-			TLSConfig: tlsConfig,
+			Addr:    c.WFE.TLSListenAddress,
+			Handler: wfe.Handler(),
 		}
 		go func() {
-			err = tlsSrv.ListenAndServe()
+			err = tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			cmd.FailOnError(err, "Error starting TLS server")
 		}()
 	}
