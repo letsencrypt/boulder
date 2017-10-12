@@ -314,7 +314,7 @@ func main() {
 	err = features.Set(cfg.NotifyMailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	log := cmd.MakeLogger(cfg.Syslog)
+	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()

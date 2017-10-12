@@ -124,12 +124,12 @@ func (log promLogger) Println(args ...interface{}) {
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
 func StatsAndLogging(logConf SyslogConfig, addr string) (metrics.Scope, blog.Logger) {
-	logger := MakeLogger(logConf)
-	scope := makeStats(addr, logger)
+	logger := NewLogger(logConf)
+	scope := newScope(addr, logger)
 	return scope, logger
 }
 
-func MakeLogger(logConf SyslogConfig) blog.Logger {
+func NewLogger(logConf SyslogConfig) blog.Logger {
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
 		"",
@@ -151,12 +151,15 @@ func MakeLogger(logConf SyslogConfig) blog.Logger {
 	return logger
 }
 
-func makeStats(addr string, logger blog.Logger) metrics.Scope {
+func newScope(addr string, logger blog.Logger) metrics.Scope {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
 	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), "boulder"))
 
 	mux := http.NewServeMux()
+	// Register each of the available pprof handlers. These are all registered on
+	// DefaultServeMux just by importing pprof, but since we eschew
+	// DefaultServeMux, we need to explicitly register them on our own mux.
 	reg := func(name string) {
 		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
 	}

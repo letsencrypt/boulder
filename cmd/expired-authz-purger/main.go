@@ -168,7 +168,7 @@ func main() {
 	err = features.Set(config.ExpiredAuthzPurger.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	auditlogger := cmd.MakeLogger(config.ExpiredAuthzPurger.Syslog)
+	auditlogger := cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
 	auditlogger.Info(cmd.VersionString())
 
 	defer auditlogger.AuditPanic()

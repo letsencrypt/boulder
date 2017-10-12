@@ -125,7 +125,7 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-	logger := cmd.MakeLogger(conf.Syslog)
+	logger := cmd.NewLogger(conf.Syslog)
 
 	var tls *tls.Config
 	if conf.TLS.CertFile != nil {

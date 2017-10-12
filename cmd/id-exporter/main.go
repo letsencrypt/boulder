@@ -166,7 +166,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := cmd.MakeLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
 
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))

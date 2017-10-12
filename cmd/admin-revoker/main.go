@@ -61,7 +61,7 @@ type config struct {
 }
 
 func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority) {
-	logger := cmd.MakeLogger(c.Syslog)
+	logger := cmd.NewLogger(c.Syslog)
 
 	var tls *tls.Config
 	var err error
