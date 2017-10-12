@@ -335,12 +335,6 @@ func TestCert(t *testing.T) {
 	test.AssertDeepEquals(t, cert, outCert)
 }
 
-/*
-
-func orderValid(order *corepb.Order) bool {
-	return !(order.Id == nil || order.RegistrationID == nil || order.Expires == nil || order.CertificateSerial == nil || order.Authorizations == nil || order.Status == nil || order.Names == nil)
-}
-*/
 func TestOrderValid(t *testing.T) {
 	testID := int64(1)
 	testExpires := int64(1)
