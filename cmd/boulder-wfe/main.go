@@ -142,7 +142,7 @@ func main() {
 	go cmd.ProfileCmd(scope)
 
 	go func() {
-		err = srv.ListenAndServe()
+		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			cmd.FailOnError(err, "Running HTTP server")
 		}
@@ -155,7 +155,7 @@ func main() {
 			Handler: wfe.Handler(),
 		}
 		go func() {
-			err = tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
+			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			cmd.FailOnError(err, "Error starting TLS server")
 		}()
 	}
