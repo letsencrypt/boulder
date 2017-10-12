@@ -474,7 +474,6 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 }
 
 func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.OrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	// TODO(@cpu) - Mock this somehow
 	return nil, nil
 }
 
