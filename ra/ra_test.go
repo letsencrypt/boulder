@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	//"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
