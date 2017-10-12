@@ -245,20 +245,18 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 }
 
 type certificateRequestEvent struct {
-	ID                  string    `json:",omitempty"`
-	Requester           int64     `json:",omitempty"`
-	OrderID             int64     `json:",omitempty"`
-	SerialNumber        string    `json:",omitempty"`
-	RequestMethod       string    `json:",omitempty"`
-	VerificationMethods []string  `json:",omitempty"`
-	VerifiedFields      []string  `json:",omitempty"`
-	CommonName          string    `json:",omitempty"`
-	Names               []string  `json:",omitempty"`
-	NotBefore           time.Time `json:",omitempty"`
-	NotAfter            time.Time `json:",omitempty"`
-	RequestTime         time.Time `json:",omitempty"`
-	ResponseTime        time.Time `json:",omitempty"`
-	Error               string    `json:",omitempty"`
+	ID             string    `json:",omitempty"`
+	Requester      int64     `json:",omitempty"`
+	OrderID        int64     `json:",omitempty"`
+	SerialNumber   string    `json:",omitempty"`
+	VerifiedFields []string  `json:",omitempty"`
+	CommonName     string    `json:",omitempty"`
+	Names          []string  `json:",omitempty"`
+	NotBefore      time.Time `json:",omitempty"`
+	NotAfter       time.Time `json:",omitempty"`
+	RequestTime    time.Time `json:",omitempty"`
+	ResponseTime   time.Time `json:",omitempty"`
+	Error          string    `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -463,7 +461,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	noKey := ""
 	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
-		return berrors.RateLimitError("Too many invalid authorizations recently.")
+		return berrors.RateLimitError("Too many failed authorizations recently.")
 	}
 	return nil
 }
@@ -870,11 +868,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	// Construct the log event
 	logEvent := certificateRequestEvent{
-		ID:            core.NewToken(),
-		Requester:     acctID,
-		OrderID:       orderID,
-		RequestMethod: "online",
-		RequestTime:   ra.clk.Now(),
+		ID:          core.NewToken(),
+		OrderID:     orderID,
+		Requester:   regID,
+		RequestTime: ra.clk.Now(),
 	}
 
 	// No matter what, log the request

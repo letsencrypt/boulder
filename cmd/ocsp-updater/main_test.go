@@ -130,7 +130,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	cleanUp := test.ResetSATestDatabase(t)

@@ -28,6 +28,7 @@ const (
 	AllowRenewalFirstRL
 	RecheckCAA
 	LegacyCAA
+	UDPDNS
 )
 
 // List of features and their default value, protected by fMu
@@ -47,6 +48,7 @@ var features = map[FeatureFlag]bool{
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
 	LegacyCAA:                false,
+	UDPDNS:                   false,
 }
 
 var fMu = new(sync.RWMutex)
