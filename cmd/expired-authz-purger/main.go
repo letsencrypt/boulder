@@ -29,6 +29,7 @@ type eapConfig struct {
 
 		GracePeriod cmd.ConfigDuration
 		BatchSize   int
+		MaxAuthzs   int
 		Parallelism uint
 
 		Features map[string]bool
@@ -43,9 +44,19 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time, parallelism int) error {
+// purge looks up pending or finalized authzs (depending on the value of
+// `table`) that expire before `purgeBefore`. If `yes` is true, or if a user at
+// the terminal types "y", it will then delete those authzs, using `parallel`
+// goroutines.
+// Neither table has an index on `expires` by itself, so we just iterate through
+// the table with LIMIT and OFFSET using the default ordering. Note that this
+// becomes expensive once the earliest set of authzs has been purged, since the
+// database will have to scan through many rows before it finds some that meet
+// the expiration criteria. When we move to better authz storage (#2620), we
+// will get an appropriate index that will make this cheaper.
+func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time, parallelism int, max int) error {
 	var ids []string
-	for {
+	for len(ids) < max {
 		var idBatch []string
 		var query string
 		switch table {
@@ -68,6 +79,9 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 			break
 		}
 		ids = append(ids, idBatch...)
+	}
+	if len(ids) > max {
+		ids = ids[:max]
 	}
 
 	if !yes {
@@ -141,9 +155,9 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 	return nil
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool, parallelism int) error {
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool, parallelism int, max int) error {
 	for _, table := range []string{"pendingAuthorizations", "authz"} {
-		err := p.purge(table, yes, purgeBefore, parallelism)
+		err := p.purge(table, yes, purgeBefore, parallelism, max)
 		if err != nil {
 			return err
 		}
@@ -168,19 +182,20 @@ func main() {
 	err = features.Set(config.ExpiredAuthzPurger.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	auditlogger := cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
-	auditlogger.Info(cmd.VersionString())
+	logger := cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
+	logger.Info(cmd.VersionString())
 
-	defer auditlogger.AuditPanic()
+	defer logger.AuditPanic()
 
 	// Configure DB
 	dbURL, err := config.ExpiredAuthzPurger.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
+	sa.SetSQLDebug(dbMap, logger)
 
 	purger := &expiredAuthzPurger{
-		log:       auditlogger,
+		log:       logger,
 		clk:       cmd.Clock(),
 		db:        dbMap,
 		batchSize: int64(config.ExpiredAuthzPurger.BatchSize),
@@ -195,6 +210,8 @@ func main() {
 		os.Exit(1)
 	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-	err = purger.purgeAuthzs(purgeBefore, *yes, int(config.ExpiredAuthzPurger.Parallelism))
+	logger.Info("Beginning purge")
+	err = purger.purgeAuthzs(purgeBefore, *yes, int(config.ExpiredAuthzPurger.Parallelism),
+		int(config.ExpiredAuthzPurger.MaxAuthzs))
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
