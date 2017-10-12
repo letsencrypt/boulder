@@ -148,3 +148,11 @@ func (sa *mockInvalidAuthorizationsAuthority) GetAuthorizations(ctx context.Cont
 func (sa *mockInvalidAuthorizationsAuthority) AddPendingAuthorizations(ctx context.Context, in *sapb.AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.AuthorizationIDs, error) {
 	return nil, nil
 }
+
+func (sa *mockInvalidAuthorizationsAuthority) GetOrderAuthorizations(ctx context.Context, in *sapb.OrderAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) UpdateOrder(ctx context.Context, in *core.Order, opts ...grpc.CallOption) (*core.Order, error) {
+	return nil, nil
+}

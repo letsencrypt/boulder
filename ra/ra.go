@@ -870,7 +870,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
 		OrderID:     orderID,
-		Requester:   regID,
+		Requester:   acctID,
 		RequestTime: ra.clk.Now(),
 	}
 
