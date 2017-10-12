@@ -1,13 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
-
-	"github.com/facebookgo/httpdown"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -39,7 +38,6 @@ type config struct {
 		IssuerCacheDuration         cmd.ConfigDuration
 
 		ShutdownStopTimeout cmd.ConfigDuration
-		ShutdownKillTimeout cmd.ConfigDuration
 
 		SubscriberAgreementURL string
 
@@ -143,36 +141,42 @@ func main() {
 	go cmd.DebugServer(c.WFE.DebugAddr)
 	go cmd.ProfileCmd(scope)
 
-	hd := &httpdown.HTTP{
-		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
-		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,
-	}
-	hdSrv, err := hd.ListenAndServe(srv)
-	cmd.FailOnError(err, "Error starting HTTP server")
+	go func() {
+		err = srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			cmd.FailOnError(err, "Running HTTP server")
+		}
+	}()
 
-	var hdTLSSrv httpdown.Server
+	var tlsSrv *http.Server
 	if c.WFE.TLSListenAddress != "" {
 		cer, err := tls.LoadX509KeyPair(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 		cmd.FailOnError(err, "Couldn't read WFE server certificate or key")
 		tlsConfig := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 		logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
-		TLSSrv := &http.Server{
+		tlsSrv = &http.Server{
 			Addr:      c.WFE.TLSListenAddress,
 			Handler:   wfe.Handler(),
 			TLSConfig: tlsConfig,
 		}
-		hdTLSSrv, err = hd.ListenAndServe(TLSSrv)
-		cmd.FailOnError(err, "Error starting TLS server")
+		go func() {
+			err = tlsSrv.ListenAndServe()
+			cmd.FailOnError(err, "Error starting TLS server")
+		}()
 	}
 
+	done := make(chan bool)
 	go cmd.CatchSignals(logger, func() {
-		_ = hdSrv.Stop()
-		if hdTLSSrv != nil {
-			_ = hdTLSSrv.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(),
+			c.WFE.ShutdownStopTimeout.Duration)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		if tlsSrv != nil {
+			_ = tlsSrv.Shutdown(ctx)
 		}
+		done <- true
 	})
 
-	forever := make(chan struct{}, 1)
-	<-forever
+	<-done
 }
