@@ -20,14 +20,12 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
 	"log/syslog"
-	"net"
 	"net/http"
-	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"path"
@@ -43,7 +41,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -109,15 +106,29 @@ func (log grpcLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprintln(args...))
 }
 
+type promLogger struct {
+	blog.Logger
+}
+
+func (log promLogger) Println(args ...interface{}) {
+	log.AuditErr(fmt.Sprintln(args...))
+}
+
 // StatsAndLogging constructs a metrics.Scope and an AuditLogger based on its config
-// parameters, and return them both. Crashes if any setup fails.
+// parameters, and return them both. It also spawns off an HTTP server on the
+// provided port to report the stats and provide pprof profiling handlers.
+// Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger, and configures
 // the cfssl, mysql, and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
-func StatsAndLogging(logConf SyslogConfig) (metrics.Scope, blog.Logger) {
-	scope := metrics.NewPromScope(prometheus.DefaultRegisterer)
+func StatsAndLogging(logConf SyslogConfig, addr string) (metrics.Scope, blog.Logger) {
+	logger := NewLogger(logConf)
+	scope := newScope(addr, logger)
+	return scope, logger
+}
 
+func NewLogger(logConf SyslogConfig) blog.Logger {
 	tag := path.Base(os.Args[0])
 	syslogger, err := syslog.Dial(
 		"",
@@ -136,8 +147,43 @@ func StatsAndLogging(logConf SyslogConfig) (metrics.Scope, blog.Logger) {
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLogger(grpcLogger{logger})
+	return logger
+}
 
-	return scope, logger
+func newScope(addr string, logger blog.Logger) metrics.Scope {
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(prometheus.NewGoCollector())
+	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), "boulder"))
+
+	mux := http.NewServeMux()
+	// Register each of the available pprof handlers. These are all registered on
+	// DefaultServeMux just by importing pprof, but since we eschew
+	// DefaultServeMux, we need to explicitly register them on our own mux.
+	reg := func(name string) {
+		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
+	}
+	reg("block")
+	reg("goroutine")
+	reg("heap")
+	reg("mutex")
+	reg("profile")
+	reg("threadcreate")
+	reg("trace")
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		ErrorLog: promLogger{logger},
+	}))
+
+	server := http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+	go func() {
+		err := server.ListenAndServe()
+		if err != nil {
+			log.Fatalf("unable to boot debug server on %s: %v", addr, err)
+		}
+	}()
+	return metrics.NewPromScope(registry)
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
@@ -170,28 +216,6 @@ func LoadCert(path string) (cert []byte, err error) {
 
 	cert = block.Bytes
 	return
-}
-
-// DebugServer starts a server to receive debug information.  Typical
-// usage is to start it in a goroutine, configured with an address
-// from the appropriate configuration object:
-//
-//   go cmd.DebugServer(c.XA.DebugAddr)
-func DebugServer(addr string) {
-	m := expvar.NewMap("enabled-features")
-	features.Export(m)
-	if addr == "" {
-		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
-	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatalf("unable to boot debug server on %#v", addr)
-	}
-	http.Handle("/metrics", promhttp.Handler())
-	err = http.Serve(ln, nil)
-	if err != nil {
-		log.Fatalf("unable to boot debug server: %v", err)
-	}
 }
 
 // ReadConfigFile takes a file path as an argument and attempts to

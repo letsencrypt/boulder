@@ -49,7 +49,7 @@ func main() {
 	err = features.Set(c.Publisher.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -106,8 +106,6 @@ func main() {
 			grpcSrv.GracefulStop()
 		}
 	})
-
-	go cmd.DebugServer(c.Publisher.DebugAddr)
 
 	select {}
 }

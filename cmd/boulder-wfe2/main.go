@@ -98,7 +98,7 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -139,8 +139,6 @@ func main() {
 		Addr:    c.WFE.ListenAddress,
 		Handler: wfe.Handler(),
 	}
-
-	go cmd.DebugServer(c.WFE.DebugAddr)
 
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,

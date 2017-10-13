@@ -135,7 +135,7 @@ func main() {
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -210,8 +210,6 @@ func main() {
 			ocspSrv.GracefulStop()
 		}
 	})
-
-	go cmd.DebugServer(c.CA.DebugAddr)
 
 	select {}
 }
