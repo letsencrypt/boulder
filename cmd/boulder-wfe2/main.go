@@ -141,7 +141,6 @@ func main() {
 	}
 
 	go cmd.DebugServer(c.WFE.DebugAddr)
-	go cmd.ProfileCmd(scope)
 
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,

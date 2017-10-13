@@ -160,7 +160,6 @@ func main() {
 	})
 
 	go cmd.DebugServer(c.VA.DebugAddr)
-	go cmd.ProfileCmd(scope)
 
 	select {}
 }

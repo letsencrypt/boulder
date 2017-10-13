@@ -797,7 +797,6 @@ func main() {
 
 	go cmd.CatchSignals(logger, nil)
 	go cmd.DebugServer(conf.DebugAddr)
-	go cmd.ProfileCmd(scope)
 
 	// Sleep forever (until signaled)
 	select {}
