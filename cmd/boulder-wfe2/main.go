@@ -140,8 +140,6 @@ func main() {
 		Handler: wfe.Handler(),
 	}
 
-	go cmd.ProfileCmd(scope)
-
 	hd := &httpdown.HTTP{
 		StopTimeout: c.WFE.ShutdownStopTimeout.Duration,
 		KillTimeout: c.WFE.ShutdownKillTimeout.Duration,

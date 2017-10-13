@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -148,7 +149,7 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	caConfig  cmd.CAConfig
+	caConfig  ca_config.CAConfig
 	pa        core.PolicyAuthority
 	issuers   []Issuer
 	keyPolicy goodkey.KeyPolicy
@@ -197,7 +198,7 @@ func setup(t *testing.T) *testCtx {
 	}
 
 	// Create a CA
-	caConfig := cmd.CAConfig{
+	caConfig := ca_config.CAConfig{
 		RSAProfile:   rsaProfileName,
 		ECDSAProfile: ecdsaProfileName,
 		SerialPrefix: 17,

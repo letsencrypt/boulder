@@ -233,7 +233,5 @@ func main() {
 		}
 	})
 
-	go cmd.ProfileCmd(scope)
-
 	select {}
 }

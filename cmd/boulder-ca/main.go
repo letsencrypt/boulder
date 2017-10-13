@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -26,7 +27,7 @@ import (
 )
 
 type config struct {
-	CA cmd.CAConfig
+	CA ca_config.CAConfig
 
 	PA cmd.PAConfig
 
@@ -60,7 +61,7 @@ func loadIssuers(c config) ([]ca.Issuer, error) {
 	return issuers, nil
 }
 
-func loadIssuer(issuerConfig cmd.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
+func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
 	cert, err := core.LoadCert(issuerConfig.CertFile)
 	if err != nil {
 		return nil, nil, err
@@ -77,7 +78,7 @@ func loadIssuer(issuerConfig cmd.IssuerConfig) (crypto.Signer, *x509.Certificate
 	return signer, cert, err
 }
 
-func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
+func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 	if issuerConfig.File != "" {
 		keyBytes, err := ioutil.ReadFile(issuerConfig.File)
 		if err != nil {
@@ -209,8 +210,6 @@ func main() {
 			ocspSrv.GracefulStop()
 		}
 	})
-
-	go cmd.ProfileCmd(scope)
 
 	select {}
 }
