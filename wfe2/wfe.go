@@ -1621,8 +1621,8 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
-	// If there is already a certificate serial for this order then it has been
-	// finalized and there is nothing left to do
+	/// If the order's status is not pending we can not finalize it and must
+	//return an error
 	if *order.Status != string(core.StatusPending) {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("Order's status (%q) was not pending", *order.Status), nil)
