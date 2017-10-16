@@ -3,11 +3,11 @@ package main
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/ca/config"
 )
 
 func TestLoadIssuerSuccess(t *testing.T) {
-	signer, cert, err := loadIssuer(cmd.IssuerConfig{
+	signer, cert, err := loadIssuer(ca_config.IssuerConfig{
 		File:     "../../test/test-ca.key",
 		CertFile: "../../test/test-ca2.pem",
 	})
@@ -23,7 +23,7 @@ func TestLoadIssuerSuccess(t *testing.T) {
 }
 
 func TestLoadIssuerBadKey(t *testing.T) {
-	_, _, err := loadIssuer(cmd.IssuerConfig{
+	_, _, err := loadIssuer(ca_config.IssuerConfig{
 		File:     "/dev/null",
 		CertFile: "../../test/test-ca2.pem",
 	})
@@ -33,7 +33,7 @@ func TestLoadIssuerBadKey(t *testing.T) {
 }
 
 func TestLoadIssuerBadCert(t *testing.T) {
-	_, _, err := loadIssuer(cmd.IssuerConfig{
+	_, _, err := loadIssuer(ca_config.IssuerConfig{
 		File:     "../../test/test-ca.key",
 		CertFile: "/dev/null",
 	})

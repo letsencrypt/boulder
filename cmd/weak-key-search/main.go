@@ -99,7 +99,7 @@ func main() {
 		limit = int(c.BatchSize)
 	}
 
-	_, log := cmd.StatsAndLogging(c.SyslogConfig)
+	log := cmd.NewLogger(c.SyslogConfig)
 
 	moreThan, err := time.Parse(time.RFC3339, c.IssuedMoreThan)
 	cmd.FailOnError(err, fmt.Sprintf("failed to parse issuedMoreThan %q", c.IssuedMoreThan))

@@ -30,9 +30,8 @@ func TestPurgeAuthzs(t *testing.T) {
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 	defer cleanUp()
-	stats := metrics.NewNoopScope()
 
-	p := expiredAuthzPurger{stats, log, fc, dbMap, 1}
+	p := expiredAuthzPurger{log, fc, dbMap, 1}
 
 	err = p.purgeAuthzs(time.Time{}, true, 10)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
