@@ -33,7 +33,7 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-type Ctx interface {
+type PKCtx interface {
 	GenerateKeyPair(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error)
 	GetAttributeValue(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error)
 	SignInit(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error
@@ -41,7 +41,7 @@ type Ctx interface {
 	GenerateRandom(pkcs11.SessionHandle, int) ([]byte, error)
 }
 
-func getRandomBytes(ctx Ctx, session pkcs11.SessionHandle) ([]byte, error) {
+func getRandomBytes(ctx PKCtx, session pkcs11.SessionHandle) ([]byte, error) {
 	r, err := ctx.GenerateRandom(session, 4)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func getRandomBytes(ctx Ctx, session pkcs11.SessionHandle) ([]byte, error) {
 	return r, nil
 }
 
-func initialize(module string, slot uint, pin string) (Ctx, pkcs11.SessionHandle, error) {
+func initialize(module string, slot uint, pin string) (PKCtx, pkcs11.SessionHandle, error) {
 	ctx := pkcs11.New(module)
 	if ctx == nil {
 		return nil, 0, errors.New("failed to load module")
@@ -102,7 +102,7 @@ func main() {
 
 	ctx, session, err := initialize(*module, *slot, *pin)
 	if err != nil {
-		log.Fatalf("Failed to setup and session PKCS#11 context: %s", err)
+		log.Fatalf("Failed to setup session and PKCS#11 context: %s", err)
 	}
 
 	var pubKey interface{}

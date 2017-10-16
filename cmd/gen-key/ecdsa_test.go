@@ -35,7 +35,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{1, 2, 3}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P224(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P224().Params(), false)
 	test.AssertError(t, err, "ecPub didn't fail with unknown curve")
 
 	// test we fail to construct key with non-matching curve
@@ -44,7 +44,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P224(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P224().Params(), false)
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
 
 	// test we fail to construct key with invalid EC point (invalid encoding)
@@ -54,7 +54,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{255}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P256(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P256().Params(), false)
 	test.AssertError(t, err, "ecPub didn't fail with invalid EC point (invalid encoding)")
 
 	// test we fail to construct key with invalid EC point (empty octet string)
@@ -64,7 +64,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 0}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P256(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P256().Params(), false)
 	test.AssertError(t, err, "ecPub didn't fail with invalid EC point (octet string, invalid contents)")
 	// test we fail to construct key with invalid EC point (empty octet string)
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
@@ -73,7 +73,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 4, 4, 1, 2, 3}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P256(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P256().Params(), false)
 	test.AssertError(t, err, "ecPub didn't fail with invalid EC point (empty octet string)")
 
 	// test we don't fail with the correct attributes (traditional encoding)
@@ -83,7 +83,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 217, 225, 246, 210, 153, 134, 246, 104, 95, 79, 122, 206, 135, 241, 37, 114, 199, 87, 56, 167, 83, 56, 136, 174, 6, 145, 97, 239, 221, 49, 67, 148, 13, 126, 65, 90, 208, 195, 193, 171, 105, 40, 98, 132, 124, 30, 189, 215, 197, 178, 226, 166, 238, 240, 57, 215}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P224(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P224().Params(), false)
 	test.AssertNotError(t, err, "ecPub failed with valid attributes (traditional encoding)")
 
 	// test we don't fail with the correct attributes (non-traditional encoding)
@@ -93,7 +93,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 57, 4, 217, 225, 246, 210, 153, 134, 246, 104, 95, 79, 122, 206, 135, 241, 37, 114, 199, 87, 56, 167, 83, 56, 136, 174, 6, 145, 97, 239, 221, 49, 67, 148, 13, 126, 65, 90, 208, 195, 193, 171, 105, 40, 98, 132, 124, 30, 189, 215, 197, 178, 226, 166, 238, 240, 57, 215}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P224(), false)
+	_, err = ecPub(ctx, 0, 0, elliptic.P224().Params(), false)
 	test.AssertNotError(t, err, "ecPub failed with valid attributes (non-traditional encoding)")
 }
 
@@ -124,14 +124,14 @@ func TestECVerify(t *testing.T) {
 	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
 		return nil, errors.New("yup")
 	}
-	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256()})
+	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256().Params()})
 	test.AssertError(t, err, "ecVerify didn't fail on Sign error")
 
 	// test signature verification failing
 	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tk, err := ecdsa.GenerateKey(elliptic.P256().Params(), rand.Reader)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = ecVerify(ctx, 0, 0, &tk.PublicKey)
 	test.AssertError(t, err, "ecVerify didn't fail on signature verification error")
