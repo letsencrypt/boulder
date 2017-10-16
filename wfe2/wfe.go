@@ -1482,15 +1482,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Convert the corepb.Order.Names back into identifiers for display to the
-	// user. We do this rather than send back newOrderRequest.Identifiers because
-	// the RA will have deduplicated and lowercased some of the names and we want
-	// the order returned to the user to reflect this.
-	idents := make([]core.AcmeIdentifier, len(order.Names))
-	for i, name := range order.Names {
-		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-	}
-
 	orderURL := wfe.relativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id))
 	response.Header().Set("Location", orderURL)
