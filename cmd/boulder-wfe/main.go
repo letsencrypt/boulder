@@ -172,5 +172,9 @@ func main() {
 		done <- true
 	})
 
+	// https://godoc.org/net/http#Server.Shutdown:
+	// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS
+	// immediately return ErrServerClosed. Make sure the program doesn't exit and
+	// waits instead for Shutdown to return.
 	<-done
 }
