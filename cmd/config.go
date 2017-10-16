@@ -48,8 +48,9 @@ type ServiceConfig struct {
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
-	DBConnectFile string
-	MaxDBConns    int
+	DBConnectFile  string
+	MaxDBConns     int
+	MaxIdleDBConns int
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, either

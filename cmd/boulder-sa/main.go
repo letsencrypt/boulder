@@ -55,6 +55,9 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
+	if saConf.DBConfig.MaxIdleDBConns != 0 {
+		dbMap.Db.SetMaxIdleConns(saConf.DBConfig.MaxIdleDBConns)
+	}
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	parallel := saConf.ParallelismPerRPC
