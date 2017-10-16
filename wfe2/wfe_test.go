@@ -1869,7 +1869,7 @@ func TestFinalizeOrder(t *testing.T) {
 		{
 			Name:         "Invalid path",
 			Request:      signAndPost(t, "a/a/a/a/", "a/a/a/a/", "{}", 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:         "Bad acct ID in path",
@@ -1902,7 +1902,7 @@ func TestFinalizeOrder(t *testing.T) {
 		{
 			Name:         "Finalize url is invalid",
 			Request:      signAndPost(t, "1/1/whatever", "http://localhost/1/1/whatever", "{}", 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name: "Order doesn't exist",
@@ -2075,12 +2075,12 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Invalid request path",
 			Path:     "asd",
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":400}`,
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:     "Finalize order request path with GET",
 			Path:     "1/1/finalize-order",
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":400}`,
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:     "Invalid account ID",

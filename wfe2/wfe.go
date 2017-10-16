@@ -1509,20 +1509,20 @@ func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEven
 	// If there are less than 2 fields there can't be both an account ID and an
 	// order ID so the path is invalid
 	if len(fields) < 2 {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	}
 	// If there are three fields then there must be an account ID and an order ID
 	// and the "finalize" path. This should only occur when the request method is
 	// a POST or the request has an invalid path.
 	if len(fields) == 3 && request.Method != "POST" {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	} else if len(fields) == 3 && request.Method == "POST" {
 		// If it is a POST request verify that the third path element is the
 		// finalizeOrderPath
 		if fields[2] != finalizeOrderPath {
-			wfe.sendError(response, logEvent, probs.Malformed("Invalid request path"), nil)
+			wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 			return
 		}
 	}
