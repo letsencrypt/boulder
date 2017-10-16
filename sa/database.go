@@ -61,8 +61,6 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 		return nil, err
 	}
 	setMaxOpenConns(db, maxOpenConns)
-	// Set a nonzero idle connection limit so we get better connection reuse.
-	db.SetMaxIdleConns(20)
 
 	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
