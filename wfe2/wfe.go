@@ -1399,10 +1399,6 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the ceritificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	// Convert the corepb.Order.Names back into identifiers for display to the
-	// user. We do this rather than send back newOrderRequest.Identifiers because
-	// the RA will have deduplicated and lowercased some of the names and we want
-	// the order returned to the user to reflect this.
 	idents := make([]core.AcmeIdentifier, len(order.Names))
 	for i, name := range order.Names {
 		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
