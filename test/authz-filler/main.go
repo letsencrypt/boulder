@@ -46,7 +46,8 @@ func main() {
 	// Configure DB
 	dbURL, err := config.Filler.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL, 1000)
+	// Set max connections equal to parallelism.
+	dbMap, err := sa.NewDbMap(dbURL, int(config.Filler.Parallelism))
 	cmd.FailOnError(err, "Could not connect to database")
 
 	dbMap.AddTableWithName(model{}, "pendingAuthorizations").SetKeys(false, "ID")
@@ -54,10 +55,12 @@ func main() {
 	start := time.Now().Add(-span)
 	increment := time.Hour
 
-	work := make(chan time.Time, 1000)
+	// Use a buffer with Parallelism entries so there's always work available.
+	work := make(chan time.Time, config.Filler.Parallelism)
 	go func() {
 		for i := 0; i < int(span)/int(increment); i++ {
 			expires := start.Add(time.Duration(i) * increment)
+			// Arbitrarily make 30k entries per time chunk.
 			for j := 0; j < 30000; j++ {
 				work <- expires
 			}
@@ -88,5 +91,6 @@ func main() {
 		}()
 	}
 
+	// Block forever.
 	select {}
 }

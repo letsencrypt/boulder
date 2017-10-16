@@ -47,8 +47,8 @@ type expiredAuthzPurger struct {
 
 // purge looks up pending or finalized authzs (depending on the value of
 // `table`) that expire before `purgeBefore`. If `yes` is true, or if a user at
-// the terminal types "y", it will then delete those authzs, using `parallel`
-// goroutines.
+// the terminal types "y", it will then delete those authzs, using `parallelism`
+// goroutines. It will delete a maximum of `max` authzs.
 // Neither table has an index on `expires` by itself, so we just iterate through
 // the table with LIMIT and OFFSET using the default ordering. Note that this
 // becomes expensive once the earliest set of authzs has been purged, since the

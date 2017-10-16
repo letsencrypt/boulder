@@ -1,6 +1,6 @@
 {
   "Filler": {
     "Parallelism": 20,
-    "DBConnect": "mysql+tcp://sa@boulder-mysql:3306/boulder_sa_integration?readTimeout=14s&writeTimeout=14s&timeout=100ms"
+    "dbConnectFile": "test/secrets/sa_dburl",
   }
 }
