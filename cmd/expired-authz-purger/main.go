@@ -62,9 +62,9 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 		var query string
 		switch table {
 		case "pendingAuthorizations":
-			query = "SELECT id FROM pendingAuthorizations WHERE expires <= ? LIMIT ? OFFSET ?"
+			query = "SELECT id FROM pendingAuthorizations WHERE expires <= ? ORDER BY id LIMIT ? OFFSET ?"
 		case "authz":
-			query = "SELECT id FROM authz WHERE expires <= ? LIMIT ? OFFSET ?"
+			query = "SELECT id FROM authz WHERE expires <= ? ORDER BY id LIMIT ? OFFSET ?"
 		}
 		_, err := p.db.Select(
 			&idBatch,
