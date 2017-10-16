@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -110,11 +111,14 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 	}
 
 	wg := new(sync.WaitGroup)
-	work := make(chan string, len(ids))
-	for _, id := range ids {
-		work <- id
-	}
-	close(work)
+	work := make(chan string)
+	go func() {
+		for _, id := range ids {
+			work <- id
+		}
+		close(work)
+	}()
+	var deletions int64
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
@@ -124,9 +128,16 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 				if err != nil {
 					p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
 				}
+				atomic.AddInt64(&deletions, 1)
 			}
 		}()
 	}
+	go func() {
+		for _ = range time.Tick(10 * time.Second) {
+			p.log.Info(fmt.Sprintf("Deleted %d authzs from %s so far", deletions, table))
+		}
+	}()
+
 	wg.Wait()
 
 	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
