@@ -440,12 +440,12 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 
 	status := string(core.StatusValid)
 	one := int64(1)
-	zero := int64(0)
 	serial := "serial"
+	exp := sa.clk.Now().AddDate(30, 0, 0).Unix()
 	validOrder := &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    &one,
-		Expires:           &zero,
+		Expires:           &exp,
 		Names:             []string{"example.com"},
 		Status:            &status,
 		Authorizations:    []string{"hello"},
@@ -468,6 +468,14 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		six := int64(6)
 		validOrder.Id = req.Id
 		validOrder.RegistrationID = &six
+	}
+
+	// Order ID 7 is expired
+	if *req.Id == 7 {
+		pending := string(core.StatusPending)
+		validOrder.Status = &pending
+		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
+		validOrder.Expires = &exp
 	}
 
 	return validOrder, nil

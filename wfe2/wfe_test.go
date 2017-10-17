@@ -1917,6 +1917,12 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") was not pending","status":400}`,
 		},
 		{
+			Name: "Order is expired",
+			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 7 as an Order that has already expired
+			Request:      signAndPost(t, "1/7/finalize-order", "http://localhost/1/7/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
+		},
+		{
 			Name:         "Invalid CSR",
 			Request:      signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", `{"CSR": "ABCD"}`, 1, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
@@ -1927,7 +1933,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `
 {
   "Status": "pending",
-  "Expires": "1970-01-01T00:00:00Z",
+  "Expires": "1970-01-01T00:00:00.9466848Z",
   "Identifiers": [
     {"type":"dns","value":"example.com"}
   ],
@@ -2065,7 +2071,7 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Path:     "1/1",
-			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"FinalizeURL":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"FinalizeURL":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",

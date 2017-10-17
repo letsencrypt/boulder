@@ -1608,11 +1608,18 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
-	/// If the order's status is not pending we can not finalize it and must
-	//return an error
+	// If the order's status is not pending we can not finalize it and must
+	// return an error
 	if *order.Status != string(core.StatusPending) {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("Order's status (%q) was not pending", *order.Status), nil)
+		return
+	}
+
+	// If the order is expired we can not finalize it and must return an error
+	orderExpiry := time.Unix(*order.Expires, 0)
+	if orderExpiry.Before(wfe.clk.Now()) {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", *order.Id)), nil)
 		return
 	}
 
