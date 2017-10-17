@@ -43,7 +43,7 @@ func main() {
 	err = features.Set(c.SA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -55,6 +55,9 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
+	if saConf.DBConfig.MaxIdleDBConns != 0 {
+		dbMap.Db.SetMaxIdleConns(saConf.DBConfig.MaxIdleDBConns)
+	}
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	parallel := saConf.ParallelismPerRPC
@@ -84,9 +87,6 @@ func main() {
 			grpcSrv.GracefulStop()
 		}
 	})
-
-	go cmd.DebugServer(c.SA.DebugAddr)
-	go cmd.ProfileCmd(scope)
 
 	select {}
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -37,10 +36,9 @@ type eapConfig struct {
 }
 
 type expiredAuthzPurger struct {
-	stats metrics.Scope
-	log   blog.Logger
-	clk   clock.Clock
-	db    *gorp.DbMap
+	log blog.Logger
+	clk clock.Clock
+	db  *gorp.DbMap
 
 	batchSize int64
 }
@@ -170,8 +168,7 @@ func main() {
 	err = features.Set(config.ExpiredAuthzPurger.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	// Set up logging
-	scope, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Syslog)
+	auditlogger := cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
 	auditlogger.Info(cmd.VersionString())
 
 	defer auditlogger.AuditPanic()
@@ -181,10 +178,8 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, scope)
 
 	purger := &expiredAuthzPurger{
-		stats:     scope,
 		log:       auditlogger,
 		clk:       cmd.Clock(),
 		db:        dbMap,
