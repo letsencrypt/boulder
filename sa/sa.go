@@ -1325,26 +1325,28 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 // and the order ID on the provided order are processed (e.g. this is not
 // a generic update RPC).
 func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
-
-	// Populate an orderModel for the update with the ID and the two fields we
-	// intend to change on finalization
-	order := &orderModel{
-		ID:                *req.Id,
-		Status:            core.StatusValid,
-		CertificateSerial: *req.CertificateSerial,
-	}
-
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return nil, err
 	}
 
-	n, err := tx.Update(order)
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET certificateSerial = ?, status = ?
+		WHERE id = ?
+		AND status = ?`,
+		*req.CertificateSerial,
+		string(core.StatusValid),
+		*req.Id,
+		string(core.StatusPending))
 	if err != nil {
+		err = berrors.InternalServerError("error updating order")
 		err = Rollback(tx, err)
 		return nil, err
 	}
-	if n == 0 {
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
 		err = berrors.InternalServerError("no order updated")
 		err = Rollback(tx, err)
 		return nil, err
