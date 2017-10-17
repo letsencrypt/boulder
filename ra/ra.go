@@ -629,14 +629,17 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	names []string,
-	orderID int64,
-	acctID int64) error {
+	acctID accountID,
+	orderID orderID) error {
+
+	acctIDInt := int64(acctID)
+	orderIDInt := int64(orderID)
 	// Get all of the authorizations for this account/order
 	authzs, err := ra.SA.GetOrderAuthorizations(
 		ctx,
 		&sapb.OrderAuthorizationsRequest{
-			Id:     &orderID,
-			AcctID: &acctID,
+			Id:     &orderIDInt,
+			AcctID: &acctIDInt,
 		})
 	if err != nil {
 		return err
@@ -646,7 +649,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 		names[i] = strings.ToLower(names[i])
 	}
 	// Check the authorizations to ensure validity for the names required.
-	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctID, ra.clk.Now())
+	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now())
 }
 
 // checkAuthorizations checks that each requested name has a valid authorization
@@ -818,7 +821,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Bytes: req.Csr,
 		CSR:   csrOb,
 	}
-	cert, err := ra.issueCertificate(ctx, issueReq, *req.Order.RegistrationID, *req.Order.Id)
+	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*req.Order.RegistrationID), orderID(*req.Order.Id))
 	if err != nil {
 		return err
 	}
@@ -850,8 +853,14 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
-	return ra.issueCertificate(ctx, req, regID, 0)
+	return ra.issueCertificate(ctx, req, accountID(regID), orderID(0))
 }
+
+// To help minimize the chance that an accountID would be used as an order ID
+// (or vice versa) when calling `issueCertificate` we define internal
+// `accountID` and `orderID` types so that callers must explicitly cast.
+type accountID int64
+type orderID int64
 
 // issueCertificate handles the common aspects of certificate issuance used by
 // both the "classic" NewCertificate endpoint (for ACME v1) and the
@@ -859,8 +868,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
 	req core.CertificateRequest,
-	acctID int64,
-	orderID int64) (core.Certificate, error) {
+	acctID accountID,
+	oID orderID) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	// Assume the worst
@@ -869,8 +878,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	// Construct the log event
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
-		OrderID:     orderID,
-		Requester:   acctID,
+		OrderID:     int64(oID),
+		Requester:   int64(acctID),
 		RequestTime: ra.clk.Now(),
 	}
 
@@ -885,11 +894,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	// OrderID can be 0 if `issueCertificate` is called by `NewCertificate` for
 	// the classic issuance flow. It should never be less than 0.
-	if orderID < 0 {
-		return emptyCert, berrors.MalformedError("invalid order ID: %d", orderID)
+	if oID < 0 {
+		return emptyCert, berrors.MalformedError("invalid order ID: %d", oID)
 	}
 
-	account, err := ra.SA.GetRegistration(ctx, acctID)
+	account, err := ra.SA.GetRegistration(ctx, int64(acctID))
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -897,7 +906,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	// Verify the CSR
 	csr := req.CSR
-	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, acctID); err != nil {
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, int64(acctID)); err != nil {
 		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
@@ -930,13 +939,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	// If the orderID is 0 then this is a classic issuance and we need to check
 	// that the account is authorized for the names in the CSR.
-	if orderID == 0 {
+	if oID == 0 {
 		err = ra.checkAuthorizations(ctx, names, account.ID)
 	} else {
 		// Otherwise, if the orderID is not 0 we need to follow the order based
 		// issuance process and check that this specific order is fully authorized
 		// and associated with the expected account ID
-		err = ra.checkOrderAuthorizations(ctx, names, orderID, account.ID)
+		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -947,10 +956,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
+	acctIDInt := int64(acctID)
+	orderIDInt := int64(oID)
 	issueReq := &caPB.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctID,
-		OrderID:        &orderID,
+		RegistrationID: &acctIDInt,
+		OrderID:        &orderIDInt,
 	}
 	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
 	if err != nil {
