@@ -147,7 +147,7 @@ type StorageAdder interface {
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
-	UpdateOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 }
 

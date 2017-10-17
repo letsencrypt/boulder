@@ -426,7 +426,7 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 }
 
 // UpdateOrder is a mock
-func (sa *StorageAuthority) UpdateOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
+func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
 	return order, nil
 }
 

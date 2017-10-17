@@ -833,17 +833,17 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	}
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
-	// Update the Order so that it is finalized and has a link to the issued
-	// certificate via the serial
-	validStatus := string(core.StatusValid)
-	order.Status = &validStatus
+	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = &serial
-	updatedOrder, err := ra.SA.UpdateOrder(ctx, order)
+	updatedOrder, err := ra.SA.FinalizeOrder(ctx, order)
 	if err != nil {
 		return err
 	}
 	if updatedOrder.CertificateSerial != order.CertificateSerial {
-		return berrors.InternalServerError("Order was not updated")
+		return berrors.InternalServerError("Order was not finalized with CertificateSerial")
+	}
+	if *updatedOrder.Status != string(core.StatusValid) {
+		return berrors.InternalServerError("Order was not finalized to status valid")
 	}
 	return nil
 }

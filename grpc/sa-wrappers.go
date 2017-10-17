@@ -478,8 +478,8 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	return resp, nil
 }
 
-func (sac StorageAuthorityClientWrapper) UpdateOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error) {
-	resp, err := sac.inner.UpdateOrder(ctx, order)
+func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error) {
+	resp, err := sac.inner.FinalizeOrder(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -997,12 +997,12 @@ func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *
 	return sas.inner.NewOrder(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) UpdateOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error) {
+func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error) {
 	if order == nil || !orderValid(order) {
 		return nil, errIncompleteRequest
 	}
 
-	updated, err := sas.inner.UpdateOrder(ctx, order)
+	updated, err := sas.inner.FinalizeOrder(ctx, order)
 	if err != nil {
 		return nil, err
 	}

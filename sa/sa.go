@@ -1319,14 +1319,18 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return req, nil
 }
 
-// UpdateOrder persists a changed *corepb.Order to the database returning it on
-// success or an error if unsuccessful.
-func (ssa *SQLStorageAuthority) UpdateOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+// FinalizeOrder finalizes a provided *corepb.Order by persisting the
+// CertificateSerial and a valid status to the database. The updated Order is
+// returned on a successful finalization. No fields other than CertificateSerial
+// and the order ID on the provided order are processed (e.g. this is not
+// a generic update RPC).
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+
+	// Populate an orderModel for the update with the ID and the two fields we
+	// intend to change on finalization
 	order := &orderModel{
 		ID:                *req.Id,
-		RegistrationID:    *req.RegistrationID,
-		Expires:           time.Unix(0, *req.Expires),
-		Status:            core.AcmeStatus(*req.Status),
+		Status:            core.StatusValid,
 		CertificateSerial: *req.CertificateSerial,
 	}
 
@@ -1351,6 +1355,13 @@ func (ssa *SQLStorageAuthority) UpdateOrder(ctx context.Context, req *corepb.Ord
 		return nil, err
 	}
 
+	// Set the status to valid in the request ob we return since this is the only
+	// field that changed in the update that wasn't present in the request. This
+	// avoids needing to do an explicit Get of the order by ID to get the updated
+	// contents. We can be confident based on our orderModel and checking the
+	// return from tx.Update that the update did occur.
+	validStatus := string(core.StatusValid)
+	req.Status = &validStatus
 	return req, nil
 }
 

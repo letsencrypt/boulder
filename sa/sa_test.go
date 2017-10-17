@@ -1312,7 +1312,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
 }
 
-func TestUpdateOrder(t *testing.T) {
+func TestFinalizeOrder(t *testing.T) {
 	// Only run under test/config-next config where 20170731115209_AddOrders.sql
 	// has been applied
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
@@ -1336,21 +1336,20 @@ func TestUpdateOrder(t *testing.T) {
 	order, err := sa.NewOrder(context.Background(), order)
 	test.AssertNotError(t, err, "NewOrder failed")
 
-	// Update the order with a non-empty certificate serial and a final status
+	// Finalize the order with a certificate serial
 	serial := "eat.serial.for.breakfast"
 	order.CertificateSerial = &serial
-	validStatus := string(core.StatusValid)
-	order.Status = &validStatus
-	_, err = sa.UpdateOrder(context.Background(), order)
-	test.AssertNotError(t, err, "UpdateOrder failed")
+	_, err = sa.FinalizeOrder(context.Background(), order)
+	test.AssertNotError(t, err, "FinalizeOrder failed")
 
-	// Read the order by ID from the DB to check the certificate serial was correctly updated
+	// Read the order by ID from the DB to check the certificate serial and status
+	// was correctly updated
 	updatedOrder, err := sa.GetOrder(
 		context.Background(),
 		&sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "GetOrder failed")
 	test.AssertEquals(t, *updatedOrder.CertificateSerial, serial)
-	test.AssertEquals(t, *updatedOrder.Status, validStatus)
+	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusValid))
 }
 
 func TestOrder(t *testing.T) {
