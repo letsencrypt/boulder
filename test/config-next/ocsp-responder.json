@@ -6,7 +6,6 @@
     "listenAddress": "0.0.0.0:4002",
     "maxAge": "10s",
     "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
     "debugAddr": ":8005"
   },
 
