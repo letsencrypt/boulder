@@ -35,7 +35,7 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
