@@ -417,6 +417,17 @@ def test_admin_revoker_authz():
     if data['status'] != "revoked":
         raise Exception("Authorization wasn't revoked")
 
+def test_stats():
+    def expect_stat(port, stat):
+        url = "http://localhost:%d/metrics" % port
+        response = requests.get(url)
+        if not stat in response.content:
+            print(response.content)
+            raise Exception("%s not present in %s" % (stat, url))
+    expect_stat(8000, "\nresponse_time_count{")
+    expect_stat(8000, "\ngo_goroutines ")
+    expect_stat(8001, "\ngo_goroutines ")
+
 exit_status = 1
 tempdir = tempfile.mkdtemp()
 
@@ -483,6 +494,7 @@ def run_chisel():
     test_renewal_exemption()
     test_expired_authzs_404()
     test_account_update()
+    test_stats()
 
 if __name__ == "__main__":
     try:
