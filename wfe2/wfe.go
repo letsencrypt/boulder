@@ -65,6 +65,7 @@ type WebFrontEndImpl struct {
 	log   blog.Logger
 	clk   clock.Clock
 	stats wfe2Stats
+	scope metrics.Scope
 
 	// URL configuration parameters
 	BaseURL string
@@ -99,12 +100,12 @@ type WebFrontEndImpl struct {
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
-	stats metrics.Scope,
+	scope metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService(stats)
+	nonceService, err := nonce.NewNonceService(scope)
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
@@ -114,7 +115,8 @@ func NewWebFrontEndImpl(
 		clk:          clk,
 		nonceService: nonceService,
 		keyPolicy:    keyPolicy,
-		stats:        initStats(stats),
+		stats:        initStats(scope),
+		scope:        scope,
 	}, nil
 }
 
@@ -318,7 +320,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk)
+	return measured_http.New(m, wfe.clk, wfe.scope)
 }
 
 // Method implementations
