@@ -1,6 +1,7 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Boulder server. Usage:
+a local Boulder server. Unlike chisel.py this version implements the most recent
+version of the ACME specification. Usage:
 
 $ virtualenv venv
 $ . venv/bin/activate
@@ -18,6 +19,8 @@ import urllib2
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 
 import OpenSSL
 
@@ -32,8 +35,7 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:14000/dir')
-#DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
@@ -68,20 +70,10 @@ class ValidationError(Exception):
         return "%s: %s: %s" % (self.domain, self.problem_type, self.detail)
 
 def make_csr(domains):
-    pkey = OpenSSL.crypto.PKey()
-    pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
-    csr = OpenSSL.crypto.X509Req()
-    csr.add_extensions([
-        OpenSSL.crypto.X509Extension(
-            'subjectAltName',
-            critical=False,
-            value=', '.join('DNS:' + d for d in domains).encode()
-        ),
-    ])
-    csr.set_pubkey(pkey)
-    csr.set_version(2)
-    csr.sign(pkey, 'sha256')
-    return OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_PEM, csr)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+    return x509.CertificateSigningRequestBuilder().add_extension(
+        x509.SubjectAlternativeName([x509.DNSName(d) for d in domains], critical=False)
+    ).sign(key, hashes.SHA256(), default_backend()).public_bytes(serialization.Encoding.PEM)
 
 def issue(client, authzs, cert_output=None):
     """Given a list of authzs that are being processed by the server,
@@ -133,8 +125,6 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     if chall_type == "http-01":
         cleanup = do_http_challenges(client, authzs)
-    #elif chall_type == "dns-01":
-        #cleanup = do_dns_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
