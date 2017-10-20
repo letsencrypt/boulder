@@ -1280,10 +1280,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, err
 	}
 
-	err = tx.Insert(order)
-	if err != nil {
-		err = Rollback(tx, err)
-		return nil, err
+	if err := tx.Insert(order); err != nil {
+		return nil, Rollback(tx, err)
 	}
 
 	for _, id := range req.Authorizations {
@@ -1291,10 +1289,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			OrderID: order.ID,
 			AuthzID: id,
 		}
-		err = tx.Insert(otoa)
-		if err != nil {
-			err = Rollback(tx, err)
-			return nil, err
+		if err := tx.Insert(otoa); err != nil {
+			return nil, Rollback(tx, err)
 		}
 	}
 
@@ -1303,15 +1299,12 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			OrderID:      order.ID,
 			ReversedName: ReverseName(name),
 		}
-		err = tx.Insert(reqdName)
-		if err != nil {
-			err = Rollback(tx, err)
-			return nil, err
+		if err := tx.Insert(reqdName); err != nil {
+			return nil, Rollback(tx, err)
 		}
 	}
 
-	err = tx.Commit()
-	if err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
