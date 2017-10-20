@@ -637,7 +637,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Get all of the authorizations for this account/order
 	authzs, err := ra.SA.GetOrderAuthorizations(
 		ctx,
-		&sapb.OrderAuthorizationsRequest{
+		&sapb.GetOrderAuthorizationsRequest{
 			Id:     &orderIDInt,
 			AcctID: &acctIDInt,
 		})

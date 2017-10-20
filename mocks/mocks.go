@@ -481,7 +481,7 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	return validOrder, nil
 }
 
-func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.OrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	return nil, nil
 }
 

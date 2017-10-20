@@ -1417,7 +1417,7 @@ func TestGetOrderAuthorizations(t *testing.T) {
 
 	// Now fetch the order authorizations for the order we added for the
 	// throw-away reg
-	authzMap, err := sa.GetOrderAuthorizations(context.Background(), &sapb.OrderAuthorizationsRequest{
+	authzMap, err := sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
 		Id:     order.Id,
 		AcctID: &reg.ID,
 	})
@@ -1432,7 +1432,7 @@ func TestGetOrderAuthorizations(t *testing.T) {
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
-	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.OrderAuthorizationsRequest{
+	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
 		Id:     &missingID,
 		AcctID: &reg.ID,
 	})
@@ -1442,7 +1442,7 @@ func TestGetOrderAuthorizations(t *testing.T) {
 	// Getting the order authorizations for an order that does exist, but for the
 	// wrong acct ID should return nothing
 	wrongAcctID := int64(0xDEADDA7ABA5E)
-	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.OrderAuthorizationsRequest{
+	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
 		Id:     order.Id,
 		AcctID: &wrongAcctID,
 	})

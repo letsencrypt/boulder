@@ -502,7 +502,7 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 
 func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
 	ctx context.Context,
-	request *sapb.OrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	request *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	resp, err := sas.inner.GetOrderAuthorizations(ctx, request)
 	if err != nil {
 		return nil, err
@@ -1019,7 +1019,7 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 
 func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
 	ctx context.Context,
-	request *sapb.OrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	request *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if request == nil || request.Id == nil {
 		return nil, errIncompleteRequest
 	}

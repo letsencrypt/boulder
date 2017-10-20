@@ -1428,7 +1428,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // associated with a specific order and account ID.
 func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 	ctx context.Context,
-	req *sapb.OrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	now := ssa.clk.Now()
 	// Select the full authorization data for all *valid, unexpired*
 	// authorizations that are owned by the correct account ID and associated with
