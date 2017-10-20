@@ -483,7 +483,7 @@ func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, orde
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || !orderValid(resp) {
+	if resp == nil || !orderValid(resp) || resp.CertificateSerial == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -998,7 +998,7 @@ func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error) {
-	if order == nil || !orderValid(order) {
+	if order == nil || !orderValid(order) || order.CertificateSerial == nil {
 		return nil, errIncompleteRequest
 	}
 
