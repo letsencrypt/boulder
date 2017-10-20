@@ -2031,12 +2031,6 @@ func TestFinalizeOrder(t *testing.T) {
 	}, testKey)
 	test.AssertNotError(t, err, "Error creating policy forbid CSR")
 
-	noNamesCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		PublicKey:          testKey.PublicKey,
-		SignatureAlgorithm: x509.SHA256WithRSA,
-	}, testKey)
-	test.AssertNotError(t, err, "Error creating no names CSR")
-
 	oneDomainCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey:          testKey.PublicKey,
 		SignatureAlgorithm: x509.SHA256WithRSA,
@@ -2140,18 +2134,6 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "asn1: syntax error: truncated tag or length",
 		},
 		{
-			Name: "CSR that should be rejected",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: &corepb.Order{
-					Status:         &pendingStatus,
-					Names:          []string{"example.com"},
-					RegistrationID: &fakeRegID,
-				},
-				Csr: noNamesCSR,
-			},
-			ExpectedErrMsg: "at least one DNS name is required",
-		},
-		{
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
@@ -2181,7 +2163,8 @@ func TestFinalizeOrder(t *testing.T) {
 				Order: &corepb.Order{
 					Status:         &pendingStatus,
 					Names:          []string{"example.org"},
-					RegistrationID: &fakeRegID,
+					RegistrationID: &Registration.ID,
+					Id:             &fakeOrderID,
 				},
 				Csr: policyForbidCSR,
 			},

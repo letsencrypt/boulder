@@ -784,12 +784,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return err
 	}
 
-	// Verify the CSR from the request based on our policies and the order's corresponding reg ID
-	err = csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *order.RegistrationID)
-	if err != nil {
-		return err
-	}
-
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := core.UniqueLowerNames(csrOb.DNSNames)
@@ -800,18 +794,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return berrors.UnauthorizedError("Order includes different number of names than CSR specifies")
 	}
 
-	// Check that the order names and the CSR names are an exact match, and that
-	// we are willing to issue for each.
+	// Check that the order names and the CSR names are an exact match
 	for i, name := range orderNames {
-		if orderNames[i] != csrNames[i] {
-			return berrors.UnauthorizedError("CSR is missing Order domain %q", orderNames[i])
-		}
-		// We have already checked `ra.PA.WillingToIssue` for the names in the order
-		// at the time of order creation, but we check again in case the policy has
-		// changed in the time since the order was accepted.
-		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if err := ra.PA.WillingToIssue(id); err != nil {
-			return err
+		if name != csrNames[i] {
+			return berrors.UnauthorizedError("CSR is missing Order domain %q", name)
 		}
 	}
 
@@ -821,7 +807,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Bytes: req.Csr,
 		CSR:   csrOb,
 	}
-	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*req.Order.RegistrationID), orderID(*req.Order.Id))
+	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*order.RegistrationID), orderID(*order.Id))
 	if err != nil {
 		return err
 	}

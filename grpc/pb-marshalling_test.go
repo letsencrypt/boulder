@@ -359,6 +359,18 @@ func TestOrderValid(t *testing.T) {
 			ExpectedValid: true,
 		},
 		{
+			Name: "Serial nil",
+			Order: &corepb.Order{
+				Id:             &testID,
+				RegistrationID: &testID,
+				Expires:        &testExpires,
+				Authorizations: []string{},
+				Status:         &emptyString,
+				Names:          []string{},
+			},
+			ExpectedValid: true,
+		},
+		{
 			Name:  "All nil",
 			Order: &corepb.Order{},
 		},
@@ -393,17 +405,6 @@ func TestOrderValid(t *testing.T) {
 				Authorizations:    []string{},
 				Status:            &emptyString,
 				Names:             []string{},
-			},
-		},
-		{
-			Name: "Serial nil",
-			Order: &corepb.Order{
-				Id:             &testID,
-				RegistrationID: &testID,
-				Expires:        &testExpires,
-				Authorizations: []string{},
-				Status:         &emptyString,
-				Names:          []string{},
 			},
 		},
 		{
