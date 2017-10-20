@@ -1658,11 +1658,6 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	// Convert the corepb.Order.Names into identifiers for display to the user.
-	idents := make([]core.AcmeIdentifier, len(order.Names))
-	for i, name := range order.Names {
-		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-	}
 
 	respObj := wfe.orderToOrderJSON(request, order)
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
