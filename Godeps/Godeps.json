@@ -233,6 +233,10 @@
 			"Rev": "0744955171b0b6e1871ff9d7366abc2b7a7fcec0"
 		},
 		{
+			"ImportPath": "github.com/titanous/rocacheck",
+			"Rev": "05341dc40433e5314a35099342f230fa8518bce8"
+		},
+		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
 			"Comment": "v0.3.2-24-g02da67f",
 			"Rev": "02da67feae2303670d532c87acaaee5fe852a35b"
