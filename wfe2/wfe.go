@@ -1643,16 +1643,6 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 	certificateRequest.CSR = csr
 	wfe.logCsr(request, certificateRequest, *acct)
 
-	// Check that the key in the CSR is good. This will also be checked in the CA
-	// component, but we want to discard CSRs with bad keys as early as possible
-	// because (a) it's an easy check and we can save unnecessary requests and
-	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
-	// a bad key from the client is just a malformed request and doesn't need to
-	// be audited.
-	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
-		return
-	}
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
