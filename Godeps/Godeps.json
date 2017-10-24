@@ -388,18 +388,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "github.com/google/safebrowsing/vendor/github.com/golang/protobuf/proto",
-			"Rev": "ce39ae7e50e719c4518fcac8a81032c2f43046aa"
-		},
-		{
-			"ImportPath": "github.com/google/safebrowsing/vendor/golang.org/x/net/idna",
-			"Rev": "ce39ae7e50e719c4518fcac8a81032c2f43046aa"
-		},
-		{
-			"ImportPath": "github.com/google/safebrowsing/vendor/github.com/golang/protobuf/ptypes/duration",
-			"Rev": "ce39ae7e50e719c4518fcac8a81032c2f43046aa"
 		}
 	]
 }
