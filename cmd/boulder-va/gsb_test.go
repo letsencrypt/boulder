@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -65,8 +66,9 @@ func TestV4IsListed(t *testing.T) {
 	url := "foobar.com"
 
 	// We EXPECT that calling `IsListed` on the gsbAdapter will result in a call to the SafeBrowser's `LookupURLs` function
-	mockSB.EXPECT().LookupURLs([]string{url})
-	result, err := gsb.IsListed(url)
+	background := context.Background()
+	mockSB.EXPECT().LookupURLsContext(background, []string{url})
+	result, err := gsb.IsListed(background, url)
 	test.AssertNotError(t, err, fmt.Sprintf("IsListed(%q) returned non-nil err", url))
 	test.AssertEquals(t, result, "")
 }

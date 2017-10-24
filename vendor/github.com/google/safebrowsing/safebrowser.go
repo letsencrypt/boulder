@@ -298,7 +298,7 @@ func NewSafeBrowser(conf Config) (*SafeBrowser, error) {
 	// Create the SafeBrowsing object.
 	if conf.api == nil {
 		var err error
-		conf.api, err = newNetAPI(conf.ServerURL, conf.APIKey, conf.RequestTimeout)
+		conf.api, err = newNetAPI(conf.ServerURL, conf.APIKey)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +331,9 @@ func NewSafeBrowser(conf Config) (*SafeBrowser, error) {
 	delay := time.Duration(0)
 	// If database file is provided, use that to initialize.
 	if !sb.db.Init(&sb.config, sb.log) {
-		delay, _ = sb.db.Update(sb.api)
+		ctx, cancel := context.WithTimeout(context.Background(), sb.config.RequestTimeout)
+		delay, _ = sb.db.Update(ctx, sb.api)
+		cancel()
 	} else {
 		if age := sb.db.SinceLastUpdate(); age < sb.config.UpdatePeriod {
 			delay = sb.config.UpdatePeriod - age
@@ -391,6 +393,19 @@ func (sb *SafeBrowser) WaitUntilReady(ctx context.Context) error {
 // If an error occurs, the caller should treat the threats list returned as a
 // best-effort response to the query. The results may be stale or be partial.
 func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err error) {
+	threats, err = sb.LookupURLsContext(context.Background(), urls)
+	return threats, err
+}
+
+// LookupURLsContext looks up the provided URLs. The request will be canceled
+// if the provided Context is canceled, or if Config.RequestTimeout has
+// elapsed. It is safe to call this method concurrently.
+//
+// See LookupURLs for details on the returned results.
+func (sb *SafeBrowser) LookupURLsContext(ctx context.Context, urls []string) (threats [][]URLThreat, err error) {
+	ctx, cancel := context.WithTimeout(ctx, sb.config.RequestTimeout)
+	defer cancel()
+
 	threats = make([][]URLThreat, len(urls))
 
 	if atomic.LoadUint32(&sb.closed) != 0 {
@@ -482,7 +497,7 @@ func (sb *SafeBrowser) LookupURLs(urls []string) (threats [][]URLThreat, err err
 
 	// Actually query the Safe Browsing API for exact full hash matches.
 	if len(req.ThreatInfo.ThreatEntries) != 0 {
-		resp, err := sb.api.HashLookup(req)
+		resp, err := sb.api.HashLookup(ctx, req)
 		if err != nil {
 			sb.log.Printf("HashLookup failure: %v", err)
 			atomic.AddInt64(&sb.stats.QueriesFail, 1)
@@ -533,10 +548,12 @@ func (sb *SafeBrowser) updater(delay time.Duration) {
 		select {
 		case <-time.After(delay):
 			var ok bool
-			if delay, ok = sb.db.Update(sb.api); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), sb.config.RequestTimeout)
+			if delay, ok = sb.db.Update(ctx, sb.api); ok {
 				sb.log.Printf("background threat list updated")
 				sb.c.Purge()
 			}
+			cancel()
 
 		case <-sb.done:
 			return
