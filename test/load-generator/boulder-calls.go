@@ -233,6 +233,7 @@ func solveHTTPOne(s *State, ctx *context) error {
 	}
 	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
 	s.challSrv.addHTTPOneChallenge(chall.Token, authStr)
+	defer s.challSrv.deleteHTTPOneChallenge(chall.Token)
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
 	requestPayload, err := s.signWithNonce(challengePath, false, []byte(update), ctx.reg.signer)

@@ -24,15 +24,14 @@ func TestPurgeAuthzs(t *testing.T) {
 	log := blog.UseMock()
 	fc := clock.NewFake()
 	fc.Add(time.Hour)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope())
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
 	cleanUp := test.ResetSATestDatabase(t)
 	defer cleanUp()
-	stats := metrics.NewNoopScope()
 
-	p := expiredAuthzPurger{stats, log, fc, dbMap, 1}
+	p := expiredAuthzPurger{log, fc, dbMap, 1}
 
 	err = p.purgeAuthzs(time.Time{}, true, 10)
 	test.AssertNotError(t, err, "purgeAuthzs failed")

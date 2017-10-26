@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -33,6 +34,11 @@ type SQLStorageAuthority struct {
 	clk   clock.Clock
 	log   blog.Logger
 	scope metrics.Scope
+
+	// For RPCs that generate multiple, parallelizable SQL queries, this is the
+	// max parallelism they will use (to avoid consuming too many MariaDB
+	// threads).
+	parallelismPerRPC int
 }
 
 func digest256(data []byte) []byte {
@@ -69,14 +75,16 @@ func NewSQLStorageAuthority(
 	clk clock.Clock,
 	logger blog.Logger,
 	scope metrics.Scope,
+	parallelismPerRPC int,
 ) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
-		dbMap: dbMap,
-		clk:   clk,
-		log:   logger,
-		scope: scope,
+		dbMap:             dbMap,
+		clk:               clk,
+		log:               logger,
+		scope:             scope,
+		parallelismPerRPC: parallelismPerRPC,
 	}
 
 	return ssa, nil
@@ -332,15 +340,60 @@ func (t TooManyCertificatesError) Error() string {
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
+// Queries will be run in parallel. If any of them error, only one error will
+// be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	var ret []*sapb.CountByNames_MapElement
+	work := make(chan string, len(domains))
+	type result struct {
+		err    error
+		count  int
+		domain string
+	}
+	results := make(chan result, len(domains))
 	for _, domain := range domains {
-		currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
-		if err != nil {
-			return ret, err
+		work <- domain
+	}
+	close(work)
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// We may perform up to 100 queries, depending on what's in the certificate
+	// request. Parallelize them so we don't hit our timeout, but limit the
+	// parallelism so we don't consume too many threads on the database.
+	for i := 0; i < ssa.parallelismPerRPC; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for domain := range work {
+				select {
+				case <-ctx.Done():
+					results <- result{err: ctx.Err()}
+					return
+				default:
+				}
+				currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
+				if err != nil {
+					results <- result{err: err}
+					// Skip any further work
+					cancel()
+					return
+				}
+				results <- result{
+					count:  currentCount,
+					domain: domain,
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	var ret []*sapb.CountByNames_MapElement
+	for r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		name := string(domain)
-		pbCount := int64(currentCount)
+		name := string(r.domain)
+		pbCount := int64(r.count)
 		ret = append(ret, &sapb.CountByNames_MapElement{
 			Name:  &name,
 			Count: &pbCount,

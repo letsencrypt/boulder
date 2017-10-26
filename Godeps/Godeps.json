@@ -86,18 +86,6 @@
 			"Rev": "346938d642f2ec3594ed81d874461961cd0faa76"
 		},
 		{
-			"ImportPath": "github.com/facebookgo/clock",
-			"Rev": "600d898af40aa09a7a93ecb9265d87b0504b6f03"
-		},
-		{
-			"ImportPath": "github.com/facebookgo/httpdown",
-			"Rev": "a3b1354551a26449fbe05f5d855937f6e7acbd71"
-		},
-		{
-			"ImportPath": "github.com/facebookgo/stats",
-			"Rev": "31fb71caf5a4f04c9f8bb3fa8e7c2597ba6eb50a"
-		},
-		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
 			"Comment": "v1.3-28-g3955978",
 			"Rev": "3955978caca48c1658a4bb7a9c6a0f084e326af3"
@@ -246,8 +234,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.2-21-g6787cd3",
-			"Rev": "6787cd3b348b18fab6371264ae5392cd8eca1723"
+			"Comment": "v0.3.2-24-g02da67f",
+			"Rev": "02da67feae2303670d532c87acaaee5fe852a35b"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519",

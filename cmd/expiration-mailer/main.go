@@ -453,7 +453,7 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -546,8 +546,6 @@ func main() {
 		clk:             cmd.Clock(),
 		stats:           initStats(scope),
 	}
-
-	go cmd.DebugServer(c.Mailer.DebugAddr)
 
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {

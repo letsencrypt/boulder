@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+cd $(dirname $0)
+
 DATESTAMP=$(date +%Y-%m-%d)
 TAG_NAME="letsencrypt/boulder-tools:$DATESTAMP"
 

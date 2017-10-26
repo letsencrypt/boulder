@@ -20,6 +20,9 @@ type config struct {
 		cmd.DBConfig
 
 		Features map[string]bool
+
+		// Max simultaneous SQL queries caused by a single RPC.
+		ParallelismPerRPC int
 	}
 
 	Syslog cmd.SyslogConfig
@@ -40,7 +43,7 @@ func main() {
 	err = features.Set(c.SA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -52,9 +55,16 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
+	if saConf.DBConfig.MaxIdleDBConns != 0 {
+		dbMap.Db.SetMaxIdleConns(saConf.DBConfig.MaxIdleDBConns)
+	}
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope)
+	parallel := saConf.ParallelismPerRPC
+	if parallel < 1 {
+		parallel = 1
+	}
+	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	var grpcSrv *grpc.Server
@@ -77,9 +87,6 @@ func main() {
 			grpcSrv.GracefulStop()
 		}
 	})
-
-	go cmd.DebugServer(c.SA.DebugAddr)
-	go cmd.ProfileCmd(scope)
 
 	select {}
 }
