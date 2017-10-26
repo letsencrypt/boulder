@@ -16,14 +16,15 @@ import (
 // device and specifies which mechanism should be used. modulusLen specifies the
 // length of the modulus to be generated on the device in bits and exponent
 // specifies the public exponent that should be used.
-func rsaArgs(label string, modulusLen, exponent uint) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
+func rsaArgs(label string, modulusLen, exponent uint) generateArgs {
 	// Encode as unpadded big endian encoded byte slice
 	expSlice := big.NewInt(int64(exponent)).Bytes()
 	log.Printf("\tEncoded public exponent (%d) as: %0X\n", exponent, expSlice)
-	return []*pkcs11.Mechanism{
+	return generateArgs{
+		mechanism: []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil),
 		},
-		[]*pkcs11.Attribute{
+		publicAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			// Allow the key to verify signatures
@@ -32,7 +33,8 @@ func rsaArgs(label string, modulusLen, exponent uint) ([]*pkcs11.Mechanism, []*p
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS_BITS, modulusLen),
 			// Set requested public exponent
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, expSlice),
-		}, []*pkcs11.Attribute{
+		},
+		privateAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			// Prevent attributes being retrieved
@@ -41,7 +43,8 @@ func rsaArgs(label string, modulusLen, exponent uint) ([]*pkcs11.Mechanism, []*p
 			pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
 			// Allow the key to create signatures
 			pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
-		}
+		},
+	}
 }
 
 // rsaPub extracts the generated public key, specified by the provided object
@@ -128,8 +131,8 @@ func rsaVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHand
 // It returns the public part of the generated key pair as a rsa.PublicKey.
 func rsaGenerate(ctx PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, error) {
 	log.Printf("Generating RSA key with %d bit modulus and public exponent %d\n", modulusLen, pubExponent)
-	mechanism, pubTmpl, privTmpl := rsaArgs(label, modulusLen, pubExponent)
-	pub, priv, err := ctx.GenerateKeyPair(session, mechanism, pubTmpl, privTmpl)
+	args := rsaArgs(label, modulusLen, pubExponent)
+	pub, priv, err := ctx.GenerateKeyPair(session, args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, err
 	}

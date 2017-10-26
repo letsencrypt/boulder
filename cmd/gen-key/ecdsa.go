@@ -20,13 +20,16 @@ var stringToCurve = map[string]*elliptic.CurveParams{
 	elliptic.P521().Params().Name: elliptic.P521().Params(),
 }
 
-var curveToOIDDER = map[*elliptic.CurveParams][]byte{
-	elliptic.P224().Params(): []byte{6, 5, 43, 129, 4, 0, 33},
-	elliptic.P256().Params(): []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
-	elliptic.P384().Params(): []byte{6, 5, 43, 129, 4, 0, 34},
-	elliptic.P521().Params(): []byte{6, 5, 43, 129, 4, 0, 35},
+// curveToOIDDER maps the name of the curves to their DER encoded OIDs
+var curveToOIDDER = map[string][]byte{
+	elliptic.P224().Params().Name: []byte{6, 5, 43, 129, 4, 0, 33},
+	elliptic.P256().Params().Name: []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
+	elliptic.P384().Params().Name: []byte{6, 5, 43, 129, 4, 0, 34},
+	elliptic.P521().Params().Name: []byte{6, 5, 43, 129, 4, 0, 35},
 }
 
+// oidDERToCurve maps the hex of the DER encoding of the various curve OIDs to
+// the relevant curve parameters
 var oidDERToCurve = map[string]*elliptic.CurveParams{
 	"06052B81040021":       elliptic.P224().Params(),
 	"06082A8648CE3D030107": elliptic.P256().Params(),
@@ -52,8 +55,8 @@ var hashToString = map[crypto.Hash]string{
 // type of key should be generated. compatMode is used to determine which
 // mechanism and attribute types should be used, for devices that implement
 // a pre-2.11 version of the PKCS#11 specification compatMode should be true.
-func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) ([]*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) {
-	encodedCurve := curveToOIDDER[curve]
+func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) generateArgs {
+	encodedCurve := curveToOIDDER[curve.Name]
 	log.Printf("\tEncoded curve parameters for %s: %X\n", curve.Params().Name, encodedCurve)
 	var genMech, paramType uint
 	if compatMode {
@@ -63,14 +66,17 @@ func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) ([]*pkcs
 		genMech = pkcs11.CKM_EC_KEY_PAIR_GEN
 		paramType = pkcs11.CKA_EC_PARAMS
 	}
-	return []*pkcs11.Mechanism{
+	return generateArgs{
+		mechanism: []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(genMech, nil),
-		}, []*pkcs11.Attribute{
+		},
+		publicAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
 			pkcs11.NewAttribute(paramType, encodedCurve),
-		}, []*pkcs11.Attribute{
+		},
+		privateAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			// Prevent attributes being retrieved
@@ -79,11 +85,12 @@ func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) ([]*pkcs
 			pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
 			// Allow the key to sign data
 			pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
-		}
+		},
+	}
 }
 
 // ecPub extracts the generated public key, specified by the provided object
-// handle, and constructs a ecdsa.PublicKey. It also checks that the key is of
+// handle, and constructs an ecdsa.PublicKey. It also checks that the key is of
 // the correct curve type. For devices that implement a pre-2.11 version of the
 // PKCS#11 specification compatMode should be true.
 func ecPub(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, expectedCurve *elliptic.CurveParams, compatMode bool) (*ecdsa.PublicKey, error) {
@@ -187,11 +194,11 @@ func ecVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandl
 func ecGenerate(ctx PKCtx, session pkcs11.SessionHandle, label, curveStr string, compatMode bool) (*ecdsa.PublicKey, error) {
 	curve, present := stringToCurve[curveStr]
 	if !present {
-		return nil, errors.New("curve not supported")
+		return nil, fmt.Errorf("curve %q not supported", curveStr)
 	}
 	log.Printf("Generating ECDSA key with curve %s\n", curveStr)
-	mechanism, pubTmpl, privTmpl := ecArgs(label, curve, compatMode)
-	pub, priv, err := ctx.GenerateKeyPair(session, mechanism, pubTmpl, privTmpl)
+	args := ecArgs(label, curve, compatMode)
+	pub, priv, err := ctx.GenerateKeyPair(session, args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, err
 	}

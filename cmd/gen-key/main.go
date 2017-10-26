@@ -1,5 +1,5 @@
 // gen-key is a tool for generating RSA or ECDSA keys on a HSM using PKCS#11.
-// After generating the key it attempts to extract and construct the public
+// After generating the key pair it attempts to extract and construct the public
 // key and verifies a test message that was signed using the generated private
 // key. Any action it takes should be thoroughly logged and documented.
 //
@@ -32,6 +32,12 @@ import (
 
 	"github.com/miekg/pkcs11"
 )
+
+type generateArgs struct {
+	mechanism    []*pkcs11.Mechanism
+	privateAttrs []*pkcs11.Attribute
+	publicAttrs  []*pkcs11.Attribute
+}
 
 type PKCtx interface {
 	GenerateKeyPair(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error)
