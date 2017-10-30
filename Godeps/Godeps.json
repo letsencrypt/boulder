@@ -234,7 +234,7 @@
 		},
 		{
 			"ImportPath": "github.com/titanous/rocacheck",
-			"Rev": "05341dc40433e5314a35099342f230fa8518bce8"
+			"Rev": "afe73141d399b0c79c3d6412d4bdcf4c672c496a"
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",

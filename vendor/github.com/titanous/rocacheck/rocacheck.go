@@ -8,76 +8,43 @@ import (
 	"math/big"
 )
 
-const printCount = 38
+type test struct {
+	Prime        *big.Int
+	Fingerprints map[int64]struct{}
+}
 
-var primes = make([]*big.Int, printCount)
-var prints = make([]*big.Int, printCount)
-var bigZero = big.NewInt(0)
-var bigOne = big.NewInt(1)
+var tests = make([]test, 17)
 
 func init() {
-	for i, s := range []string{
-		"6",
-		"30",
-		"126",
-		"1026",
-		"5658",
-		"107286",
-		"199410",
-		"8388606",
-		"536870910",
-		"2147483646",
-		"67109890",
-		"2199023255550",
-		"8796093022206",
-		"140737488355326",
-		"5310023542746834",
-		"576460752303423486",
-		"1455791217086302986",
-		"147573952589676412926",
-		"20052041432995567486",
-		"6041388139249378920330",
-		"207530445072488465666",
-		"9671406556917033397649406",
-		"618970019642690137449562110",
-		"79228162521181866724264247298",
-		"2535301200456458802993406410750",
-		"1760368345969468176824550810518",
-		"50079290986288516948354744811034",
-		"473022961816146413042658758988474",
-		"10384593717069655257060992658440190",
-		"144390480366845522447407333004847678774",
-		"2722258935367507707706996859454145691646",
-		"174224571863520493293247799005065324265470",
-		"696898287454081973172991196020261297061886",
-		"713623846352979940529142984724747568191373310",
-		"1800793591454480341970779146165214289059119882",
-		"126304807362733370595828809000324029340048915994",
-		"11692013098647223345629478661730264157247460343806",
-		"187072209578355573530071658587684226515959365500926",
+	bigOne := big.NewInt(1)
+	n := &big.Int{}
+	// relations table from https://github.com/crocs-muni/roca/pull/40
+	for i, r := range [][2]int64{
+		{2, 11}, {6, 13}, {8, 17}, {9, 19}, {3, 37}, {26, 53}, {20, 61},
+		{35, 71}, {24, 73}, {13, 79}, {6, 97}, {51, 103}, {53, 107},
+		{54, 109}, {42, 127}, {50, 151}, {78, 157},
 	} {
-		bi := &big.Int{}
-		bi.SetString(s, 10)
-		prints[i] = bi
-	}
-	for i, p := range []int64{
-		3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
-		73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
-		151, 157, 163, 167,
-	} {
-		primes[i] = big.NewInt(p)
+		fps := make(map[int64]struct{})
+		bp := big.NewInt(r[1])
+		br := big.NewInt(r[0])
+		for j := int64(0); j < r[1]; j++ {
+			if n.Exp(big.NewInt(j), br, bp).Cmp(bigOne) == 0 {
+				fps[j] = struct{}{}
+			}
+		}
+		tests[i] = test{
+			Prime:        big.NewInt(r[1]),
+			Fingerprints: fps,
+		}
 	}
 }
 
 // IsWeak returns true if a RSA public key is vulnerable to Return of
 // Coppersmith's Attack (ROCA).
 func IsWeak(k *rsa.PublicKey) bool {
-	for i, print := range prints {
-		n := &big.Int{}
-		n.Mod(k.N, primes[i])
-		n.Lsh(bigOne, uint(n.Uint64()))
-		n.And(n, print)
-		if n.Cmp(bigZero) == 0 {
+	tmp := &big.Int{}
+	for _, t := range tests {
+		if _, ok := t.Fingerprints[tmp.Mod(k.N, t.Prime).Int64()]; !ok {
 			return false
 		}
 	}
