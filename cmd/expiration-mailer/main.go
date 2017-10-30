@@ -240,6 +240,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 
 		err = m.sendNags(*reg.Contact, parsedCerts)
 		if err != nil {
+			m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
 			m.log.AuditErr(fmt.Sprintf("Error sending nag emails: %s", err))
 			continue
 		}
