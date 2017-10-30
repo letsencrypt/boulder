@@ -1312,6 +1312,53 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return req, nil
 }
 
+// SetOrderProcessing updates a provided *corepb.Order in pending status to be
+// in processing status by updating the status field of the corresponding Order
+// table row in the DB. The updated Order is returned on successful update. We
+// avoid introducing a general purpose "Update this order" RPC to ensure we have
+// minimally permissive RPCs.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET status = ?
+		WHERE id = ?
+		AND status = ?`,
+		string(core.StatusProcessing),
+		*req.Id,
+		string(core.StatusPending))
+	if err != nil {
+		err = berrors.InternalServerError("error updating order to processing status")
+		err = Rollback(tx, err)
+		return nil, err
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		err = berrors.InternalServerError("no order updated to processing status")
+		err = Rollback(tx, err)
+		return nil, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the status to Processing in the request ob we return since this is the
+	// only field that changed in the update that wasn't present in the request.
+	// This avoids needing to do an explicit Get of the order by ID to get the
+	// updated contents. We can be confident based on our orderModel and checking
+	// the return from tx.Update that the update did occur.
+	validStatus := string(core.StatusProcessing)
+	req.Status = &validStatus
+	return req, nil
+}
+
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. The updated Order is
 // returned on a successful finalization. No fields other than CertificateSerial
@@ -1331,16 +1378,16 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 		*req.CertificateSerial,
 		string(core.StatusValid),
 		*req.Id,
-		string(core.StatusPending))
+		string(core.StatusProcessing))
 	if err != nil {
-		err = berrors.InternalServerError("error updating order")
+		err = berrors.InternalServerError("error updating order for finalization")
 		err = Rollback(tx, err)
 		return nil, err
 	}
 
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
-		err = berrors.InternalServerError("no order updated")
+		err = berrors.InternalServerError("no order updated for finalization")
 		err = Rollback(tx, err)
 		return nil, err
 	}

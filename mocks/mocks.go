@@ -425,12 +425,17 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 	return order, nil
 }
 
-// UpdateOrder is a mock
+// SetOrderProcessing is a mock
+func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
+	return order, nil
+}
+
+// FinalizeOrder is a mock
 func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
 	return order, nil
 }
 
-// Order is a mock
+// GetOrder is a mock
 func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if *req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")

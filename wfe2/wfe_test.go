@@ -269,9 +269,10 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.New
 	}, nil
 }
 
-func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) error {
-	// TODO(@cpu) Mock this
-	return nil
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	statusProcessing := string(core.StatusProcessing)
+	req.Order.Status = &statusProcessing
+	return req.Order, nil
 }
 
 type mockPA struct{}
@@ -1932,7 +1933,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedBody: `
 {
-  "Status": "pending",
+  "Status": "processing",
   "Expires": "1970-01-01T00:00:00.9466848Z",
   "Identifiers": [
     {"type":"dns","value":"example.com"}

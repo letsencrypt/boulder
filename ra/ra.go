@@ -763,25 +763,27 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 // unexpired authorizations for all of its associated names an error is
 // returned. Similarly we vet that all of the names in the order are acceptable
 // based on current policy and return an error if the order can't be fulfilled.
-func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) error {
+// If successful the order will be returned in processing status for the client
+// to poll while awaiting finalization to occur.
+func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	order := req.Order
 
 	// Only pending orders can be finalized
 	if *order.Status != string(core.StatusPending) {
-		return berrors.InternalServerError("Order's status (%q) was not pending", *order.Status)
+		return nil, berrors.InternalServerError("Order's status (%q) was not pending", *order.Status)
 	}
 
 	// There should never be an order with 0 names at the stage the RA is
 	// processing the order but we check to be on the safe side, throwing an
 	// internal server error if this assumption is ever violated.
 	if len(order.Names) == 0 {
-		return berrors.InternalServerError("Order has no associated names")
+		return nil, berrors.InternalServerError("Order has no associated names")
 	}
 
 	// Parse the CSR from the request
 	csrOb, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
@@ -791,14 +793,22 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Immediately reject the request if the number of names differ
 	if len(orderNames) != len(csrNames) {
-		return berrors.UnauthorizedError("Order includes different number of names than CSR specifies")
+		return nil, berrors.UnauthorizedError("Order includes different number of names than CSR specifies")
 	}
 
 	// Check that the order names and the CSR names are an exact match
 	for i, name := range orderNames {
 		if name != csrNames[i] {
-			return berrors.UnauthorizedError("CSR is missing Order domain %q", name)
+			return nil, berrors.UnauthorizedError("CSR is missing Order domain %q", name)
 		}
+	}
+
+	// Update the order to be status processing - we issue synchronously at the
+	// present time so this is somewhat artificial/unnecessary but allows planning
+	// for the future.
+	_, err = ra.SA.SetOrderProcessing(ctx, order)
+	if err != nil {
+		return nil, err
 	}
 
 	// Attempt issuance for the order. If the order isn't fully authorized this
@@ -809,13 +819,13 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	}
 	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*order.RegistrationID), orderID(*order.Id))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Parse the issued certificate to get the serial
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
@@ -823,15 +833,15 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	order.CertificateSerial = &serial
 	updatedOrder, err := ra.SA.FinalizeOrder(ctx, order)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if updatedOrder.CertificateSerial != order.CertificateSerial {
-		return berrors.InternalServerError("Order was not finalized with CertificateSerial")
+		return nil, berrors.InternalServerError("Order was not finalized with CertificateSerial")
 	}
 	if *updatedOrder.Status != string(core.StatusValid) {
-		return berrors.InternalServerError("Order was not finalized to status valid")
+		return nil, berrors.InternalServerError("Order was not finalized to status valid")
 	}
-	return nil
+	return updatedOrder, nil
 }
 
 // NewCertificate requests the issuance of a certificate.

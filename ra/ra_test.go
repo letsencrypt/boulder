@@ -2018,9 +2018,6 @@ func TestFinalizeOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	validStatus := "valid"
-	fakeRegID := int64(0xB00)
-	fakeOrderID := int64(0xABBA)
-	invalidOrderID := int64(-1337)
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2096,6 +2093,27 @@ func TestFinalizeOrder(t *testing.T) {
 	validCSRBlock, _ := pem.Decode(CSRPEM)
 	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
 
+	fakeRegID := int64(0xB00)
+
+	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{"example.com"},
+	})
+	test.AssertNotError(t, err, "Could not add test order for fake order ID")
+
+	// Add a new order for the fake reg ID
+	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{"example.com"},
+	})
+	test.AssertNotError(t, err, "Could not add test order for fake reg ID order ID")
+
+	missingAuthzOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{"example.com"},
+	})
+	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
+
 	testCases := []struct {
 		Name           string
 		OrderReq       *rapb.FinalizeOrderRequest
@@ -2164,24 +2182,11 @@ func TestFinalizeOrder(t *testing.T) {
 					Status:         &pendingStatus,
 					Names:          []string{"example.org"},
 					RegistrationID: &Registration.ID,
-					Id:             &fakeOrderID,
+					Id:             emptyOrder.Id,
 				},
 				Csr: policyForbidCSR,
 			},
 			ExpectedErrMsg: "policy forbids issuing for: \"example.org\"",
-		},
-		{
-			Name: "Order with invalid ID",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: &corepb.Order{
-					Status:         &pendingStatus,
-					Names:          []string{"a.com", "a.org"},
-					Id:             &invalidOrderID,
-					RegistrationID: &fakeRegID,
-				},
-				Csr: twoDomainCSR,
-			},
-			ExpectedErrMsg: fmt.Sprintf("invalid order ID: %d", invalidOrderID),
 		},
 		{
 			Name: "Order with missing registration",
@@ -2189,7 +2194,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Order: &corepb.Order{
 					Status:         &pendingStatus,
 					Names:          []string{"a.com", "a.org"},
-					Id:             &fakeOrderID,
+					Id:             fakeRegOrder.Id,
 					RegistrationID: &fakeRegID,
 				},
 				Csr: twoDomainCSR,
@@ -2202,7 +2207,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Order: &corepb.Order{
 					Status:         &pendingStatus,
 					Names:          []string{"a.com", "a.org", "b.com"},
-					Id:             &fakeOrderID,
+					Id:             missingAuthzOrder.Id,
 					RegistrationID: &Registration.ID,
 				},
 				Csr: threeDomainCSR,
@@ -2221,7 +2226,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			result := ra.FinalizeOrder(context.Background(), tc.OrderReq)
+			_, result := ra.FinalizeOrder(context.Background(), tc.OrderReq)
 			// If we don't expect issuance we expect an error
 			if !tc.ExpectIssuance {
 				// Check that the error happened and the message matches expected
@@ -2236,6 +2241,7 @@ func TestFinalizeOrder(t *testing.T) {
 					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
+				test.AssertEquals(t, *updatedOrder.Status, "valid")
 			}
 		})
 	}

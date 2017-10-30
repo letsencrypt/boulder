@@ -16,7 +16,7 @@ service RegistrationAuthority {
         rpc DeactivateAuthorization(core.Authorization) returns (core.Empty) {}
         rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (core.Empty) {}
         rpc NewOrder(NewOrderRequest) returns (core.Order) {}
-        rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Empty) {}
+        rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
 }
 
 message NewAuthorizationRequest {

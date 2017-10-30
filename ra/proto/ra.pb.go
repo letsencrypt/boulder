@@ -301,7 +301,7 @@ type RegistrationAuthorityClient interface {
 	DeactivateAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error)
 	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*core.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*core.Order, error)
-	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*core.Empty, error)
+	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*core.Order, error)
 }
 
 type registrationAuthorityClient struct {
@@ -402,8 +402,8 @@ func (c *registrationAuthorityClient) NewOrder(ctx context.Context, in *NewOrder
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*core.Empty, error) {
-	out := new(core.Empty)
+func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*core.Order, error) {
+	out := new(core.Order)
 	err := grpc.Invoke(ctx, "/ra.RegistrationAuthority/FinalizeOrder", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
@@ -424,7 +424,7 @@ type RegistrationAuthorityServer interface {
 	DeactivateAuthorization(context.Context, *core.Authorization) (*core.Empty, error)
 	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*core.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*core.Order, error)
-	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*core.Empty, error)
+	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*core.Order, error)
 }
 
 func RegisterRegistrationAuthorityServer(s *grpc.Server, srv RegistrationAuthorityServer) {
@@ -721,6 +721,6 @@ var fileDescriptor0 = []byte{
 	0x5f, 0xc3, 0x7e, 0x9c, 0x9c, 0x1e, 0x2f, 0xaf, 0xfd, 0x6c, 0xfa, 0x57, 0x38, 0xbc, 0x51, 0x55,
 	0xf8, 0x32, 0x1a, 0xea, 0x5f, 0xc5, 0x97, 0xad, 0xd0, 0x84, 0x8d, 0x85, 0x8a, 0xb0, 0xaa, 0x29,
 	0x90, 0x64, 0xbf, 0x95, 0xa4, 0xbb, 0x5d, 0xc0, 0x57, 0x70, 0x2f, 0x25, 0x12, 0x34, 0xa3, 0xa4,
-	0x3c, 0xdd, 0x64, 0x2a, 0xbd, 0xbb, 0x73, 0x55, 0x96, 0x3f, 0x8e, 0xbf, 0x01, 0x00, 0x00, 0xff,
-	0xff, 0xcb, 0xa1, 0xb0, 0xeb, 0x67, 0x06, 0x00, 0x00,
+	0x3c, 0xdd, 0x64, 0x32, 0xdf, 0xdd, 0xb9, 0x2a, 0xcb, 0x1f, 0xc7, 0xdf, 0x00, 0x00, 0x00, 0xff,
+	0xff, 0x13, 0x2f, 0xf4, 0x68, 0x67, 0x06, 0x00, 0x00,
 }

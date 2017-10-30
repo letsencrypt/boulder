@@ -262,8 +262,8 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, _ *rapb.NewOr
 	return nil, nil
 }
 
-func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.FinalizeOrderRequest) error {
-	return nil
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	return nil, nil
 }
 
 type mockPA struct{}

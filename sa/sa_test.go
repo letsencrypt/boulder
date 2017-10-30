@@ -1312,7 +1312,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
 }
 
-func TestFinalizeOrder(t *testing.T) {
+func TestSetOrderProcessing(t *testing.T) {
 	// Only run under test/config-next config where 20170731115209_AddOrders.sql
 	// has been applied
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
@@ -1332,7 +1332,44 @@ func TestFinalizeOrder(t *testing.T) {
 		Status:         &status,
 	}
 
-	// Add a new order with an empty certificate serial
+	// Add a new order in pending status with no certificate serial
+	order, err := sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "NewOrder failed")
+
+	// Set the order to be processing
+	_, err = sa.SetOrderProcessing(context.Background(), order)
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Read the order by ID from the DB to check the status was correctly updated
+	// to processing
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "GetOrder failed")
+	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusProcessing))
+}
+
+func TestFinalizeOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := int64(1337)
+	status := string(core.StatusProcessing)
+	order := &corepb.Order{
+		RegistrationID: &i,
+		Expires:        &i,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"a", "b", "c"},
+		Status:         &status,
+	}
+
+	// Add a new order in processing status with an empty certificate serial
 	order, err := sa.NewOrder(context.Background(), order)
 	test.AssertNotError(t, err, "NewOrder failed")
 

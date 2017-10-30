@@ -1650,7 +1650,7 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 	// Inc CSR signature algorithm counter
 	wfe.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
 
-	err = wfe.RA.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
+	updatedOrder, err := wfe.RA.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
 		Order: order,
 	})
@@ -1659,7 +1659,7 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
-	respObj := wfe.orderToOrderJSON(request, order)
+	respObj := wfe.orderToOrderJSON(request, updatedOrder)
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), nil)

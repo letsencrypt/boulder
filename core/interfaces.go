@@ -83,7 +83,7 @@ type RegistrationAuthority interface {
 	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)
 
 	// [WebFrontEnd]
-	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) error
+	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error)
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
@@ -147,6 +147,7 @@ type StorageAdder interface {
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	SetOrderProcessing(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 }
