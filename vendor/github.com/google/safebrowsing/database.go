@@ -17,6 +17,7 @@ package safebrowsing
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/gob"
 	"errors"
 	"log"
@@ -185,7 +186,7 @@ func (db *database) Ready() <-chan struct{} {
 // Update synchronizes the local threat lists with those maintained by the
 // global Safe Browsing API servers. If the update is successful, Status should
 // report a nil error.
-func (db *database) Update(api api) (time.Duration, bool) {
+func (db *database) Update(ctx context.Context, api api) (time.Duration, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
@@ -218,7 +219,7 @@ func (db *database) Update(api api) (time.Duration, bool) {
 
 	// Query the API for the threat list and update the database.
 	last := db.config.now()
-	resp, err := api.ListUpdate(req)
+	resp, err := api.ListUpdate(ctx, req)
 	if err != nil {
 		db.log.Printf("ListUpdate failure (%d): %v", db.updateAPIErrors+1, err)
 		db.setError(err)

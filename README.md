@@ -97,35 +97,35 @@ Boulder requires an installation of libtool-ltdl, goose, SoftHSM, and MariaDB 10
 
     docker-compose up -d bmysql bhsm
 
-Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
-available in OS repositories, so you will have to install from https://golang.org/dl/.
+Also, Boulder requires Go 1.9 or above. This version may not be
+available in OS repositories. If so, you will have to install from https://golang.org/dl/.
 Add ```${GOPATH}/bin``` to your path.
 
 Ubuntu:
 
-    sudo apt-get install libltdl3-dev mariadb-server rabbitmq-server
+    sudo apt-get install libltdl3-dev mariadb-server
 
 CentOS:
 
-    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client rabbitmq-server
+    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client
 
 Arch Linux:
 
-    sudo pacman -S libtool mariadb rabbitmq --needed
+    sudo pacman -S libtool mariadb --needed
 
 OS X:
 
-    brew install libtool mariadb rabbitmq
+    brew install libtool mariadb
 
 or
 
-    sudo port install libtool mariadb-server rabbitmq-server
+    sudo port install libtool mariadb-server
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
 Edit /etc/hosts to add this line:
 
-    127.0.0.1 boulder boulder-rabbitmq boulder-mysql
+    127.0.0.1 boulder boulder-mysql
 
 Resolve Go-dependencies, set up a database:
 

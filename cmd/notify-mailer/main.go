@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -313,14 +314,13 @@ func main() {
 	err = features.Set(cfg.NotifyMailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, log := cmd.StatsAndLogging(cfg.Syslog)
+	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, 10)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, scope)
 
 	// Load email body
 	body, err := ioutil.ReadFile(*bodyFile)
@@ -350,7 +350,7 @@ func main() {
 			smtpPassword,
 			*address,
 			log,
-			scope,
+			metrics.NewNoopScope(),
 			*reconnBase,
 			*reconnMax)
 	}

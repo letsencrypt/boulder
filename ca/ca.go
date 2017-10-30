@@ -26,8 +26,8 @@ import (
 	"github.com/miekg/pkcs11"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corePB "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -180,7 +180,7 @@ func makeInternalIssuers(
 // from a single issuer (the first first in the issuers slice), and can sign OCSP
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
-	config cmd.CAConfig,
+	config ca_config.CAConfig,
 	sa certificateStorage,
 	pa core.PolicyAuthority,
 	clk clock.Clock,
