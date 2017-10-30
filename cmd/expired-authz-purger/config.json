@@ -7,6 +7,7 @@
         "maxDBConns": 10,
         "gracePeriod": "168h",
         "batchSize": 1000,
+        "maxAuthzs": 10000,
         "parallelism": 20
     }
 }

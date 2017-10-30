@@ -133,9 +133,10 @@ func main() {
 	wfe.BaseURL = c.Common.BaseURL
 
 	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
+	handler := wfe.Handler()
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,
-		Handler: wfe.Handler(),
+		Handler: handler,
 	}
 
 	go func() {
@@ -149,7 +150,7 @@ func main() {
 	if c.WFE.TLSListenAddress != "" {
 		tlsSrv = &http.Server{
 			Addr:    c.WFE.TLSListenAddress,
-			Handler: wfe.Handler(),
+			Handler: handler,
 		}
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
