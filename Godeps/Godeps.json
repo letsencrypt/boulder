@@ -110,31 +110,31 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/tls",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
@@ -388,6 +388,15 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
+		},
+		{
+			"ImportPath": "github.com/gogo/protobuf/proto",
+			"Comment": "v0.4-8-g30433562",
+			"Rev": "30433562cfbf487fe1df7cd26c7bab168d2f14d0"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/client/configpb",
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		}
 	]
 }
