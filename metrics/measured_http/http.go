@@ -5,21 +5,9 @@ import (
 	"net/http"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
-
-var (
-	responseTime = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "response_time",
-			Help: "Time taken to respond to a request",
-		},
-		[]string{"endpoint", "method", "code"})
-)
-
-func init() {
-	prometheus.MustRegister(responseTime)
-}
 
 // responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
 // status code for gathering stats.
@@ -50,7 +38,14 @@ type MeasuredHandler struct {
 	stat *prometheus.HistogramVec
 }
 
-func New(m serveMux, clk clock.Clock) *MeasuredHandler {
+func New(m serveMux, clk clock.Clock, scope metrics.Scope) *MeasuredHandler {
+	responseTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "response_time",
+			Help: "Time taken to respond to a request",
+		},
+		[]string{"endpoint", "method", "code"})
+	scope.MustRegister(responseTime)
 	return &MeasuredHandler{
 		serveMux: m,
 		clk:      clk,
