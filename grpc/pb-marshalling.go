@@ -408,7 +408,7 @@ func registrationValid(reg *corepb.Registration) bool {
 
 // orderValid checks that a corepb.Order is valid. It allows
 // `order.CertificateStatus` to be nil such that it can be used in places where
-// the order has not been finalized yet. Callers must additional ensure the
+// the order has not been finalized yet. Callers must additionally ensure the
 // `CertificateStatus` field is non-nil if they intend to use it.
 func orderValid(order *corepb.Order) bool {
 	return !(order.Id == nil || order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Status == nil || order.Names == nil)
