@@ -4,6 +4,10 @@
 
 // Package x509 parses X.509-encoded keys and certificates.
 //
+// On UNIX systems the environment variables SSL_CERT_FILE and SSL_CERT_DIR
+// can be used to override the system default locations for the SSL certificate
+// file and SSL certificate files directory, respectively.
+//
 // START CT CHANGES
 // This is a fork of the go library crypto/x509 package, it's more relaxed
 // about certificates that it'll accept, and exports the TBSCertificate
@@ -67,7 +71,7 @@ func ParsePKIXPublicKey(derBytes []byte) (pub interface{}, err error) {
 func marshalPublicKey(pub interface{}) (publicKeyBytes []byte, publicKeyAlgorithm pkix.AlgorithmIdentifier, err error) {
 	switch pub := pub.(type) {
 	case *rsa.PublicKey:
-		publicKeyBytes, err = asn1.Marshal(rsaPublicKey{
+		publicKeyBytes, err = asn1.Marshal(pkcs1PublicKey{
 			N: pub.N,
 			E: pub.E,
 		})
@@ -77,9 +81,7 @@ func marshalPublicKey(pub interface{}) (publicKeyBytes []byte, publicKeyAlgorith
 		publicKeyAlgorithm.Algorithm = oidPublicKeyRSA
 		// This is a NULL parameters value which is required by
 		// https://tools.ietf.org/html/rfc3279#section-2.3.1.
-		publicKeyAlgorithm.Parameters = asn1.RawValue{
-			Tag: 5,
-		}
+		publicKeyAlgorithm.Parameters = asn1.NullRawValue
 	case *ecdsa.PublicKey:
 		publicKeyBytes = elliptic.Marshal(pub.Curve, pub.X, pub.Y)
 		oid, ok := oidFromNamedCurve(pub.Curve)
@@ -363,10 +365,8 @@ func rsaPSSParameters(hashFunc crypto.Hash) asn1.RawValue {
 
 	params := pssParameters{
 		Hash: pkix.AlgorithmIdentifier{
-			Algorithm: hashOID,
-			Parameters: asn1.RawValue{
-				Tag: 5, /* ASN.1 NULL */
-			},
+			Algorithm:  hashOID,
+			Parameters: asn1.NullRawValue,
 		},
 		MGF: pkix.AlgorithmIdentifier{
 			Algorithm: oidMGF1,
@@ -376,10 +376,8 @@ func rsaPSSParameters(hashFunc crypto.Hash) asn1.RawValue {
 	}
 
 	mgf1Params := pkix.AlgorithmIdentifier{
-		Algorithm: hashOID,
-		Parameters: asn1.RawValue{
-			Tag: 5, /* ASN.1 NULL */
-		},
+		Algorithm:  hashOID,
+		Parameters: asn1.NullRawValue,
 	}
 
 	var err error
@@ -426,11 +424,10 @@ func getSignatureAlgorithmFromAI(ai pkix.AlgorithmIdentifier) SignatureAlgorithm
 	// https://tools.ietf.org/html/rfc3447#section-8.1), that the
 	// salt length matches the hash length, and that the trailer
 	// field has the default value.
-	asn1NULL := []byte{0x05, 0x00}
-	if !bytes.Equal(params.Hash.Parameters.FullBytes, asn1NULL) ||
+	if !bytes.Equal(params.Hash.Parameters.FullBytes, asn1.NullBytes) ||
 		!params.MGF.Algorithm.Equal(oidMGF1) ||
 		!mgf1HashFunc.Algorithm.Equal(params.Hash.Algorithm) ||
-		!bytes.Equal(mgf1HashFunc.Parameters.FullBytes, asn1NULL) ||
+		!bytes.Equal(mgf1HashFunc.Parameters.FullBytes, asn1.NullBytes) ||
 		params.TrailerField != 1 {
 		return UnknownSignatureAlgorithm
 	}
@@ -572,6 +569,8 @@ var (
 	oidExtKeyUsageOCSPSigning                = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 9}
 	oidExtKeyUsageMicrosoftServerGatedCrypto = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 3}
 	oidExtKeyUsageNetscapeServerGatedCrypto  = asn1.ObjectIdentifier{2, 16, 840, 1, 113730, 4, 1}
+	// RFC 6962 s3.1
+	oidExtKeyUsageCertificateTransparency = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 4}
 )
 
 // ExtKeyUsage represents an extended set of actions that are valid for a given key.
@@ -591,6 +590,7 @@ const (
 	ExtKeyUsageOCSPSigning
 	ExtKeyUsageMicrosoftServerGatedCrypto
 	ExtKeyUsageNetscapeServerGatedCrypto
+	ExtKeyUsageCertificateTransparency
 )
 
 // extKeyUsageOIDs contains the mapping between an ExtKeyUsage and its OID.
@@ -610,6 +610,7 @@ var extKeyUsageOIDs = []struct {
 	{ExtKeyUsageOCSPSigning, oidExtKeyUsageOCSPSigning},
 	{ExtKeyUsageMicrosoftServerGatedCrypto, oidExtKeyUsageMicrosoftServerGatedCrypto},
 	{ExtKeyUsageNetscapeServerGatedCrypto, oidExtKeyUsageNetscapeServerGatedCrypto},
+	{ExtKeyUsageCertificateTransparency, oidExtKeyUsageCertificateTransparency},
 }
 
 func extKeyUsageFromOID(oid asn1.ObjectIdentifier) (eku ExtKeyUsage, ok bool) {
@@ -676,13 +677,28 @@ type Certificate struct {
 	ExtKeyUsage        []ExtKeyUsage           // Sequence of extended key usages.
 	UnknownExtKeyUsage []asn1.ObjectIdentifier // Encountered extended key usages unknown to this package.
 
-	BasicConstraintsValid bool // if true then the next two fields are valid.
+	// BasicConstraintsValid indicates whether IsCA, MaxPathLen,
+	// and MaxPathLenZero are valid.
+	BasicConstraintsValid bool
 	IsCA                  bool
-	MaxPathLen            int
-	// MaxPathLenZero indicates that BasicConstraintsValid==true and
-	// MaxPathLen==0 should be interpreted as an actual maximum path length
-	// of zero. Otherwise, that combination is interpreted as MaxPathLen
-	// not being set.
+
+	// MaxPathLen and MaxPathLenZero indicate the presence and
+	// value of the BasicConstraints' "pathLenConstraint".
+	//
+	// When parsing a certificate, a positive non-zero MaxPathLen
+	// means that the field was specified, -1 means it was unset,
+	// and MaxPathLenZero being true mean that the field was
+	// explicitly set to zero. The case of MaxPathLen==0 with MaxPathLenZero==false
+	// should be treated equivalent to -1 (unset).
+	//
+	// When generating a certificate, an unset pathLenConstraint
+	// can be requested with either MaxPathLen == -1 or using the
+	// zero value for both MaxPathLen and MaxPathLenZero.
+	MaxPathLen int
+	// MaxPathLenZero indicates that BasicConstraintsValid==true
+	// and MaxPathLen==0 should be interpreted as an actual
+	// maximum path length of zero. Otherwise, that combination is
+	// interpreted as MaxPathLen not being set.
 	MaxPathLenZero bool
 
 	SubjectKeyId   []byte
@@ -700,6 +716,7 @@ type Certificate struct {
 	// Name constraints
 	PermittedDNSDomainsCritical bool // if true then the name constraints are marked critical.
 	PermittedDNSDomains         []string
+	ExcludedDNSDomains          []string
 
 	// CRL Distribution Points
 	CRLDistributionPoints []string
@@ -729,6 +746,10 @@ func (ConstraintViolationError) Error() string {
 
 func (c *Certificate) Equal(other *Certificate) bool {
 	return bytes.Equal(c.Raw, other.Raw)
+}
+
+func (c *Certificate) hasSANExtension() bool {
+	return oidInExtensions(oidExtensionSubjectAltName, c.Extensions)
 }
 
 // Entrust have a broken root certificate (CN=Entrust.net Certification
@@ -896,10 +917,30 @@ func (h UnhandledCriticalExtension) Error() string {
 	return fmt.Sprintf("x509: unhandled critical extension (%v)", h.ID)
 }
 
-// RemoveCTPoison takes a DER-encoded TBSCertificate and removes the CT poison extension,
-// and returns the result, still as a DER-encoded TBSCertificate.  This function will
-// fail if there is not exactly 1 CT poison extension present.
+// RemoveCTPoison takes a DER-encoded TBSCertificate and removes the CT poison
+// extension (preserving the order of other extensions), and returns the result
+// still as a DER-encoded TBSCertificate.  This function will fail if there is
+// not exactly 1 CT poison extension present.
 func RemoveCTPoison(tbsData []byte) ([]byte, error) {
+	return BuildPrecertTBS(tbsData, nil)
+}
+
+// BuildPrecertTBS builds a Certificate Transparency pre-certificate (RFC 6962
+// s3.1) from the given DER-encoded TBSCertificate, returning a DER-encoded
+// TBSCertificate.
+//
+// This function removes the CT poison extension (there must be exactly 1 of
+// these), preserving the order of other extensions.
+//
+// If preIssuer is provided, this should be a special intermediate certificate
+// that was used to sign the precert (indicated by having the special
+// CertificateTransparency extended key usage).  In this case, the issuance
+// information of the pre-cert is updated to reflect the next issuer in the
+// chain, i.e. the issuer of this special intermediate:
+//  - The precert's Issuer is changed to the Issuer of the intermediate
+//  - The precert's AuthorityKeyId is changed to the AuthorityKeyId of the
+//    intermediate.
+func BuildPrecertTBS(tbsData []byte, preIssuer *Certificate) ([]byte, error) {
 	var tbs tbsCertificate
 	rest, err := asn1.Unmarshal(tbsData, &tbs)
 	if err != nil {
@@ -921,6 +962,54 @@ func RemoveCTPoison(tbsData []byte) ([]byte, error) {
 	}
 	tbs.Extensions = append(tbs.Extensions[:poisonAt], tbs.Extensions[poisonAt+1:]...)
 	tbs.Raw = nil
+
+	if preIssuer != nil {
+		// Update the precert's Issuer field.  Use the RawIssuer rather than the
+		// parsed Issuer to avoid any chance of ASN.1 differences (e.g. switching
+		// from UTF8String to PrintableString).
+		tbs.Issuer.FullBytes = preIssuer.RawIssuer
+
+		// Also need to update the cert's AuthorityKeyID extension
+		// to that of the preIssuer.
+		var issuerKeyID []byte
+		for _, ext := range preIssuer.Extensions {
+			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
+				issuerKeyID = ext.Value
+				break
+			}
+		}
+		if issuerKeyID == nil {
+			return nil, fmt.Errorf("issuer has no auth-key-id extension")
+		}
+
+		// Check the issuer has the CT EKU.
+		seenCTEKU := false
+		for _, eku := range preIssuer.ExtKeyUsage {
+			if eku == ExtKeyUsageCertificateTransparency {
+				seenCTEKU = true
+				break
+			}
+		}
+		if !seenCTEKU {
+			return nil, fmt.Errorf("issuer does not have CertificateTransparency extended key usage")
+		}
+
+		keyAt := -1
+		for i, ext := range tbs.Extensions {
+			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
+				keyAt = i
+				break
+			}
+		}
+		if keyAt < 0 {
+			return nil, fmt.Errorf("pre-cert has no authority-key-id extension to update")
+		}
+		tbs.Extensions[keyAt].Value = issuerKeyID
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal new auth key ID: %v", err)
+		}
+	}
+
 	data, err := asn1.Marshal(tbs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-marshal TBSCertificate: %v", err)
@@ -969,20 +1058,17 @@ type distributionPointName struct {
 	RelativeName pkix.RDNSequence `asn1:"optional,tag:1"`
 }
 
-// asn1Null is the ASN.1 encoding of a NULL value.
-var asn1Null = []byte{5, 0}
-
 func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{}, error) {
 	asn1Data := keyData.PublicKey.RightAlign()
 	switch algo {
 	case RSA:
 		// RSA public keys must have a NULL in the parameters
 		// (https://tools.ietf.org/html/rfc3279#section-2.3.1).
-		if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, asn1Null) {
+		if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, asn1.NullBytes) {
 			return nil, errors.New("x509: RSA key missing NULL parameters")
 		}
 
-		p := new(rsaPublicKey)
+		p := new(pkcs1PublicKey)
 		rest, err := asn1.Unmarshal(asn1Data, p)
 		if err != nil {
 			return nil, err
@@ -1232,7 +1318,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 				out.IsCA = constraints.IsCA
 				out.MaxPathLen = constraints.MaxPathLen
 				out.MaxPathLenZero = out.MaxPathLen == 0
-
+				// TODO: map out.MaxPathLen to 0 if it has the -1 default value? (Issue 19285)
 			case 17:
 				out.DNSNames, out.EmailAddresses, out.IPAddresses, err = parseSANExtension(e.Value, &nfe)
 				if err != nil {
@@ -1267,23 +1353,29 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 					return nil, errors.New("x509: trailing data after X.509 NameConstraints")
 				}
 
-				if len(constraints.Excluded) > 0 && e.Critical {
-					// START CT CHANGES
-					nfe.AddError(UnhandledCriticalExtension{e.Id})
-					// END CT CHANGES
+				getDNSNames := func(subtrees []generalSubtree, isCritical bool) (dnsNames []string, err error) {
+					for _, subtree := range subtrees {
+						if len(subtree.Name) == 0 {
+							if isCritical {
+								// START CT CHANGES
+								nfe.AddError(UnhandledCriticalExtension{e.Id})
+								// END CT CHANGES
+							}
+							continue
+						}
+						dnsNames = append(dnsNames, subtree.Name)
+					}
+
+					return dnsNames, nil
 				}
 
-				for _, subtree := range constraints.Permitted {
-					if len(subtree.Name) == 0 {
-						if e.Critical {
-							// START CT CHANGES
-							nfe.AddError(UnhandledCriticalExtension{e.Id})
-							// END CT CHANGES
-						}
-						continue
-					}
-					out.PermittedDNSDomains = append(out.PermittedDNSDomains, subtree.Name)
+				if out.PermittedDNSDomains, err = getDNSNames(constraints.Permitted, e.Critical); err != nil {
+					return out, err
 				}
+				if out.ExcludedDNSDomains, err = getDNSNames(constraints.Excluded, e.Critical); err != nil {
+					return out, err
+				}
+				out.PermittedDNSDomainsCritical = e.Critical
 
 			case 31:
 				// RFC 5280, 4.2.1.13
@@ -1563,7 +1655,7 @@ func marshalSANs(dnsNames, emailAddresses []string, ipAddresses []net.IP) (derBy
 	return asn1.Marshal(rawValues)
 }
 
-func buildExtensions(template *Certificate) (ret []pkix.Extension, err error) {
+func buildExtensions(template *Certificate, authorityKeyId []byte) (ret []pkix.Extension, err error) {
 	ret = make([]pkix.Extension, 10 /* maximum number of elements. */)
 	n := 0
 
@@ -1637,9 +1729,9 @@ func buildExtensions(template *Certificate) (ret []pkix.Extension, err error) {
 		n++
 	}
 
-	if len(template.AuthorityKeyId) > 0 && !oidInExtensions(oidExtensionAuthorityKeyId, template.ExtraExtensions) {
+	if len(authorityKeyId) > 0 && !oidInExtensions(oidExtensionAuthorityKeyId, template.ExtraExtensions) {
 		ret[n].Id = oidExtensionAuthorityKeyId
-		ret[n].Value, err = asn1.Marshal(authKeyId{template.AuthorityKeyId})
+		ret[n].Value, err = asn1.Marshal(authKeyId{authorityKeyId})
 		if err != nil {
 			return
 		}
@@ -1693,16 +1785,22 @@ func buildExtensions(template *Certificate) (ret []pkix.Extension, err error) {
 		n++
 	}
 
-	if len(template.PermittedDNSDomains) > 0 &&
+	if (len(template.PermittedDNSDomains) > 0 || len(template.ExcludedDNSDomains) > 0) &&
 		!oidInExtensions(oidExtensionNameConstraints, template.ExtraExtensions) {
 		ret[n].Id = oidExtensionNameConstraints
 		ret[n].Critical = template.PermittedDNSDomainsCritical
 
 		var out nameConstraints
+
 		out.Permitted = make([]generalSubtree, len(template.PermittedDNSDomains))
 		for i, permitted := range template.PermittedDNSDomains {
 			out.Permitted[i] = generalSubtree{Name: permitted}
 		}
+		out.Excluded = make([]generalSubtree, len(template.ExcludedDNSDomains))
+		for i, excluded := range template.ExcludedDNSDomains {
+			out.Excluded[i] = generalSubtree{Name: excluded}
+		}
+
 		ret[n].Value, err = asn1.Marshal(out)
 		if err != nil {
 			return
@@ -1758,9 +1856,7 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo SignatureAlgori
 		pubType = RSA
 		hashFunc = crypto.SHA256
 		sigAlgo.Algorithm = oidSignatureSHA256WithRSA
-		sigAlgo.Parameters = asn1.RawValue{
-			Tag: 5,
-		}
+		sigAlgo.Parameters = asn1.NullRawValue
 
 	case *ecdsa.PublicKey:
 		pubType = ECDSA
@@ -1818,11 +1914,12 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo SignatureAlgori
 	return
 }
 
-// CreateCertificate creates a new certificate based on a template. The
-// following members of template are used: SerialNumber, Subject, NotBefore,
-// NotAfter, KeyUsage, ExtKeyUsage, UnknownExtKeyUsage, BasicConstraintsValid,
-// IsCA, MaxPathLen, SubjectKeyId, DNSNames, PermittedDNSDomainsCritical,
-// PermittedDNSDomains, SignatureAlgorithm.
+// CreateCertificate creates a new certificate based on a template.
+// The following members of template are used: AuthorityKeyId,
+// BasicConstraintsValid, DNSNames, ExcludedDNSDomains, ExtKeyUsage,
+// IsCA, KeyUsage, MaxPathLen, MaxPathLenZero, NotAfter, NotBefore,
+// PermittedDNSDomains, PermittedDNSDomainsCritical, SerialNumber,
+// SignatureAlgorithm, Subject, SubjectKeyId, and UnknownExtKeyUsage.
 //
 // The certificate is signed by parent. If parent is equal to template then the
 // certificate is self-signed. The parameter pub is the public key of the
@@ -1832,6 +1929,10 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo SignatureAlgori
 //
 // All keys types that are implemented via crypto.Signer are supported (This
 // includes *rsa.PublicKey and *ecdsa.PublicKey.)
+//
+// The AuthorityKeyId will be taken from the SubjectKeyId of parent, if any,
+// unless the resulting certificate is self-signed. Otherwise the value from
+// template will be used.
 func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv interface{}) (cert []byte, err error) {
 	key, ok := priv.(crypto.Signer)
 	if !ok {
@@ -1862,11 +1963,12 @@ func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv 
 		return
 	}
 
+	authorityKeyId := template.AuthorityKeyId
 	if !bytes.Equal(asn1Issuer, asn1Subject) && len(parent.SubjectKeyId) > 0 {
-		template.AuthorityKeyId = parent.SubjectKeyId
+		authorityKeyId = parent.SubjectKeyId
 	}
 
-	extensions, err := buildExtensions(template)
+	extensions, err := buildExtensions(template, authorityKeyId)
 	if err != nil {
 		return
 	}
@@ -2137,10 +2239,10 @@ func parseCSRExtensions(rawAttributes []asn1.RawValue) ([]pkix.Extension, error)
 	return ret, nil
 }
 
-// CreateCertificateRequest creates a new certificate request based on a template.
-// The following members of template are used: Subject, Attributes,
-// SignatureAlgorithm, Extensions, DNSNames, EmailAddresses, and IPAddresses.
-// The private key is the private key of the signer.
+// CreateCertificateRequest creates a new certificate request based on a
+// template. The following members of template are used: Attributes, DNSNames,
+// EmailAddresses, ExtraExtensions, IPAddresses, SignatureAlgorithm, and
+// Subject. The private key is the private key of the signer.
 //
 // The returned slice is the certificate request in DER encoding.
 //

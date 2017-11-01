@@ -91,6 +91,11 @@
 			"Rev": "3955978caca48c1658a4bb7a9c6a0f084e326af3"
 		},
 		{
+			"ImportPath": "github.com/gogo/protobuf/proto",
+			"Comment": "v0.4-8-g3043356",
+			"Rev": "30433562cfbf487fe1df7cd26c7bab168d2f14d0"
+		},
+		{
 			"ImportPath": "github.com/golang/mock/gomock",
 			"Comment": "v1.0.0-17-g18f6dd1",
 			"Rev": "18f6dd13ccdd227b8ebc546ca95cd62a02f3970c"
@@ -105,36 +110,52 @@
 			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/ptypes",
+			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+		},
+		{
+			"ImportPath": "github.com/golang/protobuf/ptypes/any",
+			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+		},
+		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
 			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/ptypes/timestamp",
+			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+		},
+		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency-go/client/configpb",
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/tls",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
-			"Rev": "0dac42a6ed448ba220ee315abfaa6d26fd5fc9bb"
+			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
