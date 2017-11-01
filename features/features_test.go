@@ -1,7 +1,6 @@
 package features
 
 import (
-	"expvar"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -30,14 +29,4 @@ func TestFeatures(t *testing.T) {
 	}()
 	features = map[FeatureFlag]bool{}
 	Enabled(unused)
-}
-
-func TestExport(t *testing.T) {
-	features = map[FeatureFlag]bool{
-		unused: false,
-	}
-	m := expvar.NewMap("testing")
-	Export(m)
-	v := m.Get("unused")
-	test.AssertEquals(t, v.String(), "false")
 }
