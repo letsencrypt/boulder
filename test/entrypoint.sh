@@ -28,6 +28,13 @@ EOF
 # make sure we can reach the mysqldb
 wait_tcp_port boulder-mysql 3306
 
+# Ensure that boulder-mysql is in /etc/hosts not to depend on Docker DNS
+# proxy to resolve the name when running tests.
+if ! egrep -q '\<boulder-mysql\>' /etc/hosts; then
+    ip_host="$(getent hosts boulder-mysql)"
+    printf '%s\n' "$ip_host" >> /etc/hosts
+fi
+
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
 
