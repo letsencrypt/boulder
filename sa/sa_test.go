@@ -1293,19 +1293,100 @@ func TestNewOrder(t *testing.T) {
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID: &i,
 		Expires:        &i,
-		Csr:            []byte{0, 1, 2},
+		Names:          []string{"example.com", "just.another.example.com"},
 		Authorizations: []string{"a", "b", "c"},
 		Status:         &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
-
 	test.AssertEquals(t, *order.Id, int64(1))
 
 	var authzIDs []string
-	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz WHERE orderID = 1;")
+	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?;", *order.Id)
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+
+	names, err := sa.namesForOrder(*order.Id)
+	test.AssertNotError(t, err, "namesForOrder errored")
+	test.AssertEquals(t, len(names), 2)
+	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
+}
+
+func TestSetOrderProcessing(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := int64(1337)
+	status := string(core.StatusPending)
+	order := &corepb.Order{
+		RegistrationID: &i,
+		Expires:        &i,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"a", "b", "c"},
+		Status:         &status,
+	}
+
+	// Add a new order in pending status with no certificate serial
+	order, err := sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "NewOrder failed")
+
+	// Set the order to be processing
+	err = sa.SetOrderProcessing(context.Background(), order)
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Read the order by ID from the DB to check the status was correctly updated
+	// to processing
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "GetOrder failed")
+	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusProcessing))
+}
+
+func TestFinalizeOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	i := int64(1337)
+	status := string(core.StatusProcessing)
+	order := &corepb.Order{
+		RegistrationID: &i,
+		Expires:        &i,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"a", "b", "c"},
+		Status:         &status,
+	}
+
+	// Add a new order in processing status with an empty certificate serial
+	order, err := sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "NewOrder failed")
+
+	// Finalize the order with a certificate serial
+	serial := "eat.serial.for.breakfast"
+	order.CertificateSerial = &serial
+	err = sa.FinalizeOrder(context.Background(), order)
+	test.AssertNotError(t, err, "FinalizeOrder failed")
+
+	// Read the order by ID from the DB to check the certificate serial and status
+	// was correctly updated
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "GetOrder failed")
+	test.AssertEquals(t, *updatedOrder.CertificateSerial, serial)
+	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusValid))
 }
 
 func TestOrder(t *testing.T) {
@@ -1324,18 +1405,86 @@ func TestOrder(t *testing.T) {
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:    &i,
 		Expires:           &i,
-		Csr:               []byte{0, 1, 2},
+		Names:             []string{"example.com"},
 		Authorizations:    []string{"a"},
 		Status:            &status,
 		CertificateSerial: &empty,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
-
 	test.AssertEquals(t, *order.Id, int64(1))
 
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.Order failed")
 	test.AssertDeepEquals(t, storedOrder, order)
+}
+
+func TestGetOrderAuthorizations(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a throw away registration
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create and finalize an authz for the throw-away reg and "example.com"
+	authz := CreateDomainAuthWithRegID(t, "example.com", sa, reg.ID)
+	exp := sa.clk.Now().Add(time.Hour * 24 * 7)
+	authz.Expires = &exp
+	authz.Status = "valid"
+	err := sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Couldn't create final authz with ID "+authz.ID)
+
+	// Now create a new order that references the above authorization
+	i := time.Now().Truncate(time.Second).UnixNano()
+	status := string(core.StatusPending)
+	order := &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &i,
+		Names:          []string{"example.com"},
+		Authorizations: []string{authz.ID},
+		Status:         &status,
+	}
+	order, err = sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "AddOrder failed")
+
+	// Now fetch the order authorizations for the order we added for the
+	// throw-away reg
+	authzMap, err := sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
+		Id:     order.Id,
+		AcctID: &reg.ID,
+	})
+	// It should not fail and one valid authorization for the example.com domain
+	// should be present with ID and status equal to the authz we created earlier.
+	test.AssertNotError(t, err, "GetOrderAuthorizations failed")
+	test.AssertNotNil(t, authzMap, "GetOrderAuthorizations result was nil")
+	test.AssertEquals(t, len(authzMap), 1)
+	test.AssertNotNil(t, authzMap["example.com"], "Authz for example.com was nil")
+	test.AssertEquals(t, authzMap["example.com"].ID, authz.ID)
+	test.AssertEquals(t, string(authzMap["example.com"].Status), "valid")
+
+	// Getting the order authorizations for an order that doesn't exist should return nothing
+	missingID := int64(0xC0FFEEEEEEE)
+	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
+		Id:     &missingID,
+		AcctID: &reg.ID,
+	})
+	test.AssertNotError(t, err, "GetOrderAuthorizations for non-existent order errored")
+	test.AssertEquals(t, len(authzMap), 0)
+
+	// Getting the order authorizations for an order that does exist, but for the
+	// wrong acct ID should return nothing
+	wrongAcctID := int64(0xDEADDA7ABA5E)
+	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
+		Id:     order.Id,
+		AcctID: &wrongAcctID,
+	})
+	test.AssertNotError(t, err, "GetOrderAuthorizations for existent order, wrong acctID errored")
+	test.AssertEquals(t, len(authzMap), 0)
 }
 
 // TestGetAuthorizationNoRows ensures that the GetAuthorization function returns

@@ -334,3 +334,118 @@ func TestCert(t *testing.T) {
 
 	test.AssertDeepEquals(t, cert, outCert)
 }
+
+func TestOrderValid(t *testing.T) {
+	testID := int64(1)
+	testExpires := int64(1)
+	emptyString := ""
+
+	testCases := []struct {
+		Name          string
+		Order         *corepb.Order
+		ExpectedValid bool
+	}{
+		{
+			Name: "All valid",
+			Order: &corepb.Order{
+				Id:                &testID,
+				RegistrationID:    &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Status:            &emptyString,
+				Names:             []string{},
+			},
+			ExpectedValid: true,
+		},
+		{
+			Name: "Serial nil",
+			Order: &corepb.Order{
+				Id:             &testID,
+				RegistrationID: &testID,
+				Expires:        &testExpires,
+				Authorizations: []string{},
+				Status:         &emptyString,
+				Names:          []string{},
+			},
+			ExpectedValid: true,
+		},
+		{
+			Name:  "All nil",
+			Order: &corepb.Order{},
+		},
+		{
+			Name: "ID nil",
+			Order: &corepb.Order{
+				RegistrationID:    &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Status:            &emptyString,
+				Names:             []string{},
+			},
+		},
+		{
+			Name: "Reg ID nil",
+			Order: &corepb.Order{
+				Id:                &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Status:            &emptyString,
+				Names:             []string{},
+			},
+		},
+		{
+			Name: "Expires nil",
+			Order: &corepb.Order{
+				Id:                &testID,
+				RegistrationID:    &testID,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Status:            &emptyString,
+				Names:             []string{},
+			},
+		},
+		{
+			Name: "Authorizations nil",
+			Order: &corepb.Order{
+				Id:                &testID,
+				RegistrationID:    &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Status:            &emptyString,
+				Names:             []string{},
+			},
+		},
+		{
+			Name: "Status nil",
+			Order: &corepb.Order{
+				Id:                &testID,
+				RegistrationID:    &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Names:             []string{},
+			},
+		},
+		{
+			Name: "Names nil",
+			Order: &corepb.Order{
+				Id:                &testID,
+				RegistrationID:    &testID,
+				Expires:           &testExpires,
+				CertificateSerial: &emptyString,
+				Authorizations:    []string{},
+				Status:            &emptyString,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := orderValid(tc.Order)
+			test.AssertEquals(t, result, tc.ExpectedValid)
+		})
+	}
+}

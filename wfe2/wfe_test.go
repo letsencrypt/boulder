@@ -263,10 +263,16 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.New
 		Id:             &one,
 		RegistrationID: req.RegistrationID,
 		Expires:        &zero,
-		Csr:            req.Csr,
+		Names:          req.Names,
 		Status:         &status,
 		Authorizations: []string{"hello"},
 	}, nil
+}
+
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	statusProcessing := string(core.StatusProcessing)
+	req.Order.Status = &statusProcessing
+	return req.Order, nil
 }
 
 type mockPA struct{}
@@ -824,9 +830,9 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: postOnly,
 		},
 		{
-			Name:    "Order path should be GET only",
+			Name:    "Order path should be GET or POST only",
 			Path:    orderPath,
-			Allowed: getOnly,
+			Allowed: getOrPost,
 		},
 	}
 
@@ -1726,19 +1732,26 @@ func TestNewOrder(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	targetHost := "localhost"
-	targetPath := "new-cert"
+	targetPath := "new-order"
 	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
 
-	// CSR from an < 1.0.2 OpenSSL
-	oldOpenSSLCSRPayload := `{
-	"csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
-}`
+	nonDNSIdentifierBody := `
+	{
+		"Identifiers": [
+		  {"type": "dns",    "value": "not-example.com"},
+			{"type": "dns",    "value": "www.not-example.com"},
+			{"type": "fakeID", "value": "www.i-am-21.com"}
+		]
+	}
+	`
 
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	// a valid CSR
-	goodCertCSRPayload := `{
-	"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-}`
+	validOrderBody := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "not-example.com"},
+			{"type": "dns", "value": "www.not-example.com"}
+		]
+	}`
 
 	testCases := []struct {
 		Name            string
@@ -1767,20 +1780,31 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
-			Name:         "POST, properly signed JWS, trivial JSON payload",
+			Name:         "POST, no identifiers in payload",
 			Request:      signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
-			Name:         "POST, properly signed JWS, CSR from an old OpenSSL",
-			Request:      signAndPost(t, targetPath, signedURL, oldOpenSSLCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`,
+			Name:         "POST, invalid identifier in payload",
+			Request:      signAndPost(t, targetPath, signedURL, nonDNSIdentifierBody, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
-			Name:            "POST, properly signed JWS, authorizations for all names in CSR",
-			Request:         signAndPost(t, targetPath, signedURL, goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody:    `{"Status":"pending","Expires":"1970-01-01T00:00:00Z","CSR":"MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo","Authorizations":["http://localhost/acme/authz/hello"]}`,
-			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/1"},
+			Name:    "POST, good payload",
+			Request: signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService),
+			ExpectedBody: `
+					{
+						"Status": "pending",
+						"Expires": "1970-01-01T00:00:00Z",
+						"Identifiers": [
+							{ "type": "dns", "value": "not-example.com"},
+							{ "type": "dns", "value": "www.not-example.com"}
+						],
+						"Authorizations": [
+							"http://localhost/acme/authz/hello"
+						],
+						"FinalizeURL": "http://localhost/acme/order/1/1/finalize-order"
+					}`,
 		},
 	}
 
@@ -1796,6 +1820,138 @@ func TestNewOrder(t *testing.T) {
 			for k, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(k), v)
 			}
+		})
+	}
+}
+
+func TestFinalizeOrder(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
+	targetHost := "localhost"
+	targetPath := "1/1/finalize-order"
+	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
+
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	// a valid CSR
+	goodCertCSRPayload := `{
+		"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+	}`
+
+	egUrl := mustParseURL("1/1/finalize-order")
+
+	testCases := []struct {
+		Name         string
+		Request      *http.Request
+		ExpectedBody string
+	}{
+		{
+			Name: "POST, but no body",
+			Request: &http.Request{
+				URL:        egUrl,
+				RequestURI: targetPath,
+				Method:     "POST",
+				Header: map[string][]string{
+					"Content-Length": {"0"},
+				},
+			},
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+		},
+		{
+			Name:         "POST, with an invalid JWS body",
+			Request:      makePostRequestWithPath(targetPath, "hi"),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+		},
+		{
+			Name:         "POST, properly signed JWS, payload isn't valid",
+			Request:      signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+		},
+		{
+			Name:         "Invalid path",
+			Request:      signAndPost(t, "a/a/a/a/", "a/a/a/a/", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
+		},
+		{
+			Name:         "Bad acct ID in path",
+			Request:      signAndPost(t, "a/1/finalize-order", signedURL+"/a/1", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
+		},
+		{
+			Name: "Mismatched acct ID in path/JWS",
+			// Note(@cpu): We use "http://localhost/2/1" here not
+			// "http://localhost/order/2/1" because we are calling the Order
+			// handler directly and it normally has the initial path component
+			// stripped by the global WFE2 handler. We need the JWS URL to match the request
+			// URL so we fudge both such that the finalize-order prefix has been removed.
+			Request:      signAndPost(t, "2/1/finalize-order", "http://localhost/2/1/finalize-order", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
+		},
+		{
+			Name: "Account without Subscriber agreement",
+			// mocks/mocks.go's StorageAuthority's GetRegistration mock treats ID 6
+			// as an account without the agreement set. Order ID 6 is mocked to belong
+			// to it.
+			Request:      signAndPost(t, "6/6/finalize-order", "http://localhost/6/6/finalize-order", "{}", 6, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Must agree to subscriber agreement before any further actions","status":403}`,
+		},
+		{
+			Name:         "Order ID is invalid",
+			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
+		},
+		{
+			Name:         "Finalize url is invalid",
+			Request:      signAndPost(t, "1/1/whatever", "http://localhost/1/1/whatever", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
+		},
+		{
+			Name: "Order doesn't exist",
+			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 2 as missing
+			Request:      signAndPost(t, "1/2", "http://localhost/1/2/finalize-order", "{}", 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2","status":404}`,
+		},
+		{
+			Name: "Order is already finalized",
+			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
+			Request:      signAndPost(t, "1/1/finalize-order", "http://localhost/1/1/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") was not pending","status":400}`,
+		},
+		{
+			Name: "Order is expired",
+			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 7 as an Order that has already expired
+			Request:      signAndPost(t, "1/7/finalize-order", "http://localhost/1/7/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
+		},
+		{
+			Name:         "Invalid CSR",
+			Request:      signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", `{"CSR": "ABCD"}`, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
+		},
+		{
+			Name:    "Good CSR",
+			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `
+{
+  "Status": "processing",
+  "Expires": "1970-01-01T00:00:00.9466848Z",
+  "Identifiers": [
+    {"type":"dns","value":"example.com"}
+  ],
+  "Authorizations": [
+    "http://localhost/acme/authz/hello"
+  ],
+  "FinalizeURL": "http://localhost/acme/order/1/4/finalize-order"
+}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter.Body.Reset()
+			responseWriter.HeaderMap = http.Header{}
+			wfe.Order(ctx, newRequestEvent(), responseWriter, tc.Request)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
 		})
 	}
 }
@@ -1916,7 +2072,7 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Path:     "1/1",
-			Response: `{"Status": "pending","Expires": "1970-01-01T00:00:00Z","CSR": "AQMDBw","Authorizations":["http://localhost/acme/authz/hello"],"Certificate":"http://localhost/acme/cert/serial","Error":"error"}`,
+			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"FinalizeURL":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -1926,7 +2082,12 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Invalid request path",
 			Path:     "asd",
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":400}`,
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
+		},
+		{
+			Name:     "Finalize order request path with GET",
+			Path:     "1/1/finalize-order",
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:     "Invalid account ID",
@@ -1953,7 +2114,7 @@ func TestOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: tc.Path}})
+			wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: tc.Path}, Method: "GET"})
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 		})
 	}

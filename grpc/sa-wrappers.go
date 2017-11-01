@@ -472,10 +472,24 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil {
+	if resp == nil || !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
+}
+
+func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context, order *corepb.Order) error {
+	if _, err := sac.inner.SetOrderProcessing(ctx, order); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) error {
+	if _, err := sac.inner.FinalizeOrder(ctx, order); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
@@ -483,10 +497,35 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil {
+	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil || resp.Names == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
+}
+
+func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
+	ctx context.Context,
+	request *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	resp, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Authz == nil {
+		return nil, errIncompleteResponse
+	}
+
+	auths := make(map[string]*core.Authorization, len(resp.Authz))
+	for _, element := range resp.Authz {
+		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
+			return nil, errIncompleteResponse
+		}
+		authz, err := PBToAuthz(element.Authz)
+		if err != nil {
+			return nil, err
+		}
+		auths[*element.Domain] = &authz
+	}
+	return auths, nil
 }
 
 func (sas StorageAuthorityClientWrapper) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -954,11 +993,35 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization(ctx context.Con
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	if request == nil || request.RegistrationID == nil || request.Expires == nil || request.Csr == nil || request.Authorizations == nil || request.Status == nil {
+	if request == nil || !orderValid(request) {
 		return nil, errIncompleteRequest
 	}
 
 	return sas.inner.NewOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context, order *corepb.Order) (*corepb.Empty, error) {
+	if order == nil || !orderValid(order) {
+		return nil, errIncompleteRequest
+	}
+
+	if err := sas.inner.SetOrderProcessing(ctx, order); err != nil {
+		return nil, err
+	}
+
+	return &corepb.Empty{}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Empty, error) {
+	if order == nil || !orderValid(order) || order.CertificateSerial == nil {
+		return nil, errIncompleteRequest
+	}
+
+	if err := sas.inner.FinalizeOrder(ctx, order); err != nil {
+		return nil, err
+	}
+
+	return &corepb.Empty{}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
@@ -967,6 +1030,32 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 	}
 
 	return sas.inner.GetOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
+	ctx context.Context,
+	request *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if request == nil || request.Id == nil {
+		return nil, errIncompleteRequest
+	}
+
+	authzs, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &sapb.Authorizations{}
+	for k, v := range authzs {
+		authzPB, err := AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	}
+
+	return resp, nil
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorizations(ctx context.Context, request *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
