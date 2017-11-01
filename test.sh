@@ -195,9 +195,10 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   run_and_expect_silence godep restore
   # Run godep save and do a diff, to ensure that the version we got from
   # `godep restore` matched what was in the remote repo.
-  cp Godeps/Godeps.json Godeps/Godeps.json.head
+  cp Godeps/Godeps.json /tmp/Godeps.json.head
+  run_and_expect_silence rm -rf Godeps/ vendor/
   run_and_expect_silence godep save ./...
-  run_and_expect_silence diff <(sed /GodepVersion/d Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
+  run_and_expect_silence diff <(sed /GodepVersion/d /tmp/Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
   run_and_expect_silence git diff --exit-code -- ./vendor/
   end_context #godep-restore
 fi
