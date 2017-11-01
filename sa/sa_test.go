@@ -1337,7 +1337,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to be processing
-	_, err = sa.SetOrderProcessing(context.Background(), order)
+	err = sa.SetOrderProcessing(context.Background(), order)
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Read the order by ID from the DB to check the status was correctly updated
@@ -1376,7 +1376,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// Finalize the order with a certificate serial
 	serial := "eat.serial.for.breakfast"
 	order.CertificateSerial = &serial
-	_, err = sa.FinalizeOrder(context.Background(), order)
+	err = sa.FinalizeOrder(context.Background(), order)
 	test.AssertNotError(t, err, "FinalizeOrder failed")
 
 	// Read the order by ID from the DB to check the certificate serial and status

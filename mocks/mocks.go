@@ -426,13 +426,13 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 }
 
 // SetOrderProcessing is a mock
-func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
-	return order, nil
+func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.Order) error {
+	return nil
 }
 
 // FinalizeOrder is a mock
-func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) (*corepb.Order, error) {
-	return order, nil
+func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) error {
+	return nil
 }
 
 // GetOrder is a mock

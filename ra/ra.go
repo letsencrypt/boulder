@@ -806,8 +806,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Update the order to be status processing - we issue synchronously at the
 	// present time so this is somewhat artificial/unnecessary but allows planning
 	// for the future.
-	_, err = ra.SA.SetOrderProcessing(ctx, order)
-	if err != nil {
+	if err := ra.SA.SetOrderProcessing(ctx, order); err != nil {
 		return nil, err
 	}
 
@@ -831,17 +830,15 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = &serial
-	updatedOrder, err := ra.SA.FinalizeOrder(ctx, order)
-	if err != nil {
+	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
 		return nil, err
 	}
-	if updatedOrder.CertificateSerial != order.CertificateSerial {
-		return nil, berrors.InternalServerError("Order was not finalized with CertificateSerial")
-	}
-	if *updatedOrder.Status != string(core.StatusValid) {
-		return nil, berrors.InternalServerError("Order was not finalized to status valid")
-	}
-	return updatedOrder, nil
+
+	// Update the order status locally since the SA doesn't return the updated
+	// order itself after setting the status
+	validStatus := string(core.StatusValid)
+	order.Status = &validStatus
+	return order, nil
 }
 
 // NewCertificate requests the issuance of a certificate.

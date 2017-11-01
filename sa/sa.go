@@ -1314,13 +1314,12 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 // SetOrderProcessing updates a provided *corepb.Order in pending status to be
 // in processing status by updating the status field of the corresponding Order
-// table row in the DB. The updated Order is returned on successful update. We
-// avoid introducing a general purpose "Update this order" RPC to ensure we have
-// minimally permissive RPCs.
-func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+// table row in the DB. We avoid introducing a general purpose "Update this
+// order" RPC to ensure we have minimally permissive RPCs.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	result, err := tx.Exec(`
@@ -1333,41 +1332,26 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 		string(core.StatusPending))
 	if err != nil {
 		err = berrors.InternalServerError("error updating order to processing status")
-		err = Rollback(tx, err)
-		return nil, err
+		return Rollback(tx, err)
 	}
 
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
 		err = berrors.InternalServerError("no order updated to processing status")
-		err = Rollback(tx, err)
-		return nil, err
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return nil, err
-	}
-
-	// Set the status to Processing in the request ob we return since this is the
-	// only field that changed in the update that wasn't present in the request.
-	// This avoids needing to do an explicit Get of the order by ID to get the
-	// updated contents. We can be confident based on our orderModel and checking
-	// the return from tx.Update that the update did occur.
-	validStatus := string(core.StatusProcessing)
-	req.Status = &validStatus
-	return req, nil
+	return tx.Commit()
 }
 
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
-// CertificateSerial and a valid status to the database. The updated Order is
-// returned on a successful finalization. No fields other than CertificateSerial
-// and the order ID on the provided order are processed (e.g. this is not
-// a generic update RPC).
-func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+// CertificateSerial and a valid status to the database. No fields other than
+// CertificateSerial and the order ID on the provided order are processed (e.g.
+// this is not a generic update RPC).
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	result, err := tx.Exec(`
@@ -1381,30 +1365,16 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 		string(core.StatusProcessing))
 	if err != nil {
 		err = berrors.InternalServerError("error updating order for finalization")
-		err = Rollback(tx, err)
-		return nil, err
+		return Rollback(tx, err)
 	}
 
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
 		err = berrors.InternalServerError("no order updated for finalization")
-		err = Rollback(tx, err)
-		return nil, err
+		return Rollback(tx, err)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return nil, err
-	}
-
-	// Set the status to valid in the request ob we return since this is the only
-	// field that changed in the update that wasn't present in the request. This
-	// avoids needing to do an explicit Get of the order by ID to get the updated
-	// contents. We can be confident based on our orderModel and checking the
-	// return from tx.Update that the update did occur.
-	validStatus := string(core.StatusValid)
-	req.Status = &validStatus
-	return req, nil
+	return tx.Commit()
 }
 
 func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {

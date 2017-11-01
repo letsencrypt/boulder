@@ -39,8 +39,8 @@ service StorageAuthority {
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
-        rpc SetOrderProcessing(core.Order) returns (core.Order) {}
-        rpc FinalizeOrder(core.Order) returns (core.Order) {}
+        rpc SetOrderProcessing(core.Order) returns (core.Empty) {}
+        rpc FinalizeOrder(core.Order) returns (core.Empty) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
         rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
