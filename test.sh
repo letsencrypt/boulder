@@ -198,7 +198,7 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   cp Godeps/Godeps.json /tmp/Godeps.json.head
   run_and_expect_silence rm -rf Godeps/ vendor/
   run_and_expect_silence godep save ./...
-  run_and_expect_silence diff <(sed /GodepVersion/d /tmp/Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
+  run_and_expect_silence diff <(sed /GodepVersion/d /tmp/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
   run_and_expect_silence git diff --exit-code -- ./vendor/
   end_context #godep-restore
 fi
