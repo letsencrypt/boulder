@@ -223,16 +223,15 @@ To update the Go dependencies:
 go get -u github.com/tools/godep
 # Check out the currently vendorized version of each dependency.
 godep restore
+# Clear the stored dependencies
+rm -r Godeps/ vendor/
 # Update to the latest version of a dependency. Alternately you can cd to the
 # directory under GOPATH and check out a specific revision. Here's an example
 # using cfssl:
 go get -u github.com/cloudflare/cfssl/...
-# Update the Godep config to the appropriate version.
-godep update github.com/cloudflare/cfssl/...
-# Save the dependencies
+# Re-vendor the dependencies from scratch
 godep save ./...
-git add Godeps vendor
-git commit
+git commit Godeps/ vendor/
 ```
 
 NOTE: If you get "godep: no packages can be updated," there's a good chance
