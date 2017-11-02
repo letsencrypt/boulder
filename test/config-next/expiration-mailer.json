@@ -21,6 +21,7 @@
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
+    "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
     "frequency": "1h"
   },
 

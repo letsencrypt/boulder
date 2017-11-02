@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -111,6 +112,7 @@ func New(
 	port,
 	username,
 	password string,
+	rootCAs *x509.CertPool,
 	from mail.Address,
 	logger blog.Logger,
 	stats metrics.Scope,
@@ -122,6 +124,7 @@ func New(
 			password: password,
 			server:   server,
 			port:     port,
+			rootCAs:  rootCAs,
 		},
 		log:           logger,
 		from:          from,
@@ -216,19 +219,16 @@ func (m *MailerImpl) Connect() error {
 
 type dialerImpl struct {
 	username, password, server, port string
+	rootCAs                          *x509.CertPool
 }
 
 func (di *dialerImpl) Dial() (smtpClient, error) {
 	hostport := net.JoinHostPort(di.server, di.port)
 	var conn net.Conn
 	var err error
-	// By convention, port 465 is TLS-wrapped SMTP, while 587 is plaintext SMTP
-	// (with STARTTLS as best-effort).
-	if di.port == "465" {
-		conn, err = tls.Dial("tcp", hostport, nil)
-	} else {
-		conn, err = net.Dial("tcp", hostport)
-	}
+	conn, err = tls.Dial("tcp", hostport, &tls.Config{
+		RootCAs: di.rootCAs,
+	})
 	if err != nil {
 		return nil, err
 	}

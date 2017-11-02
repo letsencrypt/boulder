@@ -380,6 +380,10 @@ type config struct {
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
 
+		// Path to a file containing a list of trusted root certificates for use
+		// during the SMTP connection (as opposed to the gRPC connections).
+		SMTPTrustedRootFile string
+
 		Features map[string]bool
 	}
 
@@ -484,6 +488,17 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
+	var smtpRoots *x509.CertPool
+	if c.Mailer.SMTPTrustedRootFile != "" {
+		pem, err := ioutil.ReadFile(c.Mailer.SMTPTrustedRootFile)
+		cmd.FailOnError(err, "Loading trusted roots file")
+		smtpRoots := x509.NewCertPool()
+		ok := smtpRoots.AppendCertsFromPEM(pem)
+		if !ok {
+			cmd.FailOnError(nil, "Failed to parse root certs PEM")
+		}
+	}
+
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
 	cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
@@ -508,6 +523,7 @@ func main() {
 		c.Mailer.Port,
 		c.Mailer.Username,
 		smtpPassword,
+		smtpRoots,
 		*fromAddress,
 		logger,
 		scope,
