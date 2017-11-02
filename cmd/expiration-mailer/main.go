@@ -492,7 +492,7 @@ func main() {
 	if c.Mailer.SMTPTrustedRootFile != "" {
 		pem, err := ioutil.ReadFile(c.Mailer.SMTPTrustedRootFile)
 		cmd.FailOnError(err, "Loading trusted roots file")
-		smtpRoots := x509.NewCertPool()
+		smtpRoots = x509.NewCertPool()
 		ok := smtpRoots.AppendCertsFromPEM(pem)
 		if !ok {
 			cmd.FailOnError(nil, "Failed to parse root certs PEM")
