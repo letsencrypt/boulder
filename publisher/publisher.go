@@ -130,7 +130,7 @@ type pubMetrics struct {
 func initMetrics(stats metrics.Scope) *pubMetrics {
 	submissionLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "ct_submission_latency",
+			Name: "ct_submission_time_seconds",
 			Help: "Time taken to submit a certificate to a CT log",
 		},
 		[]string{"log", "status"},
