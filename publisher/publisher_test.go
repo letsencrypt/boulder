@@ -24,6 +24,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -302,6 +303,10 @@ func TestBasicSuccessful(t *testing.T) {
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+	test.AssertEquals(t, 1, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":    pub.ctLogs[0].uri,
+		"status": "success",
+	})))
 
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
@@ -340,7 +345,10 @@ func TestUnexpectedError(t *testing.T) {
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
-	test.AssertEquals(t, 1, test.CountCounterVec("log", pub.ctLogs[0].uri, pub.metrics.errors))
+	test.AssertEquals(t, 1, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":    pub.ctLogs[0].uri,
+		"status": "error",
+	})))
 }
 
 func TestRetryAfter(t *testing.T) {

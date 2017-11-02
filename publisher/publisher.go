@@ -125,7 +125,6 @@ type ctSubmissionRequest struct {
 
 type pubMetrics struct {
 	submissionLatency *prometheus.HistogramVec
-	errors            *prometheus.CounterVec
 }
 
 func initMetrics(stats metrics.Scope) *pubMetrics {
@@ -134,21 +133,12 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 			Name: "ct_submission_latency",
 			Help: "Time taken to submit a certificate to a CT log",
 		},
-		[]string{"log"},
+		[]string{"log", "status"},
 	)
 	stats.MustRegister(submissionLatency)
-	errors := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ct_submission_errors",
-			Help: "Number of submissions failed",
-		},
-		[]string{"log"},
-	)
-	stats.MustRegister(errors)
 
 	return &pubMetrics{
 		submissionLatency: submissionLatency,
-		errors:            errors,
 	}
 }
 
@@ -224,16 +214,17 @@ func (pub *Impl) SubmitToSingleCT(
 		chain,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
-	pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log": ctLog.uri,
-	}).Observe(time.Since(start).Seconds())
+	took := time.Since(start).Seconds()
+	status := "success"
 	if err != nil {
 		pub.log.AuditErr(
 			fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-		pub.metrics.errors.With(prometheus.Labels{
-			"log": ctLog.uri,
-		}).Inc()
+		status = "error"
 	}
+	pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":    ctLog.uri,
+		"status": status,
+	}).Observe(took)
 
 	return nil
 }
