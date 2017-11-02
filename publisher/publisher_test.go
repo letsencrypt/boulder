@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	ct "github.com/google/certificate-transparency-go"
 	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
@@ -29,7 +28,6 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -294,22 +292,13 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 func TestBasicSuccessful(t *testing.T) {
 	pub, leaf, k := setup(t)
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	scope := mock_metrics.NewMockScope(ctrl)
-	pub.stats = scope
-
 	server := logSrv(leaf.Raw, k)
 	defer server.Close()
 	port, err := getPort(server)
 	test.AssertNotError(t, err, "Failed to get test server port")
 	addLog(t, pub, port, &k.PublicKey)
 
-	statName := pub.ctLogs[0].statName
 	log.Clear()
-	scope.EXPECT().NewScope(statName).Return(scope)
-	scope.EXPECT().Inc("Submits", int64(1))
-	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any())
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
@@ -317,9 +306,6 @@ func TestBasicSuccessful(t *testing.T) {
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
-	scope.EXPECT().NewScope(statName).Return(scope)
-	scope.EXPECT().Inc("Submits", int64(1))
-	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any())
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
@@ -344,26 +330,17 @@ func TestGoodRetry(t *testing.T) {
 func TestUnexpectedError(t *testing.T) {
 	pub, leaf, k := setup(t)
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	scope := mock_metrics.NewMockScope(ctrl)
-	pub.stats = scope
-
 	srv := errorLogSrv()
 	defer srv.Close()
 	port, err := getPort(srv)
 	test.AssertNotError(t, err, "Failed to get test server port")
 	addLog(t, pub, port, &k.PublicKey)
-	statName := pub.ctLogs[0].statName
 
 	log.Clear()
-	scope.EXPECT().NewScope(statName).Return(scope)
-	scope.EXPECT().Inc("Submits", int64(1))
-	scope.EXPECT().Inc("Errors", int64(1))
-	scope.EXPECT().TimingDuration("SubmitLatency", gomock.Any())
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
+	test.AssertEquals(t, 1, test.CountCounterVec("log", pub.ctLogs[0].uri, pub.metrics.errors))
 }
 
 func TestRetryAfter(t *testing.T) {

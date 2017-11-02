@@ -13,6 +13,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
@@ -24,7 +25,6 @@ import (
 type Log struct {
 	logID    string
 	uri      string
-	statName string
 	client   *ctClient.LogClient
 	verifier *ct.SignatureVerifier
 }
@@ -111,16 +111,9 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		return nil, err
 	}
 
-	// Replace slashes with dots for statsd logging
-	sanitizedPath := strings.TrimPrefix(url.Path, "/")
-	sanitizedPath = strings.Replace(sanitizedPath, "/", ".", -1)
-
-	sanitizedHost := strings.Replace(url.Host, ":", "_", -1)
-
 	return &Log{
 		logID:    b64PK,
-		uri:      uri,
-		statName: fmt.Sprintf("%s.%s", sanitizedHost, sanitizedPath),
+		uri:      url.String(),
 		client:   client,
 		verifier: verifier,
 	}, nil
@@ -130,10 +123,38 @@ type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
 }
 
+type pubMetrics struct {
+	submissionLatency *prometheus.HistogramVec
+	errors            *prometheus.CounterVec
+}
+
+func initMetrics(stats metrics.Scope) *pubMetrics {
+	submissionLatency := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "ct_submission_latency",
+			Help: "Time taken to submit a certificate to a CT log",
+		},
+		[]string{"log"},
+	)
+	stats.MustRegister(submissionLatency)
+	errors := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ct_submission_errors",
+			Help: "Number of submissions failed",
+		},
+		[]string{"log"},
+	)
+	stats.MustRegister(errors)
+
+	return &pubMetrics{
+		submissionLatency: submissionLatency,
+		errors:            errors,
+	}
+}
+
 // Impl defines a Publisher
 type Impl struct {
 	log          blog.Logger
-	stats        metrics.Scope
 	client       *http.Client
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
@@ -141,6 +162,7 @@ type Impl struct {
 	// issue https://github.com/letsencrypt/boulder/issues/2357
 	ctLogs            []*Log
 	submissionTimeout time.Duration
+	metrics           *pubMetrics
 
 	sa core.StorageAuthority
 }
@@ -164,10 +186,10 @@ func New(
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
-		ctLogs: logs,
-		log:    logger,
-		stats:  stats,
-		sa:     sa,
+		ctLogs:  logs,
+		log:     logger,
+		sa:      sa,
+		metrics: initMetrics(stats),
 	}
 }
 
@@ -196,19 +218,21 @@ func (pub *Impl) SubmitToSingleCT(
 		return err
 	}
 
-	stats := pub.stats.NewScope(ctLog.statName)
-	stats.Inc("Submits", 1)
 	start := time.Now()
 	err = pub.singleLogSubmit(
 		localCtx,
 		chain,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
-	stats.TimingDuration("SubmitLatency", time.Now().Sub(start))
+	pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log": ctLog.uri,
+	}).Observe(time.Since(start).Seconds())
 	if err != nil {
 		pub.log.AuditErr(
 			fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-		stats.Inc("Errors", 1)
+		pub.metrics.errors.With(prometheus.Labels{
+			"log": ctLog.uri,
+		}).Inc()
 	}
 
 	return nil
