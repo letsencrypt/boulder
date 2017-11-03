@@ -323,7 +323,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk)
+	return measured_http.New(m, wfe.clk, wfe.stats)
 }
 
 // Method implementations

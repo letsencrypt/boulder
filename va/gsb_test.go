@@ -25,9 +25,9 @@ func TestIsSafeDomain(t *testing.T) {
 	defer ctrl.Finish()
 
 	sbc := NewMockSafeBrowsing(ctrl)
-	sbc.EXPECT().IsListed("good.com").Return("", nil)
-	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
-	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
+	sbc.EXPECT().IsListed(gomock.Any(), "good.com").Return("", nil)
+	sbc.EXPECT().IsListed(gomock.Any(), "bad.com").Return("bad", nil)
+	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", errors.New("welp"))
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		sbc,

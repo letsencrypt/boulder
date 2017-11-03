@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -153,7 +154,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 func newScope(addr string, logger blog.Logger) metrics.Scope {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
-	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), "boulder"))
+	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
 
 	mux := http.NewServeMux()
 	// Register each of the available pprof handlers. These are all registered on
@@ -169,6 +170,7 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 	reg("profile")
 	reg("threadcreate")
 	reg("trace")
+	mux.Handle("/debug/vars", expvar.Handler())
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: promLogger{logger},
 	}))

@@ -103,29 +103,29 @@ Add ```${GOPATH}/bin``` to your path.
 
 Ubuntu:
 
-    sudo apt-get install libltdl3-dev mariadb-server rabbitmq-server
+    sudo apt-get install libltdl3-dev mariadb-server
 
 CentOS:
 
-    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client rabbitmq-server
+    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client
 
 Arch Linux:
 
-    sudo pacman -S libtool mariadb rabbitmq --needed
+    sudo pacman -S libtool mariadb --needed
 
 OS X:
 
-    brew install libtool mariadb rabbitmq
+    brew install libtool mariadb
 
 or
 
-    sudo port install libtool mariadb-server rabbitmq-server
+    sudo port install libtool mariadb-server
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
 Edit /etc/hosts to add this line:
 
-    127.0.0.1 boulder boulder-rabbitmq boulder-mysql
+    127.0.0.1 boulder boulder-mysql
 
 Resolve Go-dependencies, set up a database:
 
@@ -223,16 +223,15 @@ To update the Go dependencies:
 go get -u github.com/tools/godep
 # Check out the currently vendorized version of each dependency.
 godep restore
+# Clear the stored dependencies
+rm -r Godeps/ vendor/
 # Update to the latest version of a dependency. Alternately you can cd to the
 # directory under GOPATH and check out a specific revision. Here's an example
 # using cfssl:
 go get -u github.com/cloudflare/cfssl/...
-# Update the Godep config to the appropriate version.
-godep update github.com/cloudflare/cfssl/...
-# Save the dependencies
+# Re-vendor the dependencies from scratch
 godep save ./...
-git add Godeps vendor
-git commit
+git commit Godeps/ vendor/
 ```
 
 NOTE: If you get "godep: no packages can be updated," there's a good chance

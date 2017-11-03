@@ -14,14 +14,14 @@ import (
 type SafeBrowsing interface {
 	// IsListed returns a non-empty string if the domain was bad. Specifically,
 	// it is which Google Safe Browsing list the domain was found on.
-	IsListed(url string) (list string, err error)
+	IsListed(ctx context.Context, url string) (list string, err error)
 }
 
 // SafeBrowsingV4 is an interface around the functions from Google
 // safebrowsing's v4 API's *SafeBrowser type that we use. Using this interface
 // allows mocking for tests
 type SafeBrowsingV4 interface {
-	LookupURLs(urls []string) (threats [][]safebrowsingv4.URLThreat, err error)
+	LookupURLsContext(ctx context.Context, urls []string) (threats [][]safebrowsingv4.URLThreat, err error)
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by a
@@ -41,7 +41,7 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 	}
 
 	var status bool
-	list, err := va.safeBrowsing.IsListed(*req.Domain)
+	list, err := va.safeBrowsing.IsListed(ctx, *req.Domain)
 	if err != nil {
 		stats.Inc("IsSafeDomain.Errors", 1)
 		// In the event of an error checking the GSB status we allow the domain in

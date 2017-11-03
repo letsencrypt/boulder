@@ -16,12 +16,12 @@ package safebrowsing
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	pb "github.com/google/safebrowsing/internal/safebrowsing_proto"
 
@@ -35,8 +35,8 @@ const (
 
 // The api interface specifies wrappers around the Safe Browsing API.
 type api interface {
-	ListUpdate(req *pb.FetchThreatListUpdatesRequest) (*pb.FetchThreatListUpdatesResponse, error)
-	HashLookup(req *pb.FindFullHashesRequest) (*pb.FindFullHashesResponse, error)
+	ListUpdate(ctx context.Context, req *pb.FetchThreatListUpdatesRequest) (*pb.FetchThreatListUpdatesResponse, error)
+	HashLookup(ctx context.Context, req *pb.FindFullHashesRequest) (*pb.FindFullHashesResponse, error)
 }
 
 // netAPI is an api object that talks to the server over HTTP.
@@ -48,7 +48,7 @@ type netAPI struct {
 // newNetAPI creates a new netAPI object pointed at the provided root URL.
 // For every request, it will use the provided API key.
 // If the protocol is not specified in root, then this defaults to using HTTPS.
-func newNetAPI(root string, key string, timeout time.Duration) (*netAPI, error) {
+func newNetAPI(root string, key string) (*netAPI, error) {
 	if !strings.Contains(root, "://") {
 		root = "https://" + root
 	}
@@ -61,13 +61,13 @@ func newNetAPI(root string, key string, timeout time.Duration) (*netAPI, error) 
 	q.Set("key", key)
 	q.Set("alt", "proto")
 	u.RawQuery = q.Encode()
-	return &netAPI{url: u, client: &http.Client{Timeout: timeout}}, nil
+	return &netAPI{url: u, client: &http.Client{}}, nil
 }
 
 // doRequests performs a POST to requestPath. It uses the marshaled form of req
 // as the request body payload, and automatically unmarshals the response body
 // payload as resp.
-func (a *netAPI) doRequest(requestPath string, req proto.Message, resp proto.Message) error {
+func (a *netAPI) doRequest(ctx context.Context, requestPath string, req proto.Message, resp proto.Message) error {
 	p, err := proto.Marshal(req)
 	if err != nil {
 		return err
@@ -77,6 +77,7 @@ func (a *netAPI) doRequest(requestPath string, req proto.Message, resp proto.Mes
 	u.Path = requestPath
 	httpReq, err := http.NewRequest("POST", u.String(), bytes.NewReader(p))
 	httpReq.Header.Add("Content-Type", "application/x-protobuf")
+	httpReq = httpReq.WithContext(ctx)
 	httpResp, err := a.client.Do(httpReq)
 	if err != nil {
 		return err
@@ -93,13 +94,13 @@ func (a *netAPI) doRequest(requestPath string, req proto.Message, resp proto.Mes
 }
 
 // ListUpdate issues a FetchThreatListUpdates API call and returns the response.
-func (a *netAPI) ListUpdate(req *pb.FetchThreatListUpdatesRequest) (*pb.FetchThreatListUpdatesResponse, error) {
+func (a *netAPI) ListUpdate(ctx context.Context, req *pb.FetchThreatListUpdatesRequest) (*pb.FetchThreatListUpdatesResponse, error) {
 	resp := new(pb.FetchThreatListUpdatesResponse)
-	return resp, a.doRequest(fetchUpdatePath, req, resp)
+	return resp, a.doRequest(ctx, fetchUpdatePath, req, resp)
 }
 
 // HashLookup issues a FindFullHashes API call and returns the response.
-func (a *netAPI) HashLookup(req *pb.FindFullHashesRequest) (*pb.FindFullHashesResponse, error) {
+func (a *netAPI) HashLookup(ctx context.Context, req *pb.FindFullHashesRequest) (*pb.FindFullHashesResponse, error) {
 	resp := new(pb.FindFullHashesResponse)
-	return resp, a.doRequest(findHashPath, req, resp)
+	return resp, a.doRequest(ctx, findHashPath, req, resp)
 }

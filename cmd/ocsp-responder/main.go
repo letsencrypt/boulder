@@ -253,5 +253,5 @@ func mux(scope metrics.Scope, responderPath string, source cfocsp.Source) http.H
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return measured_http.New(&ocspMux{h}, cmd.Clock())
+	return measured_http.New(&ocspMux{h}, cmd.Clock(), scope)
 }

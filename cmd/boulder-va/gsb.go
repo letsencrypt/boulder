@@ -71,8 +71,8 @@ type gsbAdapter struct {
 // IsListed provides the va.SafeBrowsing interface by using the
 // `safebrowsing4v.SafeBrowser` to look up one URL and return the first threat
 // list it is found on, or "" if the URL is safe.
-func (sb gsbAdapter) IsListed(url string) (string, error) {
-	threats, err := sb.LookupURLs([]string{url})
+func (sb gsbAdapter) IsListed(ctx context.Context, url string) (string, error) {
+	threats, err := sb.LookupURLsContext(ctx, []string{url})
 	if err != nil {
 		return "error", err
 	}
