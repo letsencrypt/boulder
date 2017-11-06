@@ -91,7 +91,7 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
 	}
-	client, err := ctClient.New(url.String(), &http.Client{}, opts)
+	client, err := ctClient.New(url.String(), &http.Client{Timeout: time.Minute*2 + time.Second*30}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("making CT client: %s", err)
 	}
