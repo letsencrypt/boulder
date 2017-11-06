@@ -91,6 +91,11 @@ func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 	return nil
 }
 
+func (p *mockPub) SubmitToCTAsync(_ context.Context, _ []byte) error {
+	go func() { _ = p.SubmitToCT(nil, nil) }()
+	return nil
+}
+
 func (p *mockPub) SubmitToSingleCT(_ context.Context, _, logPublicKey string, _ []byte) error {
 	logID, err := logPublicKeyToID(logPublicKey)
 	if err != nil {

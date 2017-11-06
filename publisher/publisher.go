@@ -241,6 +241,12 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	return nil
 }
 
+// SubmitToCTAsync begins SubmitToCT in a goroutine and returns immediately
+func (pub *Impl) SubmitToCTAsync(ctx context.Context, der []byte) error {
+	go func() { _ = pub.SubmitToCT(context.Background(), der) }()
+	return nil
+}
+
 func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,

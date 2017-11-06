@@ -964,9 +964,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	if ra.publisher != nil {
 		go func() {
-			// Since we don't want this method to be canceled if the parent context
-			// expires, pass a background context to it and run it in a goroutine.
-			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
+			// The context passed in here is unused by the publisher as
+			// SubmitToCTAsunc will spawn it's own goroutine and return
+			// immediately
+			_ = ra.publisher.SubmitToCTAsync(context.Background(), cert.DER)
 		}()
 	}
 

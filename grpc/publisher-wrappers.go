@@ -32,6 +32,12 @@ func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) er
 	return err
 }
 
+// SubmitToCTAsync makes a call to the gRPC version of the publisher
+func (pc *PublisherClientWrapper) SubmitToCTAsync(ctx context.Context, der []byte) error {
+	_, err := pc.inner.SubmitToCTAsync(ctx, &pubPB.Request{Der: der})
+	return err
+}
+
 // SubmitToSingleCT makes a call to the gRPC version of the publisher to send
 // the provided certificate to the log specified by log URI and public key
 func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
@@ -61,6 +67,15 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubP
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
 	}
 	return &pubPB.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
+}
+
+// SubmitToCTAsync calls the same method on the wrapped publisher.Impl since their interfaces
+// are different
+func (pub *PublisherServerWrapper) SubmitToCTAsync(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
+	if request == nil || request.Der == nil {
+		return nil, errors.New("incomplete SubmitToCT gRPC message")
+	}
+	return &pubPB.Empty{}, pub.inner.SubmitToCTAsync(ctx, request.Der)
 }
 
 func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
