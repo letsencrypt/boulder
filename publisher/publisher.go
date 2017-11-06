@@ -168,7 +168,7 @@ func New(
 	sa core.StorageAuthority,
 ) *Impl {
 	if submissionTimeout == 0 {
-		submissionTimeout = time.Hour * 12
+		submissionTimeout = time.Minute * 5
 	}
 	return &Impl{
 		submissionTimeout: submissionTimeout,
@@ -232,12 +232,20 @@ func (pub *Impl) SubmitToSingleCT(
 // SubmitToCT will submit the certificate represented by certDER to any CT
 // logs configured in pub.CT.Logs.
 func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
+	wg := new(sync.WaitGroup)
 	for _, ctLog := range pub.ctLogs {
-		err := pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
-		if err != nil {
-			return err
-		}
+		wg.Add(1)
+		// Do each submission in a goroutine so a single slow log doesn't eat
+		// all of the context and prevent submission to the rest of the logs
+		go func(ctLog *Log) {
+			defer wg.Done()
+			// Nothing actually consumes the errors returned from SubmitToCT
+			// so instead of using a channel to collect them we just throw
+			// it away here.
+			_ = pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
+		}(ctLog)
 	}
+	wg.Wait()
 	return nil
 }
 
