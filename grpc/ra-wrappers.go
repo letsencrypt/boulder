@@ -187,7 +187,18 @@ func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Csr == nil || resp.Authorizations == nil || resp.Id == nil || resp.Status == nil {
+	if resp == nil || !orderValid(resp) {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
+func (ras *RegistrationAuthorityClientWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	resp, err := ras.inner.FinalizeOrder(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -346,8 +357,16 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
-	if request == nil || request.RegistrationID == nil || request.Csr == nil {
+	if request == nil || request.RegistrationID == nil {
 		return nil, errIncompleteRequest
 	}
 	return ras.inner.NewOrder(ctx, request)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	if request == nil || request.Order == nil || request.Csr == nil {
+		return nil, errIncompleteRequest
+	}
+
+	return ras.inner.FinalizeOrder(ctx, request)
 }

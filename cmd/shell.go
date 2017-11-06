@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -169,6 +170,7 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 	reg("profile")
 	reg("threadcreate")
 	reg("trace")
+	mux.Handle("/debug/vars", expvar.Handler())
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: promLogger{logger},
 	}))

@@ -12,6 +12,9 @@ type wfe2Stats struct {
 	// joseErrorCount counts client errors at the JOSE level
 	// e.g. bad JWS, broken JWS signature, invalid JWK, etc
 	joseErrorCount *prometheus.CounterVec
+	// csrSignatureAlgs counts the signature algorithms in use for order
+	// finalization CSRs
+	csrSignatureAlgs *prometheus.CounterVec
 }
 
 func initStats(scope metrics.Scope) wfe2Stats {
@@ -31,8 +34,18 @@ func initStats(scope metrics.Scope) wfe2Stats {
 		[]string{"type"})
 	scope.MustRegister(joseErrorCount)
 
+	csrSignatureAlgs := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "csrSignatureAlgs",
+			Help: "Number of CSR signatures by algorithm",
+		},
+		[]string{"type"},
+	)
+	scope.MustRegister(csrSignatureAlgs)
+
 	return wfe2Stats{
-		httpErrorCount: httpErrorCount,
-		joseErrorCount: joseErrorCount,
+		httpErrorCount:   httpErrorCount,
+		joseErrorCount:   joseErrorCount,
+		csrSignatureAlgs: csrSignatureAlgs,
 	}
 }

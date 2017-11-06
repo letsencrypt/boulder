@@ -23,6 +23,7 @@ service OCSPGenerator {
 message IssueCertificateRequest {
   optional bytes csr = 1;
   optional int64 registrationID = 2;
+  optional int64 orderID = 3;
 }
 
 message IssuePrecertificateResponse {

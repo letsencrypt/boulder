@@ -465,6 +465,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, latest time.Time, query string) (int, error) {
+	var count int64
 	const max = 10000
 	var serials []string
 	_, err := ssa.dbMap.Select(
@@ -480,7 +481,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		return 0, nil
 	} else if err != nil {
 		return 0, err
-	} else if len(serials) > max {
+	} else if count > max {
 		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 
@@ -1271,7 +1272,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	order := &orderModel{
 		RegistrationID: *req.RegistrationID,
 		Expires:        time.Unix(0, *req.Expires),
-		CSR:            req.Csr,
 		Status:         core.AcmeStatus(*req.Status),
 	}
 
@@ -1280,10 +1280,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, err
 	}
 
-	err = tx.Insert(order)
-	if err != nil {
-		err = Rollback(tx, err)
-		return nil, err
+	if err := tx.Insert(order); err != nil {
+		return nil, Rollback(tx, err)
 	}
 
 	for _, id := range req.Authorizations {
@@ -1291,20 +1289,92 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			OrderID: order.ID,
 			AuthzID: id,
 		}
-		err = tx.Insert(otoa)
-		if err != nil {
-			err = Rollback(tx, err)
-			return nil, err
+		if err := tx.Insert(otoa); err != nil {
+			return nil, Rollback(tx, err)
 		}
 	}
 
-	err = tx.Commit()
-	if err != nil {
+	for _, name := range req.Names {
+		reqdName := &requestedNameModel{
+			OrderID:      order.ID,
+			ReversedName: ReverseName(name),
+		}
+		if err := tx.Insert(reqdName); err != nil {
+			return nil, Rollback(tx, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
 	req.Id = &order.ID
 	return req, nil
+}
+
+// SetOrderProcessing updates a provided *corepb.Order in pending status to be
+// in processing status by updating the status field of the corresponding Order
+// table row in the DB. We avoid introducing a general purpose "Update this
+// order" RPC to ensure we have minimally permissive RPCs.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET status = ?
+		WHERE id = ?
+		AND status = ?`,
+		string(core.StatusProcessing),
+		*req.Id,
+		string(core.StatusPending))
+	if err != nil {
+		err = berrors.InternalServerError("error updating order to processing status")
+		return Rollback(tx, err)
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		err = berrors.InternalServerError("no order updated to processing status")
+		return Rollback(tx, err)
+	}
+
+	return tx.Commit()
+}
+
+// FinalizeOrder finalizes a provided *corepb.Order by persisting the
+// CertificateSerial and a valid status to the database. No fields other than
+// CertificateSerial and the order ID on the provided order are processed (e.g.
+// this is not a generic update RPC).
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET certificateSerial = ?, status = ?
+		WHERE id = ?
+		AND status = ?`,
+		*req.CertificateSerial,
+		string(core.StatusValid),
+		*req.Id,
+		string(core.StatusProcessing))
+	if err != nil {
+		err = berrors.InternalServerError("error updating order for finalization")
+		return Rollback(tx, err)
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		err = berrors.InternalServerError("no order updated for finalization")
+		return Rollback(tx, err)
+	}
+
+	return tx.Commit()
 }
 
 func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
@@ -1314,6 +1384,20 @@ func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
 		return nil, err
 	}
 	return ids, nil
+}
+
+// namesForOrder finds all of the requested names associated with an order. The
+// names are returned in their reversed form (see `sa.ReverseName`).
+func (ssa *SQLStorageAuthority) namesForOrder(orderID int64) ([]string, error) {
+	var reversedNames []string
+	_, err := ssa.dbMap.Select(&reversedNames, `
+	SELECT reversedName
+	FROM requestedNames
+	WHERE orderID = ?`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return reversedNames, nil
 }
 
 // GetOrder is used to retrieve an already existing order object
@@ -1334,7 +1418,63 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 		order.Authorizations = append(order.Authorizations, authzID)
 	}
 
+	names, err := ssa.namesForOrder(*order.Id)
+	if err != nil {
+		return nil, err
+	}
+	// The requested names are stored reversed to improve indexing performance. We
+	// need to reverse the reversed names here before giving them back to the
+	// caller.
+	reversedNames := make([]string, len(names))
+	for i, n := range names {
+		reversedNames[i] = ReverseName(n)
+	}
+	order.Names = reversedNames
+
 	return order, nil
+}
+
+// GetOrderAuthorizations is used to find the valid, unexpired authorizations
+// associated with a specific order and account ID.
+func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
+	ctx context.Context,
+	req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	now := ssa.clk.Now()
+	// Select the full authorization data for all *valid, unexpired*
+	// authorizations that are owned by the correct account ID and associated with
+	// the given order ID
+	var auths []*core.Authorization
+	_, err := ssa.dbMap.Select(
+		&auths,
+		fmt.Sprintf(`SELECT %s FROM %s AS authz
+	LEFT JOIN orderToAuthz
+	ON authz.ID = orderToAuthz.authzID
+	WHERE authz.registrationID = ? AND
+	authz.expires > ? AND
+	authz.status = ? AND
+	orderToAuthz.orderID = ?`, authzFields, authorizationTable),
+		*req.AcctID,
+		now,
+		string(core.StatusValid),
+		*req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collapse & dedupe the returned authorizations into a mapping from name to
+	// authorization
+	byName := make(map[string]*core.Authorization)
+	for _, auth := range auths {
+		// We only expect to get back DNS identifiers
+		if auth.Identifier.Type != core.IdentifierDNS {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
+		}
+		existing, present := byName[auth.Identifier.Value]
+		if !present || auth.Expires.After(*existing.Expires) {
+			byName[auth.Identifier.Value] = auth
+		}
+	}
+	return byName, nil
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,

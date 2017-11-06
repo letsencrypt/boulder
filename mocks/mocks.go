@@ -126,6 +126,12 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 		return goodReg, nil
 	}
 
+	// ID 6 == an account without the agreement set
+	if id == 6 {
+		goodReg.Agreement = ""
+		return goodReg, nil
+	}
+
 	goodReg.InitialIP = net.ParseIP("5.6.7.8")
 	goodReg.CreatedAt = time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
 	return goodReg, nil
@@ -419,27 +425,69 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 	return order, nil
 }
 
-// Order is a mock
+// SetOrderProcessing is a mock
+func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.Order) error {
+	return nil
+}
+
+// FinalizeOrder is a mock
+func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) error {
+	return nil
+}
+
+// GetOrder is a mock
 func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if *req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")
 	} else if *req.Id == 3 {
 		return nil, errors.New("very bad")
 	}
-	status := string(core.StatusPending)
+
+	status := string(core.StatusValid)
 	one := int64(1)
-	zero := int64(0)
 	serial := "serial"
-	return &corepb.Order{
+	exp := sa.clk.Now().AddDate(30, 0, 0).Unix()
+	validOrder := &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    &one,
-		Expires:           &zero,
-		Csr:               []byte{1, 3, 3, 7},
+		Expires:           &exp,
+		Names:             []string{"example.com"},
 		Status:            &status,
 		Authorizations:    []string{"hello"},
 		CertificateSerial: &serial,
 		Error:             []byte("error"),
-	}, nil
+	}
+
+	// Order ID doesn't have a certificate serial yet
+	if *req.Id == 4 {
+		pending := string(core.StatusPending)
+		validOrder.Status = &pending
+		validOrder.Id = req.Id
+		validOrder.CertificateSerial = nil
+		validOrder.Error = nil
+		return validOrder, nil
+	}
+
+	// Order ID 6 belongs to reg ID 6
+	if *req.Id == 6 {
+		six := int64(6)
+		validOrder.Id = req.Id
+		validOrder.RegistrationID = &six
+	}
+
+	// Order ID 7 is expired
+	if *req.Id == 7 {
+		pending := string(core.StatusPending)
+		validOrder.Status = &pending
+		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
+		validOrder.Expires = &exp
+	}
+
+	return validOrder, nil
+}
+
+func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	return nil, nil
 }
 
 // GetAuthorizations is a mock

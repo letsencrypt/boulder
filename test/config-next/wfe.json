@@ -29,6 +29,7 @@
       "timeout": "15s"
     },
     "features": {
+      "ROCACheck": true,
       "AllowAccountDeactivation": true,
       "AllowKeyRollover": true,
       "UseAIAIssuerURL": true,

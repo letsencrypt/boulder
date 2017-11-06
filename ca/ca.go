@@ -413,6 +413,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
 	}
 
+	// OrderID is an optional field only used by the "ACME v2" issuance flow. If
+	// it isn't nil, then populate the `orderID` var with the request's OrderID.
+	// If it is nil, use the default int64 value of 0.
+	var orderID int64
+	if issueReq.OrderID != nil {
+		orderID = *issueReq.OrderID
+	}
+
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return emptyCert, err
@@ -423,7 +431,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	return ca.generateOCSPAndStoreCertificate(ctx, *issueReq.RegistrationID, serialBigInt, certDER)
+	return ca.generateOCSPAndStoreCertificate(ctx, *issueReq.RegistrationID, orderID, serialBigInt, certDER)
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
@@ -591,7 +599,12 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 	return certDER, nil
 }
 
-func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(ctx context.Context, regID int64, serialBigInt *big.Int, certDER []byte) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
+	ctx context.Context,
+	regID int64,
+	orderID int64,
+	serialBigInt *big.Int,
+	certDER []byte) (core.Certificate, error) {
 	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
 		CertDER: certDER,
 		Status:  "good",
@@ -610,11 +623,12 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(ctx context.
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d]",
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
 			core.SerialToString(serialBigInt),
 			hex.EncodeToString(certDER),
 			err,
 			regID,
+			orderID,
 		))
 		return core.Certificate{}, err
 	}

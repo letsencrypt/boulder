@@ -196,4 +196,5 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(certStatusModel{}, "certificateStatus").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
+	dbMap.AddTableWithName(requestedNameModel{}, "requestedNames").SetKeys(false, "OrderID")
 }
