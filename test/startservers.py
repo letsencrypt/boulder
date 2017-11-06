@@ -75,7 +75,7 @@ def start(race_detection, fakeclock=None):
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv --closeFirst 5'
+        'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'
     ]
     if default_config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
