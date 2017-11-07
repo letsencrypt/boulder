@@ -106,7 +106,8 @@ type CertificateAuthority interface {
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(domain AcmeIdentifier) error
-	ChallengesFor(domain AcmeIdentifier) (challenges []Challenge, validCombinations [][]int)
+	WillingToIssueWildcard(domain AcmeIdentifier) error
+	ChallengesFor(domain AcmeIdentifier) (challenges []Challenge, validCombinations [][]int, err error)
 }
 
 // StorageGetter are the Boulder SA's read-only methods
