@@ -150,9 +150,8 @@ type Impl struct {
 	ctLogsCache  logCache
 	// ctLogs is slightly redundant with the logCache, and should be removed. See
 	// issue https://github.com/letsencrypt/boulder/issues/2357
-	ctLogs            []*Log
-	submissionTimeout time.Duration
-	metrics           *pubMetrics
+	ctLogs  []*Log
+	metrics *pubMetrics
 
 	sa core.StorageAuthority
 }
@@ -162,17 +161,12 @@ type Impl struct {
 func New(
 	bundle []ct.ASN1Cert,
 	logs []*Log,
-	submissionTimeout time.Duration,
 	logger blog.Logger,
 	stats metrics.Scope,
 	sa core.StorageAuthority,
 ) *Impl {
-	if submissionTimeout == 0 {
-		submissionTimeout = time.Minute * 5
-	}
 	return &Impl{
-		submissionTimeout: submissionTimeout,
-		issuerBundle:      bundle,
+		issuerBundle: bundle,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
@@ -195,8 +189,6 @@ func (pub *Impl) SubmitToSingleCT(
 		return err
 	}
 
-	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
-	defer cancel()
 	chain := append([]ct.ASN1Cert{ct.ASN1Cert{der}}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
@@ -210,7 +202,7 @@ func (pub *Impl) SubmitToSingleCT(
 
 	start := time.Now()
 	err = pub.singleLogSubmit(
-		localCtx,
+		ctx,
 		chain,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
@@ -246,12 +238,6 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 		}(ctLog)
 	}
 	wg.Wait()
-	return nil
-}
-
-// SubmitToCTAsync begins SubmitToCT in a goroutine and returns immediately
-func (pub *Impl) SubmitToCTAsync(ctx context.Context, der []byte) error {
-	go func() { _ = pub.SubmitToCT(context.Background(), der) }()
 	return nil
 }
 

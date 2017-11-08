@@ -272,7 +272,6 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 
 	pub := New(nil,
 		nil,
-		0,
 		log,
 		metrics.NewNoopScope(),
 		mocks.NewStorageAuthority(clock.NewFake()))
@@ -479,24 +478,6 @@ func TestLogCache(t *testing.T) {
 	test.AssertEquals(t, cache.Len(), 2)
 	test.AssertEquals(t, l2.uri, "http://log.two.example.com")
 	test.AssertEquals(t, l2.logID, k2b64)
-}
-
-func TestSubmitToCTAsync(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	retryAfter := 2
-	server := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
-	defer server.Close()
-	port, err := getPort(server.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	startedWaiting := time.Now()
-	err = pub.SubmitToCTAsync(ctx, leaf.Raw)
-	took := time.Since(startedWaiting)
-	test.AssertNotError(t, err, "SubmitToCTAsync failed")
-	test.Assert(t, took < time.Millisecond, fmt.Sprintf("SubmitToCTSync should return immediately, took: %s", took))
 }
 
 func TestSubmitToCTParallel(t *testing.T) {

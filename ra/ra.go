@@ -964,10 +964,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	if ra.publisher != nil {
 		go func() {
-			// The context passed in here is unused by the publisher as
-			// SubmitToCTAsunc will spawn it's own goroutine and return
-			// immediately
-			_ = ra.publisher.SubmitToCTAsync(context.Background(), cert.DER)
+			// This context is limited by the gRPC timeout.
+			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
 	}
 

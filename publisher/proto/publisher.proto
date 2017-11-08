@@ -2,7 +2,6 @@ syntax = "proto2";
 
 service Publisher {
         rpc SubmitToCT(Request) returns (Empty) {}
-        rpc SubmitToCTAsync(Request) returns (Empty) {}
         rpc SubmitToSingleCT(Request) returns (Empty) {}
 }
 

@@ -45,18 +45,6 @@ func (mr *MockPublisherMockRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToCT", reflect.TypeOf((*MockPublisher)(nil).SubmitToCT), arg0, arg1)
 }
 
-// SubmitToCTAsync mocks base method
-func (m *MockPublisher) SubmitToCTAsync(arg0 context.Context, arg1 []byte) error {
-	ret := m.ctrl.Call(m, "SubmitToCTAsync", arg0, arg1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SubmitToCTAsync indicates an expected call of SubmitToCTAsync
-func (mr *MockPublisherMockRecorder) SubmitToCTAsync(arg0, arg1 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToCTAsync", reflect.TypeOf((*MockPublisher)(nil).SubmitToCTAsync), arg0, arg1)
-}
-
 // SubmitToSingleCT mocks base method
 func (m *MockPublisher) SubmitToSingleCT(arg0 context.Context, arg1, arg2 string, arg3 []byte) error {
 	ret := m.ctrl.Call(m, "SubmitToSingleCT", arg0, arg1, arg2, arg3)
