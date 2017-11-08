@@ -563,6 +563,13 @@ func main() {
 		stats:           initStats(scope),
 	}
 
+	// Prefill this labelled stat with the possible label values, so each value is
+	// set to 0 on startup, rather than being missing from stats collection until
+	// the first mail run.
+	for _, expiresIn := range nags {
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(0)
+	}
+
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {
 			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
