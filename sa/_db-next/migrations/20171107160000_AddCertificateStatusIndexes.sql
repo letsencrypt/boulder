@@ -1,6 +1,6 @@
 -- +goose Up
 ALTER TABLE certificateStatus
-       ADD INDEX `isExpired_ocspLastUpdated_Idx` (`isExpired`, `ocspLastUpdated),
+       ADD INDEX `isExpired_ocspLastUpdated_Idx` (`isExpired`, `ocspLastUpdated`),
        ADD INDEX `notAfter_Idx` (`notAfter`),
        DROP INDEX `status_certificateStatus_idx`,
        DROP INDEX `ocspLastUpdated_certificateStatus_idx`;
