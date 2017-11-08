@@ -325,21 +325,10 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 	return int(count), nil
 }
 
-// TooManyCertificatesError indicates that the number of certificates returned by
-// CountCertificates exceeded the hard-coded limit of 10,000 certificates.
-type TooManyCertificatesError string
-
-func (t TooManyCertificatesError) Error() string {
-	return string(t)
-}
-
 // CountCertificatesByNames counts, for each input domain, the number of
 // certificates issued in the given time range for that domain and its
 // subdomains. It returns a map from domains to counts, which is guaranteed to
 // contain an entry for each input domain, so long as err is nil.
-// The highest count this function can return is 10,000. If there are more
-// certificates than that matching one of the provided domain names, it will return
-// TooManyCertificatesError.
 // Queries will be run in parallel. If any of them error, only one error will
 // be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
@@ -431,14 +420,12 @@ const countCertificatesSelect = `
 		 SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND notBefore > :earliest AND notBefore <= :latest
-		 LIMIT :limit;`
+		 AND notBefore > :earliest AND notBefore <= :latest;`
 
 const countCertificatesExactSelect = `
 		 SELECT serial from issuedNames
 		 WHERE reversedName = :reversedDomain
-		 AND notBefore > :earliest AND notBefore <= :latest
-		 LIMIT :limit;`
+		 AND notBefore > :earliest AND notBefore <= :latest;`
 
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
@@ -460,13 +447,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 // `countCertificatesSelect`. If the `AllowRenewalFirstRL` feature flag is set,
 // renewals of certificates issued within the same window are considered "free"
 // and are not counted.
-//
-// The highest count this function can return is 10,000. If there are more
-// certificates than that matching one of the provided domain names, it will return
-// TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, latest time.Time, query string) (int, error) {
-	var count int64
-	const max = 10000
 	var serials []string
 	_, err := ssa.dbMap.Select(
 		&serials,
@@ -475,14 +456,11 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 			"reversedDomain": ReverseName(domain),
 			"earliest":       earliest,
 			"latest":         latest,
-			"limit":          max + 1,
 		})
 	if err == sql.ErrNoRows {
 		return 0, nil
 	} else if err != nil {
 		return 0, err
-	} else if count > max {
-		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 
 	// If the `AllowRenewalFirstRL` feature flag is enabled then do the work
