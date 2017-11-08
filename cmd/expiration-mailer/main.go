@@ -57,7 +57,7 @@ type mailer struct {
 }
 
 type mailerStats struct {
-	nagsAtCapacity    *prometheus.CounterVec
+	nagsAtCapacity    *prometheus.GaugeVec
 	errorCount        *prometheus.CounterVec
 	renewalCount      *prometheus.CounterVec
 	sendLatency       prometheus.Histogram
@@ -330,7 +330,7 @@ func (m *mailer) findExpiringCertificates() error {
 				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
-			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Inc()
+			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(1)
 		}
 
 		processingStarted := m.clk.Now()
@@ -391,8 +391,8 @@ type config struct {
 }
 
 func initStats(scope metrics.Scope) mailerStats {
-	nagsAtCapacity := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
+	nagsAtCapacity := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Name: "nagsAtCapacity",
 			Help: "Count of nag groups at capcacity",
 		},
@@ -561,6 +561,13 @@ func main() {
 		limit:           c.Mailer.CertLimit,
 		clk:             cmd.Clock(),
 		stats:           initStats(scope),
+	}
+
+	// Prefill this labelled stat with the possible label values, so each value is
+	// set to 0 on startup, rather than being missing from stats collection until
+	// the first mail run.
+	for _, expiresIn := range nags {
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(0)
 	}
 
 	if *daemon {
