@@ -91,6 +91,10 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
 	}
+	// We set the HTTP client timeout to about half of what we expect
+	// the gRPC timeout to be set to. This allows us to retry the
+	// request at least twice in the case where the server we are
+	// talking to is simply hanging indefinitely.
 	httpClient := &http.Client{Timeout: time.Minute*2 + time.Second*30}
 	client, err := ctClient.New(url.String(), httpClient, opts)
 	if err != nil {
