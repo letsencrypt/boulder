@@ -28,7 +28,7 @@
     },
     "publisherService": {
       "serverAddresses": ["publisher.boulder:19091"],
-      "timeout": "15s"
+      "timeout": "300s"
     },
     "saService": {
       "serverAddresses": ["sa.boulder:19095"],

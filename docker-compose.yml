@@ -59,7 +59,7 @@ services:
         logging:
             driver: none
     prom:
-        image: prom/prometheus
+        image: prom/prometheus:v1.8.2
         network_mode: bridge
         ports:
           - 9090:9090
