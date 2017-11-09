@@ -483,10 +483,12 @@ func TestLogCache(t *testing.T) {
 func TestSubmitToCTParallel(t *testing.T) {
 	pub, leaf, k := setup(t)
 
+	// Create a server that will timeout on submission
 	retryAfter := 2
 	srvA := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
 	defer srvA.Close()
 
+	// Create a server that will instantly accept a submission
 	k2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
 	srvB := logSrv(leaf.Raw, k2)
@@ -496,6 +498,10 @@ func TestSubmitToCTParallel(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get test server port")
 	portB, err := getPort(srvB.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
+	// We add the two logs with the slow log we expect to timeout first
+	// and the fast log second. In a serial submission scenario this would
+	// cause the first log to eat up the entire time budget for submission
+	// and we would never get to submitting to the second log.
 	addLog(t, pub, portA, &k.PublicKey)
 	addLog(t, pub, portB, &k2.PublicKey)
 
@@ -504,6 +510,9 @@ func TestSubmitToCTParallel(t *testing.T) {
 	defer cancel()
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
+	// Check that we got both a submission to the fast log and a timeout from
+	// the slow log so that we know we are submitting in parallel and that the
+	// time budget isn't being consumed by one and depriving the other.
 	test.AssertEquals(t, srvB.submissions, int64(1))
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to submit.*")), 1)
 }
