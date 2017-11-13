@@ -2,8 +2,11 @@ package mail
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"net"
 	"net/mail"
@@ -29,7 +32,7 @@ func TestGenerateMessage(t *testing.T) {
 	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
-	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
+	m := New("", "", "", "", nil, *fromAddress, log, stats, 0, 0)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -54,7 +57,7 @@ func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
 	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", *fromAddress, log, stats, 0, 0)
+	m := New("", "", "", "", nil, *fromAddress, log, stats, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -171,8 +174,14 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
+	keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
+	if err != nil {
+		t.Fatalf("loading keypair: %s", err)
+	}
 	// Listen on port 0 to get any free available port
-	l, err := net.Listen("tcp", ":0")
+	l, err := tls.Listen("tcp", ":0", &tls.Config{
+		Certificates: []tls.Certificate{keyPair},
+	})
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -181,6 +190,16 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		if err != nil {
 			t.Errorf("listen.Close: %s", err)
 		}
+	}
+
+	pem, err := ioutil.ReadFile("../test/mail-test-srv/minica.pem")
+	if err != nil {
+		t.Fatalf("loading smtp root: %s", err)
+	}
+	smtpRoots := x509.NewCertPool()
+	ok := smtpRoots.AppendCertsFromPEM(pem)
+	if !ok {
+		t.Fatal("failed parsing SMTP root")
 	}
 
 	// We can look at the listener Addr() to figure out which free port was
@@ -193,6 +212,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		fmt.Sprintf("%d", port),
 		"user@example.com",
 		"passwd",
+		smtpRoots,
 		*fromAddress,
 		log,
 		stats,

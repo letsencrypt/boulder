@@ -964,8 +964,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	if ra.publisher != nil {
 		go func() {
-			// Since we don't want this method to be canceled if the parent context
-			// expires, pass a background context to it and run it in a goroutine.
+			// This context is limited by the gRPC timeout.
 			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
 	}

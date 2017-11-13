@@ -348,6 +348,7 @@ func main() {
 			cfg.NotifyMailer.Port,
 			cfg.NotifyMailer.Username,
 			smtpPassword,
+			nil,
 			*address,
 			log,
 			metrics.NewNoopScope(),

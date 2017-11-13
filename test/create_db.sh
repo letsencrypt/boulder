@@ -15,7 +15,6 @@ fi
 mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 
 for dbenv in $DBENVS; do
-  (
   db="boulder_sa_${dbenv}"
 
   if mysql $dbconn -e 'show databases;' | grep $db > /dev/null; then
@@ -62,8 +61,6 @@ for dbenv in $DBENVS; do
       mysql $dbconn -D $db -f < $USERS_SQL || die "unable to add users to ${db}"
   fi
   echo "added users to ${db}"
-  ) &
 done
-wait
 
 echo "created all databases"

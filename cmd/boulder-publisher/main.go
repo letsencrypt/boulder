@@ -20,9 +20,8 @@ import (
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		SubmissionTimeout cmd.ConfigDuration
-		SAService         *cmd.GRPCClientConfig
-		Features          map[string]bool
+		SAService *cmd.GRPCClientConfig
+		Features  map[string]bool
 	}
 
 	Syslog cmd.SyslogConfig
@@ -83,7 +82,6 @@ func main() {
 	pubi := publisher.New(
 		bundle,
 		logs,
-		c.Publisher.SubmissionTimeout.Duration,
 		logger,
 		scope,
 		sac)

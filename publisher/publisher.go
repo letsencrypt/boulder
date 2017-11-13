@@ -91,7 +91,12 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
 	}
-	client, err := ctClient.New(url.String(), &http.Client{}, opts)
+	// We set the HTTP client timeout to about half of what we expect
+	// the gRPC timeout to be set to. This allows us to retry the
+	// request at least twice in the case where the server we are
+	// talking to is simply hanging indefinitely.
+	httpClient := &http.Client{Timeout: time.Minute*2 + time.Second*30}
+	client, err := ctClient.New(url.String(), httpClient, opts)
 	if err != nil {
 		return nil, fmt.Errorf("making CT client: %s", err)
 	}
@@ -150,9 +155,8 @@ type Impl struct {
 	ctLogsCache  logCache
 	// ctLogs is slightly redundant with the logCache, and should be removed. See
 	// issue https://github.com/letsencrypt/boulder/issues/2357
-	ctLogs            []*Log
-	submissionTimeout time.Duration
-	metrics           *pubMetrics
+	ctLogs  []*Log
+	metrics *pubMetrics
 
 	sa core.StorageAuthority
 }
@@ -162,17 +166,12 @@ type Impl struct {
 func New(
 	bundle []ct.ASN1Cert,
 	logs []*Log,
-	submissionTimeout time.Duration,
 	logger blog.Logger,
 	stats metrics.Scope,
 	sa core.StorageAuthority,
 ) *Impl {
-	if submissionTimeout == 0 {
-		submissionTimeout = time.Hour * 12
-	}
 	return &Impl{
-		submissionTimeout: submissionTimeout,
-		issuerBundle:      bundle,
+		issuerBundle: bundle,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
@@ -195,8 +194,6 @@ func (pub *Impl) SubmitToSingleCT(
 		return err
 	}
 
-	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
-	defer cancel()
 	chain := append([]ct.ASN1Cert{ct.ASN1Cert{der}}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
@@ -210,7 +207,7 @@ func (pub *Impl) SubmitToSingleCT(
 
 	start := time.Now()
 	err = pub.singleLogSubmit(
-		localCtx,
+		ctx,
 		chain,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
@@ -232,12 +229,20 @@ func (pub *Impl) SubmitToSingleCT(
 // SubmitToCT will submit the certificate represented by certDER to any CT
 // logs configured in pub.CT.Logs.
 func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
+	wg := new(sync.WaitGroup)
 	for _, ctLog := range pub.ctLogs {
-		err := pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
-		if err != nil {
-			return err
-		}
+		wg.Add(1)
+		// Do each submission in a goroutine so a single slow log doesn't eat
+		// all of the context and prevent submission to the rest of the logs
+		go func(ctLog *Log) {
+			defer wg.Done()
+			// Nothing actually consumes the errors returned from SubmitToCT
+			// so instead of using a channel to collect them we just throw
+			// it away here.
+			_ = pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
+		}(ctLog)
 	}
+	wg.Wait()
 	return nil
 }
 

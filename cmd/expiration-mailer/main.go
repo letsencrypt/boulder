@@ -57,7 +57,7 @@ type mailer struct {
 }
 
 type mailerStats struct {
-	nagsAtCapacity    *prometheus.CounterVec
+	nagsAtCapacity    *prometheus.GaugeVec
 	errorCount        *prometheus.CounterVec
 	renewalCount      *prometheus.CounterVec
 	sendLatency       prometheus.Histogram
@@ -330,7 +330,7 @@ func (m *mailer) findExpiringCertificates() error {
 				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
 				expiresIn.String(),
 				m.limit))
-			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Inc()
+			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(1)
 		}
 
 		processingStarted := m.clk.Now()
@@ -380,6 +380,10 @@ type config struct {
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
 
+		// Path to a file containing a list of trusted root certificates for use
+		// during the SMTP connection (as opposed to the gRPC connections).
+		SMTPTrustedRootFile string
+
 		Features map[string]bool
 	}
 
@@ -387,8 +391,8 @@ type config struct {
 }
 
 func initStats(scope metrics.Scope) mailerStats {
-	nagsAtCapacity := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
+	nagsAtCapacity := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Name: "nagsAtCapacity",
 			Help: "Count of nag groups at capcacity",
 		},
@@ -484,6 +488,16 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
+	var smtpRoots *x509.CertPool
+	if c.Mailer.SMTPTrustedRootFile != "" {
+		pem, err := ioutil.ReadFile(c.Mailer.SMTPTrustedRootFile)
+		cmd.FailOnError(err, "Loading trusted roots file")
+		smtpRoots = x509.NewCertPool()
+		if !smtpRoots.AppendCertsFromPEM(pem) {
+			cmd.FailOnError(nil, "Failed to parse root certs PEM")
+		}
+	}
+
 	// Load email template
 	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
 	cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
@@ -508,6 +522,7 @@ func main() {
 		c.Mailer.Port,
 		c.Mailer.Username,
 		smtpPassword,
+		smtpRoots,
 		*fromAddress,
 		logger,
 		scope,
@@ -546,6 +561,13 @@ func main() {
 		limit:           c.Mailer.CertLimit,
 		clk:             cmd.Clock(),
 		stats:           initStats(scope),
+	}
+
+	// Prefill this labelled stat with the possible label values, so each value is
+	// set to 0 on startup, rather than being missing from stats collection until
+	// the first mail run.
+	for _, expiresIn := range nags {
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(0)
 	}
 
 	if *daemon {
