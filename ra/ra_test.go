@@ -2559,6 +2559,12 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 }
 
 func TestIdentifiersForOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	makeDNSIdent := func(domain string, wildcard bool) core.AcmeIdentifier {
 		return core.AcmeIdentifier{
 			Type:     core.IdentifierDNS,
