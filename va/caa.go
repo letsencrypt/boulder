@@ -7,7 +7,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
@@ -118,70 +117,7 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
-// parentsDomains returns a list of all parent domains, in order from longest to
-// shortest.
-func parentDomains(fqdn string) []string {
-	var result []string
-	labels := strings.Split(strings.TrimRight(fqdn, "."), ".")
-	for i := 1; i < len(labels); i++ {
-		result = append(result, strings.Join(labels[i:], "."))
-	}
-	return result
-}
-
-// Implement pre-erratum 5065 style tree-climbing CAA. Note: a strict
-// interpretation of pre-5065 indicates a linear lookup path - if there is any
-// CNAME at all, that precludes further tree-climbing on the original FQDN. This
-// is clearly wrong. We implement a hybrid approach that is strictly more
-// conservative: We always do full tree-climbing on the original FQDN (by virtue
-// of parallelCAALookup. When the LegacyCAA flag is enabled, we also
-// do linear tree climbing on single-level aliases.
-func (va *ValidationAuthorityImpl) treeClimbingLookupCAA(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
-	// We will do an (arbitrary) maximum of 50 tree-climbing queries to avoid CNAME/CAA
-	// hybrid loops
-	maxAttempts := 50
-	targets := map[string]bool{}
-	return va.treeClimbingLookupCAAWithCount(ctx, fqdn, &maxAttempts, &targets)
-}
-
-func (va *ValidationAuthorityImpl) treeClimbingLookupCAAWithCount(ctx context.Context, fqdn string, attemptsRemaining *int, targets *map[string]bool) ([]*dns.CAA, error) {
-	if *attemptsRemaining < 1 {
-		return nil, fmt.Errorf("too many CNAMEs when looking up CAA")
-	}
-	if _, present := (*targets)[fqdn]; present {
-		return nil, nil
-	}
-	*attemptsRemaining--
-	caas, cnames, err := va.dnsClient.LookupCAA(ctx, fqdn)
-	(*targets)[fqdn] = true
-	if err != nil {
-		return nil, err
-	} else if len(caas) > 0 {
-		return caas, nil
-	} else if len(cnames) > 0 {
-		// CNAMEs are returned in order from the original fqdn to the ultimate
-		// target. However, CAA wants us to check them in order from the ultimate
-		// target back to the original FQDN.
-		for i := len(cnames) - 1; i >= 0; i-- {
-			// Start the tree climbing directly with the parent domains of each
-			// target, because the target itself has already been queried by Unbound
-			// as part of the original LookupCAA, and any CNAMEs are already in this
-			// list.
-			newTargets := parentDomains(cnames[i].Target)
-			for _, newTarget := range newTargets {
-				caas, err := va.treeClimbingLookupCAAWithCount(ctx, newTarget, attemptsRemaining, targets)
-				if len(caas) != 0 || err != nil {
-					return caas, err
-				}
-			}
-		}
-	}
-	return nil, nil
-}
-
-type lookuperFunc func(context.Context, string) ([]*dns.CAA, error)
-
-func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper lookuperFunc) []caaResult {
+func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper func(context.Context, string) ([]*dns.CAA, error)) []caaResult {
 	labels := strings.Split(name, ".")
 	results := make([]caaResult, len(labels))
 	var wg sync.WaitGroup
@@ -202,14 +138,6 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
-	lookuper := func(ctx context.Context, fqdn string) ([]*dns.CAA, error) {
-		caas, _, err := va.dnsClient.LookupCAA(ctx, fqdn)
-		return caas, err
-	}
-	if features.Enabled(features.LegacyCAA) {
-		lookuper = va.treeClimbingLookupCAA
-	}
-
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
 	// Essentially: check CAA records for the FDQN to be issued, and all
 	// parent domains.
@@ -218,7 +146,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, lookuper)
+	results := va.parallelCAALookup(ctx, hostname, va.dnsClient.LookupCAA)
 	return parseResults(results)
 }
 
