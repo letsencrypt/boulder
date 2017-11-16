@@ -283,12 +283,13 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		if icannTLDLabels[0] == "*" {
 			return errICANNTLDWildcard
 		}
-		// Update the identifier to refer to the base domain before we fall through
-		// to WillingToIssue
-		ident.Value = baseDomain
+		// Check that the PA is willing to issue for the base domain
+		return pa.WillingToIssue(core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: baseDomain,
+		})
 	}
 
-	// Fall through to the usual issuance policy
 	return pa.WillingToIssue(ident)
 }
 
