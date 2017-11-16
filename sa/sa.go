@@ -28,6 +28,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+type certCountFunc func(domain string, earliest, latest time.Time) (int, error)
+
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
@@ -39,6 +41,10 @@ type SQLStorageAuthority struct {
 	// max parallelism they will use (to avoid consuming too many MariaDB
 	// threads).
 	parallelismPerRPC int
+
+	// We use a function type here so we can mock out this internal function in
+	// unittests.
+	countCertificatesByName certCountFunc
 }
 
 func digest256(data []byte) []byte {
@@ -86,6 +92,8 @@ func NewSQLStorageAuthority(
 		scope:             scope,
 		parallelismPerRPC: parallelismPerRPC,
 	}
+
+	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
 
 	return ssa, nil
 }
@@ -430,7 +438,7 @@ const countCertificatesExactSelect = `
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
-func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(domain string, earliest, latest time.Time) (int, error) {
 	return ssa.countCertificates(domain, earliest, latest, countCertificatesSelect)
 }
 
