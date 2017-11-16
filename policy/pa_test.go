@@ -302,7 +302,7 @@ func TestChallengesFor(t *testing.T) {
 
 func TestChallengesForWildcard(t *testing.T) {
 	// wildcardIdent is an identifier thats been translated into a base domain for
-	// the purpose of authenticating a widlcard request.
+	// the purpose of authenticating a wildcard request.
 	wildcardIdent := core.AcmeIdentifier{
 		Type:     core.IdentifierDNS,
 		Value:    "zombo.com",
