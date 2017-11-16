@@ -26,7 +26,6 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, _ *caPB.IssueCertificate
 	block, _ := pem.Decode(ca.PEM)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		fmt.Printf("Ok?\n")
 		return core.Certificate{}, err
 	}
 	return core.Certificate{
