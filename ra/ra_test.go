@@ -2558,6 +2558,15 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 		"wildcard order")
 }
 
+// sortedIdents is a convenience type for sorting a slice of
+// []core.AcmeIdentifier. `TestIdentifiersForOrder` uses this to match the
+// resturned identifiers with the expected identifiers easily.
+type sortedIdents []core.AcmeIdentifier
+
+func (list sortedIdents) Len() int           { return len(list) }
+func (list sortedIdents) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
+func (list sortedIdents) Less(i, j int) bool { return list[i].Value < list[j].Value }
+
 func TestIdentifiersForOrder(t *testing.T) {
 	// Only run under test/config-next config where 20170731115209_AddOrders.sql
 	// has been applied
@@ -2618,8 +2627,16 @@ func TestIdentifiersForOrder(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			results := identifiersForOrder(tc.InputNames)
 			test.AssertEquals(t, len(tc.ExpectedIdentifiers), len(results))
-			for i, ident := range results {
-				expectedIdent := tc.ExpectedIdentifiers[i]
+
+			// We need to sort the results to match to the expected since the order is
+			// not static
+			sortedResults := sortedIdents(results)
+			sortedExpected := sortedIdents(tc.ExpectedIdentifiers)
+			sort.Sort(sortedResults)
+			sort.Sort(sortedExpected)
+
+			for i, ident := range sortedResults {
+				expectedIdent := sortedExpected[i]
 				test.AssertEquals(t, ident.Type, expectedIdent.Type)
 				test.AssertEquals(t, ident.Value, expectedIdent.Value)
 				test.AssertEquals(t, ident.Wildcard, expectedIdent.Wildcard)
