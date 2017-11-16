@@ -844,8 +844,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
 	}
 
-	// DNS-01-Wildcard challenge types are used internally to hint that an
-	// authorization is for a wildcard domain's base domain. Before presenting
+	// DNS-01-Wildcard challenge types are used internally to indicate that an
+	// authorization is for a wildcard domain's base domain. This is required for
+	// proper handling of CAA "issueWild" checking. Before presenting
 	// a DNS-01-Wildcard challenge to the user, pretend its a normal DNS-01 type
 	// challenge.
 	if challenge.Type == core.ChallengeTypeDNS01Wildcard {
