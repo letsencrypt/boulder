@@ -333,13 +333,11 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy. We also must have the pseudo-type
 		// DNS-01-Wildcard challenge type available.
-		requiredChallengeTypes := []string{core.ChallengeTypeDNS01, core.ChallengeTypeDNS01Wildcard}
-		for _, chalType := range requiredChallengeTypes {
-			if !pa.enabledChallenges[chalType] {
-				return nil, nil, fmt.Errorf(
-					"Challenges requested for wildcard identifier but required challenge "+
-						"type %q is not enabled", chalType)
-			}
+		if !pa.enabledChallenges[core.ChallengeTypeDNS01] ||
+			!pa.enabledChallenges[core.ChallengeTypeDNS01Wildcard] {
+			return nil, nil, fmt.Errorf(
+				"Challenges requested for wildcard identifier but DNS-01 or " +
+					"DNS-01-Wildcard challenge types are not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
 		challenges = []core.Challenge{core.DNSChallenge01Wildcard()}

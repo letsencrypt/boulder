@@ -330,7 +330,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but required challenge type \"dns-01\" is not enabled")
+		"identifier but DNS-01 or DNS-01-Wildcard challenge types are not enabled")
 
 	// Try again with DNS-01 enabled but DNS-01-Wildcard disabled
 	enabledChallenges[core.ChallengeTypeDNS01] = true
@@ -339,7 +339,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01-Wildcard was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but required challenge type \"dns-01-wildcard\" is not enabled")
+		"identifier but DNS-01 or DNS-01-Wildcard challenge types are not enabled")
 
 	// Try again with DNS-01 and DNS-01-Wildcard enabled. It should not error and
 	// should return only one DNS-01-Wildcard type challenge
