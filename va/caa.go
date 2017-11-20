@@ -117,7 +117,7 @@ func parseResults(results []caaResult) (*CAASet, error) {
 	return nil, nil
 }
 
-func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper func(context.Context, string) ([]*dns.CAA, error)) []caaResult {
+func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string) []caaResult {
 	labels := strings.Split(name, ".")
 	results := make([]caaResult, len(labels))
 	var wg sync.WaitGroup
@@ -126,7 +126,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
-			r.records, r.err = lookuper(ctx, name)
+			r.records, r.err = va.dnsClient.LookupCAA(ctx, name)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
@@ -138,7 +138,8 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
-	// See RFC 6844 "Certification Authority Processing" for pseudocode.
+	// See RFC 6844 "Certification Authority Processing" for pseudocode, as
+	// amended by https://www.rfc-editor.org/errata/eid5065.
 	// Essentially: check CAA records for the FDQN to be issued, and all
 	// parent domains.
 	//
@@ -146,7 +147,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.dnsClient.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname)
 	return parseResults(results)
 }
 
