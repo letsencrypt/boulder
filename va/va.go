@@ -796,6 +796,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateTLSSNI01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSSNI02:
 		return va.validateTLSSNI02(ctx, identifier, challenge)
+	case core.ChallengeTypeDNS01Wildcard:
+		fallthrough
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	}

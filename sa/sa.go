@@ -1563,6 +1563,28 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	for name, a := range pendingAuthz {
 		authzMap[name] = a
 	}
+
+	// Fetch each of the authorizations' associated challenges
+	for _, authz := range authzMap {
+		var challObjs []challModel
+		_, err = ssa.dbMap.Select(
+			&challObjs,
+			getChallengesQuery,
+			map[string]interface{}{"authID": authz.ID},
+		)
+		if err != nil {
+			return nil, err
+		}
+		var challs []core.Challenge
+		for _, c := range challObjs {
+			chall, err := modelToChallenge(&c)
+			if err != nil {
+				return nil, err
+			}
+			challs = append(challs, chall)
+		}
+		authz.Challenges = challs
+	}
 	return authzMapToPB(authzMap)
 }
 

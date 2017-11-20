@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/url"
 	"os"
@@ -271,7 +272,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -2006,6 +2007,193 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
 }
 
+func TestNewOrderWildcard(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
+	id := int64(1)
+
+	orderNames := []string{"example.com", "*.welcome.zombo.com"}
+	wildcardOrderRequest := &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Names:          orderNames,
+	}
+
+	// First test that with WildcardDomains feature disabled wildcard orders are
+	// rejected as expected
+	_ = features.Set(map[string]bool{"WildcardDomains": false})
+
+	_, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertError(t, err, "NewOrder with wildcard names did not error with "+
+		"WildcardDomains feature disabled")
+	test.AssertEquals(t, err.Error(), "Invalid character in DNS name")
+
+	// Now test with WildcardDomains feature enabled
+	features.Reset()
+	_ = features.Set(map[string]bool{"WildcardDomains": true})
+	defer features.Reset()
+
+	// Also ensure that the required challenge types are enabled. The ra_test
+	// global `SupportedChallenges` used by `initAuthorities` does not include
+	// DNS-01 or DNS-01-Wildcard
+	supportedChallenges := map[string]bool{
+		core.ChallengeTypeHTTP01:        true,
+		core.ChallengeTypeTLSSNI01:      true,
+		core.ChallengeTypeDNS01:         true,
+		core.ChallengeTypeDNS01Wildcard: true,
+	}
+	pa, err := policy.New(supportedChallenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+
+	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
+		"with WildcardDomains enabled")
+
+	// We expect the order to be pending
+	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	// We expect the order to have two names
+	test.AssertEquals(t, len(order.Names), 2)
+	// We expect the order to have the names we requested
+	test.AssertDeepEquals(t,
+		core.UniqueLowerNames(order.Names),
+		core.UniqueLowerNames(orderNames))
+	// We expect the order to have two authorizations
+	test.AssertEquals(t, len(order.Authorizations), 2)
+
+	// Check each of the authz IDs in the order
+	for _, authzID := range order.Authorizations {
+		// We should be able to retreive the authz from the db without error
+		authz, err := ra.SA.GetAuthorization(ctx, authzID)
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+
+		// We expect the authz is in Pending status
+		test.AssertEquals(t, authz.Status, core.StatusPending)
+
+		name := authz.Identifier.Value
+		switch name {
+		case "welcome.zombo.com":
+			// If the authz is for welcome.zombo.com, we expect that it only has the DNS-01-Wildcard challenge type
+			test.AssertEquals(t, len(authz.Challenges), 1)
+			test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01Wildcard)
+		case "example.com":
+			// If the authz is for example.com, we expect it has normal challenges
+			test.AssertEquals(t, len(authz.Challenges), 3)
+		default:
+			t.Fatalf("Received an authorization for a name not requested: %q", name)
+		}
+	}
+
+	// An order for a base domain and a wildcard for the same base domain should
+	// return just 1 DNS-01-Wildcard authz
+	orderNames = []string{"zombo.com", "*.zombo.com"}
+	wildcardOrderRequest = &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Names:          orderNames,
+	}
+	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
+		"with WildcardDomains enabled")
+
+	// We expect the order to be pending
+	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	// We expect the order to have two names
+	test.AssertEquals(t, len(order.Names), 2)
+	// We expect the order to have the names we requested
+	test.AssertDeepEquals(t,
+		core.UniqueLowerNames(order.Names),
+		core.UniqueLowerNames(orderNames))
+	// We expect the order to have one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// We expect the authorization is available
+	authz, err := ra.SA.GetAuthorization(ctx, order.Authorizations[0])
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	// We expect the authz is in Pending status
+	test.AssertEquals(t, authz.Status, core.StatusPending)
+	// We expect the authz is for the identifier "zombo.com"
+	test.AssertEquals(t, authz.Identifier.Value, "zombo.com")
+	// We expect that the auth has only a pending DNS-01-Wildcard challenge
+	test.AssertEquals(t, len(authz.Challenges), 1)
+	test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+	test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01Wildcard)
+
+	// Make an order for a single domain, no wildcards. This will create a new
+	// pending authz for the domain
+	normalOrderReq := &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Names:          []string{"everything.is.possible.zombo.com"},
+	}
+	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
+	test.AssertNotError(t, err, "NewOrder failed for a normal non-wildcard order")
+
+	// There should be one authz
+	test.AssertEquals(t, len(normalOrder.Authorizations), 1)
+	// We expect the order is in Pending status
+	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	// We expect the authorization is available
+	authz, err = ra.SA.GetAuthorization(ctx, normalOrder.Authorizations[0])
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	// We expect the authz is in Pending status
+	test.AssertEquals(t, authz.Status, core.StatusPending)
+	// We expect the authz is for the identifier the correct domain
+	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
+	// We expect the authz has the normal # of challenges
+	test.AssertEquals(t, len(authz.Challenges), 3)
+
+	// Now submit an order request for a wildcard of the domain we just created an
+	// order for. We should **NOT** reuse the authorization from the previous
+	// order since we now require a DNS-01-Wildcard challenge.
+	orderNames = []string{"*.everything.is.possible.zombo.com"}
+	wildcardOrderRequest = &rapb.NewOrderRequest{
+		RegistrationID: &id,
+		Names:          orderNames,
+	}
+	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
+		"with WildcardDomains enabled")
+	// We expect the order is in Pending status
+	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	// There should be one authz
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// The authz should be a different ID than the previous authz
+	test.AssertNotEquals(t, order.Authorizations[0], normalOrder.Authorizations[0])
+	// We expect the authorization is available
+	authz, err = ra.SA.GetAuthorization(ctx, order.Authorizations[0])
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	// We expect the authz is in Pending status
+	test.AssertEquals(t, authz.Status, core.StatusPending)
+	// We expect the authz is for the identifier the correct domain
+	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
+	// We expect the authz has only one challenge
+	test.AssertEquals(t, len(authz.Challenges), 1)
+	// We expect the one challenge is pending
+	test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+	// We expect that the one challenge is a DNS01 type challenge
+	test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01Wildcard)
+
+	// Submit an identical wildcard order request
+	dupeOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
+		"with WildcardDomains enabled")
+	// We expect the order is in Pending status
+	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
+	// There should be one authz
+	test.AssertEquals(t, len(dupeOrder.Authorizations), 1)
+	// The authz should be the same ID as the previous order's authz. We already
+	// checked that order.Authorizations[0] only has a DNS-01-Wildcard challenge
+	// above so we don't need to recheck that here.
+	test.AssertNotEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
+}
+
 func TestFinalizeOrder(t *testing.T) {
 	// Only run under test/config-next config where 20170731115209_AddOrders.sql
 	// has been applied
@@ -2242,6 +2430,216 @@ func TestFinalizeOrder(t *testing.T) {
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, *updatedOrder.Status, "valid")
+			}
+		})
+	}
+}
+
+func TestFinalizeOrderWildcard(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Pick an expiry in the future
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+
+	// Enable wildcard domains
+	_ = features.Set(map[string]bool{"WildcardDomains": true})
+	defer features.Reset()
+
+	// Also ensure that the required challenge types are enabled. The ra_test
+	// global `SupportedChallenges` used by `initAuthorities` does not include
+	// DNS-01 or DNS-01-Wildcard
+	supportedChallenges := map[string]bool{
+		core.ChallengeTypeHTTP01:        true,
+		core.ChallengeTypeTLSSNI01:      true,
+		core.ChallengeTypeDNS01:         true,
+		core.ChallengeTypeDNS01Wildcard: true,
+	}
+	pa, err := policy.New(supportedChallenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Error creating test RSA key")
+	wildcardCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		DNSNames:           []string{"*.zombo.com"},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating CSR with wildcard DNS name")
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"*.zombo.com"},
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Error creating test certificate")
+
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+
+	// Set up a mock CA capable of giving back a cert for the wildcardCSR above
+	ca := &mocks.MockCA{
+		PEM: certPEM,
+	}
+	ra.CA = ca
+
+	// Create a new order for a wildcard domain
+	orderNames := []string{"*.zombo.com"}
+	wildcardOrderRequest := &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          orderNames,
+	}
+	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
+
+	// Create one standard finalized authorization for Registration.ID for zombo.com
+	finalAuthz := AuthzInitial
+	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "zombo.com"}
+	finalAuthz.Status = "valid"
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err = sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Finalizing the order should *not* work since the existing validated authz
+	// is not a special DNS-01-Wildcard challenge authz
+	finalizeReq := &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   wildcardCSR,
+	}
+	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
+	test.AssertError(t, err, "FinalizeOrder did not fail for unauthorized "+
+		"wildcard order")
+	test.AssertEquals(t, err.Error(), "authorizations for these names not "+
+		"found or expired: zombo.com")
+
+	// Creating another order for the wildcard name
+	validOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
+	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
+	// We expect it has 1 authorization
+	test.AssertEquals(t, len(validOrder.Authorizations), 1)
+	// We expect to be able to get the authorization by ID
+	authz, err := sa.GetAuthorization(ctx, validOrder.Authorizations[0])
+	test.AssertNotError(t, err, "GetAuthorization failed for order authz ID")
+
+	// Finalize the authorization with the challenge validated
+	authz.Status = "valid"
+	authz.Challenges[0].Status = "valid"
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not finalize order's pending authorization")
+
+	// Now it should be possible to finalize the order
+	finalizeReq = &rapb.FinalizeOrderRequest{
+		Order: validOrder,
+		Csr:   wildcardCSR,
+	}
+	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
+	test.AssertNotError(t, err, "FinalizeOrder failed for authorized "+
+		"wildcard order")
+}
+
+// sortedIdents is a convenience type for sorting a slice of
+// []core.AcmeIdentifier. `TestIdentifiersForOrder` uses this to match the
+// resturned identifiers with the expected identifiers easily.
+type sortedIdents []core.AcmeIdentifier
+
+func (list sortedIdents) Len() int           { return len(list) }
+func (list sortedIdents) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
+func (list sortedIdents) Less(i, j int) bool { return list[i].Value < list[j].Value }
+
+func TestIdentifiersForOrder(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	makeDNSIdent := func(domain string, wildcard bool) core.AcmeIdentifier {
+		return core.AcmeIdentifier{
+			Type:     core.IdentifierDNS,
+			Value:    domain,
+			Wildcard: wildcard,
+		}
+	}
+
+	testCases := []struct {
+		Name                string
+		InputNames          []string
+		ExpectedIdentifiers []core.AcmeIdentifier
+	}{
+		{
+			Name:                "No names as input",
+			InputNames:          []string{},
+			ExpectedIdentifiers: []core.AcmeIdentifier{},
+		},
+		{
+			Name:       "Names without any wildcards",
+			InputNames: []string{"zombo.com", "zombo.org", "zombo.gov.uk"},
+			ExpectedIdentifiers: []core.AcmeIdentifier{
+				makeDNSIdent("zombo.com", false),
+				makeDNSIdent("zombo.org", false),
+				makeDNSIdent("zombo.gov.uk", false),
+			},
+		},
+		{
+			Name:       "Names with a wildcard",
+			InputNames: []string{"zombo.com", "*.zombo.org", "zombo.gov.uk"},
+			ExpectedIdentifiers: []core.AcmeIdentifier{
+				makeDNSIdent("zombo.com", false),
+				// NOTE(@cpu): We expect that *.zombo.org will result in an identifier
+				// for "zombo.org" with Wildcard: true
+				makeDNSIdent("zombo.org", true),
+				makeDNSIdent("zombo.gov.uk", false),
+			},
+		},
+		{
+			Name:       "Names with a wildcard overlapping a duplicated base domain",
+			InputNames: []string{"zombo.com", "*.zombo.com", "zombo.com"},
+			ExpectedIdentifiers: []core.AcmeIdentifier{
+				// NOTE(@cpu): There should be only *one* identifier for the base
+				// "zombo.com" domain, and it should have the wildcard flag set
+				makeDNSIdent("zombo.com", true),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			results := identifiersForOrder(tc.InputNames)
+			test.AssertEquals(t, len(tc.ExpectedIdentifiers), len(results))
+
+			// We need to sort the results to match to the expected since the order is
+			// not static
+			sortedResults := sortedIdents(results)
+			sortedExpected := sortedIdents(tc.ExpectedIdentifiers)
+			sort.Sort(sortedResults)
+			sort.Sort(sortedExpected)
+
+			for i, ident := range sortedResults {
+				expectedIdent := sortedExpected[i]
+				test.AssertEquals(t, ident.Type, expectedIdent.Type)
+				test.AssertEquals(t, ident.Value, expectedIdent.Value)
+				test.AssertEquals(t, ident.Wildcard, expectedIdent.Wildcard)
 			}
 		})
 	}

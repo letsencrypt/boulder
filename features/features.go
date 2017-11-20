@@ -29,6 +29,8 @@ const (
 	LegacyCAA
 	UDPDNS
 	ROCACheck
+	// Allow issuance of wildcard domains for ACMEv2
+	WildcardDomains
 )
 
 // List of features and their default value, protected by fMu
@@ -50,6 +52,7 @@ var features = map[FeatureFlag]bool{
 	LegacyCAA:                false,
 	UDPDNS:                   false,
 	ROCACheck:                false,
+	WildcardDomains:          false,
 }
 
 var fMu = new(sync.RWMutex)

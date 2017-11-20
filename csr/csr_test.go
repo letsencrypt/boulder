@@ -23,7 +23,7 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
@@ -31,6 +31,10 @@ func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
 		return errors.New("")
 	}
+	return nil
+}
+
+func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
