@@ -26,7 +26,6 @@ const (
 	DirectoryMeta
 	AllowRenewalFirstRL
 	RecheckCAA
-	LegacyCAA
 	UDPDNS
 	ROCACheck
 )
@@ -47,7 +46,6 @@ var features = map[FeatureFlag]bool{
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
-	LegacyCAA:                false,
 	UDPDNS:                   false,
 	ROCACheck:                false,
 }
