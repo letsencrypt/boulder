@@ -780,13 +780,13 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !existingPending(tx, authz.ID) {
-		err = berrors.NotFoundError("authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		err = berrors.NotFoundError("authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if err != nil {
@@ -795,19 +795,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	pa.Authorization = authz
 	_, err = tx.Update(pa)
 	if err != nil {
-		switch err.(type) {
-		case gorp.OptimisticLockError:
-			err = berrors.WrongAuthorizationStateError("authorization with ID '%d' concurrently updated")
-		}
 		return Rollback(tx, err)
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		switch err.(type) {
-		case gorp.OptimisticLockError:
-			err = berrors.WrongAuthorizationStateError("authorization with ID '%d' concurrently updated")
-		}
 		return Rollback(tx, err)
 	}
 
