@@ -646,9 +646,9 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	}
 
 	// Check each of the identifiers in the order against the authzs we got back
-	var identifierValues []string
-	for _, ident := range identifiers {
-		identifierValues = append(identifierValues, ident.Value)
+	identifierValues := make([]string, len(identifiers))
+	for i, ident := range identifiers {
+		identifierValues[i] = ident.Value
 		// If an authz exists for an identifier, and the identifier is a wildcard we
 		// have to make sure the authorization has the correct DNS-01-Wildcard
 		// challenge result.
