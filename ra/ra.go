@@ -720,7 +720,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	if len(badNames) > 0 {
 		return berrors.UnauthorizedError(
 			"authorizations for these names not found or expired: %s",
-			strings.Join(badNames, ", "),
+			strings.Join(core.UniqueLowerNames(badNames), ", "),
 		)
 	}
 
