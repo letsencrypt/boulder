@@ -279,8 +279,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		}
 		// Names must have a non-wildcard label immediately adjacent to the ICANN
 		// TLD. No `*.com`!
-		icannTLDLabels := strings.Split(rawDomain, "."+icannTLD)
-		if icannTLDLabels[0] == "*" {
+		if baseDomain == icannTLD {
 			return errICANNTLDWildcard
 		}
 		// Check that the PA is willing to issue for the base domain
