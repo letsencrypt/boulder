@@ -2007,11 +2007,11 @@ func TestNewOrder(t *testing.T) {
 }
 
 // TestUpdateMissingAuthorization tests the race condition where a challenge is
-// updated to valid concurrent to another attempt to have the challenge updated.
-// Previously this would return a `berrors.InternalServer` error when the row
-// was found missing from `pendingAuthorizations` by the 2nd update since the
-// 1st had already deleted it. We accept this may happen and now test for
-// a `berrors.NotFound` error return.
+// updated to valid concurrently with another attempt to have the challenge
+// updated. Previously this would return a `berrors.InternalServer` error when
+// the row was found missing from `pendingAuthorizations` by the 2nd update
+// since the 1st had already deleted it. We accept this may happen and now test
+// for a `berrors.NotFound` error return.
 //
 // See https://github.com/letsencrypt/boulder/issues/3201
 func TestUpdateMissingAuthorization(t *testing.T) {
