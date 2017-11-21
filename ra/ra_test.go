@@ -2191,7 +2191,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// The authz should be the same ID as the previous order's authz. We already
 	// checked that order.Authorizations[0] only has a DNS-01-Wildcard challenge
 	// above so we don't need to recheck that here.
-	test.AssertNotEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
+	test.AssertEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
 }
 
 func TestFinalizeOrder(t *testing.T) {
