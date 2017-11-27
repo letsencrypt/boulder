@@ -72,11 +72,6 @@ const (
 	ChallengeTypeTLSSNI01 = "tls-sni-01"
 	ChallengeTypeTLSSNI02 = "tls-sni-02"
 	ChallengeTypeDNS01    = "dns-01"
-	// We define a special variant of the "dns-01" challenge type to indicate that
-	// the authorization/challenge are for a wildcard domain. This information is
-	// used to determine how CAA should be handled. The WFE will translate
-	// a "dns-01-wildcard" challenge into "dns-01" for presentation to the user.
-	ChallengeTypeDNS01Wildcard = "dns-01-wildcard"
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
@@ -88,8 +83,6 @@ func ValidChallenge(name string) bool {
 		fallthrough
 	case ChallengeTypeDNS01:
 		return true
-	case ChallengeTypeDNS01Wildcard:
-		return features.Enabled(features.WildcardDomains)
 	case ChallengeTypeTLSSNI02:
 		return features.Enabled(features.AllowTLS02Challenges)
 
@@ -110,9 +103,8 @@ const DNSPrefix = "_acme-challenge"
 // addresses, etc.), but currently we only support
 // domain names.
 type AcmeIdentifier struct {
-	Type     IdentifierType `json:"type"`  // The type of identifier being encoded
-	Value    string         `json:"value"` // The identifier itself
-	Wildcard bool           `json:"-"`     // Is the value of the identifier the base domain of a wildcard?
+	Type  IdentifierType `json:"type"`  // The type of identifier being encoded
+	Value string         `json:"value"` // The identifier itself
 }
 
 // CertificateRequest is just a CSR

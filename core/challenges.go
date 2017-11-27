@@ -27,8 +27,3 @@ func TLSSNIChallenge02() Challenge {
 func DNSChallenge01() Challenge {
 	return newChallenge(ChallengeTypeDNS01)
 }
-
-// DNSChallenge01Wildcard constructs a random dns-01-wildcard challenge.
-func DNSChallenge01Wildcard() Challenge {
-	return newChallenge(ChallengeTypeDNS01Wildcard)
-}

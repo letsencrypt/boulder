@@ -301,56 +301,42 @@ func TestChallengesFor(t *testing.T) {
 }
 
 func TestChallengesForWildcard(t *testing.T) {
-	// wildcardIdent is an identifier thats been translated into a base domain for
-	// the purpose of authenticating a wildcard request.
+	// wildcardIdent is an identifier for a wildcard domain name
 	wildcardIdent := core.AcmeIdentifier{
-		Type:     core.IdentifierDNS,
-		Value:    "zombo.com",
-		Wildcard: true,
+		Type:  core.IdentifierDNS,
+		Value: "*.zombo.com",
 	}
 
 	mustConstructPA := func(t *testing.T, enabledChallenges map[string]bool) *AuthorityImpl {
 		pa, err := New(enabledChallenges)
-		if err != nil {
-			t.Fatalf("Couldn't create policy implementation: %s", err)
-		}
+		test.AssertNotError(t, err, "Couldn't create policy implementation")
 		return pa
 	}
 
 	// First try to get a challenge for the wildcard ident without the
 	// DNS-01 challenge type enabled. This should produce an error
 	var enabledChallenges = map[string]bool{
-		core.ChallengeTypeHTTP01:        true,
-		core.ChallengeTypeTLSSNI01:      true,
-		core.ChallengeTypeDNS01:         false,
-		core.ChallengeTypeDNS01Wildcard: false,
+		core.ChallengeTypeHTTP01:   true,
+		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    false,
 	}
 	pa := mustConstructPA(t, enabledChallenges)
 	_, _, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but DNS-01 or DNS-01-Wildcard challenge types are not enabled")
+		"identifier but DNS-01 challenge type is not enabled")
 
-	// Try again with DNS-01 enabled but DNS-01-Wildcard disabled
+	// Try again with DNS-01 enabled. It should not error and
+	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
-	pa = mustConstructPA(t, enabledChallenges)
-	_, _, err = pa.ChallengesFor(wildcardIdent)
-	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
-		"when DNS-01-Wildcard was disabled")
-	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but DNS-01 or DNS-01-Wildcard challenge types are not enabled")
-
-	// Try again with DNS-01 and DNS-01-Wildcard enabled. It should not error and
-	// should return only one DNS-01-Wildcard type challenge
-	enabledChallenges[core.ChallengeTypeDNS01Wildcard] = true
 	pa = mustConstructPA(t, enabledChallenges)
 	challenges, combinations, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")
 	test.AssertEquals(t, len(combinations), 1)
 	test.AssertEquals(t, len(challenges), 1)
-	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01Wildcard)
+	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
 }
 
 func TestExtractDomainIANASuffix_Valid(t *testing.T) {

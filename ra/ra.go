@@ -631,7 +631,6 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names []string,
 	acctID accountID,
 	orderID orderID) error {
-	identifiers := identifiersForOrder(names)
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
 	// Get all of the authorizations for this account/order
@@ -644,25 +643,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	if err != nil {
 		return err
 	}
-
-	// Check each of the identifiers in the order against the authzs we got back
-	identifierValues := make([]string, len(identifiers))
-	for i, ident := range identifiers {
-		identifierValues[i] = ident.Value
-		// If an authz exists for an identifier, and the identifier is a wildcard we
-		// have to make sure the authorization has the correct DNS-01-Wildcard
-		// challenge result.
-		if authz, exists := authzs[ident.Value]; exists && ident.Wildcard {
-			// If the authz doesn't match the wildcard policy remove it before calling
-			// checkAuthorizationsCAA
-			if len(authz.Challenges) != 1 || authz.Challenges[0].Type != core.ChallengeTypeDNS01Wildcard {
-				delete(authzs, ident.Value)
-			}
-		}
-	}
-
 	// Check the authorizations to ensure validity for the names required.
-	return ra.checkAuthorizationsCAA(ctx, identifierValues, authzs, acctIDInt, ra.clk.Now())
+	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now())
 }
 
 // checkAuthorizations checks that each requested name has a valid authorization
@@ -925,23 +907,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	// Validate that authorization key is authorized for all domains
-	var names []string
-	if features.Enabled(features.WildcardDomains) {
-		// If wildcards are enabled we need to potentially translate the CSR names
-		// into identifiers and extract their values. A wildcard request for
-		// `*.foo.example.com` needs to have an authorization for `foo.example.com`
-		idents := identifiersForOrder(csr.DNSNames)
-		names = make([]string, len(idents))
-		for i, ident := range idents {
-			names[i] = ident.Value
-		}
-	} else {
-		// Otherwise, check that all of the names as they appear in the CSR are
-		// authorized.
-		names = make([]string, len(csr.DNSNames))
-		copy(names, csr.DNSNames)
-	}
+	// Validate that authorization key is authorized for all domains in the CSR
+	names := make([]string, len(csr.DNSNames))
+	copy(names, csr.DNSNames)
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
 		err = berrors.MalformedError("certificate public key must be different than account key")
@@ -1384,7 +1352,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	vaCtx := context.Background()
 	go func() {
-		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+		domain := authz.Identifier.Value
+		// If the identifier is a wildcard domain we need to validate the base
+		// domain by removing the "*." wildcard prefix.
+		if strings.HasPrefix(domain, "*.") {
+			domain = strings.TrimPrefix(domain, "*.")
+		}
+		records, err := ra.VA.PerformValidation(vaCtx, domain, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
 			prob = p
@@ -1561,59 +1535,6 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
-// identifiersForOrder translates order names into ACME identifiers. For most
-// cases this is a simple matter of constructing a core.ACMEIdentifier with the
-// name as the value. For wildcard domains this involves stripping the wildcard
-// prefix (`*.`) and using only the base domain for the identifier value. In
-// this case the identifier's Wildcard field is set to true to allow subsequent
-// code to understand the identifier's value corresponds to a wildcard name in
-// an order.
-func identifiersForOrder(names []string) []core.AcmeIdentifier {
-	identMap := make(map[string]core.AcmeIdentifier)
-
-	for _, name := range names {
-		var wildcard bool
-		// if the domain contains a wildcard character treat it specially
-		if strings.Count(name, "*") == 1 {
-			wildcard = true
-			// Trim the wildcard prefix from the domain to get the base domain. We
-			// want to create an identifier for this base domain not the wildcard
-			// domain.
-			//
-			// We've already called pa.WillingToIssueWildcard on the names in the
-			// order before calling `identifiersForOrder` so we can be sure that there
-			// are no malformed wildcard domains at this point
-			name = strings.TrimPrefix(name, "*.")
-		}
-
-		// If there is already an identifier for this name and this iteration is not
-		// for a wildcard domain, continue - we don't need to stomp the existing
-		// identifier
-		if _, present := identMap[name]; present && !wildcard {
-			continue
-		}
-
-		// Construct an identifier for the domain name. If the value corresponds to
-		// a base domain for a wildcard also set the internal Wildcard field to true
-		ident := core.AcmeIdentifier{
-			Type:     core.IdentifierDNS,
-			Value:    name,
-			Wildcard: wildcard,
-		}
-		// If the identifier is not present in the identMap, or it is but we're
-		// processing a wildcard, add it. This allows a wildcard to replace
-		// a non-wildcard identifer with the same value.
-		identMap[name] = ident
-	}
-
-	// Make a slice of the identifiers from the de-duplicated map
-	var idents []core.AcmeIdentifier
-	for _, v := range identMap {
-		idents = append(idents, v)
-	}
-	return idents
-}
-
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
@@ -1625,54 +1546,28 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		Status:         &status,
 	}
 
+	orderIdentifiers := make([]core.AcmeIdentifier, len(order.Names))
 	// Validate that our policy allows issuing for each of the names in the order
-	for _, name := range order.Names {
+	for i, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
+		orderIdentifiers[i] = id
+
 		if features.Enabled(features.WildcardDomains) {
 			if err := ra.PA.WillingToIssueWildcard(id); err != nil {
 				return nil, err
 			}
-		} else {
-			if err := ra.PA.WillingToIssue(id); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	var orderIdentifiers []core.AcmeIdentifier
-	var orderIdentifierValues []string
-	if features.Enabled(features.WildcardDomains) {
-		// Process the names from the order to the identifiers that must have
-		// authorizations. This may be a different set of names that specified (e.g.
-		// in the case of a wildcard name in the order `*.ok.example.com` there will
-		// be an identifier with value `ok.example.com` with the internal Wildcard
-		// flag set.
-		orderIdentifiers = identifiersForOrder(order.Names)
-
-		// Extract the values from the processed orderIdentifiers to use for
-		// a GetAuthorizationsRequest
-		orderIdentifierValues = make([]string, len(orderIdentifiers))
-		for i, ident := range orderIdentifiers {
-			orderIdentifierValues[i] = ident.Value
-		}
-	} else {
-		orderIdentifierValues = order.Names
-		orderIdentifiers = make([]core.AcmeIdentifier, len(orderIdentifierValues))
-		for i, name := range orderIdentifierValues {
-			orderIdentifiers[i] = core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: name,
-			}
+		} else if err := ra.PA.WillingToIssue(id); err != nil {
+			return nil, err
 		}
 	}
 
 	// Check whether there are existing non-expired authorizations for the set of
-	// orderIdentifierValues
+	// order names
 	now := ra.clk.Now().UnixNano()
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID: order.RegistrationID,
 		Now:            &now,
-		Domains:        orderIdentifierValues,
+		Domains:        order.Names,
 	})
 	if err != nil {
 		return nil, err
@@ -1685,24 +1580,26 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		nameToExistingAuthz[*v.Domain] = v.Authz
 	}
 
-	// For each of the identifiers in the order, if there is an acceptable
+	// For each of the names in the order, if there is an acceptable
 	// existing authz, append its ID to the order to reuse it. Otherwise track
 	// that there is a missing authz for a name
 	var missingAuthzs []core.AcmeIdentifier
-	for i, name := range orderIdentifierValues {
+	for i, name := range order.Names {
 		ident := orderIdentifiers[i]
 		// If there is an existing authz, process it
 		if authz, exists := nameToExistingAuthz[name]; exists {
-			// If the identifier is a wildcard and the existing authz is
-			// a DNS-01-Wildcard type challenge we can reuse it
-			if ident.Wildcard &&
-				len(authz.Challenges) == 1 &&
-				*authz.Challenges[0].Type == core.ChallengeTypeDNS01Wildcard {
+			// If the identifier is a wildcard and the existing authz only has one
+			// DNS-01 type challenge we can reuse it. In theory we will
+			// never get back an authorization for a domain with a wildcard prefix
+			// that doesn't meet this criteria from SA.GetAuthorizations but we verify
+			// again to be safe.
+			if strings.HasPrefix(ident.Value, "*.") &&
+				len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
 				order.Authorizations = append(order.Authorizations, *authz.Id)
 				continue
-			} else if !ident.Wildcard && len(authz.Challenges) > 1 {
+			} else {
 				// If the identifier isn't a wildcard, we can reuse any authz that has
-				// the normal number of challenges (e.g. not just DNS-01-Wildcard)
+				// the normal number of challenges (e.g. not just DNS-01)
 				order.Authorizations = append(order.Authorizations, *authz.Id)
 				continue
 			}

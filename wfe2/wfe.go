@@ -843,15 +843,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
 		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
 	}
-
-	// DNS-01-Wildcard challenge types are used internally to indicate that an
-	// authorization is for a wildcard domain's base domain. This is required for
-	// proper handling of CAA "issueWild" checking. Before presenting
-	// a DNS-01-Wildcard challenge to the user, pretend its a normal DNS-01 type
-	// challenge.
-	if challenge.Type == core.ChallengeTypeDNS01Wildcard {
-		challenge.Type = core.ChallengeTypeDNS01
-	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
@@ -863,6 +854,15 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+
+	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
+	// allows this internally as a means of tracking when an authorization
+	// corresponds to a wildcard request (e.g. to handle CAA properly). We strip
+	// the "*." prefix from the Authz's Identifier's Value here to respect the law
+	// of the protocol.
+	if strings.HasPrefix(authz.Identifier.Value, "*.") {
+		authz.Identifier.Value = strings.TrimPrefix(authz.Identifier.Value, "*.")
+	}
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
@@ -1437,7 +1437,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	// We only allow specifying Identifiers in a new order request - we ignore the
-	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-07
+	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-08
 	var newOrderRequest struct {
 		Identifiers []core.AcmeIdentifier `json:"identifiers"`
 	}

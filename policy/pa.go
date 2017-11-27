@@ -245,7 +245,8 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // * The identifer is a DNS type identifier
 // * There is at most one `*` wildcard character
 // * That the wildcard character is the leftmost label
-// * That the wildcard label is not immediate adjacent to a top level ICANN TLD
+// * That the wildcard label is not immediately adjacent to a top level ICANN
+//   TLD
 //
 // If all of the above is true then the base domain (e.g. without the *.) is run
 // through WillingToIssue to catch other illegal things (blocked hosts, etc).
@@ -319,27 +320,18 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
-	// If the identifier is a base domain corresponding to a wildcard we only
-	// provide a DNS-01-Wildcard challenge as a matter of CA policy. We don't use
-	// a DNS-01 challenge here because without some hint the VA won't know how to
-	// check CAA for this authorization without knowing if it was a DNS challenge
-	// created for a wildcard name or not
-	//
-	// NOTE(@cpu): We don't check the WildcardDomains feature flag here since
-	// `identifier.Wildcard` is a new field only set when the feature flag was
-	// enabled.
-	if identifier.Wildcard {
+	// If the identifier is for a DNS wildcard name we only
+	// provide a DNS-01 challenge as a matter of CA policy.
+	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
-		// a wildcard identifier per LE policy. We also must have the pseudo-type
-		// DNS-01-Wildcard challenge type available.
-		if !pa.enabledChallenges[core.ChallengeTypeDNS01] ||
-			!pa.enabledChallenges[core.ChallengeTypeDNS01Wildcard] {
+		// a wildcard identifier per LE policy.
+		if !pa.enabledChallenges[core.ChallengeTypeDNS01] {
 			return nil, nil, fmt.Errorf(
-				"Challenges requested for wildcard identifier but DNS-01 or " +
-					"DNS-01-Wildcard challenge types are not enabled")
+				"Challenges requested for wildcard identifier but DNS-01 " +
+					"challenge type is not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
-		challenges = []core.Challenge{core.DNSChallenge01Wildcard()}
+		challenges = []core.Challenge{core.DNSChallenge01()}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
 		if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
