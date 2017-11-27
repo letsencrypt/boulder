@@ -90,8 +90,8 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, []*dns.CNAME, error) {
-	return nil, nil, nil
+func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
+	return nil, nil
 }
 
 // LookupMX is a mock

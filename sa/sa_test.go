@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -555,6 +556,7 @@ func TestAddCertificate(t *testing.T) {
 func TestCountCertificatesByNames(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
+
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
 	certDER, err := ioutil.ReadFile("test-cert.der")
@@ -604,11 +606,26 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertEquals(t, *counts[0].Count, int64(0))
 
 	// Add a second test cert (for example.co.bn) and query for multiple names.
+	names := []string{"example.com", "foo.com", "example.co.bn"}
+
+	// Override countCertificatesByName with an implementation of certCountFunc
+	// that will block forever if it's called in serial, but will succeed if
+	// called in parallel.
+	var interlocker sync.WaitGroup
+	interlocker.Add(len(names))
+	sa.parallelismPerRPC = len(names)
+	oldCertCountFunc := sa.countCertificatesByName
+	sa.countCertificatesByName = func(domain string, earliest, latest time.Time) (int, error) {
+		interlocker.Done()
+		interlocker.Wait()
+		return oldCertCountFunc(domain, earliest, latest)
+	}
+
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
 	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
+	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 3)
 

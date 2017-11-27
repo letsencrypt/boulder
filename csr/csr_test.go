@@ -189,6 +189,6 @@ func TestNormalizeCSR(t *testing.T) {
 	for _, c := range cases {
 		normalizeCSR(c.csr, c.forceCN)
 		test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
-		test.AssertDeepEquals(t, c.expectedNames, c.expectedNames)
+		test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
 	}
 }

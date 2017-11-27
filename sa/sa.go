@@ -28,6 +28,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+type certCountFunc func(domain string, earliest, latest time.Time) (int, error)
+
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
@@ -39,6 +41,10 @@ type SQLStorageAuthority struct {
 	// max parallelism they will use (to avoid consuming too many MariaDB
 	// threads).
 	parallelismPerRPC int
+
+	// We use a function type here so we can mock out this internal function in
+	// unittests.
+	countCertificatesByName certCountFunc
 }
 
 func digest256(data []byte) []byte {
@@ -86,6 +92,8 @@ func NewSQLStorageAuthority(
 		scope:             scope,
 		parallelismPerRPC: parallelismPerRPC,
 	}
+
+	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
 
 	return ssa, nil
 }
@@ -430,7 +438,7 @@ const countCertificatesExactSelect = `
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
-func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(domain string, earliest, latest time.Time) (int, error) {
 	return ssa.countCertificates(domain, earliest, latest, countCertificatesSelect)
 }
 
@@ -785,7 +793,9 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	return tx.Commit()
 }
 
-// FinalizeAuthorization converts a Pending Authorization to a final one
+// FinalizeAuthorization converts a Pending Authorization to a final one. If the
+// Authorization is not found a berrors.NotFound result is returned. If the
+// Authorization is not valid a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -794,7 +804,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = berrors.InternalServerError("authorization with ID %q not found", authz.ID)
+		err = berrors.NotFoundError("authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
@@ -805,7 +815,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	auth := &authzModel{authz}
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, berrors.InternalServerError("authorization with ID %q not found", authz.ID))
+		return Rollback(tx, berrors.NotFoundError("authorization with ID %q not found", authz.ID))
 	}
 	if err != nil {
 		return Rollback(tx, err)
