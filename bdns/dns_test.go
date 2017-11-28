@@ -278,7 +278,7 @@ func TestDNSLookupsNoServer(t *testing.T) {
 	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
+	_, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
 
@@ -294,18 +294,18 @@ func TestDNSServFail(t *testing.T) {
 
 	// CAA lookup ignores validation failures from the resolver for now
 	// and returns an empty list of CAA records.
-	emptyCaa, _, err := obj.LookupCAA(context.Background(), bad)
+	emptyCaa, err := obj.LookupCAA(context.Background(), bad)
 	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
 	test.AssertNotError(t, err, "LookupCAA returned an error")
 
 	// When we turn on enforceCAASERVFAIL, such lookups should fail.
 	obj.caaSERVFAILExceptions = map[string]bool{"servfailexception.example.com": true}
-	emptyCaa, _, err = obj.LookupCAA(context.Background(), bad)
+	emptyCaa, err = obj.LookupCAA(context.Background(), bad)
 	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
 	test.AssertError(t, err, "LookupCAA should have returned an error")
 
 	// Unless they are on the exception list
-	emptyCaa, _, err = obj.LookupCAA(context.Background(), "servfailexception.example.com")
+	emptyCaa, err = obj.LookupCAA(context.Background(), "servfailexception.example.com")
 	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
 	test.AssertNotError(t, err, "LookupCAA for servfail exception returned an error")
 }
@@ -411,15 +411,15 @@ func TestDNSNXDOMAIN(t *testing.T) {
 func TestDNSLookupCAA(t *testing.T) {
 	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	caas, _, err := obj.LookupCAA(context.Background(), "bracewel.net")
+	caas, err := obj.LookupCAA(context.Background(), "bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
 
-	caas, _, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
+	caas, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
 
-	caas, _, err = obj.LookupCAA(context.Background(), "cname.example.com")
+	caas, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
 }

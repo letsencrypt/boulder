@@ -793,7 +793,9 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	return tx.Commit()
 }
 
-// FinalizeAuthorization converts a Pending Authorization to a final one
+// FinalizeAuthorization converts a Pending Authorization to a final one. If the
+// Authorization is not found a berrors.NotFound result is returned. If the
+// Authorization is not valid a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -802,7 +804,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = berrors.InternalServerError("authorization with ID %q not found", authz.ID)
+		err = berrors.NotFoundError("authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
@@ -813,7 +815,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	auth := &authzModel{authz}
 	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		return Rollback(tx, berrors.InternalServerError("authorization with ID %q not found", authz.ID))
+		return Rollback(tx, berrors.NotFoundError("authorization with ID %q not found", authz.ID))
 	}
 	if err != nil {
 		return Rollback(tx, err)

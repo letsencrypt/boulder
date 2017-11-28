@@ -29,7 +29,6 @@
     },
     "features": {
       "UDPDNS": true,
-      "LegacyCAA": true,
       "IPv6First": true
     },
     "remoteVAs": [

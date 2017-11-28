@@ -26,7 +26,6 @@ const (
 	DirectoryMeta
 	AllowRenewalFirstRL
 	RecheckCAA
-	LegacyCAA
 	UDPDNS
 	ROCACheck
 	// Allow issuance of wildcard domains for ACMEv2
@@ -49,7 +48,6 @@ var features = map[FeatureFlag]bool{
 	DirectoryMeta:            false,
 	AllowRenewalFirstRL:      false,
 	RecheckCAA:               false,
-	LegacyCAA:                false,
 	UDPDNS:                   false,
 	ROCACheck:                false,
 	WildcardDomains:          false,

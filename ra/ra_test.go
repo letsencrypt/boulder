@@ -2569,6 +2569,42 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 		"wildcard order")
 }
 
+// TestUpdateMissingAuthorization tests the race condition where a challenge is
+// updated to valid concurrently with another attempt to have the challenge
+// updated. Previously this would return a `berrors.InternalServer` error when
+// the row was found missing from `pendingAuthorizations` by the 2nd update
+// since the 1st had already deleted it. We accept this may happen and now test
+// for a `berrors.NotFound` error return.
+//
+// See https://github.com/letsencrypt/boulder/issues/3201
+func TestUpdateMissingAuthorization(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ctx := context.Background()
+
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	// Twiddle the authz to pretend its been validated by the VA
+	authz.Status = "valid"
+	authz.Challenges[0].Status = "valid"
+
+	// Call onValidationUpdate once to finalize the new authz state with the SA.
+	// It should not error
+	err = ra.onValidationUpdate(ctx, authz)
+	test.AssertNotError(t, err, "Initial onValidationUpdate for Authz failed")
+
+	// Call onValidationUpdate again to simulate another validation attempt
+	// finishing. It should error since the pendingAuthorization row has been
+	// removed by the first finalization update.
+	err = ra.onValidationUpdate(ctx, authz)
+	test.AssertError(t, err, "Second onValidationUpdate didn't fail")
+	// It should *not* be an internal server error
+	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
+	// It *should* be a NotFound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b
