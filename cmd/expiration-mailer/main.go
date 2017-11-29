@@ -417,8 +417,9 @@ func initStats(scope metrics.Scope) mailerStats {
 
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "sendLatency",
-			Help: "Time the mailer takes sending messages",
+			Name:    "sendLatency",
+			Help:    "Time the mailer takes sending messages",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
 		})
 	scope.MustRegister(sendLatency)
 
