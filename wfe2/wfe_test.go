@@ -2418,4 +2418,6 @@ func TestPrepAuthzForDisplayWildcard(t *testing.T) {
 
 	// The authz should not have a wildcard prefix in the identifier value
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
+	// The authz should be marked as corresponding to a wildcard name
+	test.AssertEquals(t, authz.Wildcard, true)
 }

@@ -862,6 +862,9 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	// of the protocol.
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
 		authz.Identifier.Value = strings.TrimPrefix(authz.Identifier.Value, "*.")
+		// Mark that the authorization corresponds to a wildcard request since we've
+		// now removed the wildcard prefix from the identifier.
+		authz.Wildcard = true
 	}
 }
 
