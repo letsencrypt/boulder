@@ -766,6 +766,10 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
+// TODO(@cpu): `validateChallengeAndCAA` needs to be updated to accept an
+// authorization instead of a challenge. Subsequently we should also update the
+// function to check CAA IssueWild if the authorization's identifier's value has
+// a `*.` prefix (See #3211)
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
