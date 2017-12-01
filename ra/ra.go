@@ -900,12 +900,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		return emptyCert, berrors.MalformedError(err.Error())
 	}
 
-	if len(csr.DNSNames) == 0 {
-		err = berrors.UnauthorizedError("CSR has no names in it")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
