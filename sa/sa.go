@@ -1577,15 +1577,14 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-		var challs []core.Challenge
-		for _, c := range challObjs {
+		authz.Challenges = make([]core.Challenge, len(challObjs))
+		for i, c := range challObjs {
 			chall, err := modelToChallenge(&c)
 			if err != nil {
 				return nil, err
 			}
-			challs = append(challs, chall)
+			authz.Challenges[i] = chall
 		}
-		authz.Challenges = challs
 	}
 	return authzMapToPB(authzMap)
 }
