@@ -1142,6 +1142,12 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
