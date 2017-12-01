@@ -873,6 +873,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}
 	vStart := va.clk.Now()
 
+	// If the identifier is a wildcard domain we need to validate the base
+	// domain by removing the "*." wildcard prefix.
+	if strings.HasPrefix(domain, "*.") {
+		domain = strings.TrimPrefix(domain, "*.")
+	}
+
 	var remoteError chan *probs.ProblemDetails
 	if len(va.remoteVAs) > 0 {
 		remoteError = make(chan *probs.ProblemDetails, 1)

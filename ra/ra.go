@@ -1354,13 +1354,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	vaCtx := context.Background()
 	go func() {
-		domain := authz.Identifier.Value
-		// If the identifier is a wildcard domain we need to validate the base
-		// domain by removing the "*." wildcard prefix.
-		if strings.HasPrefix(domain, "*.") {
-			domain = strings.TrimPrefix(domain, "*.")
-		}
-		records, err := ra.VA.PerformValidation(vaCtx, domain, authz.Challenges[challengeIndex], authz)
+		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
 			prob = p
