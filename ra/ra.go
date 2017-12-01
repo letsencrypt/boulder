@@ -1576,27 +1576,27 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var missingAuthzs []core.AcmeIdentifier
 	for i, name := range order.Names {
 		ident := orderIdentifiers[i]
-		// If there is an existing authz, process it
-		if authz, exists := nameToExistingAuthz[name]; exists {
-			// If the identifier is a wildcard and the existing authz only has one
-			// DNS-01 type challenge we can reuse it. In theory we will
-			// never get back an authorization for a domain with a wildcard prefix
-			// that doesn't meet this criteria from SA.GetAuthorizations but we verify
-			// again to be safe.
-			if strings.HasPrefix(ident.Value, "*.") &&
-				len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
-				order.Authorizations = append(order.Authorizations, *authz.Id)
-				continue
-			} else {
-				// If the identifier isn't a wildcard, we can reuse any authz that has
-				// the normal number of challenges (e.g. not just DNS-01)
-				order.Authorizations = append(order.Authorizations, *authz.Id)
-				continue
-			}
+		// If there isn't an existing authz, note that its missing and continue
+		if _, exists := nameToExistingAuthz[name]; !exists {
+			missingAuthzs = append(missingAuthzs, ident)
+			continue
 		}
-		// We didn't have an appropriate authz to reuse, track the identifier as
-		// needing a new pending authz.
-		missingAuthzs = append(missingAuthzs, ident)
+		authz := nameToExistingAuthz[name]
+		// If the identifier is a wildcard and the existing authz only has one
+		// DNS-01 type challenge we can reuse it. In theory we will
+		// never get back an authorization for a domain with a wildcard prefix
+		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
+		// again to be safe.
+		if strings.HasPrefix(ident.Value, "*.") &&
+			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			order.Authorizations = append(order.Authorizations, *authz.Id)
+			continue
+		} else {
+			// If the identifier isn't a wildcard, we can reuse any authz that has
+			// the normal number of challenges (e.g. not just DNS-01)
+			order.Authorizations = append(order.Authorizations, *authz.Id)
+			continue
+		}
 	}
 
 	// If the order isn't fully authorized we need to check that the client has
