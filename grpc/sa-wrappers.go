@@ -258,6 +258,19 @@ func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.
 	return int(*response.Count), nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
+	response, err := sac.inner.CountPendingOrders(ctx, &sapb.RegistrationID{Id: &regID})
+	if err != nil {
+		return 0, err
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
 func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sac.inner.CountInvalidAuthorizations(ctx, request)
 }
@@ -758,6 +771,20 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations(ctx context.
 	}
 
 	count, err := sas.inner.CountPendingAuthorizations(ctx, *request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	castedCount := int64(count)
+	return &sapb.Count{Count: &castedCount}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountPendingOrders(ctx context.Context, request *sapb.RegistrationID) (*sapb.Count, error) {
+	if request == nil || request.Id == nil {
+		return nil, errIncompleteRequest
+	}
+
+	count, err := sas.inner.CountPendingOrders(ctx, *request.Id)
 	if err != nil {
 		return nil, err
 	}
