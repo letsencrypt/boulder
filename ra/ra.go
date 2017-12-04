@@ -631,7 +631,6 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names []string,
 	acctID accountID,
 	orderID orderID) error {
-
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
 	// Get all of the authorizations for this account/order
@@ -644,10 +643,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	if err != nil {
 		return err
 	}
-	// Ensure that the names we're checking against are lowercase
-	for i := range names {
-		names[i] = strings.ToLower(names[i])
-	}
+	// Ensure the names from the CSR are free of duplicates & lowercased.
+	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
 	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now())
 }
@@ -906,15 +903,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	// Validate that authorization key is authorized for all domains
+	// Validate that authorization key is authorized for all domains in the CSR
 	names := make([]string, len(csr.DNSNames))
 	copy(names, csr.DNSNames)
-
-	if len(names) == 0 {
-		err = berrors.UnauthorizedError("CSR has no names in it")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
 		err = berrors.MalformedError("certificate public key must be different than account key")
@@ -1548,11 +1539,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if err := ra.PA.WillingToIssue(id); err != nil {
+		if features.Enabled(features.WildcardDomains) {
+			if err := ra.PA.WillingToIssueWildcard(id); err != nil {
+				return nil, err
+			}
+		} else if err := ra.PA.WillingToIssue(id); err != nil {
 			return nil, err
 		}
 	}
 
+	// Check whether there are existing non-expired authorizations for the set of
+	// order names
 	now := ra.clk.Now().UnixNano()
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID: order.RegistrationID,
@@ -1563,29 +1560,61 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	gotAuthzFor := make(map[string]bool, len(order.Names))
+	// Collect up the authorizations we found into a map keyed by the domains the
+	// authorizations correspond to
+	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(order.Names))
 	for _, v := range existingAuthz.Authz {
-		gotAuthzFor[*v.Domain] = true
-		order.Authorizations = append(order.Authorizations, *v.Authz.Id)
+		nameToExistingAuthz[*v.Domain] = v.Authz
 	}
 
-	if len(gotAuthzFor) < len(order.Names) {
+	// For each of the names in the order, if there is an acceptable
+	// existing authz, append it to the order to reuse it. Otherwise track
+	// that there is a missing authz for that name.
+	var missingAuthzNames []string
+	for _, name := range order.Names {
+		// If there isn't an existing authz, note that its missing and continue
+		if _, exists := nameToExistingAuthz[name]; !exists {
+			missingAuthzNames = append(missingAuthzNames, name)
+			continue
+		}
+		authz := nameToExistingAuthz[name]
+		// If the identifier is a wildcard and the existing authz only has one
+		// DNS-01 type challenge we can reuse it. In theory we will
+		// never get back an authorization for a domain with a wildcard prefix
+		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
+		// again to be safe.
+		if strings.HasPrefix(name, "*.") &&
+			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			order.Authorizations = append(order.Authorizations, *authz.Id)
+			continue
+		} else {
+			// If the identifier isn't a wildcard, we can reuse any authz that has
+			// the normal number of challenges (e.g. not just DNS-01)
+			order.Authorizations = append(order.Authorizations, *authz.Id)
+			continue
+		}
+	}
+
+	// If the order isn't fully authorized we need to check that the client has
+	// rate limit room for more pending authorizations
+	if len(missingAuthzNames) > 0 {
 		if err := ra.checkPendingAuthorizationLimit(ctx, *order.RegistrationID); err != nil {
 			return nil, err
 		}
 	}
 
+	// Loop through each of the names missing authzs and create a new pending
+	// authorization for each.
 	var newAuthzs []*corepb.Authorization
-	for _, name := range order.Names {
-		if gotAuthzFor[name] {
-			continue
-		}
-		identifier := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
+	for _, name := range missingAuthzNames {
 		// TODO(#3069): Batch this check
-		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, identifier.Value); err != nil {
+		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
 			return nil, err
 		}
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier)
+		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: name,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1636,8 +1665,14 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		}
 	}
 
-	// Create challenges. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(identifier)
+	// Create challenges. The WFE will update them with URIs before sending them out.
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier)
+	if err != nil {
+		// The only time ChallengesFor errors it is a fatal configuration error
+		// where challenges required by policy for an identifier are not enabled. We
+		// want to treat this as an internal server error.
+		return nil, berrors.InternalServerError(err.Error())
+	}
 	// Check each challenge for sanity.
 	for _, challenge := range challenges {
 		if err := challenge.CheckConsistencyForClientOffer(); err != nil {

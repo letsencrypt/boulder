@@ -42,6 +42,7 @@
       ]
     },
     "features": {
+      "WildcardDomains": true,
       "ROCACheck": true,
       "UDPDNS": true,
       "AllowKeyRollover": true,

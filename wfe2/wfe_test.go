@@ -277,11 +277,15 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
 func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+	return nil
+}
+
+func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
@@ -2390,4 +2394,30 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	if responseWriter.Code != http.StatusCreated {
 		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
 	}
+}
+
+func TestPrepAuthzForDisplayWildcard(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// Make an authz for a wildcard identifier
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusPending,
+		RegistrationID: 1,
+		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.example.com"},
+		Challenges: []core.Challenge{
+			{
+				ID:   12345,
+				Type: "dns",
+			},
+		},
+	}
+
+	// Prep the wildcard authz for display
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+
+	// The authz should not have a wildcard prefix in the identifier value
+	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
+	// The authz should be marked as corresponding to a wildcard name
+	test.AssertEquals(t, authz.Wildcard, true)
 }

@@ -854,6 +854,18 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+
+	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
+	// allows this internally as a means of tracking when an authorization
+	// corresponds to a wildcard request (e.g. to handle CAA properly). We strip
+	// the "*." prefix from the Authz's Identifier's Value here to respect the law
+	// of the protocol.
+	if strings.HasPrefix(authz.Identifier.Value, "*.") {
+		authz.Identifier.Value = strings.TrimPrefix(authz.Identifier.Value, "*.")
+		// Mark that the authorization corresponds to a wildcard request since we've
+		// now removed the wildcard prefix from the identifier.
+		authz.Wildcard = true
+	}
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
@@ -1428,7 +1440,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	// We only allow specifying Identifiers in a new order request - we ignore the
-	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-07
+	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-08
 	var newOrderRequest struct {
 		Identifiers []core.AcmeIdentifier `json:"identifiers"`
 	}

@@ -198,6 +198,80 @@ func TestWillingToIssue(t *testing.T) {
 	}
 }
 
+func TestWillingToIssueWildcard(t *testing.T) {
+	bannedDomains := []string{
+		`zombo.gov.us`,
+	}
+	pa := paImpl(t)
+
+	bannedBytes, err := json.Marshal(blacklistJSON{
+		Blacklist: bannedDomains,
+	})
+	test.AssertNotError(t, err, "Couldn't serialize banned list")
+	f, _ := ioutil.TempFile("", "test-wildcard-banlist.txt")
+	defer os.Remove(f.Name())
+	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
+	err = pa.SetHostnamePolicyFile(f.Name())
+	test.AssertNotError(t, err, "Couldn't load policy contents from file")
+
+	makeDNSIdent := func(domain string) core.AcmeIdentifier {
+		return core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: domain,
+		}
+	}
+
+	testCases := []struct {
+		Name        string
+		Ident       core.AcmeIdentifier
+		ExpectedErr error
+	}{
+		{
+			Name:        "Non-DNS identifier",
+			Ident:       core.AcmeIdentifier{Type: "nickname", Value: "cpu"},
+			ExpectedErr: errInvalidIdentifier,
+		},
+		{
+			Name:        "Too many wildcards",
+			Ident:       makeDNSIdent("ok.*.whatever.*.example.com"),
+			ExpectedErr: errTooManyWildcards,
+		},
+		{
+			Name:        "Misplaced wildcard",
+			Ident:       makeDNSIdent("ok.*.whatever.example.com"),
+			ExpectedErr: errMalformedWildcard,
+		},
+		{
+			Name:        "Missing ICANN TLD",
+			Ident:       makeDNSIdent("*.ok.madeup"),
+			ExpectedErr: errNonPublic,
+		},
+		{
+			Name:        "Wildcard for ICANN TLD",
+			Ident:       makeDNSIdent("*.com"),
+			ExpectedErr: errICANNTLDWildcard,
+		},
+		{
+			Name:        "Forbidden base domain",
+			Ident:       makeDNSIdent("*.zombo.gov.us"),
+			ExpectedErr: errBlacklisted,
+		},
+		{
+			Name:        "Valid wildcard domain",
+			Ident:       makeDNSIdent("*.everything.is.possible.at.zombo.com"),
+			ExpectedErr: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := pa.WillingToIssueWildcard(tc.Ident)
+			test.AssertEquals(t, result, tc.ExpectedErr)
+		})
+	}
+}
+
 var accountKeyJSON = `{
   "kty":"RSA",
   "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
@@ -207,7 +281,8 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
+	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{})
+	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
@@ -223,6 +298,45 @@ func TestChallengesFor(t *testing.T) {
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
+}
+
+func TestChallengesForWildcard(t *testing.T) {
+	// wildcardIdent is an identifier for a wildcard domain name
+	wildcardIdent := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "*.zombo.com",
+	}
+
+	mustConstructPA := func(t *testing.T, enabledChallenges map[string]bool) *AuthorityImpl {
+		pa, err := New(enabledChallenges)
+		test.AssertNotError(t, err, "Couldn't create policy implementation")
+		return pa
+	}
+
+	// First try to get a challenge for the wildcard ident without the
+	// DNS-01 challenge type enabled. This should produce an error
+	var enabledChallenges = map[string]bool{
+		core.ChallengeTypeHTTP01:   true,
+		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    false,
+	}
+	pa := mustConstructPA(t, enabledChallenges)
+	_, _, err := pa.ChallengesFor(wildcardIdent)
+	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
+		"when DNS-01 was disabled")
+	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
+		"identifier but DNS-01 challenge type is not enabled")
+
+	// Try again with DNS-01 enabled. It should not error and
+	// should return only one DNS-01 type challenge
+	enabledChallenges[core.ChallengeTypeDNS01] = true
+	pa = mustConstructPA(t, enabledChallenges)
+	challenges, combinations, err := pa.ChallengesFor(wildcardIdent)
+	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
+		"unexpectedly")
+	test.AssertEquals(t, len(combinations), 1)
+	test.AssertEquals(t, len(challenges), 1)
+	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
 }
 
 func TestExtractDomainIANASuffix_Valid(t *testing.T) {
