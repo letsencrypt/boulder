@@ -5,6 +5,7 @@ CREATE TABLE orders (
        id BIGINT(20) NOT NULL AUTO_INCREMENT,
        registrationID BIGINT(20) NOT NULL,
        expires DATETIME NOT NULL,
+       csr MEDIUMBLOB NOT NULL,
        error MEDIUMBLOB DEFAULT NULL,
        certificateSerial VARCHAR(255) DEFAULT NULL,
        status VARCHAR(255) NOT NULL,
