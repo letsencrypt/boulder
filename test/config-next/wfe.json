@@ -22,7 +22,7 @@
     },
     "raService": {
       "serverAddresses": ["ra.boulder:19094"],
-      "timeout": "15s"
+      "timeout": "20s"
     },
     "saService": {
       "serverAddresses": ["sa.boulder:19095"],
