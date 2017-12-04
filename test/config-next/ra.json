@@ -20,7 +20,7 @@
     },
     "vaService": {
       "serverAddresses": ["va.boulder:19092"],
-      "timeout": "15s"
+      "timeout": "20s"
     },
     "caService": {
       "serverAddresses": ["ca.boulder:19093"],
