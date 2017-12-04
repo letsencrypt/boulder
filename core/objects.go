@@ -385,7 +385,7 @@ type Authorization struct {
 	// authorization was created as a result of an order containing a name with
 	// a `*.`wildcard prefix. This will help convey to users that an
 	// Authorization with the identifier `example.com` and one DNS-01 challenge
-	// corrsponds to a name `*.example.com` from an associated order.
+	// corresponds to a name `*.example.com` from an associated order.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
 }
 
