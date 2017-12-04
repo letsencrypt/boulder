@@ -47,7 +47,7 @@ const (
 // before timing out. This timeout ignores the base RPC timeout and is strictly
 // used for the Dial operations that take place during an
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
-var singleDialTimeout = time.Second * 5
+var singleDialTimeout = time.Second * 10
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -66,15 +66,17 @@ type vaMetrics struct {
 func initMetrics(stats metrics.Scope) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "validation_time",
-			Help: "Time taken to validate a challenge",
+			Name:    "validation_time",
+			Help:    "Time taken to validate a challenge",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(validationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "remote_validation_time",
-			Help: "Time taken to remotely validate a challenge",
+			Name:    "remote_validation_time",
+			Help:    "Time taken to remotely validate a challenge",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(remoteValidationTime)
@@ -766,6 +768,10 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
+// TODO(@cpu): `validateChallengeAndCAA` needs to be updated to accept an
+// authorization instead of a challenge. Subsequently we should also update the
+// function to check CAA IssueWild if the authorization's identifier's value has
+// a `*.` prefix (See #3211)
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
@@ -872,6 +878,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
+
+	// If the identifier is a wildcard domain we need to validate the base
+	// domain by removing the "*." wildcard prefix.
+	if strings.HasPrefix(domain, "*.") {
+		domain = strings.TrimPrefix(domain, "*.")
+	}
 
 	var remoteError chan *probs.ProblemDetails
 	if len(va.remoteVAs) > 0 {

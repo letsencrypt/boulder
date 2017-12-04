@@ -380,6 +380,13 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
+
+	// Wildcard is a Boulder-specific Authorization field that indicates the
+	// authorization was created as a result of an order containing a name with
+	// a `*.`wildcard prefix. This will help convey to users that an
+	// Authorization with the identifier `example.com` and one DNS-01 challenge
+	// corresponds to a name `*.example.com` from an associated order.
+	Wildcard bool `json:"wildcard,omitempty" db:"-"`
 }
 
 // FindChallenge will look for the given challenge inside this authorization. If

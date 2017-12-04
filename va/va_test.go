@@ -340,9 +340,15 @@ func TestHTTPTimeout(t *testing.T) {
 	started := time.Now()
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	took := time.Since(started)
-	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	// Check that the HTTP connection does't return before a timeout, and times
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("HTTP timed out before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (singleDialTimeout * 2))),
+		fmt.Sprintf("HTTP connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
@@ -517,9 +523,15 @@ func TestTLSSNI01(t *testing.T) {
 		t.Fatalf("Validation should've failed")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	// Check that the TLS connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "TLS returned before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "TLS connection didn't timeout after 5 seconds")
+	// Check that the TLS connection doesn't return before a timeout, and times
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("TLS connection returned before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (2 * singleDialTimeout))),
+		fmt.Sprintf("TLS connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
@@ -589,9 +601,15 @@ func TestTLSSNI02(t *testing.T) {
 		t.Fatalf("Validation should have failed")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	// Check that the TLS connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "TLS returned before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "TLS connection didn't timeout after 5 seconds")
+	// Check that the TLS connection doesn't return before a timeout, and times
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("TLS connection returned before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (2 * singleDialTimeout))),
+		fmt.Sprintf("TLS connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
@@ -846,6 +864,42 @@ func TestPerformValidationValid(t *testing.T) {
 	}
 	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
 		t.Errorf("PerformValidation didn't log validation hostname.")
+	}
+}
+
+// TestPerformValidationWildcard tests that the VA properly strips the `*.`
+// prefix from a wildcard name provided to the PerformValidation function.
+func TestPerformValidationWildcard(t *testing.T) {
+	va, mockLog := setup(nil, 0)
+
+	// create a challenge with well known token
+	chalDNS := core.DNSChallenge01()
+	chalDNS.Token = expectedToken
+	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
+	// perform a validation for a wildcard name
+	_, prob := va.PerformValidation(context.Background(), "*.good-dns01.com", chalDNS, core.Authorization{})
+	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":   "dns-01",
+		"result": "valid",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
+	resultLog := mockLog.GetAllMatching(`Validation result`)
+	if len(resultLog) != 1 {
+		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	}
+
+	// We expect that the top level Hostname reflect the wildcard name
+	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation hostname.")
+	}
+	// We expect that the ValidationRecord contain the correct non-wildcard
+	// hostname that was validated
+	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation record hostname.")
 	}
 }
 

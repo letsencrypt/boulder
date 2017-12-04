@@ -1596,3 +1596,81 @@ func TestAddPendingAuthorizations(t *testing.T) {
 		test.AssertNotError(t, err, "sa.GetAuthorization failed")
 	}
 }
+
+func TestCountPendingOrders(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour).UnixNano()
+	status := string(core.StatusPending)
+
+	// Counting pending orders for a reg ID that doesn't exist should return 0
+	count, err := sa.CountPendingOrders(ctx, 12345)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations for fake reg ID")
+	test.AssertEquals(t, count, 0)
+
+	// Add one pending order
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"abcd"},
+		Status:         &status,
+	})
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+
+	// We expect there to be a count of one for this reg ID
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	// Create a pending order that expired an hour ago
+	expires = fc.Now().Add(-time.Hour).UnixNano()
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"abcd"},
+		Status:         &status,
+	})
+	test.AssertNotError(t, err, "Couldn't create new expired pending order")
+
+	// We still expect there to be a count of one for this reg ID since the order
+	// added above is expired
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	// Create a non-pending order
+	expires = fc.Now().Add(time.Hour).UnixNano()
+	status = "off-the-hook"
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"abcd"},
+		Status:         &status,
+	})
+	test.AssertNotError(t, err, "Couldn't create new non-pending order")
+
+	// We still expect there to be a count of one for this reg ID since the order
+	// added above is not pending
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	// If the clock is advanced by two hours we expect the count to return to
+	// 0 for this reg ID since all of the pending orders we created will have
+	// expired.
+	fc.Add(2 * time.Hour)
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+}

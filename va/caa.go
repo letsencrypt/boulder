@@ -35,6 +35,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
+// TODO(@cpu): `checkCAA` needs to be updated to accept an authorization instead
+// of a challenge. Subsequently we should also update the function to check CAA
+// IssueWild if the authorization's identifier's value has a `*.` prefix (See
+// #3211)
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {

@@ -26,6 +26,7 @@
       ]
     },
     "features": {
+      "WildcardDomains": true,
       "AllowAccountDeactivation": true,
       "AllowRenewalFirstRL": true
     }

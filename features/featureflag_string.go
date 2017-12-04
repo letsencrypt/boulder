@@ -4,9 +4,9 @@ package features
 
 import "fmt"
 
-const _FeatureFlag_name = "unusedAllowAccountDeactivationAllowKeyRolloverResubmitMissingSCTsOnlyUseAIAIssuerURLAllowTLS02ChallengesGenerateOCSPEarlyReusePendingAuthzCountCertificatesExactRandomDirectoryEntryIPv6FirstDirectoryMetaAllowRenewalFirstRLRecheckCAAUDPDNSROCACheck"
+const _FeatureFlag_name = "unusedAllowAccountDeactivationAllowKeyRolloverResubmitMissingSCTsOnlyUseAIAIssuerURLAllowTLS02ChallengesGenerateOCSPEarlyReusePendingAuthzCountCertificatesExactRandomDirectoryEntryIPv6FirstDirectoryMetaAllowRenewalFirstRLRecheckCAAUDPDNSROCACheckWildcardDomains"
 
-var _FeatureFlag_index = [...]uint8{0, 6, 30, 46, 69, 84, 104, 121, 138, 160, 180, 189, 202, 221, 231, 237, 246}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 46, 69, 84, 104, 121, 138, 160, 180, 189, 202, 221, 231, 237, 246, 261}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

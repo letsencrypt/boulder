@@ -963,7 +963,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, star
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
-// authorizations for the give registration.
+// authorizations for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
@@ -976,6 +976,23 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 			"pending": string(core.StatusPending),
 		})
 	return
+}
+
+// CountPendingOrders returns the number of pending, unexpired
+// orders for the given registration.
+func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
+	var count int
+	err := ssa.dbMap.SelectOne(&count,
+		`SELECT count(1) FROM orders
+		WHERE registrationID = :regID AND
+		expires > :now AND
+		status = :pending`,
+		map[string]interface{}{
+			"regID":   regID,
+			"now":     ssa.clk.Now(),
+			"pending": string(core.StatusPending),
+		})
+	return count, err
 }
 
 // CountInvalidAuthorizations counts invalid authorizations for a user expiring
@@ -1564,6 +1581,34 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	// merge pending into valid
 	for name, a := range pendingAuthz {
 		authzMap[name] = a
+	}
+
+	// WildcardDomain issuance requires that the authorizations returned by this
+	// RPC also include populated challenges such that the caller can know if the
+	// challenges meet the wildcard issuance policy (e.g. only 1 DNS-01
+	// challenge). We use a feature flag check here in case this causes
+	// performance regressions.
+	if features.Enabled(features.WildcardDomains) {
+		// Fetch each of the authorizations' associated challenges
+		for _, authz := range authzMap {
+			var challObjs []challModel
+			_, err = ssa.dbMap.Select(
+				&challObjs,
+				getChallengesQuery,
+				map[string]interface{}{"authID": authz.ID},
+			)
+			if err != nil {
+				return nil, err
+			}
+			authz.Challenges = make([]core.Challenge, len(challObjs))
+			for i, c := range challObjs {
+				chall, err := modelToChallenge(&c)
+				if err != nil {
+					return nil, err
+				}
+				authz.Challenges[i] = chall
+			}
+		}
 	}
 	return authzMapToPB(authzMap)
 }
