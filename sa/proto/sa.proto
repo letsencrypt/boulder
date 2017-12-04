@@ -20,6 +20,7 @@ service StorageAuthority {
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
+        rpc CountPendingOrders(RegistrationID) returns (Count) {}
         // Return a count of authorizations with status "invalid" that belong to
         // a given registration ID and expire in the given time range.
         rpc CountInvalidAuthorizations(CountInvalidAuthorizationsRequest) returns (Count) {}

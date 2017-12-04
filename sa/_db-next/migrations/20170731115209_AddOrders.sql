@@ -10,7 +10,9 @@ CREATE TABLE orders (
        certificateSerial VARCHAR(255) DEFAULT NULL,
        status VARCHAR(255) NOT NULL,
        PRIMARY KEY(id),
-       KEY reg_expires (registrationID, expires)
+       -- We need an index on regID, status, expires to ensure the
+       -- countPendingOrdersByRegID RPC has good performance.
+       KEY reg_status_expires (registrationID, status, expires)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE orderToAuthz (

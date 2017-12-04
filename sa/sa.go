@@ -963,7 +963,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, star
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
-// authorizations for the give registration.
+// authorizations for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
@@ -976,6 +976,23 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 			"pending": string(core.StatusPending),
 		})
 	return
+}
+
+// CountPendingOrders returns the number of pending, unexpired
+// orders for the given registration.
+func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
+	var count int
+	err := ssa.dbMap.SelectOne(&count,
+		`SELECT count(1) FROM orders
+		WHERE registrationID = :regID AND
+		expires > :now AND
+		status = :pending`,
+		map[string]interface{}{
+			"regID":   regID,
+			"now":     ssa.clk.Now(),
+			"pending": string(core.StatusPending),
+		})
+	return count, err
 }
 
 // CountInvalidAuthorizations counts invalid authorizations for a user expiring

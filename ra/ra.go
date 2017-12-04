@@ -84,11 +84,12 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz       bool
 	orderLifetime         time.Duration
 
-	regByIPStats         metrics.Scope
-	regByIPRangeStats    metrics.Scope
-	pendAuthByRegIDStats metrics.Scope
-	certsForDomainStats  metrics.Scope
-	totalCertsStats      metrics.Scope
+	regByIPStats           metrics.Scope
+	regByIPRangeStats      metrics.Scope
+	pendAuthByRegIDStats   metrics.Scope
+	pendOrdersByRegIDStats metrics.Scope
+	certsForDomainStats    metrics.Scope
+	totalCertsStats        metrics.Scope
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -123,6 +124,7 @@ func NewRegistrationAuthorityImpl(
 		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
 		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
+		pendOrdersByRegIDStats:       stats.NewScope("RateLimit", "PendingOrdersByRegID"),
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
@@ -425,6 +427,26 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 			return berrors.RateLimitError("too many currently pending authorizations")
 		}
 		ra.pendAuthByRegIDStats.Inc("Pass", 1)
+	}
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) checkPendingOrderLimit(ctx context.Context, regID int64) error {
+	limit := ra.rlPolicies.PendingOrdersPerAccount()
+	if limit.Enabled() {
+		count, err := ra.SA.CountPendingOrders(ctx, regID)
+		if err != nil {
+			return err
+		}
+		// Most rate limits have a key for overrides, but like the pending
+		// authorization limit there is no meaningful key here. Only registration ID
+		// overrides make sense.
+		noKey := ""
+		if count >= limit.GetThreshold(noKey, regID) {
+			ra.pendOrdersByRegIDStats.Inc("Exceeded", 1)
+			return berrors.RateLimitError("too many currently pending orders")
+		}
+		ra.pendOrdersByRegIDStats.Inc("Pass", 1)
 	}
 	return nil
 }
@@ -1534,6 +1556,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		Names:          core.UniqueLowerNames(req.Names),
 		Expires:        &expires,
 		Status:         &status,
+	}
+
+	// Check that the registration ID in question has rate limit space for another
+	// pending order
+	if err := ra.checkPendingOrderLimit(ctx, *req.RegistrationID); err != nil {
+		return nil, err
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
