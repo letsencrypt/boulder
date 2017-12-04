@@ -47,7 +47,7 @@ const (
 // before timing out. This timeout ignores the base RPC timeout and is strictly
 // used for the Dial operations that take place during an
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
-var singleDialTimeout = time.Second * 5
+var singleDialTimeout = time.Second * 10
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
