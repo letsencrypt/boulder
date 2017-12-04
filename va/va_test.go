@@ -341,9 +341,14 @@ func TestHTTPTimeout(t *testing.T) {
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	took := time.Since(started)
 	// Check that the HTTP connection does't return before a timeout, and times
-	// out after 10 seconds
-	test.Assert(t, (took > (time.Second * 10)), "HTTP timed out before 10 seconds")
-	test.Assert(t, (took < (time.Second * 20)), "HTTP connection didn't timeout after 10 seconds")
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("HTTP timed out before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (singleDialTimeout * 2))),
+		fmt.Sprintf("HTTP connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
@@ -519,9 +524,14 @@ func TestTLSSNI01(t *testing.T) {
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	// Check that the TLS connection doesn't return before a timeout, and times
-	// out after 10 seconds
-	test.Assert(t, (took > (time.Second * 10)), "TLS connection returned before 10 seconds")
-	test.Assert(t, (took < (time.Second * 20)), "TLS connection didn't timeout after 10 seconds")
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("TLS connection returned before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (2 * singleDialTimeout))),
+		fmt.Sprintf("TLS connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
@@ -592,9 +602,14 @@ func TestTLSSNI02(t *testing.T) {
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	// Check that the TLS connection doesn't return before a timeout, and times
-	// out after 10 seconds
-	test.Assert(t, (took > (time.Second * 10)), "TLS connection returned before 10 seconds")
-	test.Assert(t, (took < (time.Second * 20)), "TLS connection didn't timeout after 10 seconds")
+	// out after the expected time
+	test.Assert(t,
+		(took > (time.Second * singleDialTimeout)),
+		fmt.Sprintf("TLS connection returned before %d seconds", singleDialTimeout))
+	test.Assert(t,
+		(took < (time.Second * (2 * singleDialTimeout))),
+		fmt.Sprintf("TLS connection didn't timeout after %d seconds",
+			singleDialTimeout))
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
