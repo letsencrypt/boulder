@@ -1566,24 +1566,31 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 		authzMap[name] = a
 	}
 
-	// Fetch each of the authorizations' associated challenges
-	for _, authz := range authzMap {
-		var challObjs []challModel
-		_, err = ssa.dbMap.Select(
-			&challObjs,
-			getChallengesQuery,
-			map[string]interface{}{"authID": authz.ID},
-		)
-		if err != nil {
-			return nil, err
-		}
-		authz.Challenges = make([]core.Challenge, len(challObjs))
-		for i, c := range challObjs {
-			chall, err := modelToChallenge(&c)
+	// WildcardDomain issuance requires that the authorizations returned by this
+	// RPC also include populated challenges such that the caller can know if the
+	// challenges meet the wildcard issuance policy (e.g. only 1 DNS-01
+	// challenge). We use a feature flag check here in case this causes
+	// performance regressions.
+	if features.Enabled(features.WildcardDomains) {
+		// Fetch each of the authorizations' associated challenges
+		for _, authz := range authzMap {
+			var challObjs []challModel
+			_, err = ssa.dbMap.Select(
+				&challObjs,
+				getChallengesQuery,
+				map[string]interface{}{"authID": authz.ID},
+			)
 			if err != nil {
 				return nil, err
 			}
-			authz.Challenges[i] = chall
+			authz.Challenges = make([]core.Challenge, len(challObjs))
+			for i, c := range challObjs {
+				chall, err := modelToChallenge(&c)
+				if err != nil {
+					return nil, err
+				}
+				authz.Challenges[i] = chall
+			}
 		}
 	}
 	return authzMapToPB(authzMap)
