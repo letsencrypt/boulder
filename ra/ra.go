@@ -704,7 +704,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	if len(badNames) > 0 {
 		return berrors.UnauthorizedError(
 			"authorizations for these names not found or expired: %s",
-			strings.Join(core.UniqueLowerNames(badNames), ", "),
+			strings.Join(badNames, ", "),
 		)
 	}
 
@@ -1536,12 +1536,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		Status:         &status,
 	}
 
-	orderIdentifiers := make([]core.AcmeIdentifier, len(order.Names))
 	// Validate that our policy allows issuing for each of the names in the order
-	for i, name := range order.Names {
+	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		orderIdentifiers[i] = id
-
 		if features.Enabled(features.WildcardDomains) {
 			if err := ra.PA.WillingToIssueWildcard(id); err != nil {
 				return nil, err
@@ -1565,20 +1562,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Collect up the authorizations we found into a map keyed by the domains the
 	// authorizations correspond to
-	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(orderIdentifiers))
+	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(order.Names))
 	for _, v := range existingAuthz.Authz {
 		nameToExistingAuthz[*v.Domain] = v.Authz
 	}
 
 	// For each of the names in the order, if there is an acceptable
-	// existing authz, append its ID to the order to reuse it. Otherwise track
-	// that there is a missing authz for a name
-	var missingAuthzs []core.AcmeIdentifier
-	for i, name := range order.Names {
-		ident := orderIdentifiers[i]
+	// existing authz, append it to the order to reuse it. Otherwise track
+	// that there is a missing authz for that name.
+	var missingAuthzNames []string
+	for _, name := range order.Names {
 		// If there isn't an existing authz, note that its missing and continue
 		if _, exists := nameToExistingAuthz[name]; !exists {
-			missingAuthzs = append(missingAuthzs, ident)
+			missingAuthzNames = append(missingAuthzNames, name)
 			continue
 		}
 		authz := nameToExistingAuthz[name]
@@ -1587,7 +1583,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// never get back an authorization for a domain with a wildcard prefix
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
-		if strings.HasPrefix(ident.Value, "*.") &&
+		if strings.HasPrefix(name, "*.") &&
 			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
 			order.Authorizations = append(order.Authorizations, *authz.Id)
 			continue
@@ -1601,21 +1597,24 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
-	if len(missingAuthzs) > 0 {
+	if len(missingAuthzNames) > 0 {
 		if err := ra.checkPendingAuthorizationLimit(ctx, *order.RegistrationID); err != nil {
 			return nil, err
 		}
 	}
 
-	// Loop through each of the identifiers missing authzs and create a new pending
+	// Loop through each of the names missing authzs and create a new pending
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
-	for _, identifier := range missingAuthzs {
+	for _, name := range missingAuthzNames {
 		// TODO(#3069): Batch this check
-		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, identifier.Value); err != nil {
+		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
 			return nil, err
 		}
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier)
+		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: name,
+		})
 		if err != nil {
 			return nil, err
 		}
