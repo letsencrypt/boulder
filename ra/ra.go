@@ -444,7 +444,6 @@ func (ra *RegistrationAuthorityImpl) checkPendingOrderLimit(ctx context.Context,
 		noKey := ""
 		if count >= limit.GetThreshold(noKey, regID) {
 			ra.pendOrdersByRegIDStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, PendingOrdersByRegID, regID: %d", regID))
 			return berrors.RateLimitError("too many currently pending orders")
 		}
 		ra.pendOrdersByRegIDStats.Inc("Pass", 1)
