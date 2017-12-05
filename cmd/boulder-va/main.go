@@ -33,9 +33,6 @@ type config struct {
 		// will be turned into 1.
 		DNSTries int
 
-		// Feature flag to enable enforcement of CAA SERVFAILs.
-		CAASERVFAILExceptions string
-
 		RemoteVAs                   []cmd.GRPCClientConfig
 		MaxRemoteValidationFailures int
 
@@ -95,14 +92,11 @@ func main() {
 		dnsTries = 1
 	}
 	clk := cmd.Clock()
-	caaSERVFAILExceptions, err := bdns.ReadHostList(c.VA.CAASERVFAILExceptions)
-	cmd.FailOnError(err, "Couldn't read CAASERVFAILExceptions file")
 	var resolver bdns.DNSClient
 	if !c.Common.DNSAllowLoopbackAddresses {
 		r := bdns.NewDNSClientImpl(
 			dnsTimeout,
 			[]string{c.Common.DNSResolver},
-			caaSERVFAILExceptions,
 			scope,
 			clk,
 			dnsTries)

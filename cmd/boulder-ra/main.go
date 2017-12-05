@@ -194,7 +194,6 @@ func main() {
 		rai.DNSClient = bdns.NewDNSClientImpl(
 			raDNSTimeout,
 			[]string{c.Common.DNSResolver},
-			nil,
 			scope,
 			cmd.Clock(),
 			dnsTries)
