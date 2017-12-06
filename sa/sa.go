@@ -749,7 +749,10 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 
 }
 
-// UpdatePendingAuthorization updates a Pending Authorization
+// UpdatePendingAuthorization updates a Pending Authorization's Challenges.
+// Despite what the name "UpdatePendingAuthorization" (preserved for legacy
+// reasons) may indicate, the pending authorization table row is not changed,
+// only the associated challenges by way of `sa.updateChallenges`.
 func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -771,16 +774,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		return Rollback(tx, err)
 	}
 
-	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
+	_, err = selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
 		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
 		return Rollback(tx, err)
 	}
-	if err != nil {
-		return Rollback(tx, err)
-	}
-	pa.Authorization = authz
-	_, err = tx.Update(pa)
 	if err != nil {
 		return Rollback(tx, err)
 	}
