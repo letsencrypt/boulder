@@ -9,6 +9,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	berrors "github.com/letsencrypt/boulder/errors"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/test"
@@ -23,8 +24,8 @@ func (s *errorServer) Chill(_ context.Context, _ *testproto.Time) (*testproto.Ti
 }
 
 func TestErrorWrapping(t *testing.T) {
-	si := serverInterceptor{}
-	ci := clientInterceptor{time.Second}
+	si := serverInterceptor{grpc_prometheus.NewServerMetrics()}
+	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics()}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	es := &errorServer{}
 	testproto.RegisterChillerServer(srv, es)
