@@ -1919,7 +1919,7 @@ func (cr noopCAA) IsCAAValid(
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for.
+// names it was called for and whether the call indicated the name was a wildcard
 type caaRecorder struct {
 	sync.Mutex
 	names map[string]bool
@@ -1932,7 +1932,11 @@ func (cr *caaRecorder) IsCAAValid(
 ) (*vaPB.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[*in.Domain] = true
+	var wildcard bool
+	if in.Wildcard != nil {
+		wildcard = *in.Wildcard
+	}
+	cr.names[*in.Domain] = wildcard
 	return &vaPB.IsCAAValidResponse{}, nil
 }
 
@@ -1948,10 +1952,29 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	registrationID int64,
 	names []string,
 	now time.Time) (map[string]*core.Authorization, error) {
+	makeIdentifier := func(name string) core.AcmeIdentifier {
+		return core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: name,
+		}
+	}
 	return map[string]*core.Authorization{
-		"recent.com": &core.Authorization{Expires: &m.recent},
-		"older.com":  &core.Authorization{Expires: &m.older},
-		"older2.com": &core.Authorization{Expires: &m.older},
+		"recent.com": &core.Authorization{
+			Identifier: makeIdentifier("recent.com"),
+			Expires:    &m.recent,
+		},
+		"older.com": &core.Authorization{
+			Identifier: makeIdentifier("older.com"),
+			Expires:    &m.older,
+		},
+		"older2.com": &core.Authorization{
+			Identifier: makeIdentifier("older2.com"),
+			Expires:    &m.older,
+		},
+		"*.wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("*.wildcard.com"),
+			Expires:    &m.older,
+		},
 	}, nil
 }
 
@@ -1967,19 +1990,37 @@ func TestRecheckCAADates(t *testing.T) {
 		recent: fc.Now().Add(15 * time.Hour),
 		older:  fc.Now().Add(5 * time.Hour),
 	}
-	names := []string{"recent.com", "older.com", "older2.com"}
+
+	// NOTE: The names provided here correspond to authorizations in the
+	// `mockSAWithRecentAndOlder`
+	names := []string{"recent.com", "older.com", "older2.com", "*.wildcard.com"}
 	err := ra.checkAuthorizations(context.Background(), names, 999)
+	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
-	if recorder.names["recent.com"] {
+	// We expect that "recent.com" is not checked because its mock authorization
+	// isn't expired
+	if _, present := recorder.names["recent.com"]; present {
 		t.Errorf("Rechecked CAA unnecessarily for recent.com")
 	}
-	if !recorder.names["older.com"] {
-		t.Errorf("Failed to recheck CAA for older.com %#v", recorder.names)
+	// We expect that "older.com" is checked, but not as a wildcard
+	if wildcard, present := recorder.names["older.com"]; !present || wildcard {
+		t.Errorf("Failed to recheck CAA for older.com, or treated it as a wildcard")
 	}
-	if !recorder.names["older2.com"] {
-		t.Errorf("Failed to recheck CAA for older.com")
+	// We expect that "older2.com" is checked, but not as a wildcard
+	if wildcard, present := recorder.names["older2.com"]; !present || wildcard {
+		t.Errorf("Failed to recheck CAA for older.com, or treated it as a wildcard")
+	}
+	// We expect that the check for "*.wildcard.com" is done for the domain
+	// "wildcard.com" without the wildcard prefix.
+	if _, present := recorder.names["*.wildcard.com"]; present {
+		t.Errorf("Failed to recheck CAA for *.wildcard.com - checked wildcard literal, not base domain")
+	}
+	// We expect that the check for "wildcard.com" is done indicating the CAA
+	// lookup should process issueWild
+	if wildcard, present := recorder.names["wildcard.com"]; !present || !wildcard {
+		t.Errorf("Failed to recheck CAA for *.wildcard.com - didn't check wildcard.com as a wildcard CAA lookup")
 	}
 }
 
@@ -2011,7 +2052,11 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
+	names := map[string]bool{
+		"a.com": false,
+		"b.com": false,
+		"c.com": false,
+	}
 	err := ra.recheckCAA(context.Background(), names)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -2021,7 +2066,11 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
+	names := map[string]bool{
+		"a.com": false,
+		"b.com": false,
+		"c.com": false,
+	}
 	ra.caa = &caaFailer{}
 	err := ra.recheckCAA(context.Background(), names)
 	if err == nil {

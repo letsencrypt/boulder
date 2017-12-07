@@ -768,14 +768,20 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
-// TODO(@cpu): `validateChallengeAndCAA` needs to be updated to accept an
-// authorization instead of a challenge. Subsequently we should also update the
-// function to check CAA IssueWild if the authorization's identifier's value has
-// a `*.` prefix (See #3211)
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+// validateChallengeAndCAA performs a challenge validation and CAA validation
+// for the provided identifier and a corresponding challenge. If the wildcard
+// argument is true then the identifier is known to represent the base domain of
+// a wildcard name and the CAA check must process issueWild. If the validation
+// or CAA lookup fail a problem is returned along with the validation records
+// created during the validation attempt.
+func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	challenge core.Challenge,
+	wildcard bool) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		ch <- va.checkCAA(ctx, identifier, wildcard)
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -880,9 +886,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	vStart := va.clk.Now()
 
 	// If the identifier is a wildcard domain we need to validate the base
-	// domain by removing the "*." wildcard prefix.
+	// domain by removing the "*." wildcard prefix and ensure that CAA issueWild
+	// is checked by providing `wildcard = true` to `va.validateChallengeAndCAA`
+	var wildcard bool
 	if strings.HasPrefix(domain, "*.") {
 		domain = strings.TrimPrefix(domain, "*.")
+		wildcard = true
 	}
 
 	var remoteError chan *probs.ProblemDetails
@@ -891,7 +900,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
+	records, prob := va.validateChallengeAndCAA(
+		ctx,
+		core.AcmeIdentifier{Type: "dns", Value: domain},
+		challenge,
+		wildcard)
 
 	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records

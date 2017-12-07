@@ -17,10 +17,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
 ) (*vapb.IsCAAValidResponse, error) {
+	// We allow the presence of nil in the IsCAAValidRequest for backwards
+	// compatibility for callers that haven't updated to provide a value.
+	var wildcard bool
+	if req.Wildcard != nil {
+		wildcard = *req.Wildcard
+	}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
-	})
+	}, wildcard)
 
 	if prob != nil {
 		typ := string(prob.Type)
@@ -35,17 +41,27 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// TODO(@cpu): `checkCAA` needs to be updated to accept an authorization instead
-// of a challenge. Subsequently we should also update the function to check CAA
-// IssueWild if the authorization's identifier's value has a `*.` prefix (See
-// #3211)
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, identifier)
+// checkCAA performs a CAA lookup & validation for the provided identifier. If
+// the wildcard argument is true then the identifier is known to be the base
+// domain corresponding to a wildcard name and so the CAA validation must handle
+// issueWild accordingly  If the CAA lookup & validation fail a problem is returned.
+func (va *ValidationAuthorityImpl) checkCAA(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	wildcard bool) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, identifier, wildcard)
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
+	// We want to indicate which sort of CAA records we looked up in the audit
+	// logs for this check
+	recordType := "issue"
+	if wildcard {
+		recordType = "issuewild"
+	}
 	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+		"Checked CAA %s records for %s, [Present: %t, Valid for issuance: %t]",
+		recordType,
 		identifier.Value,
 		present,
 		valid,
@@ -155,17 +171,32 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return parseResults(results)
 }
 
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
+// checkCAARecords fetches the CAA records for the given identifier and then
+// validates them. If the wildcard argument is true then the validation will
+// treat the identifier as the base domain for a wildcard request, honouring any
+// issueWild CAA records encountered as apppropriate. checkCAARecords returns three values:
+// the first is a bool indicating whether CAA records were present. The second
+// is a bool indicating whether issuance for the identifier is valid. Any errors
+// encountered are returned as the third return value (or nil).
+func (va *ValidationAuthorityImpl) checkCAARecords(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	wildcard bool) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, err
 	}
-	present, valid = va.validateCAASet(caaSet)
+	present, valid = va.validateCAASet(caaSet, wildcard)
 	return present, valid, nil
 }
 
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, valid bool) {
+// validateCAASet checks a provided *CAASet. When the wildcard argument is true
+// this means the CAASet's issueWild records must be validated as well. This
+// function returns two booleans: the first indicates whether the CAASet was
+// empty, the second indicates whether the CAASet is valid for issuance to
+// proceed.
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("CAA.None", 1)
@@ -187,7 +218,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 		va.stats.Inc("CAA.WithUnknownNoncritical", 1)
 	}
 
-	if len(caaSet.Issue) == 0 {
+	if len(caaSet.Issue) == 0 && !wildcard {
 		// Although CAA records exist, none of them pertain to issuance in this case.
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
@@ -196,11 +227,36 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet) (present, vali
 		return true, true
 	}
 
+	// Per RFC 6844 Section 5.3 "issueWild properties MUST be ignored when
+	// processing a request for a domain that is not a wildcard domain". Skip
+	// checking `caaSet.Issuewild` if `wildcard` is false.
+	if wildcard && len(caaSet.Issuewild) > 0 {
+		// We are processing CAA for a wildcard authorization identifier and there
+		// was at least one Issuewild CAA record in the set. This means we must
+		// check that our CAA identity is present in the issueWild set.
+		//
+		for _, caaIssuewild := range caaSet.Issuewild {
+			if extractIssuerDomain(caaIssuewild) == va.issuerDomain {
+				va.stats.Inc("CAA.IssuewildAuthorized", 1)
+				return true, true
+			}
+			// Since our identity is *not* present we must without checking the
+			// `caaSet.Issue` identities because per RFC 6844 Section 5.3 if the domain
+			// is a wildcard domain and there is at least one issuewild property then
+			// "all issue properties MUST be ignored"
+			return true, false
+		}
+	}
+
 	// There are CAA records pertaining to issuance in our case. Note that this
 	// includes the case of the unsatisfiable CAA record value ";", used to
 	// prevent issuance by any CA under any circumstance.
 	//
-	// Our CAA identity must be found in the chosen checkSet.
+	// Our CAA identity must be found in the chosen checkSet. We perform this
+	// check even if `wildcard` is true because we have already ruled out the
+	// presence of `caaSet.Issuewild` records. RFC 6844 is not clear on whether an
+	// Issue record may prevent issuance of a wildcard domain if there are no
+	// Issuewild records so we take the most conservative stance and say they can.
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.issuerDomain {
 			va.stats.Inc("CAA.Authorized", 1)
