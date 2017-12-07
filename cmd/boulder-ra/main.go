@@ -125,13 +125,14 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, scope)
+	clientMetrics := bgrpc.NewClientMetrics(scope)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
 	caaClient := vaPB.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, scope)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Unable to create CA client")
 	// Build a CA client that is only capable of issuing certificates, not
 	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
@@ -140,12 +141,12 @@ func main() {
 
 	var pubc core.Publisher
 	if c.RA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, scope)
+		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 	}
 
-	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, scope)
+	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -215,8 +216,9 @@ func main() {
 
 	var grpcSrv *grpc.Server
 	if c.RA.GRPC != nil {
+		serverMetrics := bgrpc.NewServerMetrics(scope)
 		var listener net.Listener
-		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, tls, scope)
+		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, tls, serverMetrics)
 		cmd.FailOnError(err, "Unable to setup RA gRPC server")
 		gw := bgrpc.NewRegistrationAuthorityServer(rai)
 		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)

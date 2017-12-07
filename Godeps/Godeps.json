@@ -162,8 +162,8 @@
 		},
 		{
 			"ImportPath": "github.com/grpc-ecosystem/go-grpc-prometheus",
-			"Comment": "v1.1-1-g34abd90",
-			"Rev": "34abd90a014618f61222a1b0a7b7eb834a2d0dc3"
+			"Comment": "v1.1-8-g0dafe0d",
+			"Rev": "0dafe0d496ea71181bf2dd039e7e3f44b6bd11a7"
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",

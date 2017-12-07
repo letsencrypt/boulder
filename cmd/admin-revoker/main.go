@@ -70,7 +70,8 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, metrics.NewNoopScope())
+	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
+	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
@@ -79,7 +80,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, metrics.NewNoopScope())
+	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 

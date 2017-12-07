@@ -426,6 +426,9 @@ def test_stats():
             raise Exception("%s not present in %s" % (stat, url))
     expect_stat(8000, "\nresponse_time_count{")
     expect_stat(8000, "\ngo_goroutines ")
+    expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+    expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="UpdateAuthorization",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+    expect_stat(8002, '\ngrpc_client_handling_seconds_count{grpc_method="UpdatePendingAuthorization",grpc_service="sa.StorageAuthority",grpc_type="unary"} ')
     expect_stat(8001, "\ngo_goroutines ")
 
 exit_status = 1
