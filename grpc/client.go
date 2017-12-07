@@ -38,7 +38,7 @@ type registry interface {
 	MustRegister(...prometheus.Collector)
 }
 
-// NewServerMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
+// NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
 // the given registry, with timing histogram enabled. It must be called a
 // maximum of once per registry, or there will be conflicting names.
 func NewClientMetrics(stats registry) *grpc_prometheus.ClientMetrics {
