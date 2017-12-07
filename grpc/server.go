@@ -50,3 +50,12 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, stats metrics.Scope) (*
 	si := &serverInterceptor{}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
 }
+
+// NewServerMetrics constructs a *grpc_prometheus.ServerMetrics, registered with
+// the given registry, with timing histogram enabled.
+func NewServerMetrics(stats registry) *grpc_prometheus.ServerMetrics {
+	metrics := grpc_prometheus.NewServerMetrics()
+	metrics.EnableHandlingTimeHistogram()
+	stats.MustRegister(metrics)
+	return metrics
+}

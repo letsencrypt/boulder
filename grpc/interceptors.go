@@ -35,7 +35,8 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 // comes back up within the timeout. Under gRPC the same effect is achieved by
 // retries up to the Context deadline.
 type clientInterceptor struct {
-	timeout time.Duration
+	timeout       time.Duration
+	clientMetrics *grpc_prometheus.ClientMetrics
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
@@ -56,7 +57,7 @@ func (ci *clientInterceptor) intercept(
 	// Create grpc/metadata.Metadata to encode internal error type if one is returned
 	md := metadata.New(nil)
 	opts = append(opts, grpc.Trailer(&md))
-	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
+	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, md)
 	}
