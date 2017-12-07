@@ -49,7 +49,8 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, serverMetrics *grpc_pro
 }
 
 // NewServerMetrics constructs a *grpc_prometheus.ServerMetrics, registered with
-// the given registry, with timing histogram enabled.
+// the given registry, with timing histogram enabled. It must be called a
+// maximum of once per registry, or there will be conflicting names.
 func NewServerMetrics(stats registry) *grpc_prometheus.ServerMetrics {
 	metrics := grpc_prometheus.NewServerMetrics()
 	metrics.EnableHandlingTimeHistogram()
