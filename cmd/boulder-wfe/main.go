@@ -71,7 +71,6 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 	}
 
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-
 	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))

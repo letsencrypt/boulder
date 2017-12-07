@@ -115,10 +115,11 @@ func main() {
 	tls, err := c.VA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
+	clientMetrics := bgrpc.NewClientMetrics(scope)
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
-			vaConn, err := bgrpc.ClientSetup(&rva, tls, scope)
+			vaConn, err := bgrpc.ClientSetup(&rva, tls, clientMetrics)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
 				remotes,
@@ -142,7 +143,8 @@ func main() {
 		clk,
 		logger)
 
-	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tls, scope)
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tls, serverMetrics)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register VA gRPC server")

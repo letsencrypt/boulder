@@ -14,13 +14,15 @@ import (
 // serverInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
-type serverInterceptor struct{}
+type serverInterceptor struct {
+	serverMetrics *grpc_prometheus.ServerMetrics
+}
 
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
-	resp, err := grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
+	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}

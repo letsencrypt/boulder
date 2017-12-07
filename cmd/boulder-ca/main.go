@@ -162,7 +162,8 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, scope)
+	clientMetrics := bgrpc.NewClientMetrics(scope)
+	conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -177,9 +178,10 @@ func main() {
 		logger)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
+	serverMetrics := bgrpc.NewServerMetrics(scope)
 	var caSrv *grpc.Server
 	if c.CA.GRPCCA != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, scope)
+		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, serverMetrics)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
@@ -191,7 +193,7 @@ func main() {
 	}
 	var ocspSrv *grpc.Server
 	if c.CA.GRPCOCSPGenerator != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, scope)
+		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, serverMetrics)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
