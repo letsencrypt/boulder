@@ -1919,10 +1919,11 @@ func (cr noopCAA) IsCAAValid(
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for and whether the call indicated the name was a wildcard
+// names it was called for and whether the calls indicated the name was a wildcard
 type caaRecorder struct {
 	sync.Mutex
-	names map[string]bool
+	// names is a map from name -> a list of the caaRechecks recorded
+	names map[string][]caaRecheck
 }
 
 func (cr *caaRecorder) IsCAAValid(
@@ -1936,7 +1937,12 @@ func (cr *caaRecorder) IsCAAValid(
 	if in.Wildcard != nil {
 		wildcard = *in.Wildcard
 	}
-	cr.names[*in.Domain] = wildcard
+	recheck := caaRecheck{Name: *in.Domain, Wildcard: wildcard}
+	if _, present := cr.names[*in.Domain]; !present {
+		cr.names[*in.Domain] = []caaRecheck{recheck}
+	} else {
+		cr.names[*in.Domain] = append(cr.names[*in.Domain], recheck)
+	}
 	return &vaPB.IsCAAValidResponse{}, nil
 }
 
@@ -1971,6 +1977,10 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 			Identifier: makeIdentifier("older2.com"),
 			Expires:    &m.older,
 		},
+		"wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("wildcard.com"),
+			Expires:    &m.older,
+		},
 		"*.wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("*.wildcard.com"),
 			Expires:    &m.older,
@@ -1983,7 +1993,7 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	recorder := &caaRecorder{names: make(map[string]bool)}
+	recorder := &caaRecorder{names: make(map[string][]caaRecheck)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
 	ra.SA = &mockSAWithRecentAndOlder{
@@ -1993,34 +2003,62 @@ func TestRecheckCAADates(t *testing.T) {
 
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
-	names := []string{"recent.com", "older.com", "older2.com", "*.wildcard.com"}
+	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
 	err := ra.checkAuthorizations(context.Background(), names, 999)
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
+
 	// We expect that "recent.com" is not checked because its mock authorization
 	// isn't expired
 	if _, present := recorder.names["recent.com"]; present {
 		t.Errorf("Rechecked CAA unnecessarily for recent.com")
 	}
-	// We expect that "older.com" is checked, but not as a wildcard
-	if wildcard, present := recorder.names["older.com"]; !present || wildcard {
-		t.Errorf("Failed to recheck CAA for older.com, or treated it as a wildcard")
+
+	checks, present := recorder.names["older.com"]
+	// We expect that "older.com" is checked
+	if !present {
+		t.Errorf("Failed to recheck CAA for older.com")
 	}
-	// We expect that "older2.com" is checked, but not as a wildcard
-	if wildcard, present := recorder.names["older2.com"]; !present || wildcard {
-		t.Errorf("Failed to recheck CAA for older.com, or treated it as a wildcard")
+	// We expect that it was checked once normally, not as a wildcard
+	if len(checks) != 1 || checks[0].Wildcard {
+		t.Errorf("Checked older.com the wrong number of times, or as a wildcard")
 	}
+
+	checks, present = recorder.names["older2.com"]
+	// We expect that "older2.com" is checked
+	if !present {
+		t.Errorf("Failed to recheck CAA for older2.com")
+	}
+	// We expect that it was checked once normally, not as a wildcard
+	if len(checks) != 1 || checks[0].Wildcard {
+		t.Errorf("Checked older2.com the wrong number of times, or as a wildcard")
+	}
+
 	// We expect that the check for "*.wildcard.com" is done for the domain
 	// "wildcard.com" without the wildcard prefix.
 	if _, present := recorder.names["*.wildcard.com"]; present {
 		t.Errorf("Failed to recheck CAA for *.wildcard.com - checked wildcard literal, not base domain")
 	}
-	// We expect that the check for "wildcard.com" is done indicating the CAA
-	// lookup should process issueWild
-	if wildcard, present := recorder.names["wildcard.com"]; !present || !wildcard {
-		t.Errorf("Failed to recheck CAA for *.wildcard.com - didn't check wildcard.com as a wildcard CAA lookup")
+
+	checks, present = recorder.names["wildcard.com"]
+	// We expect that the check for "wildcard.com" is done.
+	if !present {
+		t.Errorf("Failed to recheck CAA for wildcard.com")
+	}
+	// We expect it was checked *twice* because of the overlapping "wildcard.com"
+	// and "*.wildcard.com" names.
+	if len(checks) != 2 {
+		t.Errorf("Failed to recheck CAA the correct number of times for wildcard.com")
+	}
+	// We expect that only one check was a wildcard check
+	if checks[0].Wildcard && checks[1].Wildcard {
+		t.Errorf("Failed to recheck CAA for wildcard.com, non-wildcard CAA")
+	}
+	// We expect that only one check was a normal non-wildcard check
+	if !checks[0].Wildcard && !checks[1].Wildcard {
+		t.Errorf("Failed to recheck CAA for wildcard.com, wildcard CAA")
 	}
 }
 
@@ -2052,12 +2090,12 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := map[string]bool{
-		"a.com": false,
-		"b.com": false,
-		"c.com": false,
+	rechecks := []caaRecheck{
+		{"a.com", false},
+		{"b.com", false},
+		{"c.com", false},
 	}
-	err := ra.recheckCAA(context.Background(), names)
+	err := ra.recheckCAA(context.Background(), rechecks)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
@@ -2066,13 +2104,13 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := map[string]bool{
-		"a.com": false,
-		"b.com": false,
-		"c.com": false,
+	rechecks := []caaRecheck{
+		{"a.com", false},
+		{"b.com", false},
+		{"c.com", false},
 	}
 	ra.caa = &caaFailer{}
-	err := ra.recheckCAA(context.Background(), names)
+	err := ra.recheckCAA(context.Background(), rechecks)
 	if err == nil {
 		t.Errorf("expected err, got nil")
 	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
