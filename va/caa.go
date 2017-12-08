@@ -240,12 +240,12 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool)
 				va.stats.Inc("CAA.IssuewildAuthorized", 1)
 				return true, true
 			}
-			// Since our identity is *not* present we must without checking the
-			// `caaSet.Issue` identities because per RFC 6844 Section 5.3 if the domain
-			// is a wildcard domain and there is at least one issuewild property then
-			// "all issue properties MUST be ignored"
-			return true, false
 		}
+		// Since our identity is *not* present we must return without checking the
+		// `caaSet.Issue` identities because per RFC 6844 Section 5.3 if the domain
+		// is a wildcard domain and there is at least one issuewild property then
+		// "all issue properties MUST be ignored"
+		return true, false
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this

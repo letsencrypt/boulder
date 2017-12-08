@@ -112,6 +112,15 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		secondRecord.Tag = "issuewild"
 		secondRecord.Value = "letsencrypt.org"
 		results = append(results, &secondRecord)
+	case "satisfiable-multi-wildcard.com":
+		// Ok issuance - first issuewild doesn't permit LE but second does
+		record.Tag = "issuewild"
+		record.Value = "ca.com"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issuewild"
+		secondRecord.Value = "letsencrypt.org"
+		results = append(results, &secondRecord)
 	case "satisfiable-wildcard.com":
 		// Ok issuance - issuewild allows LE
 		record.Tag = "issuewild"
@@ -245,6 +254,13 @@ func TestCAAChecking(t *testing.T) {
 		{
 			Name:     "Good (satisfiable wildcard)",
 			Domain:   "satisfiable-wildcard.com",
+			Wildcard: true,
+			Present:  true,
+			Valid:    true,
+		},
+		{
+			Name:     "Good (multiple issuewild, one satisfiable)",
+			Domain:   "satisfiable-multi-wildcard.com",
 			Wildcard: true,
 			Present:  true,
 			Valid:    true,
