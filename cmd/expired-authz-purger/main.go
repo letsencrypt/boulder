@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,8 +44,7 @@ type expiredAuthzPurger struct {
 }
 
 // purge looks up pending or finalized authzs (depending on the value of
-// `table`) that expire before `purgeBefore`. If `yes` is true, or if a user at
-// the terminal types "y", it will then delete those authzs, using `parallelism`
+// `table`) that expire before `purgeBefore`, using `parallelism`
 // goroutines. It will delete a maximum of `max` authzs.
 // Neither table has an index on `expires` by itself, so we just iterate through
 // the table with LIMIT and OFFSET using the default ordering. Note that this
@@ -55,69 +52,50 @@ type expiredAuthzPurger struct {
 // database will have to scan through many rows before it finds some that meet
 // the expiration criteria. When we move to better authz storage (#2620), we
 // will get an appropriate index that will make this cheaper.
-func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time, parallelism int, max int) error {
-	var ids []string
-	for len(ids) < max {
-		var idBatch []string
-		var query string
-		switch table {
-		case "pendingAuthorizations":
-			query = "SELECT id FROM pendingAuthorizations WHERE expires <= ? ORDER BY id LIMIT ? OFFSET ?"
-		case "authz":
-			query = "SELECT id FROM authz WHERE expires <= ? ORDER BY id LIMIT ? OFFSET ?"
-		}
-		_, err := p.db.Select(
-			&idBatch,
-			query,
-			purgeBefore,
-			p.batchSize,
-			len(ids),
-		)
-		if err != nil && err != sql.ErrNoRows {
-			return err
-		}
-		if len(idBatch) == 0 {
-			break
-		}
-		ids = append(ids, idBatch...)
-	}
-	if len(ids) > max {
-		ids = ids[:max]
+func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int) error {
+	var query string
+	switch table {
+	case "pendingAuthorizations":
+		query = "SELECT id FROM pendingAuthorizations WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
+	case "authz":
+		query = "SELECT id FROM authz WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	}
 
-	if !yes {
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			fmt.Fprintf(
-				os.Stdout,
-				"\nAbout to purge %d authorizations from %s and all associated challenges, proceed? [y/N]: ",
-				len(ids),
-				table,
+	work := make(chan string, 1000)
+	go func() {
+		// id starts as "", which is smaller than all other ids.
+		var id string
+		var count int
+		for count < max {
+			var idBatch []string
+			_, err := p.db.Select(
+				&idBatch,
+				query,
+				map[string]interface{}{
+					"id":      id,
+					"expires": purgeBefore,
+					"limit":   p.batchSize,
+				},
 			)
-			text, err := reader.ReadString('\n')
-			if err != nil {
-				return err
-			}
-			text = strings.ToLower(text)
-			if text != "y\n" && text != "n\n" && text != "\n" {
+			if err != nil && err != sql.ErrNoRows {
+				p.log.AuditErr(fmt.Sprintf("Getting a batch: %s", err))
+				time.Sleep(10)
 				continue
 			}
-			if text == "n\n" || text == "\n" {
-				os.Exit(0)
-			} else {
+			if len(idBatch) == 0 {
 				break
 			}
-		}
-	}
-
-	wg := new(sync.WaitGroup)
-	work := make(chan string)
-	go func() {
-		for _, id := range ids {
-			work <- id
+			count += len(idBatch)
+			for _, v := range idBatch {
+				work <- v
+				// Start the next query at the highest id we saw in this batch.
+				id = v
+			}
 		}
 		close(work)
 	}()
+
+	wg := new(sync.WaitGroup)
 	var deletions int64
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
@@ -140,7 +118,6 @@ func (p *expiredAuthzPurger) purge(table string, yes bool, purgeBefore time.Time
 
 	wg.Wait()
 
-	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", len(ids), table))
 	return nil
 }
 
@@ -166,9 +143,9 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 	return nil
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool, parallelism int, max int) error {
-	for _, table := range []string{"pendingAuthorizations", "authz"} {
-		err := p.purge(table, yes, purgeBefore, parallelism, max)
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int) error {
+	for _, table := range []string{"authz", "pendingAuthorizations"} {
+		err := p.purge(table, purgeBefore, parallelism, max)
 		if err != nil {
 			return err
 		}
@@ -177,7 +154,6 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool, parall
 }
 
 func main() {
-	yes := flag.Bool("yes", false, "Skips the purge confirmation")
 	configPath := flag.String("config", "config.json", "Path to Boulder configuration file")
 	flag.Parse()
 
@@ -222,7 +198,7 @@ func main() {
 	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 	logger.Info("Beginning purge")
-	err = purger.purgeAuthzs(purgeBefore, *yes, int(config.ExpiredAuthzPurger.Parallelism),
+	err = purger.purgeAuthzs(purgeBefore, int(config.ExpiredAuthzPurger.Parallelism),
 		int(config.ExpiredAuthzPurger.MaxAuthzs))
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
