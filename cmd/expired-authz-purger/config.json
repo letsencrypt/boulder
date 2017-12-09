@@ -1,7 +1,7 @@
 {
     "expiredAuthzPurger": {
         "syslog": {
-          "stdoutLevel": 6
+          "stdoutLevel": 7
         },
         "dbConnectFile": "test/secrets/purger_dburl",
         "maxDBConns": 10,

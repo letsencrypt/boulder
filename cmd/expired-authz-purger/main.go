@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -61,7 +60,8 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 		query = "SELECT id FROM authz WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	}
 
-	work := make(chan string, 1000)
+	done := make(chan int)
+	work := make(chan string)
 	go func() {
 		// id starts as "", which is smaller than all other ids.
 		var id string
@@ -82,21 +82,22 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				time.Sleep(10)
 				continue
 			}
-			if len(idBatch) == 0 {
-				break
-			}
-			count += len(idBatch)
 			for _, v := range idBatch {
 				work <- v
+				count += 1
 				// Start the next query at the highest id we saw in this batch.
 				id = v
 			}
+			p.log.Info(fmt.Sprintf("Deleted %d authzs from %s so far", count, table))
+			if len(idBatch) < int(p.batchSize) {
+				break
+			}
 		}
 		close(work)
+		done <- count
 	}()
 
 	wg := new(sync.WaitGroup)
-	var deletions int64
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
@@ -106,18 +107,14 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				if err != nil {
 					p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
 				}
-				atomic.AddInt64(&deletions, 1)
 			}
 		}()
 	}
-	go func() {
-		for _ = range time.Tick(10 * time.Second) {
-			p.log.Info(fmt.Sprintf("Deleted %d authzs from %s so far", deletions, table))
-		}
-	}()
 
+	count := <-done
 	wg.Wait()
 
+	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", count, table))
 	return nil
 }
 
