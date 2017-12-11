@@ -198,8 +198,6 @@ func TestAddAuthorization(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
 	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp, Combinations: combos}
-	err = sa.UpdatePendingAuthorization(ctx, newPa)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, newPa)
@@ -270,9 +268,20 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 }
 
 func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
+	exp := sa.clk.Now().AddDate(0, 0, 1) // expire in 1 day
+
+	combos := make([][]int, 1)
+	combos[0] = []int{0, 1}
 
 	// create pending auth
-	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{{}}})
+	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName},
+		RegistrationID: regID,
+		Challenges:     []core.Challenge{{}},
+		Combinations:   combos,
+	})
 	if err != nil {
 		t.Fatalf("Couldn't create new pending authorization: %s", err)
 	}
@@ -280,18 +289,8 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 
 	// prepare challenge for auth
 	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: domainName, Token: "THISWOULDNTBEAGOODTOKEN"}
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-	exp := time.Now().AddDate(0, 0, 1) // expire in 1 day
-
-	// validate pending auth
-	authz.Status = core.StatusPending
-	authz.Identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName}
-	authz.Expires = &exp
+	// Add some challenges
 	authz.Challenges = []core.Challenge{chall}
-	authz.Combinations = combos
-
-	// save updated auth
 	err = sa.UpdatePendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+authz.ID)
 
@@ -1045,8 +1044,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 		Expires:        &exp,
 		Combinations:   combos,
 	}
-	err = sa.UpdatePendingAuthorization(ctx, newPa)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, newPa)
@@ -1062,12 +1059,10 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
 
+	PA.Status = core.StatusPending
 	PA, err = sa.NewPendingAuthorization(ctx, PA)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
-	PA.Status = core.StatusPending
-	err = sa.UpdatePendingAuthorization(ctx, PA)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	err = sa.DeactivateAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't deactivate pending authorization with ID "+PA.ID)
@@ -1532,9 +1527,6 @@ func TestGetAuthorizations(t *testing.T) {
 	paB, err := sa.NewPendingAuthorization(ctx, pa)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paB.ID != "", "ID shouldn't be blank")
-
-	err = sa.UpdatePendingAuthorization(ctx, paB)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paB.ID)
 
 	paB.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, paB)

@@ -69,12 +69,12 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 		tls, err = c.WFE.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
-
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, stats)
+	clientMetrics := bgrpc.NewClientMetrics(stats)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, stats)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 

@@ -2,7 +2,6 @@ package bdns
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"strings"
@@ -157,11 +156,8 @@ type DNSClientImpl struct {
 	dnsClient                exchanger
 	servers                  []string
 	allowRestrictedAddresses bool
-	// If non-nil, these are already-issued names whose registrar returns SERVFAIL
-	// for CAA queries that get a temporary pass during a notification period.
-	caaSERVFAILExceptions map[string]bool
-	maxTries              int
-	clk                   clock.Clock
+	maxTries                 int
+	clk                      clock.Clock
 
 	queryTime             *prometheus.HistogramVec
 	totalLookupTime       *prometheus.HistogramVec
@@ -180,7 +176,6 @@ type exchanger interface {
 func NewDNSClientImpl(
 	readTimeout time.Duration,
 	servers []string,
-	caaSERVFAILExceptions map[string]bool,
 	stats metrics.Scope,
 	clk clock.Clock,
 	maxTries int,
@@ -230,7 +225,6 @@ func NewDNSClientImpl(
 		dnsClient:                dnsClient,
 		servers:                  servers,
 		allowRestrictedAddresses: false,
-		caaSERVFAILExceptions:    caaSERVFAILExceptions,
 		maxTries:                 maxTries,
 		clk:                      clk,
 		queryTime:                queryTime,
@@ -244,7 +238,7 @@ func NewDNSClientImpl(
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
 func NewTestDNSClientImpl(readTimeout time.Duration, servers []string, stats metrics.Scope, clk clock.Clock, maxTries int) *DNSClientImpl {
-	resolver := NewDNSClientImpl(readTimeout, servers, nil, stats, clk, maxTries)
+	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
@@ -450,19 +444,8 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 		return nil, &DNSError{dnsType, hostname, err, -1}
 	}
 
-	// If the resolver returns SERVFAIL for a certain list of FQDNs, return an
-	// empty set and no error. We originally granted a pass on SERVFAIL because
-	// Cloudflare's DNS, which is behind a lot of hostnames, returned that code.
-	// That is since fixed, but we have a handful of other domains that still return
-	// SERVFAIL, but will need certificate renewals. After a suitable notice
-	// period we will remove these exceptions.
 	if r.Rcode == dns.RcodeServerFailure {
-		if dnsClient.caaSERVFAILExceptions == nil ||
-			dnsClient.caaSERVFAILExceptions[hostname] {
-			return nil, nil
-		} else {
-			return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
-		}
+		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var CAAs []*dns.CAA
@@ -494,23 +477,4 @@ func (dnsClient *DNSClientImpl) LookupMX(ctx context.Context, hostname string) (
 	}
 
 	return results, nil
-}
-
-// ReadHostList reads in a newline-separated file and returns a map containing
-// each entry. If the filename is empty, returns a nil map and no error.
-func ReadHostList(filename string) (map[string]bool, error) {
-	if filename == "" {
-		return nil, nil
-	}
-	body, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	var output = make(map[string]bool)
-	for _, v := range strings.Split(string(body), "\n") {
-		if len(v) > 0 {
-			output[v] = true
-		}
-	}
-	return output, nil
 }

@@ -10,22 +10,21 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 // CodedError is a alias required to appease go vet
 var CodedError = grpc.Errorf
 
-var errNilScope = errors.New("boulder/grpc: received nil scope")
+var errNilMetrics = errors.New("boulder/grpc: received nil ServerMetrics")
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
 // NewServer creates a gRPC server that uses the provided *tls.Config, and
 // verifies that clients present a certificate that (a) is signed by one of
 // the configured ClientCAs, and (b) contains at least one
 // subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, stats metrics.Scope) (*grpc.Server, net.Listener, error) {
-	if stats == nil {
-		return nil, nil, errNilScope
+func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, serverMetrics *grpc_prometheus.ServerMetrics) (*grpc.Server, net.Listener, error) {
+	if serverMetrics == nil {
+		return nil, nil, errNilMetrics
 	}
 	if tls == nil {
 		return nil, nil, errNilTLS
@@ -45,8 +44,16 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, stats metrics.Scope) (*
 		return nil, nil, err
 	}
 
-	grpc_prometheus.EnableHandlingTimeHistogram()
-
-	si := &serverInterceptor{}
+	si := &serverInterceptor{serverMetrics}
 	return grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(si.intercept)), l, nil
+}
+
+// NewServerMetrics constructs a *grpc_prometheus.ServerMetrics, registered with
+// the given registry, with timing histogram enabled. It must be called a
+// maximum of once per registry, or there will be conflicting names.
+func NewServerMetrics(stats registry) *grpc_prometheus.ServerMetrics {
+	metrics := grpc_prometheus.NewServerMetrics()
+	metrics.EnableHandlingTimeHistogram()
+	stats.MustRegister(metrics)
+	return metrics
 }

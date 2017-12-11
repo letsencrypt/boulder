@@ -315,7 +315,7 @@ def get_future_output(cmd, date):
 
 def test_expired_authz_purger():
     def expect(target_time, num, table):
-        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
         if 'via FAKECLOCK' not in out:
             raise Exception("expired-authz-purger was not built with `integration` build tag")
         if num is None:
@@ -426,6 +426,9 @@ def test_stats():
             raise Exception("%s not present in %s" % (stat, url))
     expect_stat(8000, "\nresponse_time_count{")
     expect_stat(8000, "\ngo_goroutines ")
+    expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+    expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="UpdateAuthorization",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+    expect_stat(8002, '\ngrpc_client_handling_seconds_count{grpc_method="UpdatePendingAuthorization",grpc_service="sa.StorageAuthority",grpc_type="unary"} ')
     expect_stat(8001, "\ngo_goroutines ")
 
 exit_status = 1
