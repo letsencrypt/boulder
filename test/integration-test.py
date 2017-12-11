@@ -315,7 +315,7 @@ def get_future_output(cmd, date):
 
 def test_expired_authz_purger():
     def expect(target_time, num, table):
-        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time)
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
         if 'via FAKECLOCK' not in out:
             raise Exception("expired-authz-purger was not built with `integration` build tag")
         if num is None:
