@@ -141,6 +141,8 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 }
 
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int) error {
+	// Purge authz first because it tends to be bigger and in more need of
+	// purging.
 	for _, table := range []string{"authz", "pendingAuthorizations"} {
 		err := p.purge(table, purgeBefore, parallelism, max)
 		if err != nil {
