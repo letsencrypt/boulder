@@ -371,13 +371,17 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // Directory is an HTTP request handler that provides the directory
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
-func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
 		"new-account": newAcctPath,
 		"revoke-cert": revokeCertPath,
+		"new-order":   newOrderPath,
+		"key-change":  rolloverPath,
 	}
-
-	directoryEndpoints["key-change"] = rolloverPath
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
 	// expected set of keys. This ensures that we can properly extend the directory when we
