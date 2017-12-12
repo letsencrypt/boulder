@@ -14,13 +14,15 @@ import (
 // serverInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
-type serverInterceptor struct{}
+type serverInterceptor struct {
+	serverMetrics *grpc_prometheus.ServerMetrics
+}
 
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
-	resp, err := grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
+	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
@@ -35,7 +37,8 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 // comes back up within the timeout. Under gRPC the same effect is achieved by
 // retries up to the Context deadline.
 type clientInterceptor struct {
-	timeout time.Duration
+	timeout       time.Duration
+	clientMetrics *grpc_prometheus.ClientMetrics
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
@@ -56,7 +59,7 @@ func (ci *clientInterceptor) intercept(
 	// Create grpc/metadata.Metadata to encode internal error type if one is returned
 	md := metadata.New(nil)
 	opts = append(opts, grpc.Trailer(&md))
-	err := grpc_prometheus.UnaryClientInterceptor(localCtx, method, req, reply, cc, invoker, opts...)
+	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, md)
 	}

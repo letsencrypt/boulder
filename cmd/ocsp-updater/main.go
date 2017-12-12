@@ -723,18 +723,19 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 		tls, err = c.TLS.Load()
 		cmd.FailOnError(err, "TLS config")
 	}
-	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, stats)
+	clientMetrics := bgrpc.NewClientMetrics(stats)
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
 	// TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewOCSPGeneratorClient.
 	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, stats)
+	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
 
-	conn, err := bgrpc.ClientSetup(c.SAService, tls, stats)
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 

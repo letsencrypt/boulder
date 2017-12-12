@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -32,7 +33,7 @@ func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.Cli
 }
 
 func TestServerInterceptor(t *testing.T) {
-	si := serverInterceptor{}
+	si := serverInterceptor{grpc_prometheus.NewServerMetrics()}
 
 	_, err := si.intercept(context.Background(), nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a nil grpc.UnaryServerInfo")
@@ -45,7 +46,7 @@ func TestServerInterceptor(t *testing.T) {
 }
 
 func TestClientInterceptor(t *testing.T) {
-	ci := clientInterceptor{time.Second}
+	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics()}
 	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
@@ -69,7 +70,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 // timeout is reached, i.e. that FailFast is set to false.
 // https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
-	ci := &clientInterceptor{100 * time.Millisecond}
+	ci := &clientInterceptor{100 * time.Millisecond, grpc_prometheus.NewClientMetrics()}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),

@@ -75,7 +75,8 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
-	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, scope)
+	clientMetrics := bgrpc.NewClientMetrics(scope)
+	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -88,7 +89,8 @@ func main() {
 
 	var grpcSrv *grpc.Server
 	if c.Publisher.GRPC != nil {
-		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, tls, scope)
+		serverMetrics := bgrpc.NewServerMetrics(scope)
+		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, tls, serverMetrics)
 		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 		gw := bgrpc.NewPublisherServerWrapper(pubi)
 		pubPB.RegisterPublisherServer(s, gw)
