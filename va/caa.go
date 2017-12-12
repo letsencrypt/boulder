@@ -53,15 +53,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
-	// We want to indicate which sort of CAA records we looked up in the audit
-	// logs for this check
-	recordType := "issue"
-	if wildcard {
-		recordType = "issuewild"
-	}
 	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA %s records for %s, [Present: %t, Valid for issuance: %t]",
-		recordType,
+		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
 		identifier.Value,
 		present,
 		valid,
