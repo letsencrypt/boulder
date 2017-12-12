@@ -687,7 +687,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 }
 
 // A caaRecheck is a small internal type we use to track CAA "rechecks" that
-// need to be done for stale authorizations.
+// need to be done for authorizations older than 8 hours.
 type caaRecheck struct {
 	// The name that requires rechecking
 	Name string
