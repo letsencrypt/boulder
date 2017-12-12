@@ -52,6 +52,7 @@ const (
 	issuerPath        = "/acme/issuer-cert"
 	buildIDPath       = "/build"
 	rolloverPath      = "/acme/key-change"
+	newNoncePath      = "/acme/new-nonce"
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "finalize-order"
@@ -316,6 +317,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
@@ -378,6 +380,7 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
 		"new-account": newAcctPath,
+		"new-nonce":   newNoncePath,
 		"revoke-cert": revokeCertPath,
 		"new-order":   newOrderPath,
 		"key-change":  rolloverPath,
@@ -405,6 +408,17 @@ func (wfe *WebFrontEndImpl) Directory(
 	}
 
 	response.Write(relDir)
+}
+
+// Nonce is an endpoint for getting a fresh nonce with an HTTP GET or HEAD
+// request. This endpoint only returns a no content header - the `HandleFunc`
+// wrapper ensures that a nonce is written in the correct response header.
+func (wfe *WebFrontEndImpl) Nonce(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	response.WriteHeader(http.StatusNoContent)
 }
 
 // sendError sends an error response represented by the given ProblemDetails,

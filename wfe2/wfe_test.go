@@ -681,6 +681,7 @@ func TestDirectory(t *testing.T) {
   "meta": {
     "terms-of-service": "http://example.invalid/terms"
   },
+  "new-nonce": "http://localhost:4300/acme/new-nonce",
   "new-account": "http://localhost:4300/acme/new-acct",
   "new-order": "http://localhost:4300/acme/new-order",
   "revoke-cert": "http://localhost:4300/acme/revoke-cert",
@@ -715,21 +716,36 @@ func TestRelativeDirectory(t *testing.T) {
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
 
+	expectedDirectory := func(hostname string) string {
+		var expected bytes.Buffer
+
+		expected.WriteString("{")
+		expected.WriteString(fmt.Sprintf(`"key-change":"%s/acme/key-change",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"new-nonce":"%s/acme/new-nonce",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"new-account":"%s/acme/new-acct",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"new-order":"%s/acme/new-order",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"revoke-cert":"%s/acme/revoke-cert",`, hostname))
+		expected.WriteString(`"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
+		expected.WriteString(`"meta":{"terms-of-service":"http://example.invalid/terms"}`)
+		expected.WriteString("}")
+		return expected.String()
+	}
+
 	dirTests := []struct {
 		host        string
 		protoHeader string
 		result      string
 	}{
 		// Test '' (No host header) with no proto header
-		{"", "", `{"key-change":"http://localhost/acme/key-change","new-account":"http://localhost/acme/new-acct","new-order":"http://localhost/acme/new-order","revoke-cert":"http://localhost/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"", "", expectedDirectory("http://localhost")},
 		// Test localhost:4300 with no proto header
-		{"localhost:4300", "", `{"key-change":"http://localhost:4300/acme/key-change","new-account":"http://localhost:4300/acme/new-acct","new-order":"http://localhost:4300/acme/new-order","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "", expectedDirectory("http://localhost:4300")},
 		// Test 127.0.0.1:4300 with no proto header
-		{"127.0.0.1:4300", "", `{"key-change":"http://127.0.0.1:4300/acme/key-change","new-account":"http://127.0.0.1:4300/acme/new-acct","new-order":"http://127.0.0.1:4300/acme/new-order","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"127.0.0.1:4300", "", expectedDirectory("http://127.0.0.1:4300")},
 		// Test localhost:4300 with HTTP proto header
-		{"localhost:4300", "http", `{"key-change":"http://localhost:4300/acme/key-change","new-account":"http://localhost:4300/acme/new-acct","new-order":"http://localhost:4300/acme/new-order","revoke-cert":"http://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "http", expectedDirectory("http://localhost:4300")},
 		// Test localhost:4300 with HTTPS proto header
-		{"localhost:4300", "https", `{"key-change":"https://localhost:4300/acme/key-change","new-account":"https://localhost:4300/acme/new-acct","new-order":"https://localhost:4300/acme/new-order","revoke-cert":"https://localhost:4300/acme/revoke-cert","AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417","meta":{"terms-of-service": "http://example.invalid/terms"}}`},
+		{"localhost:4300", "https", expectedDirectory("https://localhost:4300")},
 	}
 
 	for _, tt := range dirTests {
@@ -752,6 +768,26 @@ func TestRelativeDirectory(t *testing.T) {
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tt.result)
 	}
+}
+
+// TestNonceEndpoint tests the WFE2's new-nonce endpoint
+func TestNonceEndpoint(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux := wfe.Handler()
+
+	responseWriter := httptest.NewRecorder()
+
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(newNoncePath),
+	})
+
+	// Sending a GET request to the nonce endpoint should produce a HTTP response
+	// with the correct status code
+	test.AssertEquals(t, responseWriter.Code, http.StatusNoContent)
+	// And the response should contain a valid nonce in the Replay-Nonce header
+	nonce := responseWriter.Header().Get("Replay-Nonce")
+	test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
 }
 
 func TestHTTPMethods(t *testing.T) {
@@ -838,6 +874,11 @@ func TestHTTPMethods(t *testing.T) {
 			Name:    "Order path should be GET or POST only",
 			Path:    orderPath,
 			Allowed: getOrPost,
+		},
+		{
+			Name:    "Nonce path should be GET only",
+			Path:    newNoncePath,
+			Allowed: getOnly,
 		},
 	}
 
