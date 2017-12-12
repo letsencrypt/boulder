@@ -221,36 +221,21 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool)
 	}
 
 	// Per RFC 6844 Section 5.3 "issueWild properties MUST be ignored when
-	// processing a request for a domain that is not a wildcard domain". Skip
-	// checking `caaSet.Issuewild` if `wildcard` is false.
+	// processing a request for a domain that is not a wildcard domain" so we
+	// default to checking the `caaSet.Issue` records and only check
+	// `caaSet.Issuewild` when `wildcard` is true and there is >0 `Issuewild`
+	// records.
+	records := caaSet.Issue
 	if wildcard && len(caaSet.Issuewild) > 0 {
-		// We are processing CAA for a wildcard authorization identifier and there
-		// was at least one Issuewild CAA record in the set. This means we must
-		// check that our CAA identity is present in the issueWild set.
-		//
-		for _, caaIssuewild := range caaSet.Issuewild {
-			if extractIssuerDomain(caaIssuewild) == va.issuerDomain {
-				va.stats.Inc("CAA.IssuewildAuthorized", 1)
-				return true, true
-			}
-		}
-		// Since our identity is *not* present we must return without checking the
-		// `caaSet.Issue` identities because per RFC 6844 Section 5.3 if the domain
-		// is a wildcard domain and there is at least one issuewild property then
-		// "all issue properties MUST be ignored"
-		return true, false
+		records = caaSet.Issuewild
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
 	// includes the case of the unsatisfiable CAA record value ";", used to
 	// prevent issuance by any CA under any circumstance.
 	//
-	// Our CAA identity must be found in the chosen checkSet. We perform this
-	// check even if `wildcard` is true because we have already ruled out the
-	// presence of `caaSet.Issuewild` records. RFC 6844 is not clear on whether an
-	// Issue record may prevent issuance of a wildcard domain if there are no
-	// Issuewild records so we take the most conservative stance and say they can.
-	for _, caa := range caaSet.Issue {
+	// Our CAA identity must be found in the chosen checkSet.
+	for _, caa := range records {
 		if extractIssuerDomain(caa) == va.issuerDomain {
 			va.stats.Inc("CAA.Authorized", 1)
 			return true, true
