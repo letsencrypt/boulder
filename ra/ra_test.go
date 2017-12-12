@@ -2056,10 +2056,8 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	rechecks := []string{
-		"a.com", "b.com", "c.com",
-	}
-	err := ra.recheckCAA(context.Background(), rechecks)
+	names := []string{"a.com", "b.com", "c.com"}
+	err := ra.recheckCAA(context.Background(), names)
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
@@ -2068,11 +2066,9 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	rechecks := []string{
-		"a.com", "b.com", "c.com",
-	}
+	names := []string{"a.com", "b.com", "c.com"}
 	ra.caa = &caaFailer{}
-	err := ra.recheckCAA(context.Background(), rechecks)
+	err := ra.recheckCAA(context.Background(), names)
 	if err == nil {
 		t.Errorf("expected err, got nil")
 	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
