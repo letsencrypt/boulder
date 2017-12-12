@@ -1919,7 +1919,7 @@ func (cr noopCAA) IsCAAValid(
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for
+// names it was called for.
 type caaRecorder struct {
 	sync.Mutex
 	names map[string]bool
