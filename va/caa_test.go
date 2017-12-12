@@ -133,7 +133,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, false)
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
@@ -146,11 +146,10 @@ func TestCAATimeout(t *testing.T) {
 func TestCAAChecking(t *testing.T) {
 
 	testCases := []struct {
-		Name     string
-		Domain   string
-		Present  bool
-		Valid    bool
-		Wildcard bool
+		Name    string
+		Domain  string
+		Present bool
+		Valid   bool
 	}{
 		{
 			Name:    "Bad (Reserved)",
@@ -231,46 +230,40 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
-			Name:     "Bad (unsatisfiable issue, wildcard)",
-			Domain:   "unsatisfiable.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    false,
+			Name:    "Bad (unsatisfiable issue, wildcard)",
+			Domain:  "*.unsatisfiable.com",
+			Present: true,
+			Valid:   false,
 		},
 		{
-			Name:     "Bad (unsatisfiable wildcard)",
-			Domain:   "unsatisfiable-wildcard.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    false,
+			Name:    "Bad (unsatisfiable wildcard)",
+			Domain:  "*.unsatisfiable-wildcard.com",
+			Present: true,
+			Valid:   false,
 		},
 		{
-			Name:     "Bad (unsatisfiable wildcard override)",
-			Domain:   "unsatisfiable-wildcard-override.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    false,
+			Name:    "Bad (unsatisfiable wildcard override)",
+			Domain:  "*.unsatisfiable-wildcard-override.com",
+			Present: true,
+			Valid:   false,
 		},
 		{
-			Name:     "Good (satisfiable wildcard)",
-			Domain:   "satisfiable-wildcard.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    true,
+			Name:    "Good (satisfiable wildcard)",
+			Domain:  "*.satisfiable-wildcard.com",
+			Present: true,
+			Valid:   true,
 		},
 		{
-			Name:     "Good (multiple issuewild, one satisfiable)",
-			Domain:   "satisfiable-multi-wildcard.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    true,
+			Name:    "Good (multiple issuewild, one satisfiable)",
+			Domain:  "*.satisfiable-multi-wildcard.com",
+			Present: true,
+			Valid:   true,
 		},
 		{
-			Name:     "Good (satisfiable wildcard override)",
-			Domain:   "satisfiable-wildcard-override.com",
-			Wildcard: true,
-			Present:  true,
-			Valid:    true,
+			Name:    "Good (satisfiable wildcard override)",
+			Domain:  "*.satisfiable-wildcard-override.com",
+			Present: true,
+			Valid:   true,
 		},
 	}
 
@@ -278,7 +271,7 @@ func TestCAAChecking(t *testing.T) {
 	va.dnsClient = caaMockDNS{}
 	for _, caaTest := range testCases {
 		t.Run(caaTest.Name, func(t *testing.T) {
-			present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}, caaTest.Wildcard)
+			present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -291,22 +284,22 @@ func TestCAAChecking(t *testing.T) {
 		})
 	}
 
-	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, false)
+	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, false)
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
 
-	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, false)
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, false)
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
@@ -343,7 +336,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall, false)
+	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 

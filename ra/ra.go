@@ -686,16 +686,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	return ra.checkAuthorizationsCAA(ctx, names, auths, regID, now)
 }
 
-// A caaRecheck is a small internal type we use to track CAA "rechecks" that
-// need to be done for authorizations older than 8 hours.
-type caaRecheck struct {
-	// The name that requires rechecking
-	Name string
-	// Whether the name corresponds to a wildcard and must be rechecked respecting
-	// the semantics of issuewild
-	Wildcard bool
-}
-
 // checkAuthorizationsCAA implements the common logic of validating a set of
 // authorizations against a set of names that is used by both
 // `checkAuthorizations` and `checkOrderAuthorizations`. If required CAA will be
@@ -708,8 +698,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	now time.Time) error {
 	// badNames contains the names that were unauthorized
 	var badNames []string
-	// recheckNames is a list of caaRechecks that must be performed.
-	var recheckNames []caaRecheck
+	// recheckNames is a names that must have their CAA records rechecked
+	var recheckNames []string
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
 	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
@@ -728,20 +718,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		} else if authz.Expires.Before(caaRecheckTime) {
-			var wildcard bool
-			// If the name with an expired authorization is for a wildcard identifier we need to:
-			// a) strip the `*.` prefix to check CAA for the base hostname without the
-			//    wildcard
-			// b) note that the recheck needs to be treated as a wildcard name for CAA
-			if strings.HasPrefix(authz.Identifier.Value, "*.") {
-				name = strings.TrimPrefix(authz.Identifier.Value, "*.")
-				wildcard = true
-			}
 			// Ensure that CAA is rechecked for this name
-			recheckNames = append(recheckNames, caaRecheck{
-				Name:     name,
-				Wildcard: wildcard,
-			})
+			recheckNames = append(recheckNames, name)
 		}
 	}
 
@@ -759,22 +737,21 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	return nil
 }
 
-// recheckCAA accepts a list of of caaRechecks that need to be performed
-// because their associated authorizations are sufficiently old and performs the
-// CAA checks required for each. If any of the rechecks fail an error is
-// returned.
-func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, rechecks []caaRecheck) error {
+// recheckCAA accepts a list of of names that need to have their CAA records
+// rechecked because their associated authorizations are sufficiently old and
+// performs the CAA checks required for each. If any of the rechecks fail an
+// error is returned.
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, rechecks []string) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_names", int64(len(rechecks)))
 	wg := sync.WaitGroup{}
 	ch := make(chan *probs.ProblemDetails, len(rechecks))
-	for _, check := range rechecks {
+	for _, name := range rechecks {
 		wg.Add(1)
-		go func(name string, wildcard bool) {
+		go func(name string) {
 			defer wg.Done()
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
-				Domain:   &name,
-				Wildcard: &wildcard,
+				Domain: &name,
 			})
 			if err != nil {
 				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
@@ -785,7 +762,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, rechecks []
 					Detail: *resp.Problem.Detail,
 				}
 			}
-		}(check.Name, check.Wildcard)
+		}(name)
 	}
 	wg.Wait()
 	close(ch)

@@ -17,16 +17,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
 ) (*vapb.IsCAAValidResponse, error) {
-	// We allow the presence of nil in the IsCAAValidRequest for backwards
-	// compatibility for callers that haven't updated to provide a value.
-	var wildcard bool
-	if req.Wildcard != nil {
-		wildcard = *req.Wildcard
-	}
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
-	}, wildcard)
+	})
 
 	if prob != nil {
 		typ := string(prob.Type)
@@ -42,14 +36,11 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
-// the wildcard argument is true then the identifier is known to be the base
-// domain corresponding to a wildcard name and so the CAA validation must handle
-// issueWild accordingly  If the CAA lookup & validation fail a problem is returned.
+// the CAA lookup & validation fail a problem is returned.
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
-	wildcard bool) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, identifier, wildcard)
+	identifier core.AcmeIdentifier) *probs.ProblemDetails {
+	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
 		return probs.ConnectionFailure(err.Error())
 	}
@@ -165,17 +156,23 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 }
 
 // checkCAARecords fetches the CAA records for the given identifier and then
-// validates them. If the wildcard argument is true then the validation will
-// treat the identifier as the base domain for a wildcard request, honouring any
-// issueWild CAA records encountered as apppropriate. checkCAARecords returns three values:
-// the first is a bool indicating whether CAA records were present. The second
-// is a bool indicating whether issuance for the identifier is valid. Any errors
-// encountered are returned as the third return value (or nil).
+// validates them. If the identifier argument's value has a wildcard prefix then
+// the prefix is stripped and validation will be performed against the base
+// domain, honouring any issueWild CAA records encountered as apppropriate.
+// checkCAARecords returns three values: the first is a bool indicating whether
+// CAA records were present. The second is a bool indicating whether issuance
+// for the identifier is valid. Any errors encountered are returned as the third
+// return value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
-	wildcard bool) (present, valid bool, err error) {
+	identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
+	// If this is a wildcard name, remove the prefix
+	var wildcard bool
+	if strings.HasPrefix(hostname, `*.`) {
+		hostname = strings.TrimPrefix(identifier.Value, `*.`)
+		wildcard = true
+	}
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, err

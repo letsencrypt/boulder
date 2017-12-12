@@ -15,8 +15,8 @@ service CAA {
 }
 
 message IsCAAValidRequest {
+	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com)
 	optional string domain = 1;
-	optional bool wildcard = 2;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty

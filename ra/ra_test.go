@@ -1919,11 +1919,10 @@ func (cr noopCAA) IsCAAValid(
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for and whether the calls indicated the name was a wildcard
+// names it was called for
 type caaRecorder struct {
 	sync.Mutex
-	// names is a map from name -> a list of the caaRechecks recorded
-	names map[string][]caaRecheck
+	names map[string]bool
 }
 
 func (cr *caaRecorder) IsCAAValid(
@@ -1933,16 +1932,7 @@ func (cr *caaRecorder) IsCAAValid(
 ) (*vaPB.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	var wildcard bool
-	if in.Wildcard != nil {
-		wildcard = *in.Wildcard
-	}
-	recheck := caaRecheck{Name: *in.Domain, Wildcard: wildcard}
-	if _, present := cr.names[*in.Domain]; !present {
-		cr.names[*in.Domain] = []caaRecheck{recheck}
-	} else {
-		cr.names[*in.Domain] = append(cr.names[*in.Domain], recheck)
-	}
+	cr.names[*in.Domain] = true
 	return &vaPB.IsCAAValidResponse{}, nil
 }
 
@@ -1993,7 +1983,7 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	recorder := &caaRecorder{names: make(map[string][]caaRecheck)}
+	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
 	ra.SA = &mockSAWithRecentAndOlder{
@@ -2016,49 +2006,25 @@ func TestRecheckCAADates(t *testing.T) {
 		t.Errorf("Rechecked CAA unnecessarily for recent.com")
 	}
 
-	checks, present := recorder.names["older.com"]
 	// We expect that "older.com" is checked
-	if !present {
+	if _, present := recorder.names["older.com"]; !present {
 		t.Errorf("Failed to recheck CAA for older.com")
 	}
-	// We expect that it was checked once normally, not as a wildcard
-	if len(checks) != 1 || checks[0].Wildcard {
-		t.Errorf("Checked older.com the wrong number of times, or as a wildcard")
-	}
 
-	checks, present = recorder.names["older2.com"]
 	// We expect that "older2.com" is checked
-	if !present {
+	if _, present := recorder.names["older2.com"]; !present {
 		t.Errorf("Failed to recheck CAA for older2.com")
 	}
-	// We expect that it was checked once normally, not as a wildcard
-	if len(checks) != 1 || checks[0].Wildcard {
-		t.Errorf("Checked older2.com the wrong number of times, or as a wildcard")
-	}
 
-	// We expect that the check for "*.wildcard.com" is done for the domain
-	// "wildcard.com" without the wildcard prefix.
-	if _, present := recorder.names["*.wildcard.com"]; present {
-		t.Errorf("Failed to recheck CAA for *.wildcard.com - checked wildcard literal, not base domain")
-	}
-
-	checks, present = recorder.names["wildcard.com"]
-	// We expect that the check for "wildcard.com" is done.
-	if !present {
+	// We expect that the "wildcard.com" domain (without the `*.` prefix) is checked.
+	if _, present := recorder.names["wildcard.com"]; !present {
 		t.Errorf("Failed to recheck CAA for wildcard.com")
 	}
-	// We expect it was checked *twice* because of the overlapping "wildcard.com"
-	// and "*.wildcard.com" names.
-	if len(checks) != 2 {
-		t.Errorf("Failed to recheck CAA the correct number of times for wildcard.com")
-	}
-	// We expect that only one check was a wildcard check
-	if checks[0].Wildcard && checks[1].Wildcard {
-		t.Errorf("Failed to recheck CAA for wildcard.com, non-wildcard CAA")
-	}
-	// We expect that only one check was a normal non-wildcard check
-	if !checks[0].Wildcard && !checks[1].Wildcard {
-		t.Errorf("Failed to recheck CAA for wildcard.com, wildcard CAA")
+
+	// We expect that "*.wildcard.com" is checked (with the `*.` prefix, because
+	// it is stripped at a lower layer than we are testing)
+	if _, present := recorder.names["*.wildcard.com"]; !present {
+		t.Errorf("Failed to recheck CAA for *.wildcard.com")
 	}
 }
 
@@ -2090,10 +2056,8 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	rechecks := []caaRecheck{
-		{"a.com", false},
-		{"b.com", false},
-		{"c.com", false},
+	rechecks := []string{
+		"a.com", "b.com", "c.com",
 	}
 	err := ra.recheckCAA(context.Background(), rechecks)
 	if err != nil {
@@ -2104,10 +2068,8 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	rechecks := []caaRecheck{
-		{"a.com", false},
-		{"b.com", false},
-		{"c.com", false},
+	rechecks := []string{
+		"a.com", "b.com", "c.com",
 	}
 	ra.caa = &caaFailer{}
 	err := ra.recheckCAA(context.Background(), rechecks)
