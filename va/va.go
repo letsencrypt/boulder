@@ -768,18 +768,34 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
-// TODO(@cpu): `validateChallengeAndCAA` needs to be updated to accept an
-// authorization instead of a challenge. Subsequently we should also update the
-// function to check CAA IssueWild if the authorization's identifier's value has
-// a `*.` prefix (See #3211)
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+// validateChallengeAndCAA performs a challenge validation and CAA validation
+// for the provided identifier and a corresponding challenge. If the validation
+// or CAA lookup fail a problem is returned along with the validation records
+// created during the validation attempt.
+func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+
+	// If the identifier is a wildcard domain we need to validate the base
+	// domain by removing the "*." wildcard prefix. We create a separate
+	// `baseIdentifier` here before starting the `va.checkCAA` goroutine with the
+	// `identifier` to avoid a data race.
+	baseIdentifier := identifier
+	if strings.HasPrefix(identifier.Value, "*.") {
+		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
+	}
+
+	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
+	// we can dispatch `checkCAA` with the provided `identifier` instead of
+	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
 		ch <- va.checkCAA(ctx, identifier)
 	}()
 
 	// TODO(#1292): send into another goroutine
-	validationRecords, err := va.validateChallenge(ctx, identifier, challenge)
+	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
 	if err != nil {
 		return validationRecords, err
 	}
@@ -879,19 +895,16 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}
 	vStart := va.clk.Now()
 
-	// If the identifier is a wildcard domain we need to validate the base
-	// domain by removing the "*." wildcard prefix.
-	if strings.HasPrefix(domain, "*.") {
-		domain = strings.TrimPrefix(domain, "*.")
-	}
-
 	var remoteError chan *probs.ProblemDetails
 	if len(va.remoteVAs) > 0 {
 		remoteError = make(chan *probs.ProblemDetails, 1)
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
+	records, prob := va.validateChallengeAndCAA(
+		ctx,
+		core.AcmeIdentifier{Type: "dns", Value: domain},
+		challenge)
 
 	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records

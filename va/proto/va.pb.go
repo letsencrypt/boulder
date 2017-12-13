@@ -41,6 +41,7 @@ var _ = math.Inf
 const _ = proto1.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type IsCAAValidRequest struct {
+	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
 	Domain           *string `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
 	XXX_unrecognized []byte  `json:"-"`
 }

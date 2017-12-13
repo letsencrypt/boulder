@@ -1948,10 +1948,33 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	registrationID int64,
 	names []string,
 	now time.Time) (map[string]*core.Authorization, error) {
+	makeIdentifier := func(name string) core.AcmeIdentifier {
+		return core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: name,
+		}
+	}
 	return map[string]*core.Authorization{
-		"recent.com": &core.Authorization{Expires: &m.recent},
-		"older.com":  &core.Authorization{Expires: &m.older},
-		"older2.com": &core.Authorization{Expires: &m.older},
+		"recent.com": &core.Authorization{
+			Identifier: makeIdentifier("recent.com"),
+			Expires:    &m.recent,
+		},
+		"older.com": &core.Authorization{
+			Identifier: makeIdentifier("older.com"),
+			Expires:    &m.older,
+		},
+		"older2.com": &core.Authorization{
+			Identifier: makeIdentifier("older2.com"),
+			Expires:    &m.older,
+		},
+		"wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("wildcard.com"),
+			Expires:    &m.older,
+		},
+		"*.wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("*.wildcard.com"),
+			Expires:    &m.older,
+		},
 	}, nil
 }
 
@@ -1967,19 +1990,41 @@ func TestRecheckCAADates(t *testing.T) {
 		recent: fc.Now().Add(15 * time.Hour),
 		older:  fc.Now().Add(5 * time.Hour),
 	}
-	names := []string{"recent.com", "older.com", "older2.com"}
+
+	// NOTE: The names provided here correspond to authorizations in the
+	// `mockSAWithRecentAndOlder`
+	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
 	err := ra.checkAuthorizations(context.Background(), names, 999)
+	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
-	if recorder.names["recent.com"] {
+
+	// We expect that "recent.com" is not checked because its mock authorization
+	// isn't expired
+	if _, present := recorder.names["recent.com"]; present {
 		t.Errorf("Rechecked CAA unnecessarily for recent.com")
 	}
-	if !recorder.names["older.com"] {
-		t.Errorf("Failed to recheck CAA for older.com %#v", recorder.names)
-	}
-	if !recorder.names["older2.com"] {
+
+	// We expect that "older.com" is checked
+	if _, present := recorder.names["older.com"]; !present {
 		t.Errorf("Failed to recheck CAA for older.com")
+	}
+
+	// We expect that "older2.com" is checked
+	if _, present := recorder.names["older2.com"]; !present {
+		t.Errorf("Failed to recheck CAA for older2.com")
+	}
+
+	// We expect that the "wildcard.com" domain (without the `*.` prefix) is checked.
+	if _, present := recorder.names["wildcard.com"]; !present {
+		t.Errorf("Failed to recheck CAA for wildcard.com")
+	}
+
+	// We expect that "*.wildcard.com" is checked (with the `*.` prefix, because
+	// it is stripped at a lower layer than we are testing)
+	if _, present := recorder.names["*.wildcard.com"]; !present {
+		t.Errorf("Failed to recheck CAA for *.wildcard.com")
 	}
 }
 

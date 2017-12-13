@@ -696,7 +696,10 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	authzs map[string]*core.Authorization,
 	regID int64,
 	now time.Time) error {
-	var badNames, recheckNames []string
+	// badNames contains the names that were unauthorized
+	var badNames []string
+	// recheckNames is a list of names that must have their CAA records rechecked
+	var recheckNames []string
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
 	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
@@ -715,6 +718,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		} else if authz.Expires.Before(caaRecheckTime) {
+			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
 	}
@@ -733,6 +737,10 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	return nil
 }
 
+// recheckCAA accepts a list of of names that need to have their CAA records
+// rechecked because their associated authorizations are sufficiently old and
+// performs the CAA checks required for each. If any of the rechecks fail an
+// error is returned.
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_names", int64(len(names)))
