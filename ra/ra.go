@@ -741,12 +741,12 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 // rechecked because their associated authorizations are sufficiently old and
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
-func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, rechecks []string) error {
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	ra.stats.Inc("recheck_caa", 1)
-	ra.stats.Inc("recheck_caa_names", int64(len(rechecks)))
+	ra.stats.Inc("recheck_caa_names", int64(len(names)))
 	wg := sync.WaitGroup{}
-	ch := make(chan *probs.ProblemDetails, len(rechecks))
-	for _, name := range rechecks {
+	ch := make(chan *probs.ProblemDetails, len(names))
+	for _, name := range names {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
