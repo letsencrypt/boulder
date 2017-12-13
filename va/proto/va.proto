@@ -15,7 +15,7 @@ service CAA {
 }
 
 message IsCAAValidRequest {
-	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com)
+	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
 	optional string domain = 1;
 }
 
