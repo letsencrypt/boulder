@@ -523,10 +523,17 @@ func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Authz == nil {
+	if resp == nil {
 		return nil, errIncompleteResponse
 	}
 
+	// If there were no authorizations, return nil
+	if resp.Authz == nil {
+		return nil, nil
+	}
+
+	// Otherwise check the authorizations are valid and convert them from protobuf
+	// form before returning a map of results to the caller
 	auths := make(map[string]*core.Authorization, len(resp.Authz))
 	for _, element := range resp.Authz {
 		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
