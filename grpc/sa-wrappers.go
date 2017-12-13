@@ -546,7 +546,7 @@ func (sas StorageAuthorityClientWrapper) GetAuthorizations(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Authz == nil {
+	if resp == nil {
 		return nil, errIncompleteResponse
 	}
 	for _, element := range resp.Authz {
