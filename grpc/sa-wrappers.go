@@ -510,7 +510,7 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil || resp.Names == nil {
+	if resp == nil || !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
