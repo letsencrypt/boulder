@@ -1020,7 +1020,7 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization(ctx context.Con
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	if request == nil || !orderValid(request) {
+	if request == nil || !newOrderValid(request) {
 		return nil, errIncompleteRequest
 	}
 
