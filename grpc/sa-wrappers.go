@@ -1094,7 +1094,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorizations(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) AddPendingAuthorizations(ctx context.Context, request *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	if request == nil || request.Authz != nil {
+	if request == nil || request.Authz == nil {
 		return nil, errIncompleteRequest
 	}
 
