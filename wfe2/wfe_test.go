@@ -1934,14 +1934,6 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
 		},
 		{
-			Name: "Account without Subscriber agreement",
-			// mocks/mocks.go's StorageAuthority's GetRegistration mock treats ID 6
-			// as an account without the agreement set. Order ID 6 is mocked to belong
-			// to it.
-			Request:      signAndPost(t, "6/6/finalize-order", "http://localhost/6/6/finalize-order", "{}", 6, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Must agree to subscriber agreement before any further actions","status":403}`,
-		},
-		{
 			Name:         "Order ID is invalid",
 			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", 1, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
