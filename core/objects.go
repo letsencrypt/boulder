@@ -577,6 +577,18 @@ type FQDNSet struct {
 	Expires time.Time
 }
 
+// OrderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type OrderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
 // Order represents the request object that forms the basis of the v2 style
 // issuance flow
 type Order struct {
