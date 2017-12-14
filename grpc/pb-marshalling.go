@@ -409,7 +409,7 @@ func registrationValid(reg *corepb.Registration) bool {
 // orderValid checks that a corepb.Order is valid. In addition to the checks
 // from `newOrderValid` it ensures the order ID is not nil.
 func orderValid(order *corepb.Order) bool {
-	return orderId != nil && newOrderValid(order)
+	return order.Id != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
