@@ -873,6 +873,10 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	authz.ID = ""
 	authz.RegistrationID = 0
 
+	// Combinations are a relic of the V1 API. Since they are tagged omitempty we
+	// can set this field to nil to avoid sending it to users of the V2 API.
+	authz.Combinations = nil
+
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
 	// corresponds to a wildcard request (e.g. to handle CAA properly). We strip

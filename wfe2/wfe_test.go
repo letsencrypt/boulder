@@ -2438,7 +2438,7 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	}
 }
 
-func TestPrepAuthzForDisplayWildcard(t *testing.T) {
+func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// Make an authz for a wildcard identifier
@@ -2453,6 +2453,7 @@ func TestPrepAuthzForDisplayWildcard(t *testing.T) {
 				Type: "dns",
 			},
 		},
+		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
 	}
 
 	// Prep the wildcard authz for display
@@ -2462,4 +2463,10 @@ func TestPrepAuthzForDisplayWildcard(t *testing.T) {
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
 	// The authz should be marked as corresponding to a wildcard name
 	test.AssertEquals(t, authz.Wildcard, true)
+	// The authz should not have any combinations
+	// NOTE(@cpu): We don't use test.AssertNotNil here because its use of
+	// interface{} types makes a comparsion of [][]int{nil} and nil fail.
+	if authz.Combinations != nil {
+		t.Errorf("Authz had a non-nil combinations")
+	}
 }
