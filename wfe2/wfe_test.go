@@ -677,14 +677,14 @@ func TestDirectory(t *testing.T) {
 
 	// Directory with a key change endpoint and a meta entry
 	metaJSON := `{
-  "key-change": "http://localhost:4300/acme/key-change",
+  "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
-    "terms-of-service": "http://example.invalid/terms"
+    "termsOfService": "http://example.invalid/terms"
   },
-  "new-nonce": "http://localhost:4300/acme/new-nonce",
-  "new-account": "http://localhost:4300/acme/new-acct",
-  "new-order": "http://localhost:4300/acme/new-order",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert",
+  "newNonce": "http://localhost:4300/acme/new-nonce",
+  "newAccount": "http://localhost:4300/acme/new-acct",
+  "newOrder": "http://localhost:4300/acme/new-order",
+  "revokeCert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`
 
@@ -720,13 +720,13 @@ func TestRelativeDirectory(t *testing.T) {
 		var expected bytes.Buffer
 
 		expected.WriteString("{")
-		expected.WriteString(fmt.Sprintf(`"key-change":"%s/acme/key-change",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-nonce":"%s/acme/new-nonce",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-account":"%s/acme/new-acct",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-order":"%s/acme/new-order",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"revoke-cert":"%s/acme/revoke-cert",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"keyChange":"%s/acme/key-change",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newNonce":"%s/acme/new-nonce",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newAccount":"%s/acme/new-acct",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newOrder":"%s/acme/new-order",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"revokeCert":"%s/acme/revoke-cert",`, hostname))
 		expected.WriteString(`"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		expected.WriteString(`"meta":{"terms-of-service":"http://example.invalid/terms"}`)
+		expected.WriteString(`"meta":{"termsOfService":"http://example.invalid/terms"}`)
 		expected.WriteString("}")
 		return expected.String()
 	}
@@ -1264,7 +1264,7 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/0")
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"termsOfService\""), true)
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
@@ -1426,7 +1426,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"termsOfService\""), true)
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with garbage in URL but valid account ID
@@ -1451,7 +1451,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
 	links = responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
+	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"termsOfService\""), true)
 	responseWriter.Body.Reset()
 }
 
@@ -1849,7 +1849,7 @@ func TestNewOrder(t *testing.T) {
 						"Authorizations": [
 							"http://localhost/acme/authz/hello"
 						],
-						"FinalizeURL": "http://localhost/acme/order/1/1/finalize-order"
+						"Finalize": "http://localhost/acme/order/1/1/finalize-order"
 					}`,
 		},
 	}
@@ -1979,7 +1979,7 @@ func TestFinalizeOrder(t *testing.T) {
   "Authorizations": [
     "http://localhost/acme/authz/hello"
   ],
-  "FinalizeURL": "http://localhost/acme/order/1/4/finalize-order"
+  "Finalize": "http://localhost/acme/order/1/4/finalize-order"
 }`,
 		},
 	}
@@ -2110,7 +2110,7 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Path:     "1/1",
-			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"FinalizeURL":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"Finalize":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
