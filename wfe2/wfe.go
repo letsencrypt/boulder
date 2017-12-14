@@ -1617,17 +1617,6 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
-	// The account must have agreed to the subscriber agreement to finalize an
-	// order since it will result in the issuance of a certificate.
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if acct.Agreement == "" {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
-		return
-	}
-
 	// If the order's status is not pending we can not finalize it and must
 	// return an error
 	if *order.Status != string(core.StatusPending) {
