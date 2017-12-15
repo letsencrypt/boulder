@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
