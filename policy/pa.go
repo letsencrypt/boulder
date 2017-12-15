@@ -98,8 +98,13 @@ const (
 	// octets: https://tools.ietf.org/html/rfc1035#page-10. Since two of those octets
 	// are taken up by the leading length byte and the trailing root period the actual
 	// max length becomes 253.
+	// HACK: Right now our schema for the authz table only allows 255 characters
+	// for identifiers, including JSON wrapping, which takes up 25 characters. For
+	// now, we only allow identifiers up to 230 characters in length. When we are
+	// able to do a migration to update this table, we can allow DNS names up to
+	// 253 characters in length.
 	maxLabelLength         = 63
-	maxDNSIdentifierLength = 253
+	maxDNSIdentifierLength = 230
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
