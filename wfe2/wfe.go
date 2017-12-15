@@ -530,7 +530,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	response.Header().Add("Location", acctURL)
 	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "termsOfService"))
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
@@ -1062,7 +1062,7 @@ func (wfe *WebFrontEndImpl) Account(
 	}
 
 	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "termsOfService"))
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
