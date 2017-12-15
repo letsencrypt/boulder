@@ -44,7 +44,6 @@
     "features": {
       "WildcardDomains": true,
       "ROCACheck": true,
-      "UDPDNS": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
