@@ -43,7 +43,6 @@
     },
     "features": {
       "WildcardDomains": true,
-      "ROCACheck": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
