@@ -5,11 +5,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"log"
 	"math/big"
 	"testing"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/test"
 )
 

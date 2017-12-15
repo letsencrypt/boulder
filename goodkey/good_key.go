@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/titanous/rocacheck"
 )
 
