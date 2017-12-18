@@ -165,7 +165,7 @@ type Registration struct {
 	// CreatedAt is the time the registration was created.
 	CreatedAt time.Time `json:"createdAt"`
 
-	Status AcmeStatus
+	Status AcmeStatus `json:"status"`
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
