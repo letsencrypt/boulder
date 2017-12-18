@@ -33,7 +33,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.MalformedError(detailMsg), 400, probs.MalformedProblem, fullDetail},
 		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
-		{berrors.RateLimitError(detailMsg), 429, probs.RateLimitedProblem, fullDetail},
+		{berrors.RateLimitError(detailMsg), 429, probs.RateLimitedProblem, fullDetail + ": see https://letsencrypt.org/docs/rate-limits/"},
 		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
