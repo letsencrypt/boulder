@@ -677,14 +677,14 @@ func TestDirectory(t *testing.T) {
 
 	// Directory with a key change endpoint and a meta entry
 	metaJSON := `{
-  "key-change": "http://localhost:4300/acme/key-change",
+  "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
-    "terms-of-service": "http://example.invalid/terms"
+    "termsOfService": "http://example.invalid/terms"
   },
-  "new-nonce": "http://localhost:4300/acme/new-nonce",
-  "new-account": "http://localhost:4300/acme/new-acct",
-  "new-order": "http://localhost:4300/acme/new-order",
-  "revoke-cert": "http://localhost:4300/acme/revoke-cert",
+  "newNonce": "http://localhost:4300/acme/new-nonce",
+  "newAccount": "http://localhost:4300/acme/new-acct",
+  "newOrder": "http://localhost:4300/acme/new-order",
+  "revokeCert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`
 
@@ -720,13 +720,13 @@ func TestRelativeDirectory(t *testing.T) {
 		var expected bytes.Buffer
 
 		expected.WriteString("{")
-		expected.WriteString(fmt.Sprintf(`"key-change":"%s/acme/key-change",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-nonce":"%s/acme/new-nonce",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-account":"%s/acme/new-acct",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"new-order":"%s/acme/new-order",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"revoke-cert":"%s/acme/revoke-cert",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"keyChange":"%s/acme/key-change",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newNonce":"%s/acme/new-nonce",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newAccount":"%s/acme/new-acct",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"newOrder":"%s/acme/new-order",`, hostname))
+		expected.WriteString(fmt.Sprintf(`"revokeCert":"%s/acme/revoke-cert",`, hostname))
 		expected.WriteString(`"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		expected.WriteString(`"meta":{"terms-of-service":"http://example.invalid/terms"}`)
+		expected.WriteString(`"meta":{"termsOfService":"http://example.invalid/terms"}`)
 		expected.WriteString("}")
 		return expected.String()
 	}
@@ -1849,7 +1849,7 @@ func TestNewOrder(t *testing.T) {
 						"Authorizations": [
 							"http://localhost/acme/authz/hello"
 						],
-						"FinalizeURL": "http://localhost/acme/order/1/1/finalize-order"
+						"Finalize": "http://localhost/acme/order/1/1/finalize-order"
 					}`,
 		},
 	}
@@ -1934,14 +1934,6 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
 		},
 		{
-			Name: "Account without Subscriber agreement",
-			// mocks/mocks.go's StorageAuthority's GetRegistration mock treats ID 6
-			// as an account without the agreement set. Order ID 6 is mocked to belong
-			// to it.
-			Request:      signAndPost(t, "6/6/finalize-order", "http://localhost/6/6/finalize-order", "{}", 6, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Must agree to subscriber agreement before any further actions","status":403}`,
-		},
-		{
 			Name:         "Order ID is invalid",
 			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", 1, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
@@ -1987,7 +1979,7 @@ func TestFinalizeOrder(t *testing.T) {
   "Authorizations": [
     "http://localhost/acme/authz/hello"
   ],
-  "FinalizeURL": "http://localhost/acme/order/1/4/finalize-order"
+  "Finalize": "http://localhost/acme/order/1/4/finalize-order"
 }`,
 		},
 	}
@@ -2118,7 +2110,7 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Path:     "1/1",
-			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"FinalizeURL":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"Finalize":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2438,7 +2430,7 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	}
 }
 
-func TestPrepAuthzForDisplayWildcard(t *testing.T) {
+func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// Make an authz for a wildcard identifier
@@ -2453,6 +2445,7 @@ func TestPrepAuthzForDisplayWildcard(t *testing.T) {
 				Type: "dns",
 			},
 		},
+		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
 	}
 
 	// Prep the wildcard authz for display
@@ -2462,4 +2455,10 @@ func TestPrepAuthzForDisplayWildcard(t *testing.T) {
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
 	// The authz should be marked as corresponding to a wildcard name
 	test.AssertEquals(t, authz.Wildcard, true)
+	// The authz should not have any combinations
+	// NOTE(@cpu): We don't use test.AssertNotNil here because its use of
+	// interface{} types makes a comparsion of [][]int{nil} and nil fail.
+	if authz.Combinations != nil {
+		t.Errorf("Authz had a non-nil combinations")
+	}
 }

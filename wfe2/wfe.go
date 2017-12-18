@@ -379,11 +379,11 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
-		"new-account": newAcctPath,
-		"new-nonce":   newNoncePath,
-		"revoke-cert": revokeCertPath,
-		"new-order":   newOrderPath,
-		"key-change":  rolloverPath,
+		"newAccount": newAcctPath,
+		"newNonce":   newNoncePath,
+		"revokeCert": revokeCertPath,
+		"newOrder":   newOrderPath,
+		"keyChange":  rolloverPath,
 	}
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
@@ -392,10 +392,10 @@ func (wfe *WebFrontEndImpl) Directory(
 	directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
 
 	// ACME since draft-02 describes an optional "meta" directory entry. The
-	// meta entry may optionally contain a "terms-of-service" URI for the
+	// meta entry may optionally contain a "termsOfService" URI for the
 	// current ToS.
 	directoryEndpoints["meta"] = map[string]string{
-		"terms-of-service": wfe.SubscriberAgreementURL,
+		"termsOfService": wfe.SubscriberAgreementURL,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -872,6 +872,10 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+
+	// Combinations are a relic of the V1 API. Since they are tagged omitempty we
+	// can set this field to nil to avoid sending it to users of the V2 API.
+	authz.Combinations = nil
 
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
@@ -1409,7 +1413,7 @@ type orderJSON struct {
 	Expires        time.Time
 	Identifiers    []core.AcmeIdentifier
 	Authorizations []string
-	FinalizeURL    string
+	Finalize       string
 	Certificate    string `json:",omitempty"`
 	Error          string `json:",omitempty"`
 }
@@ -1430,7 +1434,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Expires:        time.Unix(0, *order.Expires).UTC(),
 		Identifiers:    idents,
 		Authorizations: make([]string, len(order.Authorizations)),
-		FinalizeURL:    finalizeURL,
+		Finalize:       finalizeURL,
 	}
 	for i, authzID := range order.Authorizations {
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
@@ -1614,17 +1618,6 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 	// pretend it doesn't exist and abort.
 	if acct.ID != *order.RegistrationID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
-		return
-	}
-
-	// The account must have agreed to the subscriber agreement to finalize an
-	// order since it will result in the issuance of a certificate.
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if acct.Agreement == "" {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
 		return
 	}
 

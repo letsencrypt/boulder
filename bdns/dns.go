@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -186,10 +185,7 @@ func NewDNSClientImpl(
 
 	// Set timeout for underlying net.Conn
 	dnsClient.ReadTimeout = readTimeout
-	dnsClient.Net = "tcp"
-	if features.Enabled(features.UDPDNS) {
-		dnsClient.Net = "udp"
-	}
+	dnsClient.Net = "udp"
 
 	queryTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
