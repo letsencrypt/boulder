@@ -64,6 +64,18 @@ type authzModel struct {
 	core.Authorization
 }
 
+// OrderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type orderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
 const (
 	authorizationTable        = "authz"
 	pendingAuthorizationTable = "pendingAuthorizations"
@@ -1085,7 +1097,7 @@ func addOrderFQDNSet(
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	return dbMap.Insert(&core.OrderFQDNSet{
+	return dbMap.Insert(&orderFQDNSet{
 		SetHash:        hashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
