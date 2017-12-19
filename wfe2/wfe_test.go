@@ -2408,21 +2408,37 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 	return core.Registration{}, berrors.NotFoundError("not found")
 }
 
-// When SA.GetRegistrationByKey returns NotFound, NewAccount should
-// succeed.
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
+	// When SA.GetRegistrationByKey returns NotFound, and no onlyReturnExisting
+	// field is sent, NewAccount should succeed.
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	signedURL := "http://localhost/new-account"
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	if responseWriter.Code != http.StatusCreated {
 		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
 	}
+
+	// When SA.GetRegistrationByKey returns NotFound, and onlyReturnExisting
+	// field **is** sent, NewAccount should fail with the expected error.
+	payload = `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true,"onlyReturnExisting":true}`
+	responseWriter = httptest.NewRecorder()
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	// Process the new account request
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+	{
+		"type": "urn:ietf:params:acme:error:accountDoesNotExist",
+		"detail": "No account exists with the provided key",
+		"status": 400
+	}`)
 }
 
 func TestPrepAuthzForDisplay(t *testing.T) {
