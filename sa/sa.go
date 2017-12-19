@@ -1127,10 +1127,14 @@ func deleteOrderFQDNSet(
 	if err != nil {
 		return Rollback(tx, err)
 	}
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return Rollback(tx, err)
+	}
 	// We always expect there to be an order FQDN set row for each
 	// pending/processing order that is being finalized. If there isn't one then
 	// something is amiss and should be raised as an internal server error
-	if rowsDeleted, err := result.RowsAffected(); err != nil || rowsDeleted == 0 {
+	if rowsDeleted == 0 {
 		err = berrors.InternalServerError("No orderFQDNSet exists to delete")
 		return Rollback(tx, err)
 	}
