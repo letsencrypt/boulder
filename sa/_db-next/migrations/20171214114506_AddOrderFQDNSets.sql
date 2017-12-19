@@ -9,7 +9,7 @@ CREATE TABLE orderFqdnSets (
   registrationID BIGINT(20) NOT NULL,
   expires DATETIME NOT NULL,
   PRIMARY KEY (id),
-  KEY regID_setHash_expires_idx (registrationID,setHash,expires),
+  KEY setHash_expires_idx (setHash,expires),
   CONSTRAINT orderFqdnSets_registrationID_registrations
     FOREIGN KEY (registrationID)
     REFERENCES registrations (id)
