@@ -74,3 +74,6 @@ apt-get autoremove -y build-essential cmake libssl-dev ruby-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Save mock/mockgen/model because it will be needed later during `go generate`.
+GOPATH=/alt-gopath go get github.com/golang/mock/mockgen/model
