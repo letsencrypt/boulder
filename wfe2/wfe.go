@@ -493,18 +493,17 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	type accountCreateRequest struct {
+	var accountCreateRequest struct {
 		Contact              *[]string `json:"contact"`
 		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
 	}
-	var init accountCreateRequest
 
-	err = json.Unmarshal(body, &init)
+	err = json.Unmarshal(body, &accountCreateRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
 	}
-	if !init.TermsOfServiceAgreed {
+	if !accountCreateRequest.TermsOfServiceAgreed {
 		wfe.sendError(response, logEvent, probs.Malformed("must agree to terms of service"), nil)
 		return
 	}
@@ -522,7 +521,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
-		Contact:   init.Contact,
+		Contact:   accountCreateRequest.Contact,
 		Agreement: wfe.SubscriberAgreementURL,
 		Key:       key,
 		InitialIP: ip,
@@ -1195,7 +1194,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// TODO Content negotiation
 	response.WriteHeader(http.StatusOK)
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 
