@@ -1559,10 +1559,9 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find an order for the requested account ID that has
-// the names from the GetOrderForNamesRequest. Only unexpired orders from the
-// same account ID for the exact same names are considered. If no order is found
-// a nil corepb.OrderID pointer is returned.
+// GetOrderForNames tries to find an order with the exact set of names
+// requested, associated with the given accountID. Only unexpired orders are
+// considered. If no order is found a nil corepb.OrderID pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*sapb.OrderID, error) {
