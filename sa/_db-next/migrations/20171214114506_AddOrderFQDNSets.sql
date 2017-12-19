@@ -13,11 +13,11 @@ CREATE TABLE orderFqdnSets (
   CONSTRAINT orderFqdnSets_registrationID_registrations
     FOREIGN KEY (registrationID)
     REFERENCES registrations (id)
-    ON DELETE CASCADE,
+    ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT orderFqdnSets_orderID_orders
     FOREIGN KEY (orderID)
     REFERENCES orders (id)
-    ON DELETE CASCADE
+    ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
