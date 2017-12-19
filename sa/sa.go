@@ -1088,21 +1088,23 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 }
 
 // addOrderFQDNSet creates a new OrderFQDNSet row using the provided
-// information. This function doesn't accept a transaction because it must be
-// performed after the add transaction has completed in order for the orderID to
-// be known.
+// information. This function accepts a transaction so that the orderFqdnSet
+// addition can take place within the order addition transaction.
 func addOrderFQDNSet(
-	dbMap *gorp.DbMap,
+	tx *gorp.Transaction,
 	names []string,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	return dbMap.Insert(&orderFQDNSet{
+	if err := tx.Insert(&orderFQDNSet{
 		SetHash:        hashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
-	})
+	}); err != nil {
+		return Rollback(tx, err)
+	}
+	return nil
 }
 
 // deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
@@ -1367,17 +1369,18 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 	}
 
+	// Add an FQDNSet entry for the order
+	if err := addOrderFQDNSet(
+		tx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
 	// Update the request with the ID that the order received
 	req.Id = &order.ID
-	// Add an FQDNSet entry for the order
-	if err := addOrderFQDNSet(
-		ssa.dbMap, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
-		return nil, err
-	}
 	return req, nil
 }
 
