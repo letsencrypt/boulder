@@ -481,14 +481,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	type accountCreateRequest struct {
+	var accountCreateRequest struct {
 		Contact              *[]string `json:"contact"`
 		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
 		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
 	}
-	var init accountCreateRequest
 
-	err := json.Unmarshal(body, &init)
+	err := json.Unmarshal(body, &accountCreateRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
@@ -509,13 +508,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// If the request included a true "OnlyReturnExisting" field and we did not
 	// find an existing registration with the key specified then we must return an
 	// error and not create a new account.
-	if init.OnlyReturnExisting {
+	if accountCreateRequest.OnlyReturnExisting {
 		wfe.sendError(response, logEvent, probs.AccountDoesNotExist(
 			"No account exists with the provided key"), nil)
 		return
 	}
 
-	if !init.TermsOfServiceAgreed {
+	if !accountCreateRequest.TermsOfServiceAgreed {
 		wfe.sendError(response, logEvent, probs.Malformed("must agree to terms of service"), nil)
 		return
 	}
@@ -533,7 +532,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
-		Contact:   init.Contact,
+		Contact:   accountCreateRequest.Contact,
 		Agreement: wfe.SubscriberAgreementURL,
 		Key:       key,
 		InitialIP: ip,
@@ -1206,7 +1205,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// TODO Content negotiation
 	response.WriteHeader(http.StatusOK)
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 
