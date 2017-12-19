@@ -481,6 +481,19 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	type accountCreateRequest struct {
+		Contact              *[]string `json:"contact"`
+		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
+		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
+	}
+	var init accountCreateRequest
+
+	err := json.Unmarshal(body, &init)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+		return
+	}
+
 	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
 	if err == nil {
 		response.Header().Set("Location",
@@ -493,17 +506,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	type accountCreateRequest struct {
-		Contact              *[]string `json:"contact"`
-		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
-	}
-	var init accountCreateRequest
-
-	err = json.Unmarshal(body, &init)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+	// If the request included a true "OnlyReturnExisting" field and we did not
+	// find an existing registration with the key specified then we must return an
+	// error and not create a new account.
+	if init.OnlyReturnExisting {
+		wfe.sendError(response, logEvent, probs.AccountDoesNotExist(
+			"No account exists with the provided key"), nil)
 		return
 	}
+
 	if !init.TermsOfServiceAgreed {
 		wfe.sendError(response, logEvent, probs.Malformed("must agree to terms of service"), nil)
 		return
