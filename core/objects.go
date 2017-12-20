@@ -231,7 +231,10 @@ type Challenge struct {
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// A URI to which a response can be POSTed
-	URI string `json:"uri"`
+	URI string `json:"uri,omitempty"`
+
+	// For the V2 API the "URI" field is deprecated in favour of URL.
+	URL string `json:"url,omitempty"`
 
 	// Used by http-01, tls-sni-01, and dns-01 challenges
 	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
