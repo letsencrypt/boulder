@@ -963,7 +963,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -988,7 +988,7 @@ func TestChallenge(t *testing.T) {
 				"Location": "http://localhost/acme/challenge/valid/23",
 				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1677,7 +1677,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "challenges": [
 		    {
 		      "type": "dns",
-		      "uri": "http://localhost/acme/challenge/valid/23"
+		      "url": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
 		}`)
@@ -2472,4 +2472,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	if authz.Combinations != nil {
 		t.Errorf("Authz had a non-nil combinations")
 	}
+
+	// We expect the authz challenge has its URL set and the URI emptied.
+	chal := authz.Challenges[0]
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/12345")
+	test.AssertEquals(t, chal.URI, "")
 }

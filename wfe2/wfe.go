@@ -810,7 +810,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
 
-	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
+	// Challenge URLs are of the form /acme/challenge/<auth id>/<challenge id>.
 	// Here we parse out the id components.
 	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 {
@@ -866,11 +866,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URI field and clearing its ID field.
+// the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
-	// Update the challenge URI to be relative to the HTTP request Host
-	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
+	// Update the challenge URL to be relative to the HTTP request Host
+	challenge.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	// Ensure the challenge URI and challenge ID aren't written by setting them to
+	// values that the JSON omitempty tag considers empty
+	challenge.URI = ""
 	challenge.ID = 0
 
 	// Historically the Type field of a problem was always prefixed with a static
@@ -921,7 +923,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
 	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
 	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
@@ -985,7 +987,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
