@@ -64,7 +64,7 @@ type authzModel struct {
 	core.Authorization
 }
 
-// OrderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
 // existing orders for reuse.
