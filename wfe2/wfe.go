@@ -924,7 +924,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
@@ -988,7 +988,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
@@ -1085,7 +1085,7 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
 		// ServerInternal because we just generated the account, it should be OK
 		wfe.sendError(response, logEvent,

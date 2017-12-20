@@ -947,7 +947,7 @@ func TestGetChallenge(t *testing.T) {
 		wfe.Challenge(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
-			http.StatusAccepted)
+			http.StatusOK)
 		test.AssertEquals(t,
 			resp.Header().Get("Location"),
 			challengeURL)
@@ -983,7 +983,7 @@ func TestChallenge(t *testing.T) {
 		{
 			Name:           "Valid challenge",
 			Path:           "valid/23",
-			ExpectedStatus: http.StatusAccepted,
+			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Location": "http://localhost/acme/challenge/valid/23",
 				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
