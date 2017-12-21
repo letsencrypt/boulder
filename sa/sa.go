@@ -1108,22 +1108,16 @@ func addOrderFQDNSet(
 }
 
 // deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
-// information. This function accepts a transaction so that the deletion can
+// orderID. This function accepts a transaction so that the deletion can
 // take place within the finalization transaction.
 func deleteOrderFQDNSet(
 	tx *gorp.Transaction,
-	names []string,
-	orderID int64,
-	regID int64) error {
+	orderID int64) error {
 
 	result, err := tx.Exec(`
 	  DELETE FROM orderFqdnSets
-		WHERE setHash = ?
-		AND orderID = ?
-		AND registrationID = ?`,
-		hashNames(names),
-		orderID,
-		regID)
+		WHERE orderID = ?`,
+		orderID)
 	if err != nil {
 		return Rollback(tx, err)
 	}
@@ -1452,7 +1446,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 	// Delete the orderFQDNSet row for the order now that it has been finalized.
 	// We use this table for order reuse and should not reuse a finalized order.
-	if err := deleteOrderFQDNSet(tx, req.Names, *req.Id, *req.RegistrationID); err != nil {
+	if err := deleteOrderFQDNSet(tx, *req.Id); err != nil {
 		return err
 	}
 
