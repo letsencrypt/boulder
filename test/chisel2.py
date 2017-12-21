@@ -132,7 +132,6 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     try:
         order = client.poll_order_and_request_issuance(order)
-        print(order.fullchain_pem)
     finally:
         cleanup()
 
