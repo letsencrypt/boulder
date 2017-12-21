@@ -48,7 +48,7 @@ def make_client(email=None):
 
     client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
     tos = client.directory.meta.terms_of_service
-    if tos = ACCEPTABLE_TOS:
+    if tos == ACCEPTABLE_TOS:
         net.account = client.register(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
