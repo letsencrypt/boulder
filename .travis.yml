@@ -39,7 +39,7 @@ matrix:
     - env: RUN="unit"
     - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
     - env: RUN="coverage"
-    - env: RUN="acme-v2"
+    - env: RUN="acme-v2" BOULDER_CONFIG_DIR="test/config-next"
   fast_finish: true
   allow_failures:
     - env: RUN="coverage"
