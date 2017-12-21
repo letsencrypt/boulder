@@ -1089,27 +1089,26 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 
 // addOrderFQDNSet creates a new OrderFQDNSet row using the provided
 // information. This function accepts a transaction so that the orderFqdnSet
-// addition can take place within the order addition transaction.
+// addition can take place within the order addition transaction. The caller is
+// required to rollback the transaction if an error is returned.
 func addOrderFQDNSet(
 	tx *gorp.Transaction,
 	names []string,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	if err := tx.Insert(&orderFQDNSet{
+	return tx.Insert(&orderFQDNSet{
 		SetHash:        hashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
-	}); err != nil {
-		return Rollback(tx, err)
-	}
-	return nil
+	})
 }
 
 // deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
 // orderID. This function accepts a transaction so that the deletion can
-// take place within the finalization transaction.
+// take place within the finalization transaction. The caller is required to
+// rollback the transaction if an error is returned.
 func deleteOrderFQDNSet(
 	tx *gorp.Transaction,
 	orderID int64) error {
@@ -1119,18 +1118,17 @@ func deleteOrderFQDNSet(
 		WHERE orderID = ?`,
 		orderID)
 	if err != nil {
-		return Rollback(tx, err)
+		return err
 	}
 	rowsDeleted, err := result.RowsAffected()
 	if err != nil {
-		return Rollback(tx, err)
+		return err
 	}
 	// We always expect there to be an order FQDN set row for each
 	// pending/processing order that is being finalized. If there isn't one then
 	// something is amiss and should be raised as an internal server error
 	if rowsDeleted == 0 {
-		err = berrors.InternalServerError("No orderFQDNSet exists to delete")
-		return Rollback(tx, err)
+		return berrors.InternalServerError("No orderFQDNSet exists to delete")
 	}
 	return nil
 }
@@ -1370,7 +1368,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	// Add an FQDNSet entry for the order
 	if err := addOrderFQDNSet(
 		tx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
-		return nil, err
+		return nil, Rollback(tx, err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1447,7 +1445,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 	// Delete the orderFQDNSet row for the order now that it has been finalized.
 	// We use this table for order reuse and should not reuse a finalized order.
 	if err := deleteOrderFQDNSet(tx, *req.Id); err != nil {
-		return err
+		return Rollback(tx, err)
 	}
 
 	return tx.Commit()
