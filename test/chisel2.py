@@ -59,7 +59,7 @@ def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise "No %s challenge found" % typ
+    raise Exception("No %s challenge found" % typ)
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""
@@ -127,6 +127,8 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     if chall_type == "http-01":
         cleanup = do_http_challenges(client, authzs)
+    elif chall_type == "dns-01":
+        cleanup = do_dns_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 

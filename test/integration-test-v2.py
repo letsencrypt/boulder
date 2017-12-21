@@ -14,7 +14,7 @@ import tempfile
 import startservers
 
 import chisel2
-from chisel2 import auth_and_issue
+from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -28,6 +28,8 @@ def main():
         raise Exception("startservers failed")
 
     test_multidomain()
+    test_wildcardmultidomain()
+    test_overlapping_wildcard()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -37,6 +39,34 @@ def main():
 
 def test_multidomain():
     auth_and_issue([random_domain(), random_domain()])
+
+def test_wildcardmultidomain():
+    """
+    Test issuance for a random domain and a random wildcard domain using DNS-01.
+    """
+    auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
+
+def test_overlapping_wildcard():
+    """
+    Test issuance for a random domain and a wildcard version of the same domain
+    using DNS-01. This should result in *two* distinct authorizations.
+    """
+    domain = random_domain()
+    domains = [ domain, "*."+domain ]
+    client = make_client(None)
+    csr_pem = make_csr(domains)
+    order = client.new_order(csr_pem)
+    authzs = order.authorizations
+
+    if len(authzs) != 2:
+        raise Exception("order for %s had %d authorizations, expected 2" %
+                (domains, len(authzs)))
+
+    cleanup = do_dns_challenges(client, authzs)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
 
 if __name__ == "__main__":
     try:
