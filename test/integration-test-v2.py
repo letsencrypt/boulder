@@ -28,6 +28,7 @@ def main():
         raise Exception("startservers failed")
 
     test_multidomain()
+    test_wildcardmultidomain()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
