@@ -23,11 +23,12 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 
 import OpenSSL
+import josepy
 
 from acme import challenges
 from acme import client as acme_client
+from acme import crypto_util as acme_crypto_util
 from acme import errors as acme_errors
-from acme import jose
 from acme import messages
 from acme import standalone
 
@@ -39,12 +40,12 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
-    key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+    key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
-    net = acme_client.ClientNetwork(key, verify_ssl=False,
+    net = acme_client.ClientNetwork(key, acme_version=2,
                                     user_agent="Boulder integration tester")
 
-    client = acme_client.Client(DIRECTORY, key=key, net=net)
+    client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
     tos = client.directory.meta.terms_of_service
     if tos is not None and "Do%20what%20thou%20wilt" in tos:
         net.account = client.register(messages.NewRegistration.from_data(email=email,
@@ -70,10 +71,10 @@ class ValidationError(Exception):
         return "%s: %s: %s" % (self.domain, self.problem_type, self.detail)
 
 def make_csr(domains):
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
-    return x509.CertificateSigningRequestBuilder().add_extension(
-        x509.SubjectAlternativeName([x509.DNSName(d) for d in domains], critical=False)
-    ).sign(key, hashes.SHA256(), default_backend()).public_bytes(serialization.Encoding.PEM)
+    key = OpenSSL.crypto.PKey()
+    key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+    pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
+    return acme_crypto_util.make_csr(pem, domains, False)
 
 def issue(client, authzs, cert_output=None):
     """Given a list of authzs that are being processed by the server,
@@ -129,12 +130,8 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
         raise Exception("invalid challenge type %s" % chall_type)
 
     try:
-        while True:
-            order, response = client.poll_order(order)
-            print order.to_json()
-            if order.body.status != "pending":
-                break
-            time.sleep(1)
+        order = client.poll_order_and_request_issuance(order)
+        print(order.fullchain_pem)
     finally:
         cleanup()
 

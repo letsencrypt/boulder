@@ -188,6 +188,15 @@ if [[ "$RUN" =~ "integration" ]] ; then
   end_context #integration
 fi
 
+if [[ "$RUN" =~ "acme-v2" ]] ; then
+  CERTBOT_REPO=/certbot
+  CERTBOT_DIR=$(mktemp -d -t certbotXXXX)
+  git clone $CERTBOT_REPO $CERTBOT_DIR
+  (cd $CERTBOT_DIR ; git checkout acme-v2-integration; ./tools/venv.sh)
+  source $CERTBOT_DIR/venv/bin/activate
+  REQUESTS_CA_BUNDLE=test/wfe.pem DIRECTORY=https://boulder:4431/directory run python2 test/integration-test-v2.py
+fi
+
 # Run godep-restore (happens only in Travis) to check that the hashes in
 # Godeps.json really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "godep-restore" ]] ; then
