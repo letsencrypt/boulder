@@ -147,7 +147,7 @@ func (sa *mockInvalidAuthorizationsAuthority) GetOrder(ctx context.Context, in *
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) GetOrderForNames(ctx context.Context, in *sapb.GetOrderForNamesRequest, opts ...grpc.CallOption) (*sapb.OrderID, error) {
+func (sa *mockInvalidAuthorizationsAuthority) GetOrderForNames(ctx context.Context, in *sapb.GetOrderForNamesRequest, opts ...grpc.CallOption) (*core.Order, error) {
 	return nil, nil
 }
 

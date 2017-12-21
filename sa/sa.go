@@ -1553,10 +1553,10 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 
 // GetOrderForNames tries to find an order with the exact set of names
 // requested, associated with the given accountID. Only unexpired orders are
-// considered. If no order is found a nil corepb.OrderID pointer is returned.
+// considered. If no order is found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
-	req *sapb.GetOrderForNamesRequest) (*sapb.OrderID, error) {
+	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 
 	// Hash the names requested for lookup in the orderFqdnSets table
 	fqdnHash := hashNames(req.Names)
@@ -1579,8 +1579,8 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 
-	// Return the found order ID
-	return &sapb.OrderID{Id: &orderID}, nil
+	// Get & return the order
+	return ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,

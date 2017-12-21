@@ -1586,17 +1586,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing, pending, unexpired order that can be reused
 	// for this account
-	orderID, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: order.RegistrationID,
 		Names:  order.Names,
 	})
 	if err != nil {
 		return nil, err
 	}
-	// If there is an order ID that can be used, return the corresponding order
-	// instead of continuing to create a new pending order
-	if orderID != nil {
-		return ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID.Id})
+	// If there was an order fit for reuse return it now instead of making a new
+	// pending order
+	if existingOrder != nil {
+		return existingOrder, nil
 	}
 
 	// Check whether there are existing non-expired authorizations for the set of

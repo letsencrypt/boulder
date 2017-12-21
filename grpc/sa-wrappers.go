@@ -518,14 +518,15 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 
 func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 	ctx context.Context,
-	request *sapb.GetOrderForNamesRequest) (*sapb.OrderID, error) {
+	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	resp, err := sas.inner.GetOrderForNames(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	// We allow resp to be nil in the case where no suitable order ID was found.
-	// We don't allow a non-nil response with a nil Id.
-	if resp != nil && resp.Id == nil {
+	// We allow resp to be nil in this case since there may not be an order that
+	// meets the reuse requirements. If the response is not nil, then it must be
+	// a valid order
+	if resp != nil && !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -1083,7 +1084,7 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 
 func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 	ctx context.Context,
-	request *sapb.GetOrderForNamesRequest) (*sapb.OrderID, error) {
+	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	if request == nil || request.AcctID == nil || len(request.Names) == 0 {
 		return nil, errIncompleteRequest
 	}

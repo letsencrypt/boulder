@@ -1722,14 +1722,14 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Call GetOrderForNames for a set of names we haven't created an order for
 	// yet
-	orderID, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	result, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
 	// Even though there is no suitable order this should not error
 	test.AssertNotError(t, err, "sa.GetOrderForNames for non-existent order failed")
 	// The result should be nil
-	test.Assert(t, orderID == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
+	test.Assert(t, result == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
 
 	// Add a new order for a set of names
 	order, err := sa.NewOrder(ctx, &corepb.Order{
@@ -1746,41 +1746,41 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Call GetOrderForNames with the same account ID and set of names as the
 	// above NewOrder call
-	orderID, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
-	// The order ID returned should be equal to the order we created above
-	test.AssertNotNil(t, orderID, "Returned order ID was nil")
-	test.AssertEquals(t, *orderID.Id, *order.Id)
+	// The order returned should have the same ID as the order we created above
+	test.AssertNotNil(t, result, "Returned order was nil")
+	test.AssertEquals(t, *result.Id, *order.Id)
 
 	// Call GetOrderForNames with a different account ID from the NewOrder call
 	regB := int64(1337)
-	orderID, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regB,
 		Names:  names,
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
 	// The result should be nil
-	test.Assert(t, orderID == nil, "sa.GetOrderForNames for diff AcctID returned non-nil result")
+	test.Assert(t, result == nil, "sa.GetOrderForNames for diff AcctID returned non-nil result")
 
 	// Advance the clock beyond the initial order's lifetime
 	fc.Add(2 * orderLifetime)
 
 	// Call GetOrderForNames again with the same account ID and set of names as
 	// the initial NewOrder call
-	orderID, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
 	// It should not error
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
 	// The result should be nil because the initial order expired & we don't want
-	// to return expired order IDs
-	test.Assert(t, orderID == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
+	// to return expired orders
+	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
 
 	// Add a fresh order for a different of names. Put its status as Processing so
 	// we can finalize it
@@ -1807,7 +1807,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Call GetOrderForNames with the same account ID and set of names as
 	// the above NewOrder call
-	orderID, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
@@ -1815,5 +1815,5 @@ func TestGetOrderForNames(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
 	// The result should be nil because the one matching order has been finalized
 	// already
-	test.Assert(t, orderID == nil, "sa.GetOrderForNames returned non-nil result for finalized order case")
+	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for finalized order case")
 }
