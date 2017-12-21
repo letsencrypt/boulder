@@ -1,4 +1,10 @@
 #!/usr/bin/env python2.7
+"""
+Integration test for ACMEv2 as implemented by boulder-wfe2.
+
+Currently (December 2017) this depends on the acme-v2-integration branch of
+Certbot, while we wait on landing some of our changes in master.
+"""
 import atexit
 import random
 import shutil
