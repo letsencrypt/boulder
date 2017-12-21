@@ -58,7 +58,7 @@ def test_overlapping_wildcard():
     order = client.new_order(csr_pem)
     authzs = order.authorizations
 
-    if not len(authzs) == 2:
+    if len(authzs) != 2:
         raise Exception("order for %s had %d authorizations, expected 2" %
                 (domains, len(authzs))
 
