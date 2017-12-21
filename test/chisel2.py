@@ -37,6 +37,7 @@ logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
+ACCEPTABLE_TOS = "https://boulder:4431/terms/v7"
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
@@ -47,7 +48,7 @@ def make_client(email=None):
 
     client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
     tos = client.directory.meta.terms_of_service
-    if tos is not None and "https://boulder:4431/terms/v7" in tos:
+    if tos == ACCEPTABLE_TOS:
         net.account = client.register(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
@@ -133,7 +134,6 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     try:
         order = client.poll_order_and_request_issuance(order)
-        print(order.fullchain_pem)
     finally:
         cleanup()
 
