@@ -40,7 +40,7 @@ def test_multidomain():
     auth_and_issue([random_domain(), random_domain()])
 
 def test_wildcardmultidomain():
-    auth_and_test([random_domain(), "*."+random_domain()], chall_type="dns-01")
+    auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
 
 if __name__ == "__main__":
     try:
