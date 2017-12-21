@@ -947,7 +947,7 @@ func TestGetChallenge(t *testing.T) {
 		wfe.Challenge(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
-			http.StatusAccepted)
+			http.StatusOK)
 		test.AssertEquals(t,
 			resp.Header().Get("Location"),
 			challengeURL)
@@ -963,7 +963,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -983,12 +983,12 @@ func TestChallenge(t *testing.T) {
 		{
 			Name:           "Valid challenge",
 			Path:           "valid/23",
-			ExpectedStatus: http.StatusAccepted,
+			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Location": "http://localhost/acme/challenge/valid/23",
 				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1099,7 +1099,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
-	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
@@ -1234,7 +1234,7 @@ func TestNewAccount(t *testing.T) {
 		},
 		{
 			makePostRequestWithPath(newAcctPath, wrongAgreementBody),
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]","status":400}`,
+			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"must agree to terms of service","status":400}`,
 		},
 	}
 	for _, rt := range acctErrTests {
@@ -1245,7 +1245,7 @@ func TestNewAccount(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
 
@@ -1263,8 +1263,6 @@ func TestNewAccount(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/0")
-	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
@@ -1492,8 +1490,7 @@ func TestGetCertificate(t *testing.T) {
 	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-	certBlock, _ := pem.Decode(certPemBytes)
-	pkixContent := "application/pkix-cert"
+	pkixContent := "application/pem-certificate-chain"
 
 	noCache := "public, max-age=0, no-cache"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
@@ -1514,9 +1511,8 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
-				"Link":         `<https://localhost:4000/acme/issuer-cert>;rel="up"`,
 			},
-			ExpectedCert: certBlock.Bytes,
+			ExpectedCert: certPemBytes,
 		},
 		{
 			Name:           "Unused serial, no cache",
@@ -1590,7 +1586,6 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-	certBlock, _ := pem.Decode(certPemBytes)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -1612,7 +1607,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 		test.AssertNotEquals(t, err, "readall error")
 	}
 	test.AssertEquals(t, resp.StatusCode, 200)
-	test.AssertEquals(t, strconv.Itoa(len(certBlock.Bytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, strconv.Itoa(len(certPemBytes)), resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))
 }
 
@@ -1682,7 +1677,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "challenges": [
 		    {
 		      "type": "dns",
-		      "uri": "http://localhost/acme/challenge/valid/23"
+		      "url": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
 		}`)
@@ -1725,7 +1720,7 @@ func TestDeactivateAccount(t *testing.T) {
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
-		  "Status": "deactivated"
+		  "status": "deactivated"
 		}`)
 
 	responseWriter.Body.Reset()
@@ -1748,7 +1743,7 @@ func TestDeactivateAccount(t *testing.T) {
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
-		  "Status": "deactivated"
+		  "status": "deactivated"
 		}`)
 
 	responseWriter.Body.Reset()
@@ -1840,16 +1835,16 @@ func TestNewOrder(t *testing.T) {
 			Request: signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService),
 			ExpectedBody: `
 					{
-						"Status": "pending",
-						"Expires": "1970-01-01T00:00:00Z",
-						"Identifiers": [
+						"status": "pending",
+						"expires": "1970-01-01T00:00:00Z",
+						"identifiers": [
 							{ "type": "dns", "value": "not-example.com"},
 							{ "type": "dns", "value": "www.not-example.com"}
 						],
-						"Authorizations": [
+						"authorizations": [
 							"http://localhost/acme/authz/hello"
 						],
-						"Finalize": "http://localhost/acme/order/1/1/finalize-order"
+						"finalize": "http://localhost/acme/order/1/1/finalize-order"
 					}`,
 		},
 	}
@@ -1971,15 +1966,15 @@ func TestFinalizeOrder(t *testing.T) {
 			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedBody: `
 {
-  "Status": "processing",
-  "Expires": "1970-01-01T00:00:00.9466848Z",
-  "Identifiers": [
+  "status": "processing",
+  "expires": "1970-01-01T00:00:00.9466848Z",
+  "identifiers": [
     {"type":"dns","value":"example.com"}
   ],
-  "Authorizations": [
+  "authorizations": [
     "http://localhost/acme/authz/hello"
   ],
-  "Finalize": "http://localhost/acme/order/1/4/finalize-order"
+  "finalize": "http://localhost/acme/order/1/4/finalize-order"
 }`,
 		},
 	}
@@ -2077,7 +2072,7 @@ func TestKeyRollover(t *testing.T) {
 		     "agreement": "http://example.invalid/terms",
 		     "initialIp": "",
 		     "createdAt": "0001-01-01T00:00:00Z",
-		     "Status": "valid"
+		     "status": "valid"
 		   }`,
 			NewKey: newKey,
 		},
@@ -2110,7 +2105,7 @@ func TestOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Path:     "1/1",
-			Response: `{"Status": "valid","Expires": "1970-01-01T00:00:00.9466848Z","Identifiers":[{"type":"dns", "value":"example.com"}], "Authorizations":["http://localhost/acme/authz/hello"],"Finalize":"http://localhost/acme/order/1/1/finalize-order","Certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz/hello"],"finalize":"http://localhost/acme/order/1/1/finalize-order","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2413,21 +2408,37 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 	return core.Registration{}, berrors.NotFoundError("not found")
 }
 
-// When SA.GetRegistrationByKey returns NotFound, NewAccount should
-// succeed.
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
-	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	// When SA.GetRegistrationByKey returns NotFound, and no onlyReturnExisting
+	// field is sent, NewAccount should succeed.
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	signedURL := "http://localhost/new-account"
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	if responseWriter.Code != http.StatusCreated {
 		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
 	}
+
+	// When SA.GetRegistrationByKey returns NotFound, and onlyReturnExisting
+	// field **is** sent, NewAccount should fail with the expected error.
+	payload = `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true,"onlyReturnExisting":true}`
+	responseWriter = httptest.NewRecorder()
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	// Process the new account request
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+	{
+		"type": "urn:ietf:params:acme:error:accountDoesNotExist",
+		"detail": "No account exists with the provided key",
+		"status": 400
+	}`)
 }
 
 func TestPrepAuthzForDisplay(t *testing.T) {
@@ -2461,4 +2472,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	if authz.Combinations != nil {
 		t.Errorf("Authz had a non-nil combinations")
 	}
+
+	// We expect the authz challenge has its URL set and the URI emptied.
+	chal := authz.Challenges[0]
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/12345")
+	test.AssertEquals(t, chal.URI, "")
 }
