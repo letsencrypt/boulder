@@ -1207,8 +1207,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.WriteHeader(http.StatusOK)
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.WriteHeader(http.StatusOK)
 
 	pem := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
