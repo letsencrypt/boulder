@@ -19,11 +19,11 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import OpenSSL
-import josepy
 
 from acme import challenges
 from acme import client as acme_client
 from acme import errors as acme_errors
+from acme import jose
 from acme import messages
 from acme import standalone
 
@@ -35,7 +35,7 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
-    key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+    key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
     net = acme_client.ClientNetwork(key, verify_ssl=False,
                                     user_agent="Boulder integration tester")
@@ -112,7 +112,7 @@ def issue(client, authzs, cert_output=None):
 
     cert_resource = None
     try:
-        cert_resource, _ = client.poll_and_request_issuance(josepy.ComparableX509(csr), authzs)
+        cert_resource, _ = client.poll_and_request_issuance(jose.ComparableX509(csr), authzs)
     except acme_errors.PollError as error:
         # If we get a PollError, pick the first failed authz and turn it into a more
         # useful ValidationError that contains details we can look for in tests.
