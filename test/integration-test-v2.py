@@ -60,7 +60,7 @@ def test_overlapping_wildcard():
 
     if len(authzs) != 2:
         raise Exception("order for %s had %d authorizations, expected 2" %
-                (domains, len(authzs))
+                (domains, len(authzs)))
 
     cleanup = do_dns_challenges(client, authzs)
     try:
