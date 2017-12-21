@@ -47,7 +47,7 @@ def make_client(email=None):
 
     client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
     tos = client.directory.meta.terms_of_service
-    if tos is not None and "Do%20what%20thou%20wilt" in tos:
+    if tos is not None and "https://boulder:4431/terms/v7" in tos:
         net.account = client.register(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
