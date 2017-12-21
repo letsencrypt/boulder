@@ -501,7 +501,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address
 	reg.Key = &jose.JSONWebKey{Key: testKey()}
@@ -518,7 +518,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// exceed the RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address in the same /48
 	reg.Key = &jose.JSONWebKey{Key: testKey()}
@@ -537,7 +537,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// /48 is outside of the RegistrationsPerIPRange limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP range")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
 }
 
 type NoUpdateSA struct {
@@ -1249,7 +1249,7 @@ func TestAuthzFailedRateLimiting(t *testing.T) {
 	// Should trigger rate limit
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertError(t, err, "NewAuthorization did not encounter expected rate limit error")
-	test.AssertEquals(t, err.Error(), "Too many failed authorizations recently.")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
@@ -1515,12 +1515,12 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		{
 			Name:        "FQDN set issuances equal to limit",
 			Domain:      "equal.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com"),
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 		{
 			Name:        "FQDN set issuances above limit",
 			Domain:      "over.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com"),
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 	}
 
