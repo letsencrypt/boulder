@@ -1584,6 +1584,24 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 	}
 
+	// See if there is an existing, pending, unexpired order that can be reused
+	// for this account
+	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: order.RegistrationID,
+		Names:  order.Names,
+	})
+	// If there was an error and it wasn't an acceptable "NotFound" error, return
+	// immediately
+	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		return nil, err
+	}
+	// If there was an order, return it
+	if existingOrder != nil {
+		return existingOrder, nil
+	}
+	// Otherwise we were unable to find an order to reuse, continue creating a new
+	// order
+
 	// Check whether there are existing non-expired authorizations for the set of
 	// order names
 	now := ra.clk.Now().UnixNano()

@@ -1300,10 +1300,17 @@ func TestNewOrder(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	i := int64(1337)
+	// Create a test registration to reference
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	i := int64(1)
 	status := string(core.StatusPending)
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID: &i,
+		RegistrationID: &reg.ID,
 		Expires:        &i,
 		Names:          []string{"example.com", "just.another.example.com"},
 		Authorizations: []string{"a", "b", "c"},
@@ -1334,10 +1341,17 @@ func TestSetOrderProcessing(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	// Create a test registration to reference
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
 	i := int64(1337)
 	status := string(core.StatusPending)
 	order := &corepb.Order{
-		RegistrationID: &i,
+		RegistrationID: &reg.ID,
 		Expires:        &i,
 		Names:          []string{"example.com"},
 		Authorizations: []string{"a", "b", "c"},
@@ -1345,7 +1359,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	}
 
 	// Add a new order in pending status with no certificate serial
-	order, err := sa.NewOrder(context.Background(), order)
+	order, err = sa.NewOrder(context.Background(), order)
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to be processing
@@ -1371,10 +1385,17 @@ func TestFinalizeOrder(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	// Create a test registration to reference
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
 	i := int64(1337)
 	status := string(core.StatusProcessing)
 	order := &corepb.Order{
-		RegistrationID: &i,
+		RegistrationID: &reg.ID,
 		Expires:        &i,
 		Names:          []string{"example.com"},
 		Authorizations: []string{"a", "b", "c"},
@@ -1382,7 +1403,7 @@ func TestFinalizeOrder(t *testing.T) {
 	}
 
 	// Add a new order in processing status with an empty certificate serial
-	order, err := sa.NewOrder(context.Background(), order)
+	order, err = sa.NewOrder(context.Background(), order)
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Finalize the order with a certificate serial
@@ -1411,12 +1432,19 @@ func TestOrder(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	i := time.Now().Truncate(time.Second).UnixNano()
+	// Create a test registration to reference
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	expires := time.Now().Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
 	empty := ""
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:    &i,
-		Expires:           &i,
+		RegistrationID:    &reg.ID,
+		Expires:           &expires,
 		Names:             []string{"example.com"},
 		Authorizations:    []string{"a"},
 		Status:            &status,
@@ -1665,4 +1693,135 @@ func TestCountPendingOrders(t *testing.T) {
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 0)
+}
+
+func TestGetOrderForNames(t *testing.T) {
+	// Only run under test/config-next config where required migrations
+	// have been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Give the order we create a short lifetime
+	orderLifetime := time.Hour
+	expires := fc.Now().Add(orderLifetime).UnixNano()
+
+	// Create two test registrations to associate with orders
+	regA, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       satest.GoodJWK(),
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	ctx := context.Background()
+	status := string(core.StatusPending)
+	names := []string{"example.com", "just.another.example.com"}
+
+	// Call GetOrderForNames for a set of names we haven't created an order for
+	// yet
+	result, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// We expect the result to return an error
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	// The result should be nil
+	test.Assert(t, result == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
+
+	// Add a new order for a set of names
+	order, err := sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &regA.ID,
+		Expires:        &expires,
+		Status:         &status,
+		Authorizations: []string{"a", "b", "c"},
+		Names:          names,
+	})
+	// It shouldn't error
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+	// The order ID shouldn't be nil
+	test.AssertNotNil(t, *order.Id, "NewOrder returned with a nil Id")
+
+	// Call GetOrderForNames with the same account ID and set of names as the
+	// above NewOrder call
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// It shouldn't error
+	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
+	// The order returned should have the same ID as the order we created above
+	test.AssertNotNil(t, result, "Returned order was nil")
+	test.AssertEquals(t, *result.Id, *order.Id)
+
+	// Call GetOrderForNames with a different account ID from the NewOrder call
+	regB := int64(1337)
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regB,
+		Names:  names,
+	})
+	// It should error
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	// The result should be nil
+	test.Assert(t, result == nil, "sa.GetOrderForNames for diff AcctID returned non-nil result")
+
+	// Advance the clock beyond the initial order's lifetime
+	fc.Add(2 * orderLifetime)
+
+	// Call GetOrderForNames again with the same account ID and set of names as
+	// the initial NewOrder call
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// It should error since there is no result
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	// The result should be nil because the initial order expired & we don't want
+	// to return expired orders
+	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
+
+	// Add a fresh order for a different of names. Put its status as Processing so
+	// we can finalize it
+	expires = fc.Now().Add(orderLifetime).UnixNano()
+	statusProcessing := string(core.StatusProcessing)
+	names = []string{"zombo.com", "welcome.to.zombo.com"}
+	order, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &regA.ID,
+		Expires:        &expires,
+		Status:         &statusProcessing,
+		Authorizations: []string{"a", "b", "c"},
+		Names:          names,
+	})
+	// It shouldn't error
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+	// The order ID shouldn't be nil
+	test.AssertNotNil(t, *order.Id, "NewOrder returned with a nil Id")
+
+	// Finalize the order
+	serial := "cinnamon toast crunch"
+	order.CertificateSerial = &serial
+	err = sa.FinalizeOrder(ctx, order)
+	test.AssertNotError(t, err, "sa.FinalizeOrder failed")
+
+	// Call GetOrderForNames with the same account ID and set of names as
+	// the above NewOrder call
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// It should error since there is no result
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	// The result should be nil because the one matching order has been finalized
+	// already
+	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for finalized order case")
 }
