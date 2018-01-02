@@ -29,7 +29,6 @@ def main():
 
     test_multidomain()
     test_wildcardmultidomain()
-    test_overlapping_wildcard()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
