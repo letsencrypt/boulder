@@ -1573,7 +1573,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// There isn't an unexpired order for the provided AcctID that has the
 	// fqdnHash requested.
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
 		// An unexpected error occurred
 		return nil, err
