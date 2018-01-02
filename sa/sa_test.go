@@ -1726,8 +1726,10 @@ func TestGetOrderForNames(t *testing.T) {
 		AcctID: &regA.ID,
 		Names:  names,
 	})
-	// Even though there is no suitable order this should not error
-	test.AssertNotError(t, err, "sa.GetOrderForNames for non-existent order failed")
+	// We expect the result to return an error
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 	// The result should be nil
 	test.Assert(t, result == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
 
@@ -1762,8 +1764,10 @@ func TestGetOrderForNames(t *testing.T) {
 		AcctID: &regB,
 		Names:  names,
 	})
-	// It shouldn't error
-	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
+	// It should error
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 	// The result should be nil
 	test.Assert(t, result == nil, "sa.GetOrderForNames for diff AcctID returned non-nil result")
 
@@ -1776,8 +1780,10 @@ func TestGetOrderForNames(t *testing.T) {
 		AcctID: &regA.ID,
 		Names:  names,
 	})
-	// It should not error
-	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
+	// It should error since there is no result
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 	// The result should be nil because the initial order expired & we don't want
 	// to return expired orders
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
@@ -1811,8 +1817,10 @@ func TestGetOrderForNames(t *testing.T) {
 		AcctID: &regA.ID,
 		Names:  names,
 	})
-	// It should not error
-	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
+	// It should error since there is no result
+	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
+	// The error should be a notfound error
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 	// The result should be nil because the one matching order has been finalized
 	// already
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for finalized order case")
