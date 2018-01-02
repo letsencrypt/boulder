@@ -11,7 +11,7 @@
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
-    "subscriberAgreementURL": "http://boulder:4001/terms/v1",
+    "subscriberAgreementURL": "https://boulder:4431/terms/v7",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8013",

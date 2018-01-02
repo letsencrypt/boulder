@@ -2291,7 +2291,7 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
-		  "Status": "deactivated"
+		  "status": "deactivated"
 		}`)
 
 	responseWriter.Body.Reset()
@@ -2312,7 +2312,7 @@ func TestDeactivateRegistration(t *testing.T) {
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
-		  "Status": "deactivated"
+		  "status": "deactivated"
 		}`)
 
 	key := loadPrivateKey(t, []byte(test3KeyPrivatePEM))
@@ -2402,7 +2402,7 @@ func TestKeyRollover(t *testing.T) {
 		     "agreement": "http://example.invalid/terms",
 		     "initialIp": "",
 		     "createdAt": "0001-01-01T00:00:00Z",
-		     "Status": "valid"
+		     "status": "valid"
 		   }`,
 		},
 	} {

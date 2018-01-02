@@ -89,6 +89,43 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
+	case "unsatisfiable-wildcard.com":
+		// Forbidden issuance - issuewild doesn't contain LE
+		record.Tag = "issuewild"
+		record.Value = ";"
+		results = append(results, &record)
+	case "unsatisfiable-wildcard-override.com":
+		// Forbidden issuance - issue allows LE, issuewild overrides and does not
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issuewild"
+		secondRecord.Value = "ca.com"
+		results = append(results, &secondRecord)
+	case "satisfiable-wildcard-override.com":
+		// Ok issuance - issue doesn't allow LE, issuewild overrides and does
+		record.Tag = "issue"
+		record.Value = "ca.com"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issuewild"
+		secondRecord.Value = "letsencrypt.org"
+		results = append(results, &secondRecord)
+	case "satisfiable-multi-wildcard.com":
+		// Ok issuance - first issuewild doesn't permit LE but second does
+		record.Tag = "issuewild"
+		record.Value = "ca.com"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issuewild"
+		secondRecord.Value = "letsencrypt.org"
+		results = append(results, &secondRecord)
+	case "satisfiable-wildcard.com":
+		// Ok issuance - issuewild allows LE
+		record.Tag = "issuewild"
+		record.Value = "letsencrypt.org"
+		results = append(results, &record)
 	}
 	return results, nil
 }
@@ -107,49 +144,144 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
-	type CAATest struct {
+
+	testCases := []struct {
+		Name    string
 		Domain  string
 		Present bool
 		Valid   bool
-	}
-	tests := []CAATest{
-		// Reserved
-		{"reserved.com", true, false},
-		// Critical
-		{"critical.com", true, false},
-		{"nx.critical.com", true, false},
-		// Good (absent)
-		{"absent.com", false, true},
-		{"example.co.uk", false, true},
-		// Good (present)
-		{"present.com", true, true},
-		{"present.servfail.com", true, true},
-		// Good (multiple critical, one matching)
-		{"multi-crit-present.com", true, true},
-		// Bad (unknown critical)
-		{"unknown-critical.com", true, false},
-		{"unknown-critical2.com", true, false},
-		// Good (unknown noncritical, no issue/issuewild records)
-		{"unknown-noncritical.com", true, true},
-		// Good (issue record with unknown parameters)
-		{"present-with-parameter.com", true, true},
-		// Bad (unsatisfiable issue record)
-		{"unsatisfiable.com", true, false},
+	}{
+		{
+			Name:    "Bad (Reserved)",
+			Domain:  "reserved.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (Critical)",
+			Domain:  "critical.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (NX Critical)",
+			Domain:  "nx.critical.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (absent)",
+			Domain:  "absent.com",
+			Present: false,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (Example.co.uk, absent)",
+			Domain:  "example.co.uk",
+			Present: false,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (present and valid)",
+			Domain:  "present.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (Present w/ servfail exception?)",
+			Domain:  "present.servfail.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (multiple critical, one matching)",
+			Domain:  "multi-crit-present.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Bad (unknown critical)",
+			Domain:  "unknown-critical.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (unknown critical 2)",
+			Domain:  "unknown-critical2.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (unknown non-critical, no issue/issuewild)",
+			Domain:  "unknown-noncritical.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (issue rec with unknown params)",
+			Domain:  "present-with-parameter.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Bad (unsatisfiable issue record)",
+			Domain:  "unsatisfiable.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (unsatisfiable issue, wildcard)",
+			Domain:  "*.unsatisfiable.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (unsatisfiable wildcard)",
+			Domain:  "*.unsatisfiable-wildcard.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (unsatisfiable wildcard override)",
+			Domain:  "*.unsatisfiable-wildcard-override.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (satisfiable wildcard)",
+			Domain:  "*.satisfiable-wildcard.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (multiple issuewild, one satisfiable)",
+			Domain:  "*.satisfiable-multi-wildcard.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (satisfiable wildcard override)",
+			Domain:  "*.satisfiable-wildcard-override.com",
+			Present: true,
+			Valid:   true,
+		},
 	}
 
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
-	for _, caaTest := range tests {
-		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
-		if err != nil {
-			t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
-		}
-		if present != caaTest.Present {
-			t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
-		}
-		if valid != caaTest.Valid {
-			t.Errorf("checkCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
-		}
+	for _, caaTest := range testCases {
+		t.Run(caaTest.Name, func(t *testing.T) {
+			present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+			if err != nil {
+				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
+			}
+			if present != caaTest.Present {
+				t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
+			}
+			if valid != caaTest.Valid {
+				t.Errorf("checkCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
+			}
+		})
 	}
 
 	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})

@@ -510,7 +510,7 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Id == nil || resp.RegistrationID == nil || resp.Expires == nil || resp.Authorizations == nil || resp.Status == nil || resp.Error == nil || resp.CertificateSerial == nil || resp.Names == nil {
+	if resp == nil || !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -523,10 +523,17 @@ func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Authz == nil {
+	if resp == nil {
 		return nil, errIncompleteResponse
 	}
 
+	// If there were no authorizations, return nil
+	if resp.Authz == nil {
+		return nil, nil
+	}
+
+	// Otherwise check the authorizations are valid and convert them from protobuf
+	// form before returning a map of results to the caller
 	auths := make(map[string]*core.Authorization, len(resp.Authz))
 	for _, element := range resp.Authz {
 		if element == nil || element.Domain == nil || !authorizationValid(element.Authz) {
@@ -546,7 +553,7 @@ func (sas StorageAuthorityClientWrapper) GetAuthorizations(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Authz == nil {
+	if resp == nil {
 		return nil, errIncompleteResponse
 	}
 	for _, element := range resp.Authz {
@@ -1020,7 +1027,7 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization(ctx context.Con
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	if request == nil || !orderValid(request) {
+	if request == nil || !newOrderValid(request) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1094,7 +1101,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorizations(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) AddPendingAuthorizations(ctx context.Context, request *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	if request == nil || request.Authz != nil {
+	if request == nil || request.Authz == nil {
 		return nil, errIncompleteRequest
 	}
 

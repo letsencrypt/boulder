@@ -501,7 +501,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address
 	reg.Key = &jose.JSONWebKey{Key: testKey()}
@@ -518,7 +518,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// exceed the RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address in the same /48
 	reg.Key = &jose.JSONWebKey{Key: testKey()}
@@ -537,7 +537,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// /48 is outside of the RegistrationsPerIPRange limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP range")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
 }
 
 type NoUpdateSA struct {
@@ -1249,7 +1249,7 @@ func TestAuthzFailedRateLimiting(t *testing.T) {
 	// Should trigger rate limit
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertError(t, err, "NewAuthorization did not encounter expected rate limit error")
-	test.AssertEquals(t, err.Error(), "Too many failed authorizations recently.")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
@@ -1515,12 +1515,12 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		{
 			Name:        "FQDN set issuances equal to limit",
 			Domain:      "equal.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com"),
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: equal.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 		{
 			Name:        "FQDN set issuances above limit",
 			Domain:      "over.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com"),
+			ExpectedErr: fmt.Errorf("too many certificates already issued for exact set of domains: over.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 	}
 
@@ -1948,10 +1948,33 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	registrationID int64,
 	names []string,
 	now time.Time) (map[string]*core.Authorization, error) {
+	makeIdentifier := func(name string) core.AcmeIdentifier {
+		return core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: name,
+		}
+	}
 	return map[string]*core.Authorization{
-		"recent.com": &core.Authorization{Expires: &m.recent},
-		"older.com":  &core.Authorization{Expires: &m.older},
-		"older2.com": &core.Authorization{Expires: &m.older},
+		"recent.com": &core.Authorization{
+			Identifier: makeIdentifier("recent.com"),
+			Expires:    &m.recent,
+		},
+		"older.com": &core.Authorization{
+			Identifier: makeIdentifier("older.com"),
+			Expires:    &m.older,
+		},
+		"older2.com": &core.Authorization{
+			Identifier: makeIdentifier("older2.com"),
+			Expires:    &m.older,
+		},
+		"wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("wildcard.com"),
+			Expires:    &m.older,
+		},
+		"*.wildcard.com": &core.Authorization{
+			Identifier: makeIdentifier("*.wildcard.com"),
+			Expires:    &m.older,
+		},
 	}, nil
 }
 
@@ -1967,19 +1990,41 @@ func TestRecheckCAADates(t *testing.T) {
 		recent: fc.Now().Add(15 * time.Hour),
 		older:  fc.Now().Add(5 * time.Hour),
 	}
-	names := []string{"recent.com", "older.com", "older2.com"}
+
+	// NOTE: The names provided here correspond to authorizations in the
+	// `mockSAWithRecentAndOlder`
+	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
 	err := ra.checkAuthorizations(context.Background(), names, 999)
+	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
-	if recorder.names["recent.com"] {
+
+	// We expect that "recent.com" is not checked because its mock authorization
+	// isn't expired
+	if _, present := recorder.names["recent.com"]; present {
 		t.Errorf("Rechecked CAA unnecessarily for recent.com")
 	}
-	if !recorder.names["older.com"] {
-		t.Errorf("Failed to recheck CAA for older.com %#v", recorder.names)
-	}
-	if !recorder.names["older2.com"] {
+
+	// We expect that "older.com" is checked
+	if _, present := recorder.names["older.com"]; !present {
 		t.Errorf("Failed to recheck CAA for older.com")
+	}
+
+	// We expect that "older2.com" is checked
+	if _, present := recorder.names["older2.com"]; !present {
+		t.Errorf("Failed to recheck CAA for older2.com")
+	}
+
+	// We expect that the "wildcard.com" domain (without the `*.` prefix) is checked.
+	if _, present := recorder.names["wildcard.com"]; !present {
+		t.Errorf("Failed to recheck CAA for wildcard.com")
+	}
+
+	// We expect that "*.wildcard.com" is checked (with the `*.` prefix, because
+	// it is stripped at a lower layer than we are testing)
+	if _, present := recorder.names["*.wildcard.com"]; !present {
+		t.Errorf("Failed to recheck CAA for *.wildcard.com")
 	}
 }
 

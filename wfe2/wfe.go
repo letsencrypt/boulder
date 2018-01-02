@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
@@ -52,6 +53,7 @@ const (
 	issuerPath        = "/acme/issuer-cert"
 	buildIDPath       = "/build"
 	rolloverPath      = "/acme/key-change"
+	newNoncePath      = "/acme/new-nonce"
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "finalize-order"
@@ -316,6 +318,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
@@ -371,13 +374,18 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 // Directory is an HTTP request handler that provides the directory
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
-func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
 	directoryEndpoints := map[string]interface{}{
-		"new-account": newAcctPath,
-		"revoke-cert": revokeCertPath,
+		"newAccount": newAcctPath,
+		"newNonce":   newNoncePath,
+		"revokeCert": revokeCertPath,
+		"newOrder":   newOrderPath,
+		"keyChange":  rolloverPath,
 	}
-
-	directoryEndpoints["key-change"] = rolloverPath
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
 	// expected set of keys. This ensures that we can properly extend the directory when we
@@ -385,10 +393,10 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.Request
 	directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
 
 	// ACME since draft-02 describes an optional "meta" directory entry. The
-	// meta entry may optionally contain a "terms-of-service" URI for the
+	// meta entry may optionally contain a "termsOfService" URI for the
 	// current ToS.
 	directoryEndpoints["meta"] = map[string]string{
-		"terms-of-service": wfe.SubscriberAgreementURL,
+		"termsOfService": wfe.SubscriberAgreementURL,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -401,6 +409,17 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.Request
 	}
 
 	response.Write(relDir)
+}
+
+// Nonce is an endpoint for getting a fresh nonce with an HTTP GET or HEAD
+// request. This endpoint only returns a no content header - the `HandleFunc`
+// wrapper ensures that a nonce is written in the correct response header.
+func (wfe *WebFrontEndImpl) Nonce(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	response.WriteHeader(http.StatusNoContent)
 }
 
 // sendError sends an error response represented by the given ProblemDetails,
@@ -462,6 +481,18 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	var accountCreateRequest struct {
+		Contact              *[]string `json:"contact"`
+		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
+		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
+	}
+
+	err := json.Unmarshal(body, &accountCreateRequest)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+		return
+	}
+
 	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
 	if err == nil {
 		response.Header().Set("Location",
@@ -474,23 +505,25 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	var init core.Registration
-	err = json.Unmarshal(body, &init)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
+	// If the request included a true "OnlyReturnExisting" field and we did not
+	// find an existing registration with the key specified then we must return an
+	// error and not create a new account.
+	if accountCreateRequest.OnlyReturnExisting {
+		wfe.sendError(response, logEvent, probs.AccountDoesNotExist(
+			"No account exists with the provided key"), nil)
 		return
 	}
-	if len(init.Agreement) > 0 && init.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", init.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+
+	if !accountCreateRequest.TermsOfServiceAgreed {
+		wfe.sendError(response, logEvent, probs.Malformed("must agree to terms of service"), nil)
 		return
 	}
-	init.Key = key
-	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
-	if init.InitialIP == nil {
+
+	ip := net.ParseIP(request.Header.Get("X-Real-IP"))
+	if ip == nil {
 		host, _, err := net.SplitHostPort(request.RemoteAddr)
 		if err == nil {
-			init.InitialIP = net.ParseIP(host)
+			ip = net.ParseIP(host)
 		} else {
 			logEvent.AddError("Couldn't parse RemoteAddr: %s", request.RemoteAddr)
 			wfe.sendError(response, logEvent, probs.ServerInternal("couldn't parse the remote (that is, the client's) address"), nil)
@@ -498,7 +531,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 	}
 
-	acct, err := wfe.RA.NewRegistration(ctx, init)
+	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
+		Contact:   accountCreateRequest.Contact,
+		Agreement: wfe.SubscriberAgreementURL,
+		Key:       key,
+		InitialIP: ip,
+	})
 	if err != nil {
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
@@ -772,7 +810,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
 
-	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
+	// Challenge URLs are of the form /acme/challenge/<auth id>/<challenge id>.
 	// Here we parse out the id components.
 	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 {
@@ -828,11 +866,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URI field and clearing its ID field.
+// the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
-	// Update the challenge URI to be relative to the HTTP request Host
-	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
+	// Update the challenge URL to be relative to the HTTP request Host
+	challenge.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	// Ensure the challenge URI and challenge ID aren't written by setting them to
+	// values that the JSON omitempty tag considers empty
+	challenge.URI = ""
 	challenge.ID = 0
 
 	// Historically the Type field of a problem was always prefixed with a static
@@ -854,6 +894,10 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+
+	// Combinations are a relic of the V1 API. Since they are tagged omitempty we
+	// can set this field to nil to avoid sending it to users of the V2 API.
+	authz.Combinations = nil
 
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
@@ -879,10 +923,10 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
 	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
@@ -943,10 +987,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
-	response.Header().Add("Location", challenge.URI)
+	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
@@ -1043,7 +1087,7 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedAcct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
 		// ServerInternal because we just generated the account, it should be OK
 		wfe.sendError(response, logEvent,
@@ -1163,21 +1207,15 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// TODO Content negotiation
-	response.Header().Set("Content-Type", "application/pkix-cert")
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
-		return
-	}
-	if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
-		wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-		return
-	}
-
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
-	if _, err = response.Write(cert.DER); err != nil {
+
+	pem := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.DER,
+	})
+	// TODO(#3291): Serve entire chain instead of just end-entity certificate.
+	if _, err = response.Write(pem); err != nil {
 		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
@@ -1371,29 +1409,14 @@ func (wfe *WebFrontEndImpl) deactivateAccount(
 	}
 }
 
-// addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
-// X.509 certificate to the HTTP response. If the IssuingCertificateURL
-// in a certificate is not https://, it will be upgraded to https://
-func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
-	for _, rawURL := range issuingCertificateURL {
-		parsedURI, err := url.ParseRequestURI(rawURL)
-		if err != nil {
-			return err
-		}
-		parsedURI.Scheme = "https"
-		response.Header().Add("Link", link(parsedURI.String(), "up"))
-	}
-	return nil
-}
-
 type orderJSON struct {
-	Status         core.AcmeStatus
-	Expires        time.Time
-	Identifiers    []core.AcmeIdentifier
-	Authorizations []string
-	FinalizeURL    string
-	Certificate    string `json:",omitempty"`
-	Error          string `json:",omitempty"`
+	Status         core.AcmeStatus       `json:"status"`
+	Expires        time.Time             `json:"expires"`
+	Identifiers    []core.AcmeIdentifier `json:"identifiers"`
+	Authorizations []string              `json:"authorizations"`
+	Finalize       string                `json:"finalize"`
+	Certificate    string                `json:"certificate,omitempty"`
+	Error          string                `json:",omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1412,7 +1435,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Expires:        time.Unix(0, *order.Expires).UTC(),
 		Identifiers:    idents,
 		Authorizations: make([]string, len(order.Authorizations)),
-		FinalizeURL:    finalizeURL,
+		Finalize:       finalizeURL,
 	}
 	for i, authzID := range order.Authorizations {
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
@@ -1596,17 +1619,6 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 	// pretend it doesn't exist and abort.
 	if acct.ID != *order.RegistrationID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
-		return
-	}
-
-	// The account must have agreed to the subscriber agreement to finalize an
-	// order since it will result in the issuance of a certificate.
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if acct.Agreement == "" {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
 		return
 	}
 

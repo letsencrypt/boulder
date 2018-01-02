@@ -188,6 +188,18 @@ if [[ "$RUN" =~ "integration" ]] ; then
   end_context #integration
 fi
 
+if [[ "$RUN" =~ "acme-v2" ]] ; then
+  # If you're developing against a local Certbot repo, edit docker-compose.yml
+  # to mount it as a volume under /certbot, and run tests with
+  # docker-compose run -e RUN=acme-v2 -e CERTBOT_REPO=/certbot boulder ./test.sh
+  CERTBOT_REPO=${CERTBOT_REPO:-https://github.com/certbot/certbot}
+  CERTBOT_DIR=$(mktemp -d -t certbotXXXX)
+  git clone $CERTBOT_REPO $CERTBOT_DIR
+  (cd $CERTBOT_DIR ; git checkout acme-v2-integration; ./tools/venv.sh)
+  source $CERTBOT_DIR/venv/bin/activate
+  REQUESTS_CA_BUNDLE=test/wfe.pem DIRECTORY=https://boulder:4431/directory run python2 test/integration-test-v2.py
+fi
+
 # Run godep-restore (happens only in Travis) to check that the hashes in
 # Godeps.json really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "godep-restore" ]] ; then
