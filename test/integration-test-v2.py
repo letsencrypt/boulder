@@ -28,7 +28,10 @@ def main():
         raise Exception("startservers failed")
 
     test_multidomain()
-    test_wildcardmultidomain()
+    # Disabled DNS-based test cases temporarily while debugging a flakiness
+    # issue (#3312)
+    #test_wildcardmultidomain()
+    #test_overlapping_wildcard()
 
     if not startservers.check():
         raise Exception("startservers.check failed")

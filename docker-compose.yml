@@ -5,7 +5,7 @@ services:
             context: .
             dockerfile: Dockerfile
         environment:
-            FAKE_DNS: 127.0.0.1
+            FAKE_DNS: 172.17.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
             BOULDER_CONFIG_DIR: test/config
         volumes:
