@@ -523,12 +523,8 @@ func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 	if err != nil {
 		return nil, err
 	}
-	// We allow resp to be nil in this case since there may not be an order that
-	// meets the reuse requirements. If the response is not nil, then it must be
-	// a valid order
-	if resp != nil && !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
+	// We do not check `orderValid(resp)` here because an "empty" order response
+	// is used to indicate no appropriate order was found.
 	return resp, nil
 }
 
@@ -1088,7 +1084,15 @@ func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 	if request == nil || request.AcctID == nil || len(request.Names) == 0 {
 		return nil, errIncompleteRequest
 	}
-	return sas.inner.GetOrderForNames(ctx, request)
+	resp, err := sas.inner.GetOrderForNames(ctx, request)
+
+	// gRPC can not marshal a nil response so we return an empty order instead and
+	// the caller must check that the ID != nil to know if the response was a real
+	// order or empty.
+	if resp == nil {
+		resp = &corepb.Order{}
+	}
+	return resp, err
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(

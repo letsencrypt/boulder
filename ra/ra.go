@@ -1594,8 +1594,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 	// If there was an order fit for reuse return it now instead of making a new
-	// pending order
-	if existingOrder != nil {
+	// pending order. The gRPC wrapper for GetOrderForNames returns an **empty**
+	// order when no appropriate order is found to avoid marshalling nil.
+	if existingOrder != nil && existingOrder.Id != nil {
 		return existingOrder, nil
 	}
 
