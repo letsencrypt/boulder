@@ -26,9 +26,10 @@ import (
 type AuthorityImpl struct {
 	log blog.Logger
 
-	blacklist      map[string]bool
-	exactBlacklist map[string]bool
-	blacklistMu    sync.RWMutex
+	blacklist              map[string]bool
+	exactBlacklist         map[string]bool
+	wildcardExactBlacklist map[string]bool
+	blacklistMu            sync.RWMutex
 
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
@@ -81,12 +82,32 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 		nameMap[v] = true
 	}
 	exactNameMap := make(map[string]bool)
+	wildcardNameMap := make(map[string]bool)
 	for _, v := range bl.ExactBlacklist {
 		exactNameMap[v] = true
+		// Remove the leftmost label of the exact blacklist entry to make an exact
+		// wildcard blacklist entry that will prevent issuing a wildcard that would
+		// include the exact blacklist entry. e.g. if "highvalue.example.com" is on
+		// the exact blacklist we want "example.com" to be on the
+		// wildcardExactBlacklist so that "*.example.com" cannot be issued.
+		//
+		// First, split the domain into two parts: the first label (including the
+		// ".") and the rest of the domain.
+		parts := strings.SplitAfterN(v, ".", 2)
+		// if there are less than 2 parts then this entry is malformed! There should
+		// at least be a "something." and a TLD like "com"
+		if len(parts) < 2 {
+			return fmt.Errorf(
+				"Malformed exact blacklist entry, only one label: %q", v)
+		}
+		// Add the second part, the domain minus the first label, to the
+		// wildcardNameMap to block issuance for `*.`+parts[1]
+		wildcardNameMap[parts[1]] = true
 	}
 	pa.blacklistMu.Lock()
 	pa.blacklist = nameMap
 	pa.exactBlacklist = exactNameMap
+	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
 	return nil
 }
@@ -252,6 +273,9 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // * That the wildcard character is the leftmost label
 // * That the wildcard label is not immediately adjacent to a top level ICANN
 //   TLD
+// * That the wildcard wouldn't cover an exact blacklist entry (e.g. an exact
+//   blacklist entry for "foo.example.com" should prevent issuance for
+//   "*.example.com")
 //
 // If all of the above is true then the base domain (e.g. without the *.) is run
 // through WillingToIssue to catch other illegal things (blocked hosts, etc).
@@ -287,6 +311,10 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// TLD. No `*.com`!
 		if baseDomain == icannTLD {
 			return errICANNTLDWildcard
+		}
+		// The base domain can't be in the wildcard exact blacklist
+		if pa.wildcardExactBlacklist[baseDomain] {
+			return errBlacklisted
 		}
 		// Check that the PA is willing to issue for the base domain
 		return pa.WillingToIssue(core.AcmeIdentifier{

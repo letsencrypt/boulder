@@ -202,12 +202,16 @@ func TestWillingToIssue(t *testing.T) {
 
 func TestWillingToIssueWildcard(t *testing.T) {
 	bannedDomains := []string{
-		`zombo.gov.us`,
+		"zombo.gov.us",
+	}
+	exactBannedDomains := []string{
+		"highvalue.letsdecrypt.org",
 	}
 	pa := paImpl(t)
 
 	bannedBytes, err := json.Marshal(blacklistJSON{
-		Blacklist: bannedDomains,
+		Blacklist:      bannedDomains,
+		ExactBlacklist: exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 	f, _ := ioutil.TempFile("", "test-wildcard-banlist.txt")
@@ -258,6 +262,26 @@ func TestWillingToIssueWildcard(t *testing.T) {
 			Name:        "Forbidden base domain",
 			Ident:       makeDNSIdent("*.zombo.gov.us"),
 			ExpectedErr: errBlacklisted,
+		},
+		// We should not allow getting a wildcard for an exact blacklist domain.
+		{
+			Name:        "Wildcard for ExactBlacklist domain",
+			Ident:       makeDNSIdent("*.highvalue.letsdecrypt.org"),
+			ExpectedErr: errBlacklisted,
+		},
+		// We should not allow getting a wildcard for that would cover an exact
+		// blocklist domain
+		{
+			Name:        "Wildcard for ExactBlacklist base domain",
+			Ident:       makeDNSIdent("*.letsdecrypt.org"),
+			ExpectedErr: errBlacklisted,
+		},
+		// We should allow a wildcard for a domain that doesn't match the exact
+		// blacklist domain
+		{
+			Name:        "Wildcard for non-matching subdomain of ExactBlacklist domain",
+			Ident:       makeDNSIdent("*.lowvalue.letsdecrypt.org"),
+			ExpectedErr: nil,
 		},
 		{
 			Name:        "Valid wildcard domain",
@@ -401,4 +425,38 @@ func TestExtractDomainIANASuffix_Invalid(t *testing.T) {
 			t.Errorf("%q: expected err, got none", tc)
 		}
 	}
+}
+
+// TestMalformedExactBlacklist tests that loading a JSON policy file with an
+// invalid exact blacklist entry will fail as expected.
+func TestMalformedExactBlacklist(t *testing.T) {
+	pa := paImpl(t)
+
+	exactBannedDomains := []string{
+		// Only one label - not valid
+		"com",
+	}
+	bannedDomains := []string{
+		"placeholder.domain.not.important.for.this.test.com",
+	}
+
+	// Create JSON for the exactBannedDomains
+	bannedBytes, err := json.Marshal(blacklistJSON{
+		Blacklist:      bannedDomains,
+		ExactBlacklist: exactBannedDomains,
+	})
+	test.AssertNotError(t, err, "Couldn't serialize banned list")
+
+	// Create a temp file for the JSON contents
+	f, _ := ioutil.TempFile("", "test-invalid-exactblacklist.json")
+	defer os.Remove(f.Name())
+	// Write the JSON to the temp file
+	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
+
+	// Try to use the JSON tempfile as the hostname policy. It should produce an
+	// error since the exact blacklist contents are malformed.
+	err = pa.SetHostnamePolicyFile(f.Name())
+	test.AssertError(t, err, "Loaded invalid exact blacklist content without error")
+	test.AssertEquals(t, err.Error(), "Malformed exact blacklist entry, only one label: \"com\"")
 }
