@@ -40,8 +40,8 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
 ACCEPTABLE_TOS = "https://boulder:4431/terms/v7"
 
 # URLs to control dns-test-srv
-SET_TXT = "http://localhost:8055/set-txt",
-CLEAR_TXT = "http://localhost:8055/clear-txt",
+SET_TXT = "http://localhost:8055/set-txt"
+CLEAR_TXT = "http://localhost:8055/clear-txt"
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
