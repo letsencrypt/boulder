@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -342,7 +341,7 @@ func (dnsClient *DNSClientImpl) LookupTXT(ctx context.Context, hostname string) 
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dnsType {
 			if txtRec, ok := answer.(*dns.TXT); ok {
-				txt = append(txt, strings.Join(txtRec.Txt, ""))
+				txt = append(txt, txtRec.Txt...)
 			}
 		}
 	}
