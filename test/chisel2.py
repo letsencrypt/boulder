@@ -39,6 +39,10 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
 ACCEPTABLE_TOS = "https://boulder:4431/terms/v7"
 
+# URLs to control dns-test-srv
+SET_TXT = "http://localhost:8055/set-txt",
+CLEAR_TXT = "http://localhost:8055/clear-txt",
+
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
@@ -142,14 +146,14 @@ def do_dns_challenges(client, authzs):
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.key))
-        urllib2.urlopen("http://localhost:8055/set-txt",
+        urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
                 "value": value,
             })).read()
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        urllib2.urlopen("http://localhost:8055/clear-txt",
+        urllib2.urlopen(CLEAR_TXT,
             data=json.dumps({
                 "host": name + ".",
             })).read()
