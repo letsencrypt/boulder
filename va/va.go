@@ -768,7 +768,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	invalidRecord := txts[0]
 	if len(invalidRecord) > 100 {
-		invalidRecord = invalidRecord[0:100]
+		invalidRecord = invalidRecord[0:100] + "..."
 	}
 	var andMore string
 	if len(txts) > 1 {
