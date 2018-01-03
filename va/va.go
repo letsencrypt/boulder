@@ -775,7 +775,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
 	return nil, probs.Unauthorized(fmt.Sprintf(
-		"Incorrect TXT record %s%s found at %s",
+		"Incorrect TXT record %q%s found at %s",
 		invalidRecord, andMore, challengeSubdomain))
 }
 
