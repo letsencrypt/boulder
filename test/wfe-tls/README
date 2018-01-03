@@ -1,0 +1,2 @@
+This directory contains the minica hierarchy used to produce certificates for
+WFE to use when terminating TLS in integration tests.
