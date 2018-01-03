@@ -263,12 +263,6 @@ func TestWillingToIssueWildcard(t *testing.T) {
 			Ident:       makeDNSIdent("*.zombo.gov.us"),
 			ExpectedErr: errBlacklisted,
 		},
-		// We should not allow getting a wildcard for an exact blacklist domain.
-		{
-			Name:        "Wildcard for ExactBlacklist domain",
-			Ident:       makeDNSIdent("*.highvalue.letsdecrypt.org"),
-			ExpectedErr: errBlacklisted,
-		},
 		// We should not allow getting a wildcard for that would cover an exact
 		// blocklist domain
 		{
@@ -281,6 +275,13 @@ func TestWillingToIssueWildcard(t *testing.T) {
 		{
 			Name:        "Wildcard for non-matching subdomain of ExactBlacklist domain",
 			Ident:       makeDNSIdent("*.lowvalue.letsdecrypt.org"),
+			ExpectedErr: nil,
+		},
+		// We should allow getting a wildcard for an exact blacklist domain since it
+		// only covers subdomains, not the exact name.
+		{
+			Name:        "Wildcard for ExactBlacklist domain",
+			Ident:       makeDNSIdent("*.highvalue.letsdecrypt.org"),
 			ExpectedErr: nil,
 		},
 		{

@@ -316,9 +316,13 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 			return err
 		}
 		// Check that the PA is willing to issue for the base domain
+		// Since the base domain without the "*." may trip the exact hostname policy
+		// blacklist when the "*." is removed we replace it with a single "x"
+		// character to differentiate "*.example.com" from "example.com" for the
+		// exact hostname check.
 		return pa.WillingToIssue(core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
-			Value: baseDomain,
+			Value: "x." + baseDomain,
 		})
 	}
 
