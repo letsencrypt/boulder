@@ -871,6 +871,21 @@ func TestDNSValidationWrongMany(t *testing.T) {
 	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" (and 4 more) found at _acme-challenge.wrong-many-dns01.com")
 }
 
+func TestDNSValidationWrongLong(t *testing.T) {
+	va, _ := setup(nil, 0)
+
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"long-dns01.com",
+		chalDNS,
+		core.Authorization{})
+	if prob == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" found at _acme-challenge.long-dns01.com")
+}
+
 func TestPerformValidationValid(t *testing.T) {
 	va, mockLog := setup(nil, 0)
 

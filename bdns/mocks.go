@@ -32,6 +32,9 @@ func (mock *MockDNSClient) LookupTXT(_ context.Context, hostname string) ([]stri
 	if hostname == "_acme-challenge.wrong-many-dns01.com" {
 		return []string{"a", "b", "c", "d", "e"}, []string{"respect my authority!"}, nil
 	}
+	if hostname == "_acme-challenge.long-dns01.com" {
+		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, []string{"respect my authority!"}, nil
+	}
 	if hostname == "_acme-challenge.no-authority-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
