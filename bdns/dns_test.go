@@ -141,9 +141,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				appendAnswer(record)
 			}
 		case dns.TypeTXT:
-			if q.Name == "split-txt.letsencrypt.org." {
+			if q.Name == "multi-txt.letsencrypt.org." {
 				record := new(dns.TXT)
-				record.Hdr = dns.RR_Header{Name: "split-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
+				record.Hdr = dns.RR_Header{Name: "multi-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
 			} else {
@@ -301,14 +301,14 @@ func TestDNSLookupTXT(t *testing.T) {
 	obj := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
-	t.Logf("A: %v", a)
 	test.AssertNotError(t, err, "No message")
 
-	a, _, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
-	t.Logf("A: %v ", a)
+	a, _, err = obj.LookupTXT(context.Background(), "multi-txt.letsencrypt.org")
 	test.AssertNotError(t, err, "No message")
-	test.AssertEquals(t, len(a), 1)
-	test.AssertEquals(t, a[0], "abc")
+	test.AssertEquals(t, len(a), 3)
+	test.AssertEquals(t, a[0], "a")
+	test.AssertEquals(t, a[1], "b")
+	test.AssertEquals(t, a[2], "c")
 }
 
 func TestDNSLookupHost(t *testing.T) {
