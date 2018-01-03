@@ -91,9 +91,8 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 		// the exact blacklist we want "example.com" to be on the
 		// wildcardExactBlacklist so that "*.example.com" cannot be issued.
 		//
-		// First, split the domain into two parts: the first label (including the
-		// ".") and the rest of the domain.
-		parts := strings.SplitAfterN(v, ".", 2)
+		// First, split the domain into two parts: the first label and the rest of the domain.
+		parts := strings.SplitN(v, ".", 2)
 		// if there are less than 2 parts then this entry is malformed! There should
 		// at least be a "something." and a TLD like "com"
 		if len(parts) < 2 {
@@ -313,8 +312,8 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 			return errICANNTLDWildcard
 		}
 		// The base domain can't be in the wildcard exact blacklist
-		if pa.wildcardExactBlacklist[baseDomain] {
-			return errBlacklisted
+		if err := pa.checkWildcardHostList(baseDomain); err != nil {
+			return err
 		}
 		// Check that the PA is willing to issue for the base domain
 		return pa.WillingToIssue(core.AcmeIdentifier{
@@ -324,6 +323,24 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 	}
 
 	return pa.WillingToIssue(ident)
+}
+
+// checkWildcardHostList checks the wildcardExactBlacklist for a given domain.
+// If the domain is not present on the list nil is returned, otherwise
+// errBlacklisted is returned.
+func (pa *AuthorityImpl) checkWildcardHostList(domain string) error {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
+
+	if pa.blacklist == nil {
+		return fmt.Errorf("Hostname policy not yet loaded.")
+	}
+
+	if pa.wildcardExactBlacklist[domain] {
+		return errBlacklisted
+	}
+
+	return nil
 }
 
 func (pa *AuthorityImpl) checkHostLists(domain string) error {
