@@ -144,10 +144,12 @@ def http_01_answer(client, chall_body):
           validation=validation)
 
 def do_dns_challenges(client, authzs):
+    cleanup_hosts = []
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.key))
+        cleanup_hosts.append(name)
         urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
@@ -155,10 +157,11 @@ def do_dns_challenges(client, authzs):
             })).read()
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        urllib2.urlopen(CLEAR_TXT,
-            data=json.dumps({
-                "host": name + ".",
-            })).read()
+        for host in cleanup_hosts:
+            urllib2.urlopen(CLEAR_TXT,
+                data=json.dumps({
+                    "host": host + ".",
+                })).read()
     return cleanup
 
 def do_http_challenges(client, authzs):
