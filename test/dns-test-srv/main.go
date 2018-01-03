@@ -115,21 +115,23 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			m.Answer = append(m.Answer, record)
 		case dns.TypeTXT:
 			ts.mu.RLock()
-			value, present := ts.txtRecords[q.Name]
+			values, present := ts.txtRecords[q.Name]
 			ts.mu.RUnlock()
 			if !present {
 				continue
 			}
-			record := new(dns.TXT)
-			record.Hdr = dns.RR_Header{
-				Name:   q.Name,
-				Rrtype: dns.TypeTXT,
-				Class:  dns.ClassINET,
-				Ttl:    0,
+			fmt.Printf("dns-srv: Returning %d TXT records: %#v\n", len(values), values)
+			for _, name := range values {
+				record := new(dns.TXT)
+				record.Hdr = dns.RR_Header{
+					Name:   q.Name,
+					Rrtype: dns.TypeTXT,
+					Class:  dns.ClassINET,
+					Ttl:    0,
+				}
+				record.Txt = []string{name}
+				m.Answer = append(m.Answer, record)
 			}
-			record.Txt = value
-			fmt.Printf("dns-srv: Returning %d TXT records: %#v\n", len(value), value)
-			m.Answer = append(m.Answer, record)
 		case dns.TypeCAA:
 			if q.Name == "bad-caa-reserved.com." || q.Name == "good-caa-reserved.com." {
 				record := new(dns.CAA)
