@@ -150,7 +150,9 @@ def test_issuer():
     """
     certr, authzs = auth_and_issue([random_domain()])
     cert = urllib2.urlopen(certr.uri).read()
-    chain = urllib2.urlopen(certr.cert_chain_uri).read()
+    # The chain URI uses HTTPS when UseAIAIssuerURL is set, so include the root
+    # certificate for the WFE's PKI.
+    chain = urllib2.urlopen(certr.cert_chain_uri, cafile="test/wfe-tls/minica.pem").read()
     parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
     parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
     parsed_root = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM,
