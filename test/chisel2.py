@@ -149,7 +149,10 @@ def do_dns_challenges(client, authzs):
             })).read()
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        pass
+        urllib2.urlopen("http://localhost:8055/clear-txt",
+            data=json.dumps({
+                "host": name + ".",
+            })).read()
     return cleanup
 
 def do_http_challenges(client, authzs):
