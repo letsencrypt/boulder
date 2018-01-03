@@ -197,7 +197,7 @@ if [[ "$RUN" =~ "acme-v2" ]] ; then
   git clone $CERTBOT_REPO $CERTBOT_DIR
   (cd $CERTBOT_DIR ; git checkout acme-v2-integration; ./tools/venv.sh)
   source $CERTBOT_DIR/venv/bin/activate
-  REQUESTS_CA_BUNDLE=test/wfe.pem DIRECTORY=https://boulder:4431/directory run python2 test/integration-test-v2.py
+  REQUESTS_CA_BUNDLE=test/wfe-tls/minica.pem DIRECTORY=https://boulder:4431/directory run python2 test/integration-test-v2.py
 fi
 
 # Run godep-restore (happens only in Travis) to check that the hashes in
