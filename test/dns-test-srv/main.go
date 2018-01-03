@@ -18,7 +18,7 @@ import (
 
 type testSrv struct {
 	mu         *sync.RWMutex
-	txtRecords map[string]string
+	txtRecords map[string][]string
 }
 
 type setRequest struct {
@@ -27,13 +27,6 @@ type setRequest struct {
 }
 
 func (ts *testSrv) setTXT(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/set-txt" {
-		http.NotFound(w, r)
-		return
-	} else if r.Method != "POST" {
-		w.WriteHeader(405)
-		return
-	}
 	msg, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -51,7 +44,32 @@ func (ts *testSrv) setTXT(w http.ResponseWriter, r *http.Request) {
 	}
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.txtRecords[strings.ToLower(sr.Host)] = sr.Value
+	host := strings.ToLower(sr.Host)
+	ts.txtRecords[host] = append(ts.txtRecords[host], sr.Value)
+	fmt.Printf("dns-srv: added TXT record for %s containing \"%s\"\n", sr.Host, sr.Value)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *testSrv) clearTXT(w http.ResponseWriter, r *http.Request) {
+	msg, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var sr setRequest
+	err = json.Unmarshal(msg, &sr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if sr.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	host := strings.ToLower(sr.Host)
+	delete(ts.txtRecords, host)
 	fmt.Printf("dns-srv: added TXT record for %s containing \"%s\"\n", sr.Host, sr.Value)
 	w.WriteHeader(http.StatusOK)
 }
@@ -109,7 +127,8 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				Class:  dns.ClassINET,
 				Ttl:    0,
 			}
-			record.Txt = []string{value}
+			record.Txt = value
+			fmt.Printf("dns-srv: Returning %d TXT records: %#v\n", len(value), value)
 			m.Answer = append(m.Answer, record)
 		case dns.TypeCAA:
 			if q.Name == "bad-caa-reserved.com." || q.Name == "good-caa-reserved.com." {
@@ -164,9 +183,10 @@ func (ts *testSrv) serveTestResolver() {
 		WriteTimeout: time.Second,
 	})
 	webServer := server(&http.Server{
-		Addr:    "0.0.0.0:8055",
-		Handler: http.HandlerFunc(ts.setTXT),
+		Addr: "0.0.0.0:8055",
 	})
+	http.HandleFunc("/set-txt", ts.setTXT)
+	http.HandleFunc("/clear-txt", ts.clearTXT)
 	for _, s := range []server{udpServer, tcpServer, webServer} {
 		go func(s server) {
 			err := s.ListenAndServe()
@@ -178,7 +198,7 @@ func (ts *testSrv) serveTestResolver() {
 }
 
 func main() {
-	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string]string)}
+	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string][]string)}
 	ts.serveTestResolver()
 	cmd.CatchSignals(nil, nil)
 }
