@@ -501,7 +501,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
 		return
 	}
 
@@ -1353,7 +1353,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
 	if err != nil {
 		// This should not happen - both the old and new key have been validated by now
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), err)
 		return
 	}
 	if keysEqual {
@@ -1676,7 +1676,7 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
 	}
 }
