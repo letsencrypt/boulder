@@ -743,7 +743,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
+		va.log.Info(fmt.Sprintf("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 
 		return nil, probs.ConnectionFailure(err.Error())
 	}
@@ -752,7 +752,8 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized("No TXT records found for DNS challenge")
+		return nil, probs.Unauthorized(fmt.Sprintf(
+			"No TXT record found at %s", challengeSubdomain))
 	}
 
 	for _, element := range txts {
@@ -765,7 +766,17 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		}
 	}
 
-	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
+	invalidRecord := txts[0]
+	if len(invalidRecord) > 100 {
+		invalidRecord = invalidRecord[0:100] + "..."
+	}
+	var andMore string
+	if len(txts) > 1 {
+		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
+	}
+	return nil, probs.Unauthorized(fmt.Sprintf(
+		"Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain))
 }
 
 // validateChallengeAndCAA performs a challenge validation and CAA validation
