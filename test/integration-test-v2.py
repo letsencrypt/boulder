@@ -34,6 +34,7 @@ def main():
     # issue (#3312)
     #test_wildcardmultidomain()
     #test_overlapping_wildcard()
+    test_wildcard_exactblacklist()
     test_wildcard_authz_reuse()
 
     if not startservers.check():
@@ -72,6 +73,19 @@ def test_overlapping_wildcard():
         order = client.poll_order_and_request_issuance(order)
     finally:
         cleanup()
+
+def test_wildcard_exactblacklist():
+    """
+    Test issuance for a wildcard that would cover an exact blacklist entry. It
+    should fail with a policy error.
+    """
+
+    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.json`
+    # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
+    domain = "*.le-test.hoffman-andrews.com"
+    # We expect this to produce a policy problem
+    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: auth_and_issue([domain], chall_type="dns-01"))
 
 def test_wildcard_authz_reuse():
     """
