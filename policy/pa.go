@@ -320,6 +320,10 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// blacklist when the "*." is removed we replace it with a single "x"
 		// character to differentiate "*.example.com" from "example.com" for the
 		// exact hostname check.
+		//
+		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
+		// a better follow-up that we should land to replace this code.
+		// [0] https://github.com/letsencrypt/boulder/issues/3323
 		return pa.WillingToIssue(core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
 			Value: "x." + baseDomain,
