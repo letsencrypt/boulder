@@ -1499,14 +1499,13 @@ func TestGetCertificate(t *testing.T) {
 	testCases := []struct {
 		Name            string
 		Path            string
-		Features        []string
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
 		ExpectedCert    []byte
 	}{
 		{
-			Name:           "Valid serial, UseAIAIssuer feature enabled",
+			Name:           "Valid serial",
 			Path:           goodSerial,
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
