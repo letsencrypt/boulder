@@ -497,8 +497,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		// TODO(#595): check for missing account err
-		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
+		response.WriteHeader(http.StatusOK)
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
