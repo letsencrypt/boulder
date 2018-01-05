@@ -115,8 +115,6 @@ CspkK71IGqM9UwwMtCZBp0fK/Xv9o1d85paXcJ/aH8zg6EK4UkuXDFnLsg1LrIru
 OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
 -----END CERTIFICATE-----`
 
-const issuerPath = "../test/test-ca.pem"
-
 var log = blog.UseMock()
 var ctx = context.Background()
 
