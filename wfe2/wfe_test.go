@@ -846,11 +846,6 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: postOnly,
 		},
 		{
-			Name:    "Terms path should be GET only",
-			Path:    termsPath,
-			Allowed: getOnly,
-		},
-		{
 			Name:    "Issuer path should be GET only",
 			Path:    issuerPath,
 			Allowed: getOnly,
@@ -1131,9 +1126,8 @@ func TestNewECDSAAccount(t *testing.T) {
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	responseBody = responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
@@ -1276,13 +1270,10 @@ func TestNewAccount(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 func TestGetAuthorization(t *testing.T) {
@@ -1451,21 +1442,6 @@ func TestAccount(t *testing.T) {
 	links = responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
-}
-
-func TestTermsRedirect(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	path, _ := url.Parse("/terms")
-	wfe.Terms(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		agreementURL)
-	test.AssertEquals(t, responseWriter.Code, 302)
 }
 
 func TestIssuer(t *testing.T) {

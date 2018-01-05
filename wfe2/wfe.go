@@ -49,7 +49,6 @@ const (
 	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
-	termsPath         = "/terms"
 	issuerPath        = "/acme/issuer-cert"
 	buildIDPath       = "/build"
 	rolloverPath      = "/acme/key-change"
@@ -314,7 +313,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
-	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
@@ -497,8 +495,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		// TODO(#595): check for missing account err
-		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
+		response.WriteHeader(http.StatusOK)
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
@@ -1220,12 +1217,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 	return
-}
-
-// Terms is used by the client to obtain the current Terms of Service /
-// Subscriber Agreement to which the subscriber must agree.
-func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
