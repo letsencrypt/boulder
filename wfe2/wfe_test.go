@@ -1321,8 +1321,8 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have its prefix unmodified
-	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V1ErrorNS+"things:are:whack")
+	// The Challenge Errors Type should have its prefix unmodified
+	test.AssertEquals(t, string(authz.Challenges[0].Errors.Type), probs.V1ErrorNS+"things:are:whack")
 
 	// For "failed" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type not prefixed by an error namespace.
@@ -1336,8 +1336,8 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
-	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V2ErrorNS+"things:are:whack")
+	// The Challenge Errors Type should have had the probs.V2ErrorNS prefix added
+	test.AssertEquals(t, string(authz.Challenges[0].Errors.Type), probs.V2ErrorNS+"things:are:whack")
 	responseWriter.Body.Reset()
 }
 
@@ -2428,8 +2428,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.example.com"},
 		Challenges: []core.Challenge{
 			{
-				ID:   12345,
-				Type: "dns",
+				ID:    12345,
+				Type:  "dns",
+				Error: probs.Malformed("Whoops"),
 			},
 		},
 		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
@@ -2453,4 +2454,11 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/12345")
 	test.AssertEquals(t, chal.URI, "")
+	// We also expect the authz challenge has its "Errors" field set and the
+	// "Error" field emptied.
+	test.AssertEquals(t, chal.Errors.Detail, "Whoops")
+	test.AssertEquals(t, string(chal.Errors.Type), "urn:ietf:params:acme:error:malformed")
+	if chal.Error != nil {
+		t.Errorf("Authz had a non-nil legacy 'error' field")
+	}
 }
