@@ -1664,6 +1664,10 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
+	orderURL := wfe.relativeEndpoint(request,
+		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *updatedOrder.Id))
+	response.Header().Set("Location", orderURL)
+
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
