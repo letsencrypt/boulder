@@ -884,7 +884,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// ACME v2 uses an "Errors" field not "Error". Adjust accordingly before
 	// returning the challenge for display.
 	if challenge.Error != nil {
-		challenge.Errors = challenge.Error
+		challenge.Errors = []*probs.ProblemDetails{challenge.Error}
 		challenge.Error = nil
 	}
 }

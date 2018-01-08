@@ -1322,7 +1322,8 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Errors Type should have its prefix unmodified
-	test.AssertEquals(t, string(authz.Challenges[0].Errors.Type), probs.V1ErrorNS+"things:are:whack")
+	test.AssertEquals(t, len(authz.Challenges[0].Errors), 1)
+	test.AssertEquals(t, string(authz.Challenges[0].Errors[0].Type), probs.V1ErrorNS+"things:are:whack")
 
 	// For "failed" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type not prefixed by an error namespace.
@@ -1337,7 +1338,8 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Errors Type should have had the probs.V2ErrorNS prefix added
-	test.AssertEquals(t, string(authz.Challenges[0].Errors.Type), probs.V2ErrorNS+"things:are:whack")
+	test.AssertEquals(t, len(authz.Challenges[0].Errors), 1)
+	test.AssertEquals(t, string(authz.Challenges[0].Errors[0].Type), probs.V2ErrorNS+"things:are:whack")
 	responseWriter.Body.Reset()
 }
 
@@ -2456,8 +2458,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertEquals(t, chal.URI, "")
 	// We also expect the authz challenge has its "Errors" field set and the
 	// "Error" field emptied.
-	test.AssertEquals(t, chal.Errors.Detail, "Whoops")
-	test.AssertEquals(t, string(chal.Errors.Type), "urn:ietf:params:acme:error:malformed")
+	test.AssertEquals(t, len(chal.Errors), 1)
+	test.AssertEquals(t, chal.Errors[0].Detail, "Whoops")
+	test.AssertEquals(t, string(chal.Errors[0].Type), "urn:ietf:params:acme:error:malformed")
 	if chal.Error != nil {
 		t.Errorf("Authz had a non-nil legacy 'error' field")
 	}

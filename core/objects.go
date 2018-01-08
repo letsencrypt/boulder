@@ -230,8 +230,9 @@ type Challenge struct {
 	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
-	// For the V2 API the "error" field is deprecated in favour of "errors".
-	Errors *probs.ProblemDetails `json:"errors,omitempty"`
+	// For the V2 API the "error" field is deprecated in favour of "errors", an
+	// array of problems.
+	Errors []*probs.ProblemDetails `json:"errors,omitempty"`
 
 	// A URI to which a response can be POSTed
 	URI string `json:"uri,omitempty"`
