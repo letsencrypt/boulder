@@ -1291,7 +1291,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 		// For an OPTIONS request: allow all methods handled at this URL.
 		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
 	}
-	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
