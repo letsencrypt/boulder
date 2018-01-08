@@ -497,7 +497,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// CORS preflight request for disallowed method
 	runWrappedHandler(&http.Request{
@@ -525,7 +525,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// OPTIONS request without an Origin header (i.e., not a CORS
 	// preflight request)
