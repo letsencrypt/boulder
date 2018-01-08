@@ -1857,9 +1857,10 @@ func TestFinalizeOrder(t *testing.T) {
 	egUrl := mustParseURL("1/1/finalize-order")
 
 	testCases := []struct {
-		Name         string
-		Request      *http.Request
-		ExpectedBody string
+		Name            string
+		Request         *http.Request
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
 	}{
 		{
 			Name: "POST, but no body",
@@ -1937,8 +1938,9 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:    "Good CSR",
-			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			Name:            "Good CSR",
+			Request:         signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
 {
   "status": "processing",
@@ -1959,6 +1961,9 @@ func TestFinalizeOrder(t *testing.T) {
 			responseWriter.Body.Reset()
 			responseWriter.HeaderMap = http.Header{}
 			wfe.Order(ctx, newRequestEvent(), responseWriter, tc.Request)
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, responseWriter.Header().Get(k), v)
+			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
 		})
 	}
