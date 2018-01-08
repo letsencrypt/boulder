@@ -830,7 +830,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 		"empty-txts.com",
 		chalDNS,
 		core.Authorization{})
-	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT records found for DNS challenge")
+	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT record found at _acme-challenge.empty-txts.com")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
 		"type":   "dns-01",
@@ -839,6 +839,51 @@ func TestDNSValidationEmpty(t *testing.T) {
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
 	}
+}
+
+func TestDNSValidationWrong(t *testing.T) {
+	va, _ := setup(nil, 0)
+
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"wrong-dns01.com",
+		chalDNS,
+		core.Authorization{})
+	if prob == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge.wrong-dns01.com")
+}
+
+func TestDNSValidationWrongMany(t *testing.T) {
+	va, _ := setup(nil, 0)
+
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"wrong-many-dns01.com",
+		chalDNS,
+		core.Authorization{})
+	if prob == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" (and 4 more) found at _acme-challenge.wrong-many-dns01.com")
+}
+
+func TestDNSValidationWrongLong(t *testing.T) {
+	va, _ := setup(nil, 0)
+
+	chalDNS := createChallenge(core.ChallengeTypeDNS01)
+	_, prob := va.PerformValidation(
+		context.Background(),
+		"long-dns01.com",
+		chalDNS,
+		core.Authorization{})
+	if prob == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\" found at _acme-challenge.long-dns01.com")
 }
 
 func TestPerformValidationValid(t *testing.T) {

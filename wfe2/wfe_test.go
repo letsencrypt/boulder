@@ -497,7 +497,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// CORS preflight request for disallowed method
 	runWrappedHandler(&http.Request{
@@ -525,7 +525,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// OPTIONS request without an Origin header (i.e., not a CORS
 	// preflight request)
@@ -846,11 +846,6 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: postOnly,
 		},
 		{
-			Name:    "Terms path should be GET only",
-			Path:    termsPath,
-			Allowed: getOnly,
-		},
-		{
 			Name:    "Issuer path should be GET only",
 			Path:    issuerPath,
 			Allowed: getOnly,
@@ -1131,9 +1126,8 @@ func TestNewECDSAAccount(t *testing.T) {
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	responseBody = responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
@@ -1276,13 +1270,10 @@ func TestNewAccount(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 func TestGetAuthorization(t *testing.T) {
@@ -1451,21 +1442,6 @@ func TestAccount(t *testing.T) {
 	links = responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
-}
-
-func TestTermsRedirect(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	path, _ := url.Parse("/terms")
-	wfe.Terms(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		agreementURL)
-	test.AssertEquals(t, responseWriter.Code, 302)
 }
 
 func TestIssuer(t *testing.T) {
@@ -1882,9 +1858,10 @@ func TestFinalizeOrder(t *testing.T) {
 	egUrl := mustParseURL("1/1/finalize-order")
 
 	testCases := []struct {
-		Name         string
-		Request      *http.Request
-		ExpectedBody string
+		Name            string
+		Request         *http.Request
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
 	}{
 		{
 			Name: "POST, but no body",
@@ -1962,8 +1939,9 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:    "Good CSR",
-			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			Name:            "Good CSR",
+			Request:         signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
 {
   "status": "processing",
@@ -1984,6 +1962,9 @@ func TestFinalizeOrder(t *testing.T) {
 			responseWriter.Body.Reset()
 			responseWriter.HeaderMap = http.Header{}
 			wfe.Order(ctx, newRequestEvent(), responseWriter, tc.Request)
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, responseWriter.Header().Get(k), v)
+			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
 		})
 	}

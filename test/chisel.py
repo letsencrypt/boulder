@@ -33,6 +33,10 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
+# URLs to control dns-test-srv
+SET_TXT = "http://localhost:8055/set-txt"
+CLEAR_TXT = "http://localhost:8055/clear-txt"
+
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
@@ -140,18 +144,24 @@ def http_01_answer(client, chall_body):
           validation=validation)
 
 def do_dns_challenges(client, authzs):
+    cleanup_hosts = []
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.key))
-        urllib2.urlopen("http://localhost:8055/set-txt",
+        cleanup_hosts.append(name)
+        urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
                 "value": value,
             })).read()
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        pass
+        for host in cleanup_hosts:
+            urllib2.urlopen(CLEAR_TXT,
+                data=json.dumps({
+                    "host": host + ".",
+                })).read()
     return cleanup
 
 def do_http_challenges(client, authzs):

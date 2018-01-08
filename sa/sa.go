@@ -64,6 +64,18 @@ type authzModel struct {
 	core.Authorization
 }
 
+// orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type orderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
 const (
 	authorizationTable        = "authz"
 	pendingAuthorizationTable = "pendingAuthorizations"
@@ -1075,6 +1087,52 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 	})
 }
 
+// addOrderFQDNSet creates a new OrderFQDNSet row using the provided
+// information. This function accepts a transaction so that the orderFqdnSet
+// addition can take place within the order addition transaction. The caller is
+// required to rollback the transaction if an error is returned.
+func addOrderFQDNSet(
+	tx *gorp.Transaction,
+	names []string,
+	orderID int64,
+	regID int64,
+	expires time.Time) error {
+	return tx.Insert(&orderFQDNSet{
+		SetHash:        hashNames(names),
+		OrderID:        orderID,
+		RegistrationID: regID,
+		Expires:        expires,
+	})
+}
+
+// deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
+// orderID. This function accepts a transaction so that the deletion can
+// take place within the finalization transaction. The caller is required to
+// rollback the transaction if an error is returned.
+func deleteOrderFQDNSet(
+	tx *gorp.Transaction,
+	orderID int64) error {
+
+	result, err := tx.Exec(`
+	  DELETE FROM orderFqdnSets
+		WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return err
+	}
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// We always expect there to be an order FQDN set row for each
+	// pending/processing order that is being finalized. If there isn't one then
+	// something is amiss and should be raised as an internal server error
+	if rowsDeleted == 0 {
+		return berrors.InternalServerError("No orderFQDNSet exists to delete")
+	}
+	return nil
+}
+
 type execable interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }
@@ -1307,10 +1365,17 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 	}
 
+	// Add an FQDNSet entry for the order
+	if err := addOrderFQDNSet(
+		tx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+		return nil, Rollback(tx, err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
+	// Update the request with the ID that the order received
 	req.Id = &order.ID
 	return req, nil
 }
@@ -1374,6 +1439,12 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
 		err = berrors.InternalServerError("no order updated for finalization")
+		return Rollback(tx, err)
+	}
+
+	// Delete the orderFQDNSet row for the order now that it has been finalized.
+	// We use this table for order reuse and should not reuse a finalized order.
+	if err := deleteOrderFQDNSet(tx, *req.Id); err != nil {
 		return Rollback(tx, err)
 	}
 
@@ -1478,6 +1549,38 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 		}
 	}
 	return byName, nil
+}
+
+// GetOrderForNames tries to find an order with the exact set of names
+// requested, associated with the given accountID. Only unexpired orders are
+// considered. If no order is found a nil corepb.Order pointer is returned.
+func (ssa *SQLStorageAuthority) GetOrderForNames(
+	ctx context.Context,
+	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+
+	// Hash the names requested for lookup in the orderFqdnSets table
+	fqdnHash := hashNames(req.Names)
+
+	var orderID int64
+	err := ssa.dbMap.SelectOne(&orderID, `
+	SELECT orderID
+	FROM orderFqdnSets
+	WHERE setHash = ?
+	AND registrationID = ?
+	AND expires > ?`,
+		fqdnHash, *req.AcctID, ssa.clk.Now())
+
+	// There isn't an unexpired order for the provided AcctID that has the
+	// fqdnHash requested.
+	if err == sql.ErrNoRows {
+		return nil, berrors.NotFoundError("no order matching request found")
+	} else if err != nil {
+		// An unexpected error occurred
+		return nil, err
+	}
+
+	// Get & return the order
+	return ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,

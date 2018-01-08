@@ -145,7 +145,7 @@ func TestLoadCert(t *testing.T) {
 			"open ../does/not/exist: no such file or directory",
 		},
 		{
-			"../test/test-ca.key",
+			"./testdata/key.pem",
 			"Invalid certificate value returned",
 		},
 	}
@@ -156,8 +156,8 @@ func TestLoadCert(t *testing.T) {
 		test.AssertEquals(t, err.Error(), tc.expectedErr)
 	}
 
-	bytes, err := LoadCert("../test/test-ca.pem")
-	test.AssertNotError(t, err, "LoadCert(../test/test-ca.pem) errored")
+	bytes, err := LoadCert("./testdata/cert.pem")
+	test.AssertNotError(t, err, "LoadCert(\"./testdata/cert.pem\") errored")
 	test.AssertNotEquals(t, len(bytes), 0)
 }
 

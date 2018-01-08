@@ -42,6 +42,7 @@ GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON requestedNames TO 'sa'@'localhost';
+GRANT SELECT,INSERT,DELETE ON orderFqdnSets TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
