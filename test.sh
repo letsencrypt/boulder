@@ -185,7 +185,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   REQUESTS_CA_BUNDLE=test/wfe-tls/minica.pem DIRECTORY=http://boulder:4000/directory \
-    run python2 test/integration-test.py
+    run python2 test/integration-test.py --chisel
   end_context #integration
 fi
 
