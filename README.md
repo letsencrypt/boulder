@@ -28,6 +28,11 @@ We recommend having **at least 2GB of RAM** available on your Docker host. In
 practice using less RAM may result in the MariaDB container failing in
 non-obvious ways.
 
+By deafult Boulder is configured to track the production Let's Encrypt
+environment. To run Boulder with new features enabled to track the
+staging environment (and to test ACME v2 support), edit `docker-compose.yml` to
+change `BOULDER_CONFIG_DIR` to `test/config-next`.
+
 To start Boulder in a Docker container, run:
 
     docker-compose up
