@@ -1,3 +1,4 @@
 acme>=0.10.1
 cryptography>=0.7
 PyOpenSSL
+requests
