@@ -1958,22 +1958,27 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 		"recent.com": &core.Authorization{
 			Identifier: makeIdentifier("recent.com"),
 			Expires:    &m.recent,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older.com": &core.Authorization{
 			Identifier: makeIdentifier("older.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older2.com": &core.Authorization{
 			Identifier: makeIdentifier("older2.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"*.wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("*.wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 	}, nil
 }
@@ -2860,6 +2865,48 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
 	// It *should* be a NotFound error
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+}
+
+func TestDisabledChallengeValidAuthz(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	challenges := map[string]bool{
+		core.ChallengeTypeHTTP01: true,
+	}
+	pa, err := policy.New(challenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+
+	exp := fc.Now().Add(10 * time.Hour)
+
+	err = ra.checkAuthorizationsCAA(
+		context.Background(),
+		[]string{"test.com"},
+		map[string]*core.Authorization{"test.com": &core.Authorization{
+			Expires: &exp,
+			Challenges: []core.Challenge{
+				{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01},
+			},
+		}},
+		0,
+		fc.Now(),
+	)
+	test.AssertError(t, err, "RA didn't prevent use of an authorization which used an disabled challenge type")
+
+	err = ra.checkAuthorizationsCAA(
+		context.Background(),
+		[]string{"test.com"},
+		map[string]*core.Authorization{"test.com": &core.Authorization{
+			Expires: &exp,
+			Challenges: []core.Challenge{
+				{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01},
+			},
+		}},
+		0,
+		fc.Now(),
+	)
+	test.AssertNotError(t, err, "RA prevented use of an authorization which used an enabled challenge type")
 }
 
 var CAkeyPEM = `

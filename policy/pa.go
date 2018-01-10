@@ -453,3 +453,14 @@ func extractDomainIANASuffix(name string) (string, error) {
 
 	return suffix, nil
 }
+
+// AuthzStillValid checks if the challenge type that was used in a valid authorization
+// is still enabled
+func (pa *AuthorityImpl) ChallengeStillAllowed(authz *core.Authorization) bool {
+	for _, chall := range authz.Challenges {
+		if chall.Status == core.StatusValid {
+			return pa.enabledChallenges[chall.Type]
+		}
+	}
+	return false
+}

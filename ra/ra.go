@@ -721,6 +721,9 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
+		if authz != nil && !ra.PA.ChallengeStillAllowed(authz) {
+			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q no longer allowed", authz.ID)
+		}
 	}
 
 	if err := ra.recheckCAA(ctx, recheckNames); err != nil {

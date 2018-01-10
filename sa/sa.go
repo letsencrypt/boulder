@@ -1621,6 +1621,27 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		if auth.Expires == nil {
 			continue
 		}
+
+		// Retrieve challenges for the authzvar challObjs []challModel
+		var challObjs []challModel
+		_, err = ssa.dbMap.Select(
+			&challObjs,
+			getChallengesQuery,
+			map[string]interface{}{"authID": auth.ID},
+		)
+		if err != nil {
+			return nil, err
+		}
+		var challs []core.Challenge
+		for _, c := range challObjs {
+			chall, err := modelToChallenge(&c)
+			if err != nil {
+				return nil, err
+			}
+			challs = append(challs, chall)
+		}
+		auth.Challenges = challs
+
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
