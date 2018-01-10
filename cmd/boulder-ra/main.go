@@ -119,6 +119,13 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
+	if c.PA.ChallengesWhitelistFile != "" {
+		err = pa.SetChallengesWhitelistFile(c.PA.ChallengesWhitelistFile)
+		cmd.FailOnError(err, "Couldn't load challenges whitelist file")
+	} else {
+		logger.Info("No challengesWhitelistFile given, not loading")
+	}
+
 	var tls *tls.Config
 	if c.RA.TLS.CertFile != nil {
 		tls, err = c.RA.TLS.Load()

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -31,9 +32,10 @@ type AuthorityImpl struct {
 	wildcardExactBlacklist map[string]bool
 	blacklistMu            sync.RWMutex
 
-	enabledChallenges map[string]bool
-	pseudoRNG         *rand.Rand
-	rngMu             sync.Mutex
+	enabledChallenges          map[string]bool
+	enabledChallengesWhitelist map[string]map[int64]bool
+	pseudoRNG                  *rand.Rand
+	rngMu                      sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -108,6 +110,50 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	pa.exactBlacklist = exactNameMap
 	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
+	return nil
+}
+
+// SetChallengesWhitelistFile will load the given whitelist file, returning error if it
+// fails. It will also start a reloader in case the file changes.
+func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
+	_, err := reloader.New(f, pa.loadChallengesWhitelist, pa.challengesWhitelistLoadError)
+	return err
+}
+
+func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
+	pa.log.AuditErr(fmt.Sprintf("error loading challenges whitelist: %s", err))
+}
+
+func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
+	hash := sha256.Sum256(b)
+	pa.log.Info(fmt.Sprintf("loading challenges whitelist, sha256: %s",
+		hex.EncodeToString(hash[:])))
+	var wl map[string]interface{}
+	err := json.Unmarshal(b, &wl)
+	if err != nil {
+		return err
+	}
+
+	chalWl := make(map[string]map[int64]bool)
+
+	for k, v := range wl {
+		chalWl[k] = make(map[int64]bool)
+		list, ok := v.([]string)
+		if !ok {
+			return fmt.Errorf("Malformed whitelist entry: %v", v)
+		}
+		for _, s := range list {
+			i, err := strconv.ParseInt(s, 10, 0)
+			if err != nil {
+				return fmt.Errorf("Malformed registrationID in whitelist: %v", s)
+			}
+			chalWl[k][i] = true
+		}
+	}
+
+	// whitelist is read atomically, no locking needed.
+	pa.enabledChallengesWhitelist = chalWl
+
 	return nil
 }
 
@@ -375,7 +421,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
 // acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -455,6 +501,7 @@ func extractDomainIANASuffix(name string) (string, error) {
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
-func (pa *AuthorityImpl) ChallengeTypeEnabled(t string) bool {
-	return pa.enabledChallenges[t]
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t string, regID int64) bool {
+	return pa.enabledChallenges[t] ||
+		(pa.enabledChallengesWhitelist[t] != nil && pa.enabledChallengesWhitelist[t][regID])
 }
