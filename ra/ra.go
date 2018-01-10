@@ -1762,10 +1762,8 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
 	for _, chall := range authz.Challenges {
 		if chall.Status == core.StatusValid {
-			fmt.Println("TYPE", chall.Type)
 			return ra.PA.ChallengeTypeEnabled(chall.Type)
 		}
 	}
-	fmt.Println("NO TYPE", authz)
 	return false
 }
