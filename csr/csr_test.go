@@ -37,6 +37,7 @@ func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
+
 func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }

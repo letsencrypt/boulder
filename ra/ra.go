@@ -532,7 +532,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 				return core.Authorization{}, outErr
 			}
-			if !features.Enabled(features.EnforceChallengeDisable) || ra.validChallengeStillGood(&populatedAuthz) {
+			if !features.Enabled(features.EnforceChallengeDisable) || ra.authzValidChallengeEnabled(&populatedAuthz) {
 				// The existing authorization must not expire within the next 24 hours for
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
@@ -722,8 +722,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
-		if authz != nil && features.Enabled(features.EnforceChallengeDisable) && !ra.validChallengeStillGood(authz) {
-			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q no longer allowed", authz.ID)
+		if authz != nil && features.Enabled(features.EnforceChallengeDisable) && !ra.authzValidChallengeEnabled(authz) {
+			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q forbidden by policy", authz.ID)
 		}
 	}
 
@@ -1757,9 +1757,9 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	return authz, nil
 }
 
-// validChallengeStillGood checks whether the valid challenge in an authorization uses a type
+// authzValidChallengeEnabled checks whether the valid challenge in an authorization uses a type
 // which is still enabled
-func (ra *RegistrationAuthorityImpl) validChallengeStillGood(authz *core.Authorization) bool {
+func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
 	for _, chall := range authz.Challenges {
 		if chall.Status == core.StatusValid {
 			fmt.Println("TYPE", chall.Type)

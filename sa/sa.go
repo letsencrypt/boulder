@@ -222,24 +222,10 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		authz = pa.Authorization
 	}
 
-	var challObjs []challModel
-	_, err = tx.Select(
-		&challObjs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authz.ID},
-	)
+	authz.Challenges, err = ssa.getChallenges(authz.ID)
 	if err != nil {
-		return authz, Rollback(tx, err)
+		return authz, err
 	}
-	var challs []core.Challenge
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return authz, Rollback(tx, err)
-		}
-		challs = append(challs, chall)
-	}
-	authz.Challenges = challs
 
 	return authz, tx.Commit()
 }
@@ -1545,26 +1531,11 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
-
-			// Retrieve challenges for the authzvar challObjs []challModel
-			var challObjs []challModel
-			_, err = ssa.dbMap.Select(
-				&challObjs,
-				getChallengesQuery,
-				map[string]interface{}{"authID": auth.ID},
-			)
+			// Retrieve challenges for the authz
+			auth.Challenges, err = ssa.getChallenges(auth.ID)
 			if err != nil {
 				return nil, err
 			}
-			var challs []core.Challenge
-			for _, c := range challObjs {
-				chall, err := modelToChallenge(&c)
-				if err != nil {
-					return nil, err
-				}
-				challs = append(challs, chall)
-			}
-			auth.Challenges = challs
 
 			byName[auth.Identifier.Value] = auth
 		}
@@ -1648,25 +1619,8 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
-			// Retrieve challenges for the authzvar challObjs []challModel
-			var challObjs []challModel
-			_, err = ssa.dbMap.Select(
-				&challObjs,
-				getChallengesQuery,
-				map[string]interface{}{"authID": auth.ID},
-			)
-			if err != nil {
-				return nil, err
-			}
-			var challs []core.Challenge
-			for _, c := range challObjs {
-				chall, err := modelToChallenge(&c)
-				if err != nil {
-					return nil, err
-				}
-				challs = append(challs, chall)
-			}
-			auth.Challenges = challs
+			// Retrieve challenges for the authz
+			auth.Challenges, err = ssa.getChallenges(auth.ID)
 
 			byName[auth.Identifier.Value] = auth
 		}
@@ -1734,23 +1688,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	if features.Enabled(features.WildcardDomains) {
 		// Fetch each of the authorizations' associated challenges
 		for _, authz := range authzMap {
-			var challObjs []challModel
-			_, err = ssa.dbMap.Select(
-				&challObjs,
-				getChallengesQuery,
-				map[string]interface{}{"authID": authz.ID},
-			)
-			if err != nil {
-				return nil, err
-			}
-			authz.Challenges = make([]core.Challenge, len(challObjs))
-			for i, c := range challObjs {
-				chall, err := modelToChallenge(&c)
-				if err != nil {
-					return nil, err
-				}
-				authz.Challenges[i] = chall
-			}
+			authz.Challenges, err = ssa.getChallenges(authz.ID)
 		}
 	}
 	return authzMapToPB(authzMap)
@@ -1771,4 +1709,25 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 		ids = append(ids, result.ID)
 	}
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
+}
+
+func (ssa *SQLStorageAuthority) getChallenges(authID string) ([]core.Challenge, error) {
+	var challObjs []challModel
+	_, err := ssa.dbMap.Select(
+		&challObjs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	var challs []core.Challenge
+	for _, c := range challObjs {
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			return nil, err
+		}
+		challs = append(challs, chall)
+	}
+	return challs, nil
 }

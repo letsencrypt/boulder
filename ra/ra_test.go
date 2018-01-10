@@ -2914,7 +2914,7 @@ func TestDisabledChallengeValidAuthz(t *testing.T) {
 		0,
 		fc.Now(),
 	)
-	test.AssertError(t, err, "RA didn't prevent use of an authorization which used an disabled challenge type")
+	test.AssertError(t, err, "RA didn't prevent use of an authorization which used a disabled challenge type")
 
 	err = ra.checkAuthorizationsCAA(
 		context.Background(),
@@ -2942,11 +2942,11 @@ func TestValidChallengeStillGood(t *testing.T) {
 
 	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
-	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{}), "ra.validChallengeStillGood didn't fail with empty authorization")
-	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.validChallengeStillGood didn't fail with no valid challenges")
-	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.validChallengeStillGood didn't fail with disabled challenge")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
 
-	test.Assert(t, ra.validChallengeStillGood(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.validChallengeStillGood failed with enabled challenge")
+	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
 }
 
 func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
