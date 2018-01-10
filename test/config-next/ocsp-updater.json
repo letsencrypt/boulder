@@ -42,7 +42,7 @@
   },
 
   "common": {
-    "issuerCert": "test/test-ca.pem",
+    "issuerCert": "test/test-ca2.pem",
     "ct": {
       "logs": [
         {

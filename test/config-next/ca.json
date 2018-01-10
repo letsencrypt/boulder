@@ -148,9 +148,5 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
-  },
-
-  "common": {
-    "issuerCert": "test/test-ca.pem"
   }
 }

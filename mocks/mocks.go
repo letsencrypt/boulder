@@ -368,6 +368,13 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 						Type:  "dns",
 						Value: name,
 					},
+					Challenges: []core.Challenge{
+						{
+							Status: core.StatusValid,
+							ID:     23,
+							Type:   core.ChallengeTypeDNS01,
+						},
+					},
 				}
 			}
 		}

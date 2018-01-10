@@ -32,23 +32,9 @@ type config struct {
 	PA cmd.PAConfig
 
 	Syslog cmd.SyslogConfig
-
-	Common struct {
-		// Path to a PEM-encoded copy of the issuer certificate.
-		IssuerCert string
-	}
 }
 
 func loadIssuers(c config) ([]ca.Issuer, error) {
-	if c.CA.Key != nil {
-		issuerConfig := *c.CA.Key
-		issuerConfig.CertFile = c.Common.IssuerCert
-		priv, cert, err := loadIssuer(issuerConfig)
-		return []ca.Issuer{{
-			Signer: priv,
-			Cert:   cert,
-		}}, err
-	}
 	var issuers []ca.Issuer
 	for _, issuerConfig := range c.CA.Issuers {
 		priv, cert, err := loadIssuer(issuerConfig)
