@@ -453,3 +453,8 @@ func extractDomainIANASuffix(name string) (string, error) {
 
 	return suffix, nil
 }
+
+// ChallengeTypeEnabled returns whether the specified challenge type is enabled
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t string) bool {
+	return pa.enabledChallenges[t]
+}

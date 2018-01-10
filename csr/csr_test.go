@@ -38,6 +38,10 @@ func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
+func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
+	return true
+}
+
 func TestVerifyCSR(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
