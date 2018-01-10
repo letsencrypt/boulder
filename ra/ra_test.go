@@ -673,6 +673,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Test that a valid authorization that used a challenge which has been disabled
 	// is not reused
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 	pa, err := policy.New(map[string]bool{
 		core.ChallengeTypeHTTP01:   false,
 		core.ChallengeTypeTLSSNI01: true,
@@ -1168,6 +1169,8 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
 	// Create a dummy rate limit config that sets a PendingOrdersPerAccount rate
 	// limit with a very low threshold
@@ -2895,6 +2898,8 @@ func TestDisabledChallengeValidAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
 	exp := fc.Now().Add(10 * time.Hour)
 
 	err = ra.checkAuthorizationsCAA(
@@ -2935,6 +2940,8 @@ func TestValidChallengeStillGood(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
 	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{}), "ra.validChallengeStillGood didn't fail with empty authorization")
 	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.validChallengeStillGood didn't fail with no valid challenges")
 	test.Assert(t, !ra.validChallengeStillGood(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.validChallengeStillGood didn't fail with disabled challenge")
@@ -2943,14 +2950,18 @@ func TestValidChallengeStillGood(t *testing.T) {
 }
 
 func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	pa, err := policy.New(map[string]bool{})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
-	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{}, 0, core.Challenge{})
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
+	exp := fc.Now().Add(10 * time.Hour)
+	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})
 	test.AssertError(t, err, "ra.UpdateAuthorization allowed a update to a authorization")
+	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
 }
 
 var CAkeyPEM = `
