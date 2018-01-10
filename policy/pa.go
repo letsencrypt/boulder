@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -128,7 +127,7 @@ func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
 	hash := sha256.Sum256(b)
 	pa.log.Info(fmt.Sprintf("loading challenges whitelist, sha256: %s",
 		hex.EncodeToString(hash[:])))
-	var wl map[string]interface{}
+	var wl map[string][]int64
 	err := json.Unmarshal(b, &wl)
 	if err != nil {
 		return err
@@ -138,21 +137,14 @@ func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
 
 	for k, v := range wl {
 		chalWl[k] = make(map[int64]bool)
-		list, ok := v.([]string)
-		if !ok {
-			return fmt.Errorf("Malformed whitelist entry: %v", v)
-		}
-		for _, s := range list {
-			i, err := strconv.ParseInt(s, 10, 0)
-			if err != nil {
-				return fmt.Errorf("Malformed registrationID in whitelist: %v", s)
-			}
+		for _, i := range v {
 			chalWl[k][i] = true
 		}
 	}
 
-	// whitelist is read atomically, no locking needed.
+	pa.blacklistMu.Lock()
 	pa.enabledChallengesWhitelist = chalWl
+	pa.blacklistMu.Unlock()
 
 	return nil
 }
@@ -429,7 +421,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
-		if !pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			return nil, nil, fmt.Errorf(
 				"Challenges requested for wildcard identifier but DNS-01 " +
 					"challenge type is not enabled")
@@ -438,19 +430,19 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 		challenges = []core.Challenge{core.DNSChallenge01()}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
-		if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01, regID) {
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
-		if features.Enabled(features.AllowTLS02Challenges) && pa.enabledChallenges[core.ChallengeTypeTLSSNI02] {
+		if features.Enabled(features.AllowTLS02Challenges) && pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI02, regID) {
 			challenges = append(challenges, core.TLSSNIChallenge02())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			challenges = append(challenges, core.DNSChallenge01())
 		}
 	}
@@ -502,6 +494,8 @@ func extractDomainIANASuffix(name string) (string, error) {
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
 func (pa *AuthorityImpl) ChallengeTypeEnabled(t string, regID int64) bool {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
 	return pa.enabledChallenges[t] ||
 		(pa.enabledChallengesWhitelist[t] != nil && pa.enabledChallengesWhitelist[t][regID])
 }

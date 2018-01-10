@@ -1758,7 +1758,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 }
 
 // authzValidChallengeEnabled checks whether the valid challenge in an authorization uses a type
-// which is still enabled for giver regID
+// which is still enabled for given regID
 func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
 	for _, chall := range authz.Challenges {
 		if chall.Status == core.StatusValid {

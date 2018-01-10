@@ -20,7 +20,10 @@ var enabledChallenges = map[string]bool{
 	core.ChallengeTypeDNS01:    true,
 }
 
-const testRegID = 1234
+const (
+	testRegID            = 1234
+	testRegIDWhitelisted = 1000
+)
 
 func paImpl(t *testing.T) *AuthorityImpl {
 	pa, err := New(enabledChallenges)
@@ -327,6 +330,36 @@ func TestChallengesFor(t *testing.T) {
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
+
+}
+
+func TestChallengesForWhitelist(t *testing.T) {
+	enabledChallenges[core.ChallengeTypeTLSSNI01] = false
+
+	var enabledChallengesWhitelist = map[string][]int64{
+		core.ChallengeTypeHTTP01:   []int64{},
+		core.ChallengeTypeTLSSNI01: []int64{testRegIDWhitelisted},
+		core.ChallengeTypeDNS01:    []int64{},
+	}
+
+	pa := paImpl(t)
+
+	wlBytes, err := json.Marshal(enabledChallengesWhitelist)
+	test.AssertNotError(t, err, "Couldn't serialize whitelist")
+	f, _ := ioutil.TempFile("", "test-challenges-whitelist.json")
+	defer os.Remove(f.Name())
+	err = ioutil.WriteFile(f.Name(), wlBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write serialized whitelist to file")
+	err = pa.SetChallengesWhitelistFile(f.Name())
+	test.AssertNotError(t, err, "Couldn't load policy contents from file")
+
+	challenges, _, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID)
+	test.AssertNotError(t, err, "ChallengesFor failed")
+	test.Assert(t, len(challenges) == len(enabledChallenges)-1, "Wrong number of challenges returned")
+
+	challenges, _, err = pa.ChallengesFor(core.AcmeIdentifier{}, testRegIDWhitelisted)
+	test.AssertNotError(t, err, "ChallengesFor failed")
+	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 }
 
 func TestChallengesForWildcard(t *testing.T) {
