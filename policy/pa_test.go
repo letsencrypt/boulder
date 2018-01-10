@@ -461,13 +461,3 @@ func TestMalformedExactBlacklist(t *testing.T) {
 	test.AssertError(t, err, "Loaded invalid exact blacklist content without error")
 	test.AssertEquals(t, err.Error(), "Malformed exact blacklist entry, only one label: \"com\"")
 }
-
-func TestChallengeStillAllowed(t *testing.T) {
-	pa := paImpl(t)
-	pa.enabledChallenges[core.ChallengeTypeHTTP01] = false
-	test.Assert(t, !pa.ChallengeStillAllowed(&core.Authorization{}), "pa.ChallengeStillAllowed didn't fail with empty authorization")
-	test.Assert(t, !pa.ChallengeStillAllowed(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "pa.ChallengeStillAllowed didn't fail with no valid challenges")
-	test.Assert(t, !pa.ChallengeStillAllowed(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "pa.ChallengeStillAllowed didn't fail with disabled challenge")
-
-	test.Assert(t, pa.ChallengeStillAllowed(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "pa.ChallengeStillAllowed failed with enabled challenge")
-}

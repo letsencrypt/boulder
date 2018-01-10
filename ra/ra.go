@@ -532,13 +532,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 				return core.Authorization{}, outErr
 			}
-
-			// The existing authorization must not expire within the next 24 hours for
-			// it to be OK for reuse
-			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-			if populatedAuthz.Expires.After(reuseCutOff) {
-				ra.stats.Inc("ReusedValidAuthz", 1)
-				return populatedAuthz, nil
+			if ra.validChallengeStillGood(&populatedAuthz) {
+				// The existing authorization must not expire within the next 24 hours for
+				// it to be OK for reuse
+				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
+				if populatedAuthz.Expires.After(reuseCutOff) {
+					ra.stats.Inc("ReusedValidAuthz", 1)
+					return populatedAuthz, nil
+				}
 			}
 		}
 	}
@@ -721,7 +722,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
-		if authz != nil && !ra.PA.ChallengeStillAllowed(authz) {
+		if authz != nil && !ra.validChallengeStillGood(authz) {
 			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q no longer allowed", authz.ID)
 		}
 	}
@@ -1335,6 +1336,10 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
+	if !ra.PA.ChallengeTypeEnabled(ch.Type) {
+		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+	}
+
 	// When configured with `reuseValidAuthz` we can expect some clients to try
 	// and update a challenge for an authorization that is already valid. In this
 	// case we don't need to process the challenge update. It wouldn't be helpful,
@@ -1750,4 +1755,15 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	}
 	authz.Combinations = comboBytes
 	return authz, nil
+}
+
+// validChallengeStillGood checks whether the valid challenge in an authorization uses a type
+// which is still enabled
+func (ra *RegistrationAuthorityImpl) validChallengeStillGood(authz *core.Authorization) bool {
+	for _, chall := range authz.Challenges {
+		if chall.Status == core.StatusValid {
+			return ra.PA.ChallengeTypeEnabled(chall.Type)
+		}
+	}
+	return false
 }

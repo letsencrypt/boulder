@@ -280,6 +280,10 @@ func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
+func (pa *mockPA) ChallengeTypeEnabled(string) bool {
+	return true
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
