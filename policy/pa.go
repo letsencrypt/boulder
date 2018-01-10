@@ -31,9 +31,10 @@ type AuthorityImpl struct {
 	wildcardExactBlacklist map[string]bool
 	blacklistMu            sync.RWMutex
 
-	enabledChallenges map[string]bool
-	pseudoRNG         *rand.Rand
-	rngMu             sync.Mutex
+	enabledChallenges          map[string]bool
+	enabledChallengesWhitelist map[string]map[int64]bool
+	pseudoRNG                  *rand.Rand
+	rngMu                      sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -108,6 +109,43 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	pa.exactBlacklist = exactNameMap
 	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
+	return nil
+}
+
+// SetChallengesWhitelistFile will load the given whitelist file, returning error if it
+// fails. It will also start a reloader in case the file changes.
+func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
+	_, err := reloader.New(f, pa.loadChallengesWhitelist, pa.challengesWhitelistLoadError)
+	return err
+}
+
+func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
+	pa.log.AuditErr(fmt.Sprintf("error loading challenges whitelist: %s", err))
+}
+
+func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
+	hash := sha256.Sum256(b)
+	pa.log.Info(fmt.Sprintf("loading challenges whitelist, sha256: %s",
+		hex.EncodeToString(hash[:])))
+	var wl map[string][]int64
+	err := json.Unmarshal(b, &wl)
+	if err != nil {
+		return err
+	}
+
+	chalWl := make(map[string]map[int64]bool)
+
+	for k, v := range wl {
+		chalWl[k] = make(map[int64]bool)
+		for _, i := range v {
+			chalWl[k][i] = true
+		}
+	}
+
+	pa.blacklistMu.Lock()
+	pa.enabledChallengesWhitelist = chalWl
+	pa.blacklistMu.Unlock()
+
 	return nil
 }
 
@@ -375,7 +413,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
 // acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -383,7 +421,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
-		if !pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			return nil, nil, fmt.Errorf(
 				"Challenges requested for wildcard identifier but DNS-01 " +
 					"challenge type is not enabled")
@@ -392,19 +430,19 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		challenges = []core.Challenge{core.DNSChallenge01()}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
-		if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01, regID) {
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
-		if features.Enabled(features.AllowTLS02Challenges) && pa.enabledChallenges[core.ChallengeTypeTLSSNI02] {
+		if features.Enabled(features.AllowTLS02Challenges) && pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI02, regID) {
 			challenges = append(challenges, core.TLSSNIChallenge02())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			challenges = append(challenges, core.DNSChallenge01())
 		}
 	}
@@ -455,6 +493,9 @@ func extractDomainIANASuffix(name string) (string, error) {
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
-func (pa *AuthorityImpl) ChallengeTypeEnabled(t string) bool {
-	return pa.enabledChallenges[t]
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t string, regID int64) bool {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
+	return pa.enabledChallenges[t] ||
+		(pa.enabledChallengesWhitelist[t] != nil && pa.enabledChallengesWhitelist[t][regID])
 }

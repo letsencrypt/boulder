@@ -1336,7 +1336,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
-	if features.Enabled(features.EnforceChallengeDisable) && !ra.PA.ChallengeTypeEnabled(ch.Type) {
+	if features.Enabled(features.EnforceChallengeDisable) && !ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
 		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
 	}
 
@@ -1728,7 +1728,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier)
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier, reg)
 	if err != nil {
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
@@ -1758,11 +1758,11 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 }
 
 // authzValidChallengeEnabled checks whether the valid challenge in an authorization uses a type
-// which is still enabled
+// which is still enabled for given regID
 func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
 	for _, chall := range authz.Challenges {
 		if chall.Status == core.StatusValid {
-			return ra.PA.ChallengeTypeEnabled(chall.Type)
+			return ra.PA.ChallengeTypeEnabled(chall.Type, authz.RegistrationID)
 		}
 	}
 	return false
