@@ -307,8 +307,8 @@ func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial str
 }
 
 // NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
-	return
+func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
+	return authz, nil
 }
 
 // NewRegistration is a mock
