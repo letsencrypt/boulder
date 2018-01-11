@@ -107,7 +107,7 @@ type CertificateAuthority interface {
 type PolicyAuthority interface {
 	WillingToIssue(domain AcmeIdentifier) error
 	WillingToIssueWildcard(domain AcmeIdentifier) error
-	ChallengesFor(domain AcmeIdentifier, registrationID int64) (challenges []Challenge, validCombinations [][]int, err error)
+	ChallengesFor(domain AcmeIdentifier, registrationID int64, revalidation bool) (challenges []Challenge, validCombinations [][]int, err error)
 	ChallengeTypeEnabled(t string, registrationID int64) bool
 }
 

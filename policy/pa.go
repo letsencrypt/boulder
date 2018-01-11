@@ -413,7 +413,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
 // acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64) ([]core.Challenge, [][]int, error) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -434,7 +434,8 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
+			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
