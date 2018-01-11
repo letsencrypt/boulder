@@ -278,7 +278,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -2961,7 +2961,7 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 	}
 	_ = features.Set(map[string]bool{
 		"EnforceChallengeDisable": true,
-		"TLSSNIRevalidate":        true,
+		"TLSSNIRevalidation":      true,
 	})
 	pa, err := policy.New(challenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
