@@ -32,10 +32,6 @@ type config struct {
 
 		AllowOrigins []string
 
-		CertNoCacheExpirationWindow cmd.ConfigDuration
-		IndexCacheDuration          cmd.ConfigDuration
-		IssuerCacheDuration         cmd.ConfigDuration
-
 		ShutdownStopTimeout cmd.ConfigDuration
 
 		SubscriberAgreementURL string
