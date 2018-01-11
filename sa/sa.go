@@ -1277,6 +1277,17 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (exists *sapb.Exists, err error) {
+	f := false
+	/// XXXX TOOODOOOO
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
+}
+
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
 	_, err := ssa.dbMap.Exec(
