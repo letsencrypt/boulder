@@ -85,12 +85,6 @@ type WebFrontEndImpl struct {
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
 
-	// Cache settings
-	CertCacheDuration           time.Duration
-	CertNoCacheExpirationWindow time.Duration
-	IndexCacheDuration          time.Duration
-	IssuerCacheDuration         time.Duration
-
 	// CORS settings
 	AllowOrigins []string
 
