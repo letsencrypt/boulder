@@ -150,7 +150,7 @@ message FQDNSetExistsRequest {
 }
 
 message PreviousCertificateExistsRequest {
-        repeated string domains = 1;
+        optional string domain = 1;
         optional int64 regID = 2;
 }
 
