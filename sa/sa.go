@@ -1205,7 +1205,6 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	var count int64
 	queryStart := ssa.clk.Now()
-	nameHashes := hashNames(names)
 	windowStart := ssa.clk.Now().Add(-window)
 	err := ssa.dbMap.SelectOne(
 		&count,
@@ -1221,7 +1220,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.D
 			fmt.Sprintf(
 				"CountFQDNSets returned sql.ErrNoRows for setHash = %q, "+
 					"AND issued > %q after %s\n",
-				nameHashes, windowStart.String(), elapsed.String()))
+				hashNames(names), windowStart.String(), elapsed.String()))
 		return 0, nil
 	}
 	return count, err
@@ -1342,13 +1341,12 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
 	var count int64
 	queryStart := ssa.clk.Now()
-	nameHashes := hashNames(names)
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		LIMIT 1`,
-		nameHashes,
+		hashNames(names),
 	)
 	if err == sql.ErrNoRows {
 		elapsed := ssa.clk.Now().Sub(queryStart)
@@ -1356,7 +1354,7 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 			fmt.Sprintf(
 				"FQDNSetExists returned sql.ErrNoRows for setHash = %q, "+
 					"after %s\n",
-				nameHashes, elapsed.String()))
+				hashNames(names), elapsed.String()))
 		return false, nil
 	}
 	return count > 0, err
