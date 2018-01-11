@@ -1280,7 +1280,7 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 	ctx context.Context,
 	req *sapb.PreviousCertificateExistsRequest,
-) (exists *sapb.Exists, err error) {
+) (*sapb.Exists, error) {
 	f := false
 	/// XXXX TOOODOOOO
 	return &sapb.Exists{

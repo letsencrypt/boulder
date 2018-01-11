@@ -349,6 +349,16 @@ func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bo
 	return false, nil
 }
 
+func (sa *StorageAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
+}
+
 func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
 	return nil, fmt.Errorf("GetPendingAuthorization not implemented")
 }
