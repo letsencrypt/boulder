@@ -1731,9 +1731,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	// (previous certificate existed) or not. If it is a revalidation, we'll tell
 	// the PA about that so it can include the TLS-SNI-01 challenge.
 	var previousCertificateExists bool
-	fmt.Println("bye")
 	if features.Enabled(features.TLSSNIRevalidation) {
-		fmt.Println("enabled")
 		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
 			Domain: &identifier.Value,
 			RegID:  &reg,
