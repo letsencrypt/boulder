@@ -2971,6 +2971,8 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 
 	ra.SA = &mockSAPreexistingCertificate{}
 
+	// Test with a reg ID and hostname that have a previous issuance, expect to
+	// see TLS-SNI-01.
 	authz, err := ra.NewAuthorization(context.Background(),
 		core.Authorization{
 			Identifier: core.AcmeIdentifier{
@@ -2980,14 +2982,45 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 		}, previousIssuanceRegId)
 	test.AssertNotError(t, err, "creating authz with domain for revalidation")
 
-	var foundTLSSNI bool
-	for _, c := range authz.Challenges {
-		if c.Type == core.ChallengeTypeTLSSNI01 {
-			foundTLSSNI = true
+	hasTLSSNI := func(challenges []core.Challenge) bool {
+		var foundTLSSNI bool
+		for _, c := range challenges {
+			if c.Type == core.ChallengeTypeTLSSNI01 {
+				foundTLSSNI = true
+			}
 		}
+		return foundTLSSNI
 	}
-	if !foundTLSSNI {
+	if !hasTLSSNI(authz.Challenges) {
 		t.Errorf("TLS-SNI challenge was not created during revalidation.")
+	}
+
+	// Test with a different reg ID, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
+			},
+		}, 1234)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different regID).")
+	}
+
+	// Test with a different domain, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: "not.example.com",
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different domain).")
 	}
 }
 
