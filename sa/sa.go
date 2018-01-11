@@ -286,6 +286,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // time range for a single IP address.
 func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
+	queryStart := ssa.clk.Now()
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
@@ -298,6 +299,15 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 			"earliest": earliest,
 			"latest":   latest,
 		})
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountRegistrationsByIP returned sql.ErrNoRows for initialIP = %q, "+
+					"earliest < %q, created <= %q after %s\n",
+				ip.String(), earliest.String(), latest.String(), elapsed.String()))
+		return 0, nil
+	}
 	if err != nil {
 		return -1, err
 	}
@@ -311,6 +321,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
+	queryStart := ssa.clk.Now()
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
@@ -325,6 +336,16 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 			"beginIP":  []byte(beginIP),
 			"endIP":    []byte(endIP),
 		})
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountRegistrationsByIPRange returned sql.ErrNoRows for %q <= initialIP, "+
+					"initialIP < %q, earliest < %q, createdAt <= %q after %s\n",
+				beginIP.String(), endIP.String(), earliest.String(),
+				latest.String(), elapsed.String()))
+		return 0, nil
+	}
 	if err != nil {
 		return -1, err
 	}
@@ -945,6 +966,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 // date range
 func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
 	var count int64
+	queryStart := ssa.clk.Now()
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM certificates
@@ -955,29 +977,49 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, star
 			"windowRight": end,
 		},
 	)
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountCertificatesRange returned sql.ErrNoRows for issued >= %q, "+
+					"AND issued < %q after %s\n",
+				start.String(), end.String(), elapsed.String()))
+		return 0, nil
+	}
 	return count, err
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
 // authorizations for the given registration.
-func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
-	err = ssa.dbMap.SelectOne(&count,
+func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (int, error) {
+	var count int
+	queryStart := ssa.clk.Now()
+	err := ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
 		WHERE registrationID = :regID AND
 		expires > :now AND
 		status = :pending`,
 		map[string]interface{}{
 			"regID":   regID,
-			"now":     ssa.clk.Now(),
+			"now":     queryStart,
 			"pending": string(core.StatusPending),
 		})
-	return
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountPendingAuthorizations returned sql.ErrNoRows for regID = %d, "+
+					"expires > %q after %s\n", regID, queryStart.String(), elapsed.String()))
+		return 0, nil
+	}
+	return count, err
 }
 
 // CountPendingOrders returns the number of pending, unexpired
 // orders for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
 	var count int
+	queryStart := ssa.clk.Now()
 	err := ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :regID AND
@@ -985,9 +1027,17 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 		status = :pending`,
 		map[string]interface{}{
 			"regID":   regID,
-			"now":     ssa.clk.Now(),
+			"now":     queryStart,
 			"pending": string(core.StatusPending),
 		})
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountPendingOrders returned sql.ErrNoRows for regID = %d, "+
+					"expires > %q after %s\n", regID, queryStart.String(), elapsed.String()))
+		return 0, nil
+	}
 	return count, err
 }
 
@@ -997,7 +1047,7 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	ctx context.Context,
 	req *sapb.CountInvalidAuthorizationsRequest,
-) (count *sapb.Count, err error) {
+) (*sapb.Count, error) {
 	identifier := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Hostname,
@@ -1008,9 +1058,10 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 		return nil, err
 	}
 
-	count = &sapb.Count{
+	count := &sapb.Count{
 		Count: new(int64),
 	}
+	queryStart := ssa.clk.Now()
 	err = ssa.dbMap.SelectOne(count.Count,
 		`SELECT COUNT(1) FROM authz
 		WHERE registrationID = :regID AND
@@ -1025,7 +1076,18 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 			"latest":     time.Unix(0, *req.Range.Latest),
 			"invalid":    string(core.StatusInvalid),
 		})
-	return
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountInvalidAuthorizations returned sql.ErrNoRows for regID = %d, "+
+					"identifier = %q, expires > %s, expires <= %s after %s\n",
+				*req.RegistrationID, idJSON, time.Unix(0, *req.Range.Earliest).String(),
+				time.Unix(0, *req.Range.Latest).String(), elapsed.String()))
+		return count, nil
+	}
+
+	return count, err
 }
 
 // ErrNoReceipt is an error type for non-existent SCT receipt
@@ -1142,14 +1204,26 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 // |window|
 func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	var count int64
+	queryStart := ssa.clk.Now()
+	nameHashes := hashNames(names)
+	windowStart := ssa.clk.Now().Add(-window)
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
 		hashNames(names),
-		ssa.clk.Now().Add(-window),
+		windowStart,
 	)
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"CountFQDNSets returned sql.ErrNoRows for setHash = %q, "+
+					"AND issued > %q after %s\n",
+				nameHashes, windowStart.String(), elapsed.String()))
+		return 0, nil
+	}
 	return count, err
 }
 
@@ -1267,13 +1341,24 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
 	var count int64
+	queryStart := ssa.clk.Now()
+	nameHashes := hashNames(names)
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		LIMIT 1`,
-		hashNames(names),
+		nameHashes,
 	)
+	if err == sql.ErrNoRows {
+		elapsed := ssa.clk.Now().Sub(queryStart)
+		ssa.log.AuditInfo(
+			fmt.Sprintf(
+				"FQDNSetExists returned sql.ErrNoRows for setHash = %q, "+
+					"after %s\n",
+				nameHashes, elapsed.String()))
+		return false, nil
+	}
 	return count > 0, err
 }
 
