@@ -883,6 +883,16 @@ func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, requ
 	return &sapb.Exists{Exists: &exists}, nil
 }
 
+func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	if req == nil || req.Domain == nil || req.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	return sac.inner.PreviousCertificateExists(ctx, req)
+}
+
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
