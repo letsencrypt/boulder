@@ -27,7 +27,7 @@
     },
     "publisherService": {
       "serverAddresses": ["publisher.boulder:19091"],
-      "timeout": "15s"
+      "timeout": "300s"
     },
     "saService": {
       "serverAddresses": ["sa.boulder:19095"],
@@ -44,7 +44,8 @@
       "AllowKeyRollover": true,
       "CountCertificatesExact": true,
       "RecheckCAA": true,
-      "ReusePendingAuthz": true
+      "ReusePendingAuthz": false,
+      "EnforceChallengeDisable": true
     }
   },
 
@@ -53,7 +54,8 @@
       "http-01": true,
       "tls-sni-01": true,
       "dns-01": true
-    }
+    },
+    "challengesWhitelistFile": "test/challenges-whitelist.json"
   },
 
   "syslog": {

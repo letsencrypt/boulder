@@ -28,7 +28,7 @@
     },
     "features": {
       "IPv6First": true
-    }
+      }
   },
 
   "syslog": {
