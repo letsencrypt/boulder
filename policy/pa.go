@@ -413,8 +413,8 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
 // acceptable for the given identifier. If the TLSSNIRevalidation feature flag
-// is set, create TLS-SNI challenges for revalidation requests even if TLS-SNI
-// is not among the configured challenges.
+// is set, create TLS-SNI-01 challenges for revalidation requests even if
+// TLS-SNI-01 is not among the configured challenges.
 func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
