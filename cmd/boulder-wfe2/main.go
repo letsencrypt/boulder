@@ -32,11 +32,6 @@ type config struct {
 
 		AllowOrigins []string
 
-		CertCacheDuration           cmd.ConfigDuration
-		CertNoCacheExpirationWindow cmd.ConfigDuration
-		IndexCacheDuration          cmd.ConfigDuration
-		IssuerCacheDuration         cmd.ConfigDuration
-
 		ShutdownStopTimeout cmd.ConfigDuration
 
 		SubscriberAgreementURL string
@@ -118,11 +113,6 @@ func main() {
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
-
-	wfe.CertCacheDuration = c.WFE.CertCacheDuration.Duration
-	wfe.CertNoCacheExpirationWindow = c.WFE.CertNoCacheExpirationWindow.Duration
-	wfe.IndexCacheDuration = c.WFE.IndexCacheDuration.Duration
-	wfe.IssuerCacheDuration = c.WFE.IssuerCacheDuration.Duration
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
