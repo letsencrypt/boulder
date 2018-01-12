@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1562,6 +1563,37 @@ func TestGetCertificate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
+// body from being sent like the net/http Server's actually do.
+func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
+	mux := wfe.Handler()
+	s := httptest.NewServer(mux)
+	defer s.Close()
+	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		test.AssertNotError(t, err, "do error")
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
+	test.AssertEquals(t, resp.StatusCode, 200)
+	test.AssertEquals(t, strconv.Itoa(len(certPemBytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, 0, len(body))
 }
 
 func newRequestEvent() *web.RequestEvent {
