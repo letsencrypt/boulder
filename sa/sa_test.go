@@ -1013,6 +1013,45 @@ func TestAddIssuedNames(t *testing.T) {
 	}
 }
 
+func TestPreviousCertificateExists(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// An example cert taken from EFF's website
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "reading cert DER")
+
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
+	test.AssertNotError(t, err, "calling AddCertificate")
+
+	cases := []struct {
+		name     string
+		domain   string
+		regID    int64
+		expected bool
+	}{
+		{"matches", "www.eff.org", reg.ID, true},
+		{"wrongDomain", "wwoof.org", reg.ID, false},
+		{"wrongAccount", "www.eff.org", 3333, false},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			exists, err := sa.PreviousCertificateExists(context.Background(),
+				&sapb.PreviousCertificateExistsRequest{
+					Domain: &testCase.domain,
+					RegID:  &testCase.regID,
+				})
+			test.AssertNotError(t, err, "calling PreviousCertificateExists")
+			if *exists.Exists != testCase.expected {
+				t.Errorf("wanted %v got %v", testCase.expected, *exists.Exists)
+			}
+		})
+	}
+}
+
 func TestDeactivateAuthorization(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()

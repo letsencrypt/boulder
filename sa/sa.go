@@ -1281,11 +1281,52 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 	ctx context.Context,
 	req *sapb.PreviousCertificateExistsRequest,
 ) (*sapb.Exists, error) {
+	t := true
+	exists := &sapb.Exists{Exists: &t}
+
 	f := false
-	/// XXXX TOOODOOOO
-	return &sapb.Exists{
-		Exists: &f,
-	}, nil
+	notExists := &sapb.Exists{Exists: &f}
+
+	// Find the most recently issued certificate containing this domain name.
+	var serial string
+	err := ssa.dbMap.SelectOne(
+		&serial,
+		`SELECT serial FROM issuedNames
+		WHERE reversedName = ?
+		ORDER BY notBefore DESC
+		LIMIT 1`,
+		ReverseName(*req.Domain),
+	)
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check whether that certificate was issued to the specified account.
+	var count int
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE serial = ?
+		AND registrationID = ?`,
+		serial,
+		*req.RegID,
+	)
+	// If no rows found, that means the certificate we found in issuedNames wasn't
+	// issued by the registration ID we are checking right now, but is not an
+	// error.
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return exists, nil
+	}
+	return notExists, nil
 }
 
 // DeactivateRegistration deactivates a currently valid registration
