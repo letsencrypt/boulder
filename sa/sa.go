@@ -1291,7 +1291,9 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 	notExists := &sapb.Exists{Exists: &f}
 
 	// Find the most recently issued certificate containing this domain name.
-	serials, err := ssa.dbMap.Select(
+	var serials []string
+	_, err := ssa.dbMap.Select(
+		&serials,
 		`SELECT serial FROM issuedNames
 		WHERE reversedName = ?
 		ORDER BY notBefore DESC
@@ -1308,17 +1310,14 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		return notExists, nil
 	}
 
-	serial, ok := serials[0].(string)
-	if !ok {
-		return nil, fmt.Errorf("wrong type returned from Select")
-	}
-
 	// Check whether that certificate was issued to the specified account.
-	counts, err := ssa.dbMap.Select(
+	var counts []int
+	_, err = ssa.dbMap.Select(
+		&counts,
 		`SELECT COUNT(1) FROM certificates
 		WHERE serial = ?
 		AND registrationID = ?`,
-		serial,
+		serials[0],
 		*req.RegID,
 	)
 	// If no rows found, that means the certificate we found in issuedNames wasn't
@@ -1334,11 +1333,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		return notExists, nil
 	}
 
-	count, ok := counts[0].(int)
-	if !ok {
-		return nil, fmt.Errorf("wrong type returned from Select for certificates")
-	}
-	if count > 0 {
+	if counts[0] > 0 {
 		return exists, nil
 	}
 	return notExists, nil
