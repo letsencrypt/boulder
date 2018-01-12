@@ -722,9 +722,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
-		if authz != nil && features.Enabled(features.EnforceChallengeDisable) && !ra.authzValidChallengeEnabled(authz) {
-			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q forbidden by policy", authz.ID)
-		}
 	}
 
 	if err := ra.recheckCAA(ctx, recheckNames); err != nil {
