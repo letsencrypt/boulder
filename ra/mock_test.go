@@ -91,6 +91,17 @@ func (sa *mockInvalidAuthorizationsAuthority) CountFQDNSets(ctx context.Context,
 	return nil, nil
 }
 
+func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+	_ ...grpc.CallOption,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
+}
+
 func (sa *mockInvalidAuthorizationsAuthority) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
 	return nil, nil
 }

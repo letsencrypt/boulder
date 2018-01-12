@@ -412,8 +412,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 }
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
-// acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64) ([]core.Challenge, [][]int, error) {
+// acceptable for the given identifier. If the TLSSNIRevalidation feature flag
+// is set, create TLS-SNI-01 challenges for revalidation requests even if
+// TLS-SNI-01 is not among the configured challenges.
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -434,7 +436,10 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) {
+		// Add a TLS-SNI challenge, if either (a) the challenge is enabled, or (b)
+		// the TLSSNIRevalidation feature flag is on and this is a revalidation.
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
+			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
