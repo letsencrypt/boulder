@@ -318,6 +318,20 @@ func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, wind
 	return *response.Count, nil
 }
 
+func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	exists, err := sac.inner.PreviousCertificateExists(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if exists == nil || exists.Exists == nil {
+		return nil, errIncompleteResponse
+	}
+	return exists, err
+}
+
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
 	response, err := sac.inner.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: domains})
 	if err != nil {
@@ -870,6 +884,16 @@ func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, requ
 	}
 
 	return &sapb.Exists{Exists: &exists}, nil
+}
+
+func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	if req == nil || req.Domain == nil || req.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	return sac.inner.PreviousCertificateExists(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {

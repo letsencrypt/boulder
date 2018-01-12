@@ -8,4 +8,3 @@ ALTER TABLE issuedNames
 ALTER TABLE issuedNames
        DROP COLUMN renewal,
        DROP INDEX `reversedName_renewal_notBefore_Idx`;
-;

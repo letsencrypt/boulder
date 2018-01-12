@@ -43,6 +43,7 @@
     },
     "features": {
       "WildcardDomains": true,
+      "TLSSNIRevalidation": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,

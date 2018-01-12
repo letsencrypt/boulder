@@ -722,9 +722,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			// Ensure that CAA is rechecked for this name
 			recheckNames = append(recheckNames, name)
 		}
-		if authz != nil && features.Enabled(features.EnforceChallengeDisable) && !ra.authzValidChallengeEnabled(authz) {
-			return berrors.UnauthorizedError("challenge used to validate authorization with ID %q forbidden by policy", authz.ID)
-		}
 	}
 
 	if err := ra.recheckCAA(ctx, recheckNames); err != nil {
@@ -1336,7 +1333,25 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
-	if features.Enabled(features.EnforceChallengeDisable) && !ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
+	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
+	// (previous certificate existed) or not. If it is a revalidation, we can
+	// proceed with validation even though the challenge type is currently
+	// disabled, regardless of the EnforceChallengeDisable setting.
+	var previousCertificateExists bool
+	if features.Enabled(features.TLSSNIRevalidation) {
+		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &authz.Identifier.Value,
+			RegID:  &authz.RegistrationID,
+		})
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		previousCertificateExists = *existsResp.Exists
+	}
+
+	if features.Enabled(features.EnforceChallengeDisable) &&
+		!previousCertificateExists &&
+		!ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
 		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
 	}
 
@@ -1727,8 +1742,23 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		}
 	}
 
+	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
+	// (previous certificate existed) or not. If it is a revalidation, we'll tell
+	// the PA about that so it can include the TLS-SNI-01 challenge.
+	var previousCertificateExists bool
+	if features.Enabled(features.TLSSNIRevalidation) {
+		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &identifier.Value,
+			RegID:  &reg,
+		})
+		if err != nil {
+			return nil, err
+		}
+		previousCertificateExists = *existsResp.Exists
+	}
+
 	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier, reg)
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier, reg, previousCertificateExists)
 	if err != nil {
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
