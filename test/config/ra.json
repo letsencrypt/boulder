@@ -44,14 +44,14 @@
       "AllowKeyRollover": true,
       "CountCertificatesExact": true,
       "RecheckCAA": true,
-      "ReusePendingAuthz": true
+      "ReusePendingAuthz": false
     }
   },
 
   "pa": {
     "challenges": {
       "http-01": true,
-      "tls-sni-01": true,
+      "tls-sni-01": false,
       "dns-01": true
     }
   },
