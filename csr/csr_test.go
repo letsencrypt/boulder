@@ -23,7 +23,7 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
