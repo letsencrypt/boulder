@@ -32,6 +32,8 @@ const (
 	WildcardDomains
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
+	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
+	TLSSNIRevalidation
 )
 
 // List of features and their default value, protected by fMu
@@ -54,6 +56,7 @@ var features = map[FeatureFlag]bool{
 	ROCACheck:                false,
 	WildcardDomains:          false,
 	EnforceChallengeDisable:  false,
+	TLSSNIRevalidation:       false,
 }
 
 var fMu = new(sync.RWMutex)

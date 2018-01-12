@@ -307,8 +307,8 @@ func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial str
 }
 
 // NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
-	return
+func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
+	return authz, nil
 }
 
 // NewRegistration is a mock
@@ -347,6 +347,16 @@ func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration
 // FQDNSetExists is a mock
 func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bool, error) {
 	return false, nil
+}
+
+func (sa *StorageAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
 }
 
 func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
