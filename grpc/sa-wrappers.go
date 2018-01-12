@@ -323,6 +323,9 @@ func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
 	req *sapb.PreviousCertificateExistsRequest,
 ) (*sapb.Exists, error) {
 	exists, err := sac.inner.PreviousCertificateExists(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 	if exists == nil || exists.Exists == nil {
 		return nil, errIncompleteResponse
 	}

@@ -1277,6 +1277,9 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
+// PreviousCertificateExists returns true iff there was at least one certificate
+// issued with the provided domain name, and the most recent such certificate
+// was issued by the provided registration ID.
 func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 	ctx context.Context,
 	req *sapb.PreviousCertificateExistsRequest,
