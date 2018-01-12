@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -50,6 +54,9 @@ type config struct {
 		SAService *cmd.GRPCClientConfig
 
 		Features map[string]bool
+
+		// CertificateChains maps AIA issuer URLs to certificate filenames
+		CertificateChains map[string][]string
 	}
 
 	SubscriberAgreementURL string
@@ -60,6 +67,75 @@ type config struct {
 		BaseURL    string
 		IssuerCert string
 	}
+}
+
+// loadCertificateChains processes the provided chainConfig of AIA Issuer URLs
+// and cert filenames. For each AIA issuer URL all of its cert filenames are
+// read, validated as PEM certificates, and concatinated together separated by
+// newlines. The combined PEM certificate chain contents for each are returned
+// in the results map, keyed by the AIA Issuer URL.
+func loadCertificateChains(chainConfig map[string][]string) (map[string]string, error) {
+	results := make(map[string]string, len(chainConfig))
+
+	// For each AIA Issuer URL we need to read the chain files
+	for aiaIssuerURL, chainfiles := range chainConfig {
+		var buffer bytes.Buffer
+
+		// There must be at least one chainfile specified
+		if len(chainfiles) == 0 {
+			return nil, berrors.MalformedError(
+				"CertificateChain entry for AIA issuer url %q has no chain "+
+					"file names configured",
+				aiaIssuerURL)
+		}
+
+		// Read each chain file - it is expected to be a PEM certificate
+		for _, c := range chainfiles {
+			// Read the raw contents
+			pemBytes, err := ioutil.ReadFile(c)
+			if err != nil {
+				return nil, berrors.MalformedError(
+					"CertificateChain entry for AIA issuer url %q has an "+
+						"invalid chain file: %q - error reading contents",
+					aiaIssuerURL, c)
+			}
+			// Try to decode the contents as PEM
+			certBlock, rest := pem.Decode(pemBytes)
+			if certBlock == nil {
+				return nil, berrors.MalformedError(
+					"CertificateChain entry for AIA issuer url %q has an "+
+						"invalid chain file: %q - contents did not decode as PEM",
+					aiaIssuerURL, c)
+			}
+			// The PEM contents must be a CERTIFICATE
+			if certBlock.Type != "CERTIFICATE" {
+				return nil, berrors.MalformedError(
+					"CertificateChain entry for AIA issuer url %q has an "+
+						"invalid chain file: %q - PEM block type incorrect, found "+
+						"%q, expected \"CERTIFICATE\"",
+					aiaIssuerURL, c, certBlock.Type)
+			}
+			if len(rest) != 0 {
+				return nil, berrors.MalformedError(
+					"CertificateChain entry for AIA issuer url %q has an "+
+						"invalid chain file: %q - PEM contents had unused remainder "+
+						"input (%d bytes)",
+					aiaIssuerURL, c, len(rest))
+			}
+
+			// Write the PEM bytes to the result buffer for this AIAIssuer
+			buffer.Write(pemBytes)
+			// We want each certificate in the chain separated by a \n, with
+			// a trailing \n at the end of the file that will serve to space out the
+			// end entity certificate that is appended by the WFE2's certificate
+			// endpoint.
+			buffer.Write([]byte("\n"))
+		}
+
+		// Save the full PEM chain contents
+		results[aiaIssuerURL] = buffer.String()
+	}
+	return results, nil
 }
 
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
@@ -126,6 +202,9 @@ func main() {
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
+
+	wfe.CertificateChains, err = loadCertificateChains(c.WFE.CertificateChains)
+	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
 

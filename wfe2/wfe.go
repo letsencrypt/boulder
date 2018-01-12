@@ -76,6 +76,10 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
+	// CertificateChains maps AIA issuer URLs to a string containing one or more
+	// PEM encoded certificates separated by a newline
+	CertificateChains map[string]string
+
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
@@ -1204,15 +1208,55 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set("Content-Type", "application/pem-certificate-chain")
-	response.WriteHeader(http.StatusOK)
-
-	pem := pem.EncodeToMemory(&pem.Block{
+	leafPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: cert.DER,
 	})
-	// TODO(#3291): Serve entire chain instead of just end-entity certificate.
-	if _, err = response.Write(pem); err != nil {
+
+	var responsePEM []byte
+
+	// If the WFE is configured with CertificateChains, construct a chain for this
+	// certificate using its AIA Issuer URL.
+	if len(wfe.CertificateChains) > 0 {
+		parsedCert, err := x509.ParseCertificate(cert.DER)
+		if err != nil {
+			// If we can't parse one of our own certs there's a serious problem
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"unable to parse Boulder issued certificate with serial %#v",
+					serial),
+			), err)
+			return
+		}
+
+		// TODO(@cpu): At present we only use the **first** AIA Issuer URL on the
+		// certificate when constructing the chain. Open question: should we use
+		// _all_ of them? If so, in what order?
+		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
+		if chain, ok := wfe.CertificateChains[aiaIssuerURL]; ok {
+			responsePEM = append([]byte(chain), leafPEM...)
+		} else {
+			// If there is no wfe.CertificateChains entry for the AIA Issuer URL there
+			// is probably a misconfiguration and we should treat it as an internal
+			// server error.
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"Certificate serial %#v has an unknown AIA Issuer URL %q"+
+						"- no PEM certificate chain associated.",
+					serial,
+					aiaIssuerURL),
+			), nil)
+			return
+		}
+	} else {
+		// Otherwise, with no configured CertificateChains just serve the leaf
+		// certificate.
+		responsePEM = leafPEM
+	}
+
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(responsePEM); err != nil {
 		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}

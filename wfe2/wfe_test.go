@@ -16,7 +16,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -345,6 +344,13 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
+
+	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
+
+	wfe.CertificateChains = map[string]string{
+		"http://localhost:4000/acme/issuer-cert": fmt.Sprintf("%s\n", string(chainPEM)),
+	}
 
 	wfe.SubscriberAgreementURL = agreementURL
 
@@ -1468,6 +1474,9 @@ func TestGetCertificate(t *testing.T) {
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	pkixContent := "application/pem-certificate-chain"
 
+	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
+
 	noCache := "public, max-age=0, no-cache"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
@@ -1487,7 +1496,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedCert: certPemBytes,
+			ExpectedCert: append(append(chainPemBytes, []byte("\n")...), certPemBytes...),
 		},
 		{
 			Name:           "Unused serial, no cache",
@@ -1553,37 +1562,6 @@ func TestGetCertificate(t *testing.T) {
 			}
 		})
 	}
-}
-
-// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
-// body from being sent like the net/http Server's actually do.
-func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
-	wfe, _ := setupWFE(t)
-
-	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-
-	mockLog := wfe.log.(*blog.Mock)
-	mockLog.Clear()
-
-	mux := wfe.Handler()
-	s := httptest.NewServer(mux)
-	defer s.Close()
-	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		test.AssertNotError(t, err, "do error")
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		test.AssertNotEquals(t, err, "readall error")
-	}
-	err = resp.Body.Close()
-	if err != nil {
-		test.AssertNotEquals(t, err, "readall error")
-	}
-	test.AssertEquals(t, resp.StatusCode, 200)
-	test.AssertEquals(t, strconv.Itoa(len(certPemBytes)), resp.Header.Get("Content-Length"))
-	test.AssertEquals(t, 0, len(body))
 }
 
 func newRequestEvent() *web.RequestEvent {
