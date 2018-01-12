@@ -307,8 +307,8 @@ func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial str
 }
 
 // NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
-	return
+func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
+	return authz, nil
 }
 
 // NewRegistration is a mock
@@ -349,6 +349,16 @@ func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bo
 	return false, nil
 }
 
+func (sa *StorageAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
+}
+
 func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
 	return nil, fmt.Errorf("GetPendingAuthorization not implemented")
 }
@@ -367,6 +377,13 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 					Identifier: core.AcmeIdentifier{
 						Type:  "dns",
 						Value: name,
+					},
+					Challenges: []core.Challenge{
+						{
+							Status: core.StatusValid,
+							ID:     23,
+							Type:   core.ChallengeTypeDNS01,
+						},
 					},
 				}
 			}

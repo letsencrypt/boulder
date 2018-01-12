@@ -23,7 +23,7 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
@@ -36,6 +36,10 @@ func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
 
 func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
+}
+
+func (pa *mockPA) ChallengeTypeEnabled(t string, registrationID int64) bool {
+	return true
 }
 
 func TestVerifyCSR(t *testing.T) {

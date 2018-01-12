@@ -71,6 +71,7 @@ var (
 	SupportedChallenges = map[string]bool{
 		core.ChallengeTypeHTTP01:   true,
 		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    true,
 	}
 
 	// These values we simulate from the client
@@ -277,7 +278,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -622,6 +623,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.Challenges[0].Type = core.ChallengeTypeHTTP01
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
@@ -668,6 +670,22 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+
+	// Test that a valid authorization that used a challenge which has been disabled
+	// is not reused
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeHTTP01:   false,
+		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    true,
+	})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+	newAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
+	test.Assert(t, finalAuthz.ID != newAuthz.ID, "NewAuthorization reused a valid authz with a disabled challenge type")
 }
 
 func TestReusePendingAuthorization(t *testing.T) {
@@ -902,7 +920,7 @@ func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
 
 	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeHTTP01
 	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
@@ -1151,6 +1169,8 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
 	// Create a dummy rate limit config that sets a PendingOrdersPerAccount rate
 	// limit with a very low threshold
@@ -1958,22 +1978,27 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 		"recent.com": &core.Authorization{
 			Identifier: makeIdentifier("recent.com"),
 			Expires:    &m.recent,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older.com": &core.Authorization{
 			Identifier: makeIdentifier("older.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older2.com": &core.Authorization{
 			Identifier: makeIdentifier("older2.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"*.wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("*.wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 	}, nil
 }
@@ -2860,6 +2885,132 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
 	// It *should* be a NotFound error
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+}
+
+var previousIssuanceRegId int64 = 98765
+var previousIssuanceDomain string = "example.com"
+
+// mockSAPreexistingCertificate acts as an SA that has an existing certificate
+// for "example.com".
+type mockSAPreexistingCertificate struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	t := true
+	f := false
+	if *req.RegID == previousIssuanceRegId &&
+		*req.Domain == previousIssuanceDomain {
+		return &sapb.Exists{Exists: &t}, nil
+	}
+	return &sapb.Exists{Exists: &f}, nil
+}
+
+// With TLS-SNI-01 disabled, an account that previously issued a certificate for
+// example.com should still be able to get a new authorization.
+func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	challenges := map[string]bool{
+		core.ChallengeTypeHTTP01: true,
+	}
+	_ = features.Set(map[string]bool{
+		"EnforceChallengeDisable": true,
+		"TLSSNIRevalidation":      true,
+	})
+	pa, err := policy.New(challenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+
+	ra.SA = &mockSAPreexistingCertificate{}
+
+	// Test with a reg ID and hostname that have a previous issuance, expect to
+	// see TLS-SNI-01.
+	authz, err := ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+
+	hasTLSSNI := func(challenges []core.Challenge) bool {
+		var foundTLSSNI bool
+		for _, c := range challenges {
+			if c.Type == core.ChallengeTypeTLSSNI01 {
+				foundTLSSNI = true
+			}
+		}
+		return foundTLSSNI
+	}
+	if !hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was not created during revalidation.")
+	}
+
+	// Test with a different reg ID, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
+			},
+		}, 1234)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different regID).")
+	}
+
+	// Test with a different domain, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: "not.example.com",
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different domain).")
+	}
+}
+
+func TestValidChallengeStillGood(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeTLSSNI01: true,
+	})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
+
+	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
+}
+
+func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	pa, err := policy.New(map[string]bool{})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
+	exp := fc.Now().Add(10 * time.Hour)
+	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})
+	test.AssertError(t, err, "ra.UpdateAuthorization allowed a update to a authorization")
+	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
 }
 
 var CAkeyPEM = `

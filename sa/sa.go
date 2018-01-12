@@ -222,24 +222,10 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		authz = pa.Authorization
 	}
 
-	var challObjs []challModel
-	_, err = tx.Select(
-		&challObjs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authz.ID},
-	)
+	authz.Challenges, err = ssa.getChallenges(authz.ID)
 	if err != nil {
-		return authz, Rollback(tx, err)
+		return authz, err
 	}
-	var challs []core.Challenge
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return authz, Rollback(tx, err)
-		}
-		challs = append(challs, chall)
-	}
-	authz.Challenges = challs
 
 	return authz, tx.Commit()
 }
@@ -818,7 +804,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("authorization with ID %q is not pending", authz.ID)
+		err = berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
 		return Rollback(tx, err)
 	}
 
@@ -1291,6 +1277,64 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
+// PreviousCertificateExists returns true iff there was at least one certificate
+// issued with the provided domain name, and the most recent such certificate
+// was issued by the provided registration ID. Note: This means that if two
+// different accounts were issuing certificates for a domain, only one gets the
+// right to revalidate using TLS-SNI-01. We think this is an acceptable tradeoff
+// of complexity versus coverage, though we may reconsider in the future.
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	t := true
+	exists := &sapb.Exists{Exists: &t}
+
+	f := false
+	notExists := &sapb.Exists{Exists: &f}
+
+	// Find the most recently issued certificate containing this domain name.
+	var serial string
+	err := ssa.dbMap.SelectOne(
+		&serial,
+		`SELECT serial FROM issuedNames
+		WHERE reversedName = ?
+		ORDER BY notBefore DESC
+		LIMIT 1`,
+		ReverseName(*req.Domain),
+	)
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check whether that certificate was issued to the specified account.
+	var count int
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE serial = ?
+		AND registrationID = ?`,
+		serial,
+		*req.RegID,
+	)
+	// If no rows found, that means the certificate we found in issuedNames wasn't
+	// issued by the registration ID we are checking right now, but is not an
+	// error.
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return exists, nil
+	}
+	return notExists, nil
+}
+
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
 	_, err := ssa.dbMap.Exec(
@@ -1545,6 +1589,14 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
+			if features.Enabled(features.EnforceChallengeDisable) {
+				// Retrieve challenges for the authz
+				auth.Challenges, err = ssa.getChallenges(auth.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			byName[auth.Identifier.Value] = auth
 		}
 	}
@@ -1621,11 +1673,20 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		if auth.Expires == nil {
 			continue
 		}
+
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
+			if features.Enabled(features.EnforceChallengeDisable) {
+				// Retrieve challenges for the authz
+				auth.Challenges, err = ssa.getChallenges(auth.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			byName[auth.Identifier.Value] = auth
 		}
 	}
@@ -1692,23 +1753,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	if features.Enabled(features.WildcardDomains) {
 		// Fetch each of the authorizations' associated challenges
 		for _, authz := range authzMap {
-			var challObjs []challModel
-			_, err = ssa.dbMap.Select(
-				&challObjs,
-				getChallengesQuery,
-				map[string]interface{}{"authID": authz.ID},
-			)
-			if err != nil {
-				return nil, err
-			}
-			authz.Challenges = make([]core.Challenge, len(challObjs))
-			for i, c := range challObjs {
-				chall, err := modelToChallenge(&c)
-				if err != nil {
-					return nil, err
-				}
-				authz.Challenges[i] = chall
-			}
+			authz.Challenges, err = ssa.getChallenges(authz.ID)
 		}
 	}
 	return authzMapToPB(authzMap)
@@ -1729,4 +1774,25 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 		ids = append(ids, result.ID)
 	}
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
+}
+
+func (ssa *SQLStorageAuthority) getChallenges(authID string) ([]core.Challenge, error) {
+	var challObjs []challModel
+	_, err := ssa.dbMap.Select(
+		&challObjs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	var challs []core.Challenge
+	for _, c := range challObjs {
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			return nil, err
+		}
+		challs = append(challs, chall)
+	}
+	return challs, nil
 }

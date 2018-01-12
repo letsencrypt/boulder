@@ -532,13 +532,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 				return core.Authorization{}, outErr
 			}
-
-			// The existing authorization must not expire within the next 24 hours for
-			// it to be OK for reuse
-			reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-			if populatedAuthz.Expires.After(reuseCutOff) {
-				ra.stats.Inc("ReusedValidAuthz", 1)
-				return populatedAuthz, nil
+			if !features.Enabled(features.EnforceChallengeDisable) || ra.authzValidChallengeEnabled(&populatedAuthz) {
+				// The existing authorization must not expire within the next 24 hours for
+				// it to be OK for reuse
+				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
+				if populatedAuthz.Expires.After(reuseCutOff) {
+					ra.stats.Inc("ReusedValidAuthz", 1)
+					return populatedAuthz, nil
+				}
 			}
 		}
 	}
@@ -1332,6 +1333,28 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
+	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
+	// (previous certificate existed) or not. If it is a revalidation, we can
+	// proceed with validation even though the challenge type is currently
+	// disabled, regardless of the EnforceChallengeDisable setting.
+	var previousCertificateExists bool
+	if features.Enabled(features.TLSSNIRevalidation) {
+		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &authz.Identifier.Value,
+			RegID:  &authz.RegistrationID,
+		})
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		previousCertificateExists = *existsResp.Exists
+	}
+
+	if features.Enabled(features.EnforceChallengeDisable) &&
+		!previousCertificateExists &&
+		!ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
+		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+	}
+
 	// When configured with `reuseValidAuthz` we can expect some clients to try
 	// and update a challenge for an authorization that is already valid. In this
 	// case we don't need to process the challenge update. It wouldn't be helpful,
@@ -1719,8 +1742,23 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		}
 	}
 
+	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
+	// (previous certificate existed) or not. If it is a revalidation, we'll tell
+	// the PA about that so it can include the TLS-SNI-01 challenge.
+	var previousCertificateExists bool
+	if features.Enabled(features.TLSSNIRevalidation) {
+		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &identifier.Value,
+			RegID:  &reg,
+		})
+		if err != nil {
+			return nil, err
+		}
+		previousCertificateExists = *existsResp.Exists
+	}
+
 	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier)
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier, reg, previousCertificateExists)
 	if err != nil {
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
@@ -1747,4 +1785,15 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	}
 	authz.Combinations = comboBytes
 	return authz, nil
+}
+
+// authzValidChallengeEnabled checks whether the valid challenge in an authorization uses a type
+// which is still enabled for given regID
+func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
+	for _, chall := range authz.Challenges {
+		if chall.Status == core.StatusValid {
+			return ra.PA.ChallengeTypeEnabled(chall.Type, authz.RegistrationID)
+		}
+	}
+	return false
 }

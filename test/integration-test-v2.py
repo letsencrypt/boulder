@@ -30,10 +30,8 @@ def main():
         raise Exception("startservers failed")
 
     test_multidomain()
-    # Disabled DNS-based test cases temporarily while debugging a flakiness
-    # issue (#3312)
-    #test_wildcardmultidomain()
-    #test_overlapping_wildcard()
+    test_wildcardmultidomain()
+    test_overlapping_wildcard()
     test_wildcard_exactblacklist()
     test_wildcard_authz_reuse()
 

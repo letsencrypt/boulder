@@ -37,7 +37,8 @@ logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
-ACCEPTABLE_TOS = "https://boulder:4431/terms/v7"
+ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
+PORT = os.getenv('PORT', '5002')
 
 # URLs to control dns-test-srv
 SET_TXT = "http://localhost:8055/set-txt"
@@ -163,7 +164,7 @@ def do_dns_challenges(client, authzs):
     return cleanup
 
 def do_http_challenges(client, authzs):
-    port = 5002
+    port = int(PORT)
     challs = [get_chall(a, challenges.HTTP01) for a in authzs]
     answers = set([http_01_answer(client, c) for c in challs])
     server = standalone.HTTP01Server(("", port), answers)
