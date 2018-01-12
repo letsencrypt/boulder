@@ -1336,7 +1336,25 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		// )
 	}
 
-	if features.Enabled(features.EnforceChallengeDisable) && !ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
+	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
+	// (previous certificate existed) or not. If it is a revalidation, we can
+	// proceed with validation even though the challenge type is currently
+	// disabled, regardless of the EnforceChallengeDisable setting.
+	var previousCertificateExists bool
+	if features.Enabled(features.TLSSNIRevalidation) {
+		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &authz.Identifier.Value,
+			RegID:  &authz.RegistrationID,
+		})
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		previousCertificateExists = *existsResp.Exists
+	}
+
+	if features.Enabled(features.EnforceChallengeDisable) &&
+		!previousCertificateExists &&
+		!ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
 		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
 	}
 
