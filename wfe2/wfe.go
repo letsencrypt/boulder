@@ -1254,6 +1254,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		responsePEM = leafPEM
 	}
 
+	// NOTE(@cpu): We must explicitly set the Content-Length header here. The Go
+	// HTTP library will only add this header if the body is below a certain size
+	// and with the addition of a PEM encoded certificate chain the body size of
+	// this endpoint will exceed this threshold. Since we know the length we can
+	// reliably set it ourselves and not worry.
+	response.Header().Set("Content-Length", strconv.Itoa(len(responsePEM)))
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {

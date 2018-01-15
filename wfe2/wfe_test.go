@@ -1571,6 +1571,9 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	chainPemBytes, _ := ioutil.ReadFile("../test/test-ca2.pem")
+	chain := fmt.Sprintf("%s\n%s", string(chainPemBytes), string(certPemBytes))
+	chainLen := strconv.Itoa(len(chain))
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -1592,7 +1595,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 		test.AssertNotEquals(t, err, "readall error")
 	}
 	test.AssertEquals(t, resp.StatusCode, 200)
-	test.AssertEquals(t, strconv.Itoa(len(certPemBytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, chainLen, resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))
 }
 
