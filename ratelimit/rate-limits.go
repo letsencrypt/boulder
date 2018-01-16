@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"github.com/go-yaml/yaml"
 
 	"github.com/letsencrypt/boulder/cmd"
 )
