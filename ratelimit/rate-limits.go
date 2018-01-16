@@ -108,7 +108,7 @@ func (r *limitsImpl) PendingOrdersPerAccount() RateLimitPolicy {
 // YAML configuration (typically read from disk by a reloader)
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
-	err := yaml.Unmarshal(contents, &newPolicy)
+	err := yaml.UnmarshalStrict(contents, &newPolicy)
 	if err != nil {
 		return err
 	}
