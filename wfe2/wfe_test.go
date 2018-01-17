@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
@@ -622,7 +621,6 @@ func TestPOST404(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IndexCacheDuration = time.Second * 10
 
 	responseWriter := httptest.NewRecorder()
 
@@ -1453,7 +1451,6 @@ func TestAccount(t *testing.T) {
 
 func TestIssuer(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCacheDuration = time.Second * 10
 	wfe.IssuerCert = []byte{0, 0, 1}
 
 	responseWriter := httptest.NewRecorder()
@@ -1468,9 +1465,6 @@ func TestIssuer(t *testing.T) {
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-
-	wfe.CertCacheDuration = time.Second * 10
-	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	pkixContent := "application/pem-certificate-chain"
