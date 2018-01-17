@@ -28,13 +28,7 @@
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
-    "features": {
-      "AllowAccountDeactivation": true,
-      "AllowKeyRollover": true,
-      "UseAIAIssuerURL": true,
-      "RandomDirectoryEntry": true,
-      "DirectoryMeta": true
-    }
+    "features": {}
   },
 
   "syslog": {
