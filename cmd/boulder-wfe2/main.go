@@ -13,7 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -78,7 +77,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 
 		// There must be at least one chainfile specified
 		if len(chainfiles) == 0 {
-			return nil, berrors.MalformedError(
+			return nil, fmt.Errorf(
 				"CertificateChain entry for AIA issuer url %q has no chain "+
 					"file names configured",
 				aiaIssuerURL)
@@ -89,7 +88,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 			// Read the raw contents
 			pemBytes, err := ioutil.ReadFile(c)
 			if err != nil {
-				return nil, berrors.MalformedError(
+				return nil, fmt.Errorf(
 					"CertificateChain entry for AIA issuer url %q has an "+
 						"invalid chain file: %q - error reading contents",
 					aiaIssuerURL, c)
@@ -97,21 +96,21 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 			// Try to decode the contents as PEM
 			certBlock, rest := pem.Decode(pemBytes)
 			if certBlock == nil {
-				return nil, berrors.MalformedError(
+				return nil, fmt.Errorf(
 					"CertificateChain entry for AIA issuer url %q has an "+
 						"invalid chain file: %q - contents did not decode as PEM",
 					aiaIssuerURL, c)
 			}
 			// The PEM contents must be a CERTIFICATE
 			if certBlock.Type != "CERTIFICATE" {
-				return nil, berrors.MalformedError(
+				return nil, fmt.Errorf(
 					"CertificateChain entry for AIA issuer url %q has an "+
 						"invalid chain file: %q - PEM block type incorrect, found "+
 						"%q, expected \"CERTIFICATE\"",
 					aiaIssuerURL, c, certBlock.Type)
 			}
 			if len(rest) != 0 {
-				return nil, berrors.MalformedError(
+				return nil, fmt.Errorf(
 					"CertificateChain entry for AIA issuer url %q has an "+
 						"invalid chain file: %q - PEM contents had unused remainder "+
 						"input (%d bytes)",

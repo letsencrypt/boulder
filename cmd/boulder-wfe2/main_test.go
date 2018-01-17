@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"testing"
 
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -46,7 +45,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://break.the.chain.com": []string{},
 			},
 			ExpectedResult: nil,
-			ExpectedError: berrors.MalformedError(
+			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://break.the.chain.com\" " +
 					"has no chain file names configured"),
 		},
@@ -56,7 +55,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://where.is.my.mind": []string{"/tmp/does.not.exist.pem"},
 			},
 			ExpectedResult: nil,
-			ExpectedError: berrors.MalformedError(
+			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
 					"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
 					"contents"),
@@ -67,7 +66,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://ok.go": []string{invalidPEMFile.Name()},
 			},
 			ExpectedResult: nil,
-			ExpectedError: berrors.MalformedError(
+			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://ok.go\" has an "+
 					"invalid chain file: %q - contents did not decode as PEM",
 				invalidPEMFile.Name()),
@@ -78,7 +77,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://not-a-cert.com": []string{"../../test/test-root.key"},
 			},
 			ExpectedResult: nil,
-			ExpectedError: berrors.MalformedError(
+			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://not-a-cert.com\" has an invalid chain file: \"../../test/test-root.key\" - PEM block type incorrect, found \"PRIVATE KEY\", expected \"CERTIFICATE\""),
 		},
 		{
@@ -87,7 +86,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://tasty.leftovers.com": []string{leftoverPEMFile.Name()},
 			},
 			ExpectedResult: nil,
-			ExpectedError: berrors.MalformedError(
+			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://tasty.leftovers.com\" has an invalid chain file: %q - PEM contents had unused remainder input (%d bytes)",
 				leftoverPEMFile.Name(),
 				len([]byte(leftovers)),
