@@ -29,11 +29,12 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    test_multidomain()
-    test_wildcardmultidomain()
-    test_overlapping_wildcard()
-    test_wildcard_exactblacklist()
-    test_wildcard_authz_reuse()
+    #test_multidomain()
+    #test_wildcardmultidomain()
+    #test_overlapping_wildcard()
+    #test_wildcard_exactblacklist()
+    #test_wildcard_authz_reuse()
+    test_order_reuse_failed_authz()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -117,6 +118,52 @@ def test_wildcard_authz_reuse():
         if authz.body.status != Status("pending"):
             raise Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" %
                     ((domains), str(authz.body.status)))
+
+def test_order_reuse_failed_authz():
+    """
+    Test that creating an order for a domain name, failing an authorization in
+    that order, and submitting another new order request for the same name
+    doesn't reuse a failed authorizaton in the new order.
+    """
+
+    client = make_client(None)
+    domains = [ random_domain() ]
+    csr_pem = make_csr(domains)
+
+    order = client.new_order(csr_pem)
+    firstOrderURI = order.uri
+
+    # Pick the first authz's first challenge, doesn't matter what type it is
+    chall_body = order.authorizations[0].body.challenges[0]
+    # Answer it, but with nothing set up to solve the challenge request
+    client.answer_challenge(chall_body, chall_body.response(client.key))
+
+    # Wait for validation to occur
+    # TODO(@cpu): This should be handled better but it involves Python
+    # concurrency and I'm going to punt on that while working on other parts of
+    # this PR
+    import time
+    time.sleep(10)
+
+    # Make another order with the same domains
+    order = client.new_order(csr_pem)
+
+    # It should not be the same order as before
+    if order.uri == firstOrderURI:
+        raise Exception("new-order for %s returned a , now-invalid, order" % domains)
+
+    # We expect all of the returned authorizations to be pending status
+    for authz in order.authorizations:
+        if authz.body.status != Status("pending"):
+            raise Exception("order for %s included a non-pending authorization (status: %s) from a previous order" %
+                    ((domains), str(authz.body.status)))
+
+    # We expect the new order can be fulfilled
+    cleanup = do_http_challenges(client, order.authorizations)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
 
 if __name__ == "__main__":
     try:

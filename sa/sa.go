@@ -791,7 +791,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 
 // FinalizeAuthorization converts a Pending Authorization to a final one. If the
 // Authorization is not found a berrors.NotFound result is returned. If the
-// Authorization is not valid a berrors.InternalServer error is returned.
+// Authorization is status pending an berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -830,6 +830,30 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		return Rollback(tx, err)
+	}
+
+	// When an authorization is being finalized to an invalid state we need to see
+	// if there is an order associated with this authorization that itself should
+	// now become invalid as a result of the authz being invalid.
+	if authz.Status == core.StatusInvalid {
+		// Try to find an order associated with this authz ID. There may not be one if
+		// this is a legacy V1 authorization from the new-authz endpoint.
+		orderID, err := ssa.orderIDForAuthz(tx, authz.ID)
+		// If there was an error, and it wasn't a no-result error, then we encountered
+		// something unexpected and must rollback
+		if err != nil && err != sql.ErrNoRows {
+			return Rollback(tx, err)
+		}
+		// If the err was nil then orderID is an associated order for this authz
+		if err == nil {
+			// Set the order to invalid
+			err := ssa.setOrderInvalid(ctx, tx, &corepb.Order{
+				Id: &orderID,
+			})
+			if err != nil {
+				return Rollback(tx, err)
+			}
+		}
 	}
 
 	return tx.Commit()
@@ -1456,6 +1480,29 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 	return tx.Commit()
 }
 
+// setOrderInvalid updates a provided *corepb.Order in pending status to be in
+// invalid status by updating the status field of the corresponding row in the
+// DB.
+func (ssa *SQLStorageAuthority) setOrderInvalid(ctx context.Context, tx *gorp.Transaction, req *corepb.Order) error {
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET status = ?
+		WHERE id = ?
+		AND status = ?`,
+		string(core.StatusInvalid),
+		*req.Id,
+		string(core.StatusPending))
+	if err != nil {
+		return err
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return berrors.InternalServerError("no order updated to invalid status")
+	}
+	return nil
+}
+
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
@@ -1502,6 +1549,26 @@ func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
 		return nil, err
 	}
 	return ids, nil
+}
+
+// orderForAuthz finds an order ID associated with a given authz (If any).
+func (ssa *SQLStorageAuthority) orderIDForAuthz(tx *gorp.Transaction, authzID string) (int64, error) {
+	var orderID int64
+
+	err := tx.SelectOne(&orderID, `
+	SELECT orderID
+	FROM orderToAuthz
+	WHERE authzID = ?`,
+		authzID)
+
+	// NOTE(@cpu): orderIDForAuthz does not handle the sql.ErrNoRows that could be
+	// returned by `SelectOne`. The caller must do so.
+	if err != nil {
+		// If there is an err, return it as-is.
+		return 0, err
+	}
+
+	return orderID, nil
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
@@ -1631,8 +1698,16 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 
-	// Get & return the order
-	return ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	// Get the order
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	if err != nil {
+		return nil, err
+	}
+	// Only return a pending order
+	if *order.Status != string(core.StatusPending) {
+		return nil, berrors.NotFoundError("no order matching request found")
+	}
+	return order, nil
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
