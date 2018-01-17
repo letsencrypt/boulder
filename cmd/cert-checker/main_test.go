@@ -86,6 +86,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	}()
 
 	features.Set(map[string]bool{"WildcardDomains": true})
+	defer features.Reset()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	fc := clock.NewFake()
