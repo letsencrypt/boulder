@@ -63,6 +63,7 @@ const (
     "n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw",
     "e":"AQAB"
   }`
+	test5KeyPublicJSON = `{"kty":"RSA","alg":"RSA","n":"9Ij6NgQ47wiQIb_KHr_yzE2ksSIbPIo0cw1lVMDPfhmcypp6tGz_3n0QLs4RxNiXJFfksgZR6IvGVg2Xn_ymTLynAF1sa5zA1zkvzMtu0bgEnPAd_IbYcCkrx7ZnRuBu3CKEAy0lGF1KhF1HPvhMS_jB4LEv6jlSg0z-u3BUktfwSVlP_2l4bYE_laYqdGO5hFT61PeaVEtMIhDX8TP7Rz2StOJb4uqPj2jEasNzUZRk1_tPPMSVej368dO1str1GWme8YinyiuNAn0p1RRcveyJcKV_rjeW94T8ohmpWl7bVUu9wYoc56V5kyS6U43DpdUMP9JVssuDnkkN43LHUQ","e":"AQAB"}`
 
 	agreementURL = "http://example.invalid/terms"
 )
@@ -143,6 +144,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	var test2KeyPublic jose.JSONWebKey
 	var test3KeyPublic jose.JSONWebKey
 	var test4KeyPublic jose.JSONWebKey
+	var test5KeyPublic jose.JSONWebKey
 	var testE1KeyPublic jose.JSONWebKey
 	var testE2KeyPublic jose.JSONWebKey
 	var err error
@@ -159,6 +161,10 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 		return core.Registration{}, err
 	}
 	err = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = test5KeyPublic.UnmarshalJSON([]byte(test5KeyPublicJSON))
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -189,6 +195,11 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	}
 
 	if core.KeyDigestEquals(jwk, test4KeyPublic) {
+		// No key found
+		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test5KeyPublic) {
 		// No key found
 		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
 	}
