@@ -1223,9 +1223,10 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 
-		// TODO(@cpu): At present we only use the **first** AIA Issuer URL on the
-		// certificate when constructing the chain. Open question: should we use
-		// _all_ of them? If so, in what order?
+		// NOTE(@cpu): Boulder assumes there will only be **ONE** AIA issuer URL
+		// configured in the CA signing profile. At present this is not enforced by
+		// the CA, but should be. See
+		//  https://github.com/letsencrypt/boulder/issues/3374
 		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
 		if chain, ok := wfe.CertificateChains[aiaIssuerURL]; ok {
 			responsePEM = append([]byte(chain), leafPEM...)
