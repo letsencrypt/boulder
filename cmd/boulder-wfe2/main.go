@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -63,6 +64,55 @@ type config struct {
 	}
 }
 
+// loadChainFile loads a PEM certificate from the chainFile provided. It
+// validates that the PEM is well-formed with no leftover bytes, and contains
+// only a well-formed X509 certificate. If the chain file meets these
+// requirements the PEM bytes from the file are returned, otherwise an error is
+// returned.
+func loadChainFile(aiaIssuerURL, chainFile string) ([]byte, error) {
+	pemBytes, err := ioutil.ReadFile(chainFile)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - error reading contents",
+			aiaIssuerURL, chainFile)
+	}
+	// Try to decode the contents as PEM
+	certBlock, rest := pem.Decode(pemBytes)
+	if certBlock == nil {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - contents did not decode as PEM",
+			aiaIssuerURL, chainFile)
+	}
+	// The PEM contents must be a CERTIFICATE
+	if certBlock.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - PEM block type incorrect, found "+
+				"%q, expected \"CERTIFICATE\"",
+			aiaIssuerURL, chainFile, certBlock.Type)
+	}
+	// The PEM Certificate must successfully parse
+	if _, err := x509.ParseCertificate(certBlock.Bytes); err != nil {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - certificate bytes failed to parse: %s",
+			aiaIssuerURL, chainFile, err.Error())
+	}
+	// If there are bytes leftover we must reject the file otherwise these
+	// leftover bytes will end up in a served certificate chain.
+	if len(rest) != 0 {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - PEM contents had unused remainder "+
+				"input (%d bytes)",
+			aiaIssuerURL, chainFile, len(rest))
+	}
+
+	return pemBytes, nil
+}
+
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs
 // and cert filenames. For each AIA issuer URL all of its cert filenames are
 // read, validated as PEM certificates, and concatenated together separated by
@@ -72,11 +122,11 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 	results := make(map[string]string, len(chainConfig))
 
 	// For each AIA Issuer URL we need to read the chain files
-	for aiaIssuerURL, chainfiles := range chainConfig {
+	for aiaIssuerURL, chainFiles := range chainConfig {
 		var buffer bytes.Buffer
 
-		// There must be at least one chainfile specified
-		if len(chainfiles) == 0 {
+		// There must be at least one chain file specified
+		if len(chainFiles) == 0 {
 			return nil, fmt.Errorf(
 				"CertificateChain entry for AIA issuer url %q has no chain "+
 					"file names configured",
@@ -84,41 +134,16 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 		}
 
 		// Read each chain file - it is expected to be a PEM certificate
-		for _, c := range chainfiles {
-			// Read the raw contents
-			pemBytes, err := ioutil.ReadFile(c)
+		for _, c := range chainFiles {
+			// Read and validate the chain file contents
+			pemBytes, err := loadChainFile(aiaIssuerURL, c)
 			if err != nil {
-				return nil, fmt.Errorf(
-					"CertificateChain entry for AIA issuer url %q has an "+
-						"invalid chain file: %q - error reading contents",
-					aiaIssuerURL, c)
-			}
-			// Try to decode the contents as PEM
-			certBlock, rest := pem.Decode(pemBytes)
-			if certBlock == nil {
-				return nil, fmt.Errorf(
-					"CertificateChain entry for AIA issuer url %q has an "+
-						"invalid chain file: %q - contents did not decode as PEM",
-					aiaIssuerURL, c)
-			}
-			// The PEM contents must be a CERTIFICATE
-			if certBlock.Type != "CERTIFICATE" {
-				return nil, fmt.Errorf(
-					"CertificateChain entry for AIA issuer url %q has an "+
-						"invalid chain file: %q - PEM block type incorrect, found "+
-						"%q, expected \"CERTIFICATE\"",
-					aiaIssuerURL, c, certBlock.Type)
-			}
-			if len(rest) != 0 {
-				return nil, fmt.Errorf(
-					"CertificateChain entry for AIA issuer url %q has an "+
-						"invalid chain file: %q - PEM contents had unused remainder "+
-						"input (%d bytes)",
-					aiaIssuerURL, c, len(rest))
+				return nil, err
 			}
 
 			// Write the PEM bytes to the result buffer for this AIAIssuer
 			buffer.Write(pemBytes)
+
 			// We want each certificate in the chain separated by a \n, with
 			// a trailing \n at the end of the file that will serve to space out the
 			// end entity certificate that is appended by the WFE2's certificate
