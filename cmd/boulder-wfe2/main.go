@@ -66,7 +66,7 @@ type config struct {
 
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs
 // and cert filenames. For each AIA issuer URL all of its cert filenames are
-// read, validated as PEM certificates, and concatinated together separated by
+// read, validated as PEM certificates, and concatenated together separated by
 // newlines. The combined PEM certificate chain contents for each are returned
 // in the results map, keyed by the AIA Issuer URL.
 func loadCertificateChains(chainConfig map[string][]string) (map[string]string, error) {
