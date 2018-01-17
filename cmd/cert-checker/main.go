@@ -236,7 +236,11 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
 			// between certificates issued by v1 and v2 API.
-			if err = c.pa.WillingToIssueWildcard(id); err != nil {
+			checkFunc := c.pa.WillingToIssue
+			if features.Enabled(features.WildcardDomains) {
+				checkFunc = c.pa.WillingToIssueWildcard
+			}
+			if err = checkFunc(id); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {
 				// For defense-in-depth, even if the PA was willing to issue for a name
