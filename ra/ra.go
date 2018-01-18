@@ -511,9 +511,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
 			outErr := berrors.InternalServerError(
-				"unable to get existing validations for regID: %d, identifier: %s",
+				"unable to get existing validations for regID: %d, identifier: %s. %s",
 				regID,
 				identifier.Value,
+				err,
 			)
 			ra.log.Warning(outErr.Error())
 			return core.Authorization{}, outErr
