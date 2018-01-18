@@ -76,9 +76,9 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
-	// CertificateChains maps AIA issuer URLs to a string containing one or more
+	// certificateChains maps AIA issuer URLs to a string containing one or more
 	// PEM encoded certificates separated by a newline
-	CertificateChains map[string]string
+	certificateChains map[string]string
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -104,6 +104,7 @@ func NewWebFrontEndImpl(
 	scope metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
+	certificateChains map[string]string,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	nonceService, err := nonce.NewNonceService(scope)
@@ -112,12 +113,13 @@ func NewWebFrontEndImpl(
 	}
 
 	return WebFrontEndImpl{
-		log:          logger,
-		clk:          clk,
-		nonceService: nonceService,
-		keyPolicy:    keyPolicy,
-		stats:        initStats(scope),
-		scope:        scope,
+		log:               logger,
+		clk:               clk,
+		nonceService:      nonceService,
+		keyPolicy:         keyPolicy,
+		certificateChains: certificateChains,
+		stats:             initStats(scope),
+		scope:             scope,
 	}, nil
 }
 
@@ -1209,9 +1211,9 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 
 	var responsePEM []byte
 
-	// If the WFE is configured with CertificateChains, construct a chain for this
+	// If the WFE is configured with certificateChains, construct a chain for this
 	// certificate using its AIA Issuer URL.
-	if len(wfe.CertificateChains) > 0 {
+	if len(wfe.certificateChains) > 0 {
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
 			// If we can't parse one of our own certs there's a serious problem
@@ -1228,10 +1230,10 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		// the CA, but should be. See
 		//  https://github.com/letsencrypt/boulder/issues/3374
 		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
-		if chain, ok := wfe.CertificateChains[aiaIssuerURL]; ok {
+		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
 			responsePEM = append([]byte(chain), leafPEM...)
 		} else {
-			// If there is no wfe.CertificateChains entry for the AIA Issuer URL there
+			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
 			// is probably a misconfiguration and we should treat it as an internal
 			// server error.
 			wfe.sendError(response, logEvent, probs.ServerInternal(
@@ -1244,7 +1246,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 	} else {
-		// Otherwise, with no configured CertificateChains just serve the leaf
+		// Otherwise, with no configured certificateChains just serve the leaf
 		// certificate.
 		responsePEM = leafPEM
 	}

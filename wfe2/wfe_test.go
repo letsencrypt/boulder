@@ -342,15 +342,15 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
-	test.AssertNotError(t, err, "Unable to create WFE")
-
 	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 
-	wfe.CertificateChains = map[string]string{
+	certChains := map[string]string{
 		"http://localhost:4000/acme/issuer-cert": fmt.Sprintf("%s\n", string(chainPEM)),
 	}
+
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
+	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
 

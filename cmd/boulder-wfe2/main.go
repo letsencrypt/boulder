@@ -135,6 +135,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 
 		// Read each chain file - it is expected to be a PEM certificate
 		for _, c := range chainFiles {
+
 			// Read and validate the chain file contents
 			pemBytes, err := loadChainFile(aiaIssuerURL, c)
 			if err != nil {
@@ -188,6 +189,9 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	certChains, err := loadCertificateChains(c.WFE.CertificateChains)
+	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
+
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
@@ -197,7 +201,7 @@ func main() {
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, logger)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, certChains, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	rac, sac := setupWFE(c, logger, scope)
 	wfe.RA = rac
@@ -216,9 +220,6 @@ func main() {
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
-
-	wfe.CertificateChains, err = loadCertificateChains(c.WFE.CertificateChains)
-	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
 
