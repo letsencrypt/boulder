@@ -112,7 +112,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://two-cert-chain.com": []string{"../../test/test-ca.pem", "../../test/test-ca2.pem"},
 			},
 			ExpectedResult: map[string][]byte{
-				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesB), string(certBytesA))),
+				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
 			},
 			ExpectedError: nil,
 		},

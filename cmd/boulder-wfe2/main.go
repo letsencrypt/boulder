@@ -50,7 +50,9 @@ type config struct {
 
 		Features map[string]bool
 
-		// CertificateChains maps AIA issuer URLs to certificate filenames
+		// CertificateChains maps AIA issuer URLs to certificate filenames.
+		// Certificates are read into the chain in the order they are defined in the
+		// slice of filenames.
 		CertificateChains map[string][]string
 	}
 
@@ -133,13 +135,11 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 				aiaIssuerURL)
 		}
 
-		// Prepend a newline before the chain
-		buffer.Write([]byte("\n"))
-
-		// Read each chain file in reverse order - each is expected to be a PEM
-		// encoded x509 certificate
-		for i := len(chainFiles) - 1; i >= 0; i-- {
-			c := chainFiles[i]
+		// chainFiles are read and appended in the order they appear in the
+		// configuration
+		for _, c := range chainFiles {
+			// Prepend a newline before each chain entry
+			buffer.Write([]byte("\n"))
 
 			// Read and validate the chain file contents
 			pemBytes, err := loadChainFile(aiaIssuerURL, c)
@@ -149,11 +149,6 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 
 			// Write the PEM bytes to the result buffer for this AIAIssuer
 			buffer.Write(pemBytes)
-
-			// We want each certificate in the chain separated by a \n
-			if i > 0 {
-				buffer.Write([]byte("\n"))
-			}
 		}
 
 		// Save the full PEM chain contents
