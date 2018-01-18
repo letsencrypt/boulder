@@ -98,7 +98,7 @@ func loadChainFile(aiaIssuerURL, chainFile string) ([]byte, error) {
 		return nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - certificate bytes failed to parse: %s",
-			aiaIssuerURL, chainFile, err.Error())
+			aiaIssuerURL, chainFile, err)
 	}
 	// If there are bytes leftover we must reject the file otherwise these
 	// leftover bytes will end up in a served certificate chain.
