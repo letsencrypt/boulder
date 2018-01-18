@@ -55,10 +55,9 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://where.is.my.mind": []string{"/tmp/does.not.exist.pem"},
 			},
 			ExpectedResult: nil,
-			ExpectedError: fmt.Errorf(
-				"CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
-					"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
-					"contents"),
+			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
+				"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
+				"contents: open /tmp/does.not.exist.pem: no such file or directory"),
 		},
 		{
 			Name: "Invalid PEM chain file",
@@ -78,7 +77,9 @@ func TestLoadCertificateChains(t *testing.T) {
 			},
 			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
-				"CertificateChain entry for AIA issuer url \"http://not-a-cert.com\" has an invalid chain file: \"../../test/test-root.key\" - PEM block type incorrect, found \"PRIVATE KEY\", expected \"CERTIFICATE\""),
+				"CertificateChain entry for AIA issuer url \"http://not-a-cert.com\" has " +
+					"an invalid chain file: \"../../test/test-root.key\" - PEM block type " +
+					"incorrect, found \"PRIVATE KEY\", expected \"CERTIFICATE\""),
 		},
 		{
 			Name: "PEM chain file with leftover bytes",
@@ -87,7 +88,9 @@ func TestLoadCertificateChains(t *testing.T) {
 			},
 			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
-				"CertificateChain entry for AIA issuer url \"http://tasty.leftovers.com\" has an invalid chain file: %q - PEM contents had unused remainder input (%d bytes)",
+				"CertificateChain entry for AIA issuer url \"http://tasty.leftovers.com\" "+
+					"has an invalid chain file: %q - PEM contents had unused remainder input "+
+					"(%d bytes)",
 				leftoverPEMFile.Name(),
 				len([]byte(leftovers)),
 			),
