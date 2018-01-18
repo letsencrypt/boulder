@@ -1349,11 +1349,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
+		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
 

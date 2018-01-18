@@ -1968,15 +1968,22 @@ func TestKeyRollover(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 
-	newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
-	newJWK := &jose.JSONWebKey{
-		Key:       &newKey.PublicKey,
-		Algorithm: keyAlgForKey(t, newKey),
+	existingJWK := &jose.JSONWebKey{
+		Key:       &existingKey.PublicKey,
+		Algorithm: keyAlgForKey(t, existingKey),
 	}
-	newJWKJSON, err := newJWK.MarshalJSON()
+	existingJWKJSON, err := existingJWK.MarshalJSON()
 	test.AssertNotError(t, err, "Error marshaling random JWK")
+
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	test.AssertNotError(t, err, "Failed parsing private key")
+	newJWKJSON, err := jose.JSONWebKey{Key: newKeyPriv.Public()}.MarshalJSON()
+	test.AssertNotError(t, err, "Failed to marshal JWK JSON")
 
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
 	test.AssertUnmarshaledEquals(t,
@@ -1996,13 +2003,13 @@ func TestKeyRollover(t *testing.T) {
 	}{
 		{
 			Name:    "Missing account URL",
-			Payload: `{"newKey":` + string(newJWKJSON) + `}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
-			NewKey:        newKey,
+			NewKey:        existingKey,
 			ErrorStatType: "KeyRolloverMismatchedAccount",
 		},
 		{
@@ -2027,13 +2034,23 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Inner JWS signed by the wrong key",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner JWS does not verify with specified new key",
 		     "status": 400
 		   }`,
 			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
+		},
+		{
+			Name:    "Valid key rollover request, key exists",
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+                          "type": "urn:ietf:params:acme:error:malformed",
+                          "detail": "New key is already in use for a different account",
+                          "status": 409
+                        }`,
+			NewKey: existingKey,
 		},
 		{
 			Name:    "Valid key rollover request",
@@ -2049,7 +2066,7 @@ func TestKeyRollover(t *testing.T) {
 		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
 		   }`,
-			NewKey: newKey,
+			NewKey: newKeyPriv,
 		},
 	}
 
