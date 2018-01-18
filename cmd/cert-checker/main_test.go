@@ -85,7 +85,7 @@ func TestCheckWildcardCert(t *testing.T) {
 		saCleanup()
 	}()
 
-	features.Set(map[string]bool{"WildcardDomains": true})
+	_ = features.Set(map[string]bool{"WildcardDomains": true})
 	defer features.Reset()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
