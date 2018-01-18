@@ -345,8 +345,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 
-	certChains := map[string]string{
-		"http://localhost:4000/acme/issuer-cert": fmt.Sprintf("%s\n", string(chainPEM)),
+	certChains := map[string][]byte{
+		"http://localhost:4000/acme/issuer-cert": []byte(fmt.Sprintf("\n%s", string(chainPEM))),
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
@@ -1491,7 +1491,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedCert: append(append(chainPemBytes, []byte("\n")...), certPemBytes...),
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 		{
 			Name:           "Unused serial, no cache",

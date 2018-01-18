@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"testing"
@@ -30,7 +31,7 @@ func TestLoadCertificateChains(t *testing.T) {
 	testCases := []struct {
 		Name           string
 		Input          map[string][]string
-		ExpectedResult map[string]string
+		ExpectedResult map[string][]byte
 		ExpectedError  error
 	}{
 		{
@@ -100,8 +101,8 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://single-cert-chain.com": []string{"../../test/test-ca.pem"},
 			},
-			ExpectedResult: map[string]string{
-				"http://single-cert-chain.com": fmt.Sprintf("%s\n", string(certBytesA)),
+			ExpectedResult: map[string][]byte{
+				"http://single-cert-chain.com": []byte(fmt.Sprintf("\n%s", string(certBytesA))),
 			},
 			ExpectedError: nil,
 		},
@@ -110,8 +111,8 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://two-cert-chain.com": []string{"../../test/test-ca.pem", "../../test/test-ca2.pem"},
 			},
-			ExpectedResult: map[string]string{
-				"http://two-cert-chain.com": fmt.Sprintf("%s\n%s\n", string(certBytesA), string(certBytesB)),
+			ExpectedResult: map[string][]byte{
+				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesB), string(certBytesA))),
 			},
 			ExpectedError: nil,
 		},
@@ -128,7 +129,7 @@ func TestLoadCertificateChains(t *testing.T) {
 			}
 			test.AssertEquals(t, len(result), len(tc.ExpectedResult))
 			for url, chain := range result {
-				test.AssertEquals(t, tc.ExpectedResult[url], chain)
+				test.Assert(t, bytes.Compare(chain, tc.ExpectedResult[url]) == 0, "Chain bytes did not match expected")
 			}
 		})
 	}

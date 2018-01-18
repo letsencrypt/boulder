@@ -118,8 +118,8 @@ func loadChainFile(aiaIssuerURL, chainFile string) ([]byte, error) {
 // read, validated as PEM certificates, and concatenated together separated by
 // newlines. The combined PEM certificate chain contents for each are returned
 // in the results map, keyed by the AIA Issuer URL.
-func loadCertificateChains(chainConfig map[string][]string) (map[string]string, error) {
-	results := make(map[string]string, len(chainConfig))
+func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, error) {
+	results := make(map[string][]byte, len(chainConfig))
 
 	// For each AIA Issuer URL we need to read the chain files
 	for aiaIssuerURL, chainFiles := range chainConfig {
@@ -133,8 +133,13 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 				aiaIssuerURL)
 		}
 
-		// Read each chain file - it is expected to be a PEM certificate
-		for _, c := range chainFiles {
+		// Prepend a newline before the chain
+		buffer.Write([]byte("\n"))
+
+		// Read each chain file in reverse order - each is expected to be a PEM
+		// encoded x509 certificate
+		for i := len(chainFiles) - 1; i >= 0; i-- {
+			c := chainFiles[i]
 
 			// Read and validate the chain file contents
 			pemBytes, err := loadChainFile(aiaIssuerURL, c)
@@ -145,15 +150,14 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string]string, 
 			// Write the PEM bytes to the result buffer for this AIAIssuer
 			buffer.Write(pemBytes)
 
-			// We want each certificate in the chain separated by a \n, with
-			// a trailing \n at the end of the file that will serve to space out the
-			// end entity certificate that is appended by the WFE2's certificate
-			// endpoint.
-			buffer.Write([]byte("\n"))
+			// We want each certificate in the chain separated by a \n
+			if i > 0 {
+				buffer.Write([]byte("\n"))
+			}
 		}
 
 		// Save the full PEM chain contents
-		results[aiaIssuerURL] = buffer.String()
+		results[aiaIssuerURL] = buffer.Bytes()
 	}
 	return results, nil
 }

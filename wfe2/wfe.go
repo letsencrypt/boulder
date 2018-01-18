@@ -76,9 +76,10 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
-	// certificateChains maps AIA issuer URLs to a string containing one or more
-	// PEM encoded certificates separated by a newline
-	certificateChains map[string]string
+	// certificateChains maps AIA issuer URLs to a []byte containing a leading
+	// newline and one or more PEM encoded certificates separated by a newline,
+	// sorted from leaf to root
+	certificateChains map[string][]byte
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -104,7 +105,7 @@ func NewWebFrontEndImpl(
 	scope metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[string]string,
+	certificateChains map[string][]byte,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	nonceService, err := nonce.NewNonceService(scope)
@@ -1231,7 +1232,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		//  https://github.com/letsencrypt/boulder/issues/3374
 		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
 		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
-			responsePEM = append([]byte(chain), leafPEM...)
+			// Prepend the chain with the leaf certificate
+			responsePEM = append(leafPEM, chain...)
 		} else {
 			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
 			// is probably a misconfiguration and we should treat it as an internal
