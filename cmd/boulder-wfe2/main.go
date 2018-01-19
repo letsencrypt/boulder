@@ -48,12 +48,12 @@ type config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Features map[string]bool
-
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
 		// slice of filenames.
 		CertificateChains map[string][]string
+
+		Features map[string]bool
 	}
 
 	SubscriberAgreementURL string
@@ -142,7 +142,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 			buffer.Write([]byte("\n"))
 
 			// Read and validate the chain file contents
-			pemBytes, err := loadChainFile(aiaIssuerURL, c)
+			pemBytes, err := loadCertificateFile(aiaIssuerURL, c)
 			if err != nil {
 				return nil, err
 			}
