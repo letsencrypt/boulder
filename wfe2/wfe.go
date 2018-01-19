@@ -881,6 +881,13 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
 		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
 	}
+
+	// ACME v2 uses an "Errors" field not "Error". Adjust accordingly before
+	// returning the challenge for display.
+	if challenge.Error != nil {
+		challenge.Errors = []*probs.ProblemDetails{challenge.Error}
+		challenge.Error = nil
+	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
