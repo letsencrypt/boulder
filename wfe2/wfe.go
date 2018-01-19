@@ -76,6 +76,11 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
+	// certificateChains maps AIA issuer URLs to a []byte containing a leading
+	// newline and one or more PEM encoded certificates separated by a newline,
+	// sorted from leaf to root
+	certificateChains map[string][]byte
+
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
@@ -100,6 +105,7 @@ func NewWebFrontEndImpl(
 	scope metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
+	certificateChains map[string][]byte,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	nonceService, err := nonce.NewNonceService(scope)
@@ -108,12 +114,13 @@ func NewWebFrontEndImpl(
 	}
 
 	return WebFrontEndImpl{
-		log:          logger,
-		clk:          clk,
-		nonceService: nonceService,
-		keyPolicy:    keyPolicy,
-		stats:        initStats(scope),
-		scope:        scope,
+		log:               logger,
+		clk:               clk,
+		nonceService:      nonceService,
+		keyPolicy:         keyPolicy,
+		certificateChains: certificateChains,
+		stats:             initStats(scope),
+		scope:             scope,
 	}, nil
 }
 
@@ -1198,15 +1205,63 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set("Content-Type", "application/pem-certificate-chain")
-	response.WriteHeader(http.StatusOK)
-
-	pem := pem.EncodeToMemory(&pem.Block{
+	leafPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: cert.DER,
 	})
-	// TODO(#3291): Serve entire chain instead of just end-entity certificate.
-	if _, err = response.Write(pem); err != nil {
+
+	var responsePEM []byte
+
+	// If the WFE is configured with certificateChains, construct a chain for this
+	// certificate using its AIA Issuer URL.
+	if len(wfe.certificateChains) > 0 {
+		parsedCert, err := x509.ParseCertificate(cert.DER)
+		if err != nil {
+			// If we can't parse one of our own certs there's a serious problem
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"unable to parse Boulder issued certificate with serial %#v",
+					serial),
+			), err)
+			return
+		}
+
+		// NOTE(@cpu): Boulder assumes there will only be **ONE** AIA issuer URL
+		// configured in the CA signing profile. At present this is not enforced by
+		// the CA, but should be. See
+		//  https://github.com/letsencrypt/boulder/issues/3374
+		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
+		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
+			// Prepend the chain with the leaf certificate
+			responsePEM = append(leafPEM, chain...)
+		} else {
+			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
+			// is probably a misconfiguration and we should treat it as an internal
+			// server error.
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"Certificate serial %#v has an unknown AIA Issuer URL %q"+
+						"- no PEM certificate chain associated.",
+					serial,
+					aiaIssuerURL),
+			), nil)
+			return
+		}
+	} else {
+		// Otherwise, with no configured certificateChains just serve the leaf
+		// certificate.
+		responsePEM = leafPEM
+	}
+
+	// NOTE(@cpu): We must explicitly set the Content-Length header here. The Go
+	// HTTP library will only add this header if the body is below a certain size
+	// and with the addition of a PEM encoded certificate chain the body size of
+	// this endpoint will exceed this threshold. Since we know the length we can
+	// reliably set it ourselves and not worry.
+	response.Header().Set("Content-Length", strconv.Itoa(len(responsePEM)))
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(responsePEM); err != nil {
 		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
@@ -1349,11 +1404,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
+		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
 

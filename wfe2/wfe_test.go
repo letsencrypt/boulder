@@ -342,7 +342,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
+	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
+
+	certChains := map[string][]byte{
+		"http://localhost:4000/acme/issuer-cert": []byte(fmt.Sprintf("\n%s", string(chainPEM))),
+	}
+
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -1462,6 +1469,9 @@ func TestGetCertificate(t *testing.T) {
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	pkixContent := "application/pem-certificate-chain"
 
+	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
+
 	noCache := "public, max-age=0, no-cache"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
@@ -1469,20 +1479,19 @@ func TestGetCertificate(t *testing.T) {
 	testCases := []struct {
 		Name            string
 		Path            string
-		Features        []string
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
 		ExpectedCert    []byte
 	}{
 		{
-			Name:           "Valid serial, UseAIAIssuer feature enabled",
+			Name:           "Valid serial",
 			Path:           goodSerial,
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedCert: certPemBytes,
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 		{
 			Name:           "Unused serial, no cache",
@@ -1556,6 +1565,9 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	chainPemBytes, _ := ioutil.ReadFile("../test/test-ca2.pem")
+	chain := fmt.Sprintf("%s\n%s", string(chainPemBytes), string(certPemBytes))
+	chainLen := strconv.Itoa(len(chain))
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -1577,7 +1589,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 		test.AssertNotEquals(t, err, "readall error")
 	}
 	test.AssertEquals(t, resp.StatusCode, 200)
-	test.AssertEquals(t, strconv.Itoa(len(certPemBytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, chainLen, resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))
 }
 
@@ -1968,15 +1980,22 @@ func TestKeyRollover(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 
-	newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
-	newJWK := &jose.JSONWebKey{
-		Key:       &newKey.PublicKey,
-		Algorithm: keyAlgForKey(t, newKey),
+	existingJWK := &jose.JSONWebKey{
+		Key:       &existingKey.PublicKey,
+		Algorithm: keyAlgForKey(t, existingKey),
 	}
-	newJWKJSON, err := newJWK.MarshalJSON()
+	existingJWKJSON, err := existingJWK.MarshalJSON()
 	test.AssertNotError(t, err, "Error marshaling random JWK")
+
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	test.AssertNotError(t, err, "Failed parsing private key")
+	newJWKJSON, err := jose.JSONWebKey{Key: newKeyPriv.Public()}.MarshalJSON()
+	test.AssertNotError(t, err, "Failed to marshal JWK JSON")
 
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
 	test.AssertUnmarshaledEquals(t,
@@ -1996,13 +2015,13 @@ func TestKeyRollover(t *testing.T) {
 	}{
 		{
 			Name:    "Missing account URL",
-			Payload: `{"newKey":` + string(newJWKJSON) + `}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
-			NewKey:        newKey,
+			NewKey:        existingKey,
 			ErrorStatType: "KeyRolloverMismatchedAccount",
 		},
 		{
@@ -2027,13 +2046,23 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Inner JWS signed by the wrong key",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner JWS does not verify with specified new key",
 		     "status": 400
 		   }`,
 			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
+		},
+		{
+			Name:    "Valid key rollover request, key exists",
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+                          "type": "urn:ietf:params:acme:error:malformed",
+                          "detail": "New key is already in use for a different account",
+                          "status": 409
+                        }`,
+			NewKey: existingKey,
 		},
 		{
 			Name:    "Valid key rollover request",
@@ -2049,7 +2078,7 @@ func TestKeyRollover(t *testing.T) {
 		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
 		   }`,
-			NewKey: newKey,
+			NewKey: newKeyPriv,
 		},
 	}
 

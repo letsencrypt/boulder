@@ -234,7 +234,13 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-			if err = c.pa.WillingToIssue(id); err != nil {
+			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
+			// between certificates issued by v1 and v2 API.
+			checkFunc := c.pa.WillingToIssue
+			if features.Enabled(features.WildcardDomains) {
+				checkFunc = c.pa.WillingToIssueWildcard
+			}
+			if err = checkFunc(id); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {
 				// For defense-in-depth, even if the PA was willing to issue for a name
