@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -162,6 +163,16 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	if err != nil {
 		return core.Registration{}, err
 	}
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	if err != nil {
+		return core.Registration{}, err
+	}
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	if err != nil {
+		return core.Registration{}, err
+	}
+	test5KeyPublic := jose.JSONWebKey{Key: newKeyPriv.Public()}
+
 	err = testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
 	if err != nil {
 		panic(err)
@@ -189,6 +200,11 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	}
 
 	if core.KeyDigestEquals(jwk, test4KeyPublic) {
+		// No key found
+		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test5KeyPublic) {
 		// No key found
 		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
 	}
