@@ -29,11 +29,11 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    #test_multidomain()
-    #test_wildcardmultidomain()
-    #test_overlapping_wildcard()
-    #test_wildcard_exactblacklist()
-    #test_wildcard_authz_reuse()
+    test_multidomain()
+    test_wildcardmultidomain()
+    test_overlapping_wildcard()
+    test_wildcard_exactblacklist()
+    test_wildcard_authz_reuse()
     test_order_reuse_failed_authz()
 
     if not startservers.check():
