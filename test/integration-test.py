@@ -22,6 +22,9 @@ import startservers
 import chisel
 from chisel import auth_and_issue
 
+import requests
+import OpenSSL
+
 class ProcInfo:
     """
         Args:
@@ -139,6 +142,35 @@ def test_multidomain():
 
 def test_dns_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
+
+def test_issuer():
+    """
+    Issue a certificate, fetch its chain, and verify the chain and
+    certificate against test/test-root.pem. Note: This test only handles chains
+    of length exactly 1.
+    """
+    certr, authzs = auth_and_issue([random_domain()])
+    cert = urllib2.urlopen(certr.uri).read()
+    # The chain URI uses HTTPS when UseAIAIssuerURL is set, so include the root
+    # certificate for the WFE's PKI. Note: We use the requests library here so
+    # we honor the REQUESTS_CA_BUNDLE passed by test.sh.
+    chain = requests.get(certr.cert_chain_uri).content
+    parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
+    parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
+    parsed_root = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM,
+        open("test/test-root.pem").read())
+
+    store = OpenSSL.crypto.X509Store()
+    store.add_cert(parsed_root)
+
+    # Check the chain certificate before adding it to the store.
+    store_ctx = OpenSSL.crypto.X509StoreContext(store, parsed_chain)
+    store_ctx.verify_certificate()
+    store.add_cert(parsed_chain)
+
+    # Now check the end-entity certificate.
+    store_ctx = OpenSSL.crypto.X509StoreContext(store, parsed_cert)
+    store_ctx.verify_certificate()
 
 def test_gsb_lookups():
     """Attempt issuances for a GSB-blocked domain, and expect it to fail. Also
@@ -482,6 +514,7 @@ def main():
 def run_chisel():
     # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add TLS-SNI test.
 
+    test_issuer()
     test_expired_authz_purger()
     test_ct_submission()
     test_gsb_lookups()

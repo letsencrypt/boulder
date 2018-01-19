@@ -76,8 +76,9 @@ type SMTPConfig struct {
 // it should offer.
 type PAConfig struct {
 	DBConfig
-	EnforcePolicyWhitelist bool
-	Challenges             map[string]bool
+	EnforcePolicyWhitelist  bool
+	Challenges              map[string]bool
+	ChallengesWhitelistFile string
 }
 
 // HostnamePolicyConfig specifies a file from which to load a policy regarding

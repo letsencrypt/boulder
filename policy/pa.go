@@ -26,13 +26,15 @@ import (
 type AuthorityImpl struct {
 	log blog.Logger
 
-	blacklist      map[string]bool
-	exactBlacklist map[string]bool
-	blacklistMu    sync.RWMutex
+	blacklist              map[string]bool
+	exactBlacklist         map[string]bool
+	wildcardExactBlacklist map[string]bool
+	blacklistMu            sync.RWMutex
 
-	enabledChallenges map[string]bool
-	pseudoRNG         *rand.Rand
-	rngMu             sync.Mutex
+	enabledChallenges          map[string]bool
+	enabledChallengesWhitelist map[string]map[int64]bool
+	pseudoRNG                  *rand.Rand
+	rngMu                      sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -81,13 +83,69 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 		nameMap[v] = true
 	}
 	exactNameMap := make(map[string]bool)
+	wildcardNameMap := make(map[string]bool)
 	for _, v := range bl.ExactBlacklist {
 		exactNameMap[v] = true
+		// Remove the leftmost label of the exact blacklist entry to make an exact
+		// wildcard blacklist entry that will prevent issuing a wildcard that would
+		// include the exact blacklist entry. e.g. if "highvalue.example.com" is on
+		// the exact blacklist we want "example.com" to be on the
+		// wildcardExactBlacklist so that "*.example.com" cannot be issued.
+		//
+		// First, split the domain into two parts: the first label and the rest of the domain.
+		parts := strings.SplitN(v, ".", 2)
+		// if there are less than 2 parts then this entry is malformed! There should
+		// at least be a "something." and a TLD like "com"
+		if len(parts) < 2 {
+			return fmt.Errorf(
+				"Malformed exact blacklist entry, only one label: %q", v)
+		}
+		// Add the second part, the domain minus the first label, to the
+		// wildcardNameMap to block issuance for `*.`+parts[1]
+		wildcardNameMap[parts[1]] = true
 	}
 	pa.blacklistMu.Lock()
 	pa.blacklist = nameMap
 	pa.exactBlacklist = exactNameMap
+	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
+	return nil
+}
+
+// SetChallengesWhitelistFile will load the given whitelist file, returning error if it
+// fails. It will also start a reloader in case the file changes.
+func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
+	_, err := reloader.New(f, pa.loadChallengesWhitelist, pa.challengesWhitelistLoadError)
+	return err
+}
+
+func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
+	pa.log.AuditErr(fmt.Sprintf("error loading challenges whitelist: %s", err))
+}
+
+func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
+	hash := sha256.Sum256(b)
+	pa.log.Info(fmt.Sprintf("loading challenges whitelist, sha256: %s",
+		hex.EncodeToString(hash[:])))
+	var wl map[string][]int64
+	err := json.Unmarshal(b, &wl)
+	if err != nil {
+		return err
+	}
+
+	chalWl := make(map[string]map[int64]bool)
+
+	for k, v := range wl {
+		chalWl[k] = make(map[int64]bool)
+		for _, i := range v {
+			chalWl[k][i] = true
+		}
+	}
+
+	pa.blacklistMu.Lock()
+	pa.enabledChallengesWhitelist = chalWl
+	pa.blacklistMu.Unlock()
+
 	return nil
 }
 
@@ -252,6 +310,9 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // * That the wildcard character is the leftmost label
 // * That the wildcard label is not immediately adjacent to a top level ICANN
 //   TLD
+// * That the wildcard wouldn't cover an exact blacklist entry (e.g. an exact
+//   blacklist entry for "foo.example.com" should prevent issuance for
+//   "*.example.com")
 //
 // If all of the above is true then the base domain (e.g. without the *.) is run
 // through WillingToIssue to catch other illegal things (blocked hosts, etc).
@@ -288,14 +349,44 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		if baseDomain == icannTLD {
 			return errICANNTLDWildcard
 		}
+		// The base domain can't be in the wildcard exact blacklist
+		if err := pa.checkWildcardHostList(baseDomain); err != nil {
+			return err
+		}
 		// Check that the PA is willing to issue for the base domain
+		// Since the base domain without the "*." may trip the exact hostname policy
+		// blacklist when the "*." is removed we replace it with a single "x"
+		// character to differentiate "*.example.com" from "example.com" for the
+		// exact hostname check.
+		//
+		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
+		// a better follow-up that we should land to replace this code.
+		// [0] https://github.com/letsencrypt/boulder/issues/3323
 		return pa.WillingToIssue(core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
-			Value: baseDomain,
+			Value: "x." + baseDomain,
 		})
 	}
 
 	return pa.WillingToIssue(ident)
+}
+
+// checkWildcardHostList checks the wildcardExactBlacklist for a given domain.
+// If the domain is not present on the list nil is returned, otherwise
+// errBlacklisted is returned.
+func (pa *AuthorityImpl) checkWildcardHostList(domain string) error {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
+
+	if pa.blacklist == nil {
+		return fmt.Errorf("Hostname policy not yet loaded.")
+	}
+
+	if pa.wildcardExactBlacklist[domain] {
+		return errBlacklisted
+	}
+
+	return nil
 }
 
 func (pa *AuthorityImpl) checkHostLists(domain string) error {
@@ -321,8 +412,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 }
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
-// acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
+// acceptable for the given identifier. If the TLSSNIRevalidation feature flag
+// is set, create TLS-SNI-01 challenges for revalidation requests even if
+// TLS-SNI-01 is not among the configured challenges.
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -330,7 +423,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
-		if !pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			return nil, nil, fmt.Errorf(
 				"Challenges requested for wildcard identifier but DNS-01 " +
 					"challenge type is not enabled")
@@ -339,19 +432,22 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		challenges = []core.Challenge{core.DNSChallenge01()}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
-		if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01, regID) {
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
+		// Add a TLS-SNI challenge, if either (a) the challenge is enabled, or (b)
+		// the TLSSNIRevalidation feature flag is on and this is a revalidation.
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
+			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
-		if features.Enabled(features.AllowTLS02Challenges) && pa.enabledChallenges[core.ChallengeTypeTLSSNI02] {
+		if features.Enabled(features.AllowTLS02Challenges) && pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI02, regID) {
 			challenges = append(challenges, core.TLSSNIChallenge02())
 		}
 
-		if pa.enabledChallenges[core.ChallengeTypeDNS01] {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			challenges = append(challenges, core.DNSChallenge01())
 		}
 	}
@@ -399,4 +495,12 @@ func extractDomainIANASuffix(name string) (string, error) {
 	}
 
 	return suffix, nil
+}
+
+// ChallengeTypeEnabled returns whether the specified challenge type is enabled
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t string, regID int64) bool {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
+	return pa.enabledChallenges[t] ||
+		(pa.enabledChallengesWhitelist[t] != nil && pa.enabledChallengesWhitelist[t][regID])
 }

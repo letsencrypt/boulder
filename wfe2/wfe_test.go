@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
@@ -497,7 +496,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// CORS preflight request for disallowed method
 	runWrappedHandler(&http.Request{
@@ -525,7 +524,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
 
 	// OPTIONS request without an Origin header (i.e., not a CORS
 	// preflight request)
@@ -615,7 +614,6 @@ func TestPOST404(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IndexCacheDuration = time.Second * 10
 
 	responseWriter := httptest.NewRecorder()
 
@@ -844,11 +842,6 @@ func TestHTTPMethods(t *testing.T) {
 			Name:    "RevokeCert path should be POST only",
 			Path:    revokeCertPath,
 			Allowed: postOnly,
-		},
-		{
-			Name:    "Terms path should be GET only",
-			Path:    termsPath,
-			Allowed: getOnly,
 		},
 		{
 			Name:    "Issuer path should be GET only",
@@ -1131,9 +1124,8 @@ func TestNewECDSAAccount(t *testing.T) {
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	responseBody = responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, responseBody, `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
@@ -1276,13 +1268,10 @@ func TestNewAccount(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Account key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
 func TestGetAuthorization(t *testing.T) {
@@ -1453,24 +1442,8 @@ func TestAccount(t *testing.T) {
 	responseWriter.Body.Reset()
 }
 
-func TestTermsRedirect(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	path, _ := url.Parse("/terms")
-	wfe.Terms(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		agreementURL)
-	test.AssertEquals(t, responseWriter.Code, 302)
-}
-
 func TestIssuer(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCacheDuration = time.Second * 10
 	wfe.IssuerCert = []byte{0, 0, 1}
 
 	responseWriter := httptest.NewRecorder()
@@ -1485,9 +1458,6 @@ func TestIssuer(t *testing.T) {
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-
-	wfe.CertCacheDuration = time.Second * 10
-	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	pkixContent := "application/pem-certificate-chain"
@@ -1882,9 +1852,10 @@ func TestFinalizeOrder(t *testing.T) {
 	egUrl := mustParseURL("1/1/finalize-order")
 
 	testCases := []struct {
-		Name         string
-		Request      *http.Request
-		ExpectedBody string
+		Name            string
+		Request         *http.Request
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
 	}{
 		{
 			Name: "POST, but no body",
@@ -1962,8 +1933,9 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:    "Good CSR",
-			Request: signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			Name:            "Good CSR",
+			Request:         signAndPost(t, "1/4/finalize-order", "http://localhost/1/4/finalize-order", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
 {
   "status": "processing",
@@ -1984,6 +1956,9 @@ func TestFinalizeOrder(t *testing.T) {
 			responseWriter.Body.Reset()
 			responseWriter.HeaderMap = http.Header{}
 			wfe.Order(ctx, newRequestEvent(), responseWriter, tc.Request)
+			for k, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, responseWriter.Header().Get(k), v)
+			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
 		})
 	}
@@ -1993,15 +1968,22 @@ func TestKeyRollover(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 
-	newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
-	newJWK := &jose.JSONWebKey{
-		Key:       &newKey.PublicKey,
-		Algorithm: keyAlgForKey(t, newKey),
+	existingJWK := &jose.JSONWebKey{
+		Key:       &existingKey.PublicKey,
+		Algorithm: keyAlgForKey(t, existingKey),
 	}
-	newJWKJSON, err := newJWK.MarshalJSON()
+	existingJWKJSON, err := existingJWK.MarshalJSON()
 	test.AssertNotError(t, err, "Error marshaling random JWK")
+
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	test.AssertNotError(t, err, "Failed parsing private key")
+	newJWKJSON, err := jose.JSONWebKey{Key: newKeyPriv.Public()}.MarshalJSON()
+	test.AssertNotError(t, err, "Failed to marshal JWK JSON")
 
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
 	test.AssertUnmarshaledEquals(t,
@@ -2021,13 +2003,13 @@ func TestKeyRollover(t *testing.T) {
 	}{
 		{
 			Name:    "Missing account URL",
-			Payload: `{"newKey":` + string(newJWKJSON) + `}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
-			NewKey:        newKey,
+			NewKey:        existingKey,
 			ErrorStatType: "KeyRolloverMismatchedAccount",
 		},
 		{
@@ -2052,13 +2034,23 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Inner JWS signed by the wrong key",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner JWS does not verify with specified new key",
 		     "status": 400
 		   }`,
 			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
+		},
+		{
+			Name:    "Valid key rollover request, key exists",
+			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+                          "type": "urn:ietf:params:acme:error:malformed",
+                          "detail": "New key is already in use for a different account",
+                          "status": 409
+                        }`,
+			NewKey: existingKey,
 		},
 		{
 			Name:    "Valid key rollover request",
@@ -2074,7 +2066,7 @@ func TestKeyRollover(t *testing.T) {
 		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
 		   }`,
-			NewKey: newKey,
+			NewKey: newKeyPriv,
 		},
 	}
 

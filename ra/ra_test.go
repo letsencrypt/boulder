@@ -71,6 +71,7 @@ var (
 	SupportedChallenges = map[string]bool{
 		core.ChallengeTypeHTTP01:   true,
 		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    true,
 	}
 
 	// These values we simulate from the client
@@ -277,7 +278,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -622,6 +623,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.Challenges[0].Type = core.ChallengeTypeHTTP01
 	finalAuthz.RegistrationID = Registration.ID
 	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
@@ -668,6 +670,22 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
+
+	// Test that a valid authorization that used a challenge which has been disabled
+	// is not reused
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeHTTP01:   false,
+		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeDNS01:    true,
+	})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+	newAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
+	test.Assert(t, finalAuthz.ID != newAuthz.ID, "NewAuthorization reused a valid authz with a disabled challenge type")
 }
 
 func TestReusePendingAuthorization(t *testing.T) {
@@ -733,7 +751,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	// We expect that calling NewAuthorization will fail gracefully with an error
 	// about the existing validations
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
+	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com, mockSAWithBadGetValidAuthz always errors!")
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -902,7 +920,7 @@ func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
 
 	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeHTTP01
 	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
@@ -1151,6 +1169,8 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
 	// Create a dummy rate limit config that sets a PendingOrdersPerAccount rate
 	// limit with a very low threshold
@@ -1958,22 +1978,27 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 		"recent.com": &core.Authorization{
 			Identifier: makeIdentifier("recent.com"),
 			Expires:    &m.recent,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older.com": &core.Authorization{
 			Identifier: makeIdentifier("older.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"older2.com": &core.Authorization{
 			Identifier: makeIdentifier("older2.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 		"*.wildcard.com": &core.Authorization{
 			Identifier: makeIdentifier("*.wildcard.com"),
 			Expires:    &m.older,
+			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 		},
 	}, nil
 }
@@ -2092,18 +2117,18 @@ func TestNewOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	id := int64(1)
-	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
 		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, *order.RegistrationID, int64(1))
-	test.AssertEquals(t, *order.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertEquals(t, len(order.Names), 3)
+	test.AssertEquals(t, *orderA.RegistrationID, int64(1))
+	test.AssertEquals(t, *orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, len(orderA.Names), 3)
 	// We expect the order names to have been sorted, deduped, and lowercased
-	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com"})
-	test.AssertEquals(t, *order.Id, int64(1))
-	test.AssertEquals(t, len(order.Authorizations), 3)
+	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertEquals(t, *orderA.Id, int64(1))
+	test.AssertEquals(t, len(orderA.Authorizations), 3)
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2113,32 +2138,35 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, *orderB.RegistrationID, int64(1))
 	test.AssertEquals(t, *orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertEquals(t, *orderB.Id, int64(2))
+	// We expect orderB's ID to match orderA's because of pending order reuse
+	test.AssertEquals(t, *orderB.Id, *orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
-	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, len(orderB.Authorizations), 3)
-	sort.Strings(order.Authorizations)
+	sort.Strings(orderA.Authorizations)
 	sort.Strings(orderB.Authorizations)
-	test.AssertDeepEquals(t, orderB.Authorizations, order.Authorizations)
+	test.AssertDeepEquals(t, orderB.Authorizations, orderA.Authorizations)
 
 	// Reuse all of the existing authorizations from the previous order and
 	// add a new one
-	order.Names = append(order.Names, "d.com")
+	orderA.Names = append(orderA.Names, "d.com")
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
-		Names:          order.Names,
+		Names:          orderA.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, *orderC.RegistrationID, int64(1))
 	test.AssertEquals(t, *orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
-	test.AssertEquals(t, len(order.Names), 4)
-	test.AssertDeepEquals(t, order.Names, []string{"a.com", "b.com", "c.com", "d.com"})
-	test.AssertEquals(t, *orderC.Id, int64(3))
+	test.AssertEquals(t, len(orderC.Names), 4)
+	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
+	// We expect orderC's ID to not match orderA/orderB's because it is for
+	// a different set of names
+	test.AssertNotEquals(t, *orderC.Id, *orderA.Id)
 	test.AssertEquals(t, len(orderC.Authorizations), 4)
 	// Abuse the order of the queries used to extract the reused authorizations
 	existing := orderC.Authorizations[:3]
 	sort.Strings(existing)
-	test.AssertDeepEquals(t, existing, order.Authorizations)
+	test.AssertDeepEquals(t, existing, orderA.Authorizations)
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
@@ -2146,6 +2174,114 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
 	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
+}
+
+// TestNewOrderReuse tests that subsequent requests by an ACME account to create
+// an identical order results in only one order being created & subsequently
+// reused.
+func TestNewOrderReuse(t *testing.T) {
+	// Only run under test/config-next config where 20170731115209_AddOrders.sql
+	// has been applied
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com", "welcome.to.zombo.com"}
+
+	// Configure the RA to use a short order lifetime
+	ra.orderLifetime = time.Hour
+	// Create a var with two times the order lifetime to reference later
+	doubleLifetime := ra.orderLifetime * 2
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// Create a second registration to reference
+	secondReg := core.Registration{
+		Key:       &AccountKeyB,
+		InitialIP: net.ParseIP("42.42.42.42"),
+	}
+	secondReg, err := ra.NewRegistration(ctx, secondReg)
+	test.AssertNotError(t, err, "Error creating a second test registration")
+
+	// First, add an order with `names` for regA
+	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// It should have an ID
+	test.AssertNotNil(t, firstOrder.Id, "Initial order had a nil ID")
+
+	testCases := []struct {
+		Name         string
+		OrderReq     *rapb.NewOrderRequest
+		ExpectReuse  bool
+		AdvanceClock *time.Duration
+	}{
+		{
+			Name:     "Duplicate order, same regID",
+			OrderReq: orderReq,
+			// We expect reuse since the order matches firstOrder
+			ExpectReuse: true,
+		},
+		{
+			Name: "Subset of order names, same regID",
+			OrderReq: &rapb.NewOrderRequest{
+				RegistrationID: &regA,
+				Names:          []string{names[1]},
+			},
+			// We do not expect reuse because the order names don't match firstOrder
+			ExpectReuse: false,
+		},
+		{
+			Name: "Duplicate order, different regID",
+			OrderReq: &rapb.NewOrderRequest{
+				RegistrationID: &secondReg.ID,
+				Names:          names,
+			},
+			// We do not expect reuse because the order regID differs from firstOrder
+			ExpectReuse: false,
+		},
+		{
+			Name:         "Duplicate order, same regID, first expired",
+			OrderReq:     orderReq,
+			AdvanceClock: &doubleLifetime,
+			// We do not expect reuse because firstOrder has expired
+			ExpectReuse: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// If the testcase specifies, advance the clock before adding the order
+			if tc.AdvanceClock != nil {
+				fc.Now().Add(*tc.AdvanceClock)
+			}
+			// Add the order for the test request
+			order, err := ra.NewOrder(ctx, tc.OrderReq)
+			// It shouldn't fail
+			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
+			// The order should not have a nil ID
+			test.AssertNotNil(t, order.Id, "NewOrder returned an order with a nil Id")
+
+			if tc.ExpectReuse {
+				// If we expected order reuse for this testcase assert that the order
+				// has the same ID as the firstOrder
+				test.AssertEquals(t, *firstOrder.Id, *order.Id)
+			} else {
+				// Otherwise assert that the order doesn't have the same ID as the
+				// firstOrder
+				test.AssertNotEquals(t, *firstOrder.Id, *order.Id)
+			}
+		})
+	}
 }
 
 func TestNewOrderWildcard(t *testing.T) {
@@ -2436,22 +2572,27 @@ func TestFinalizeOrder(t *testing.T) {
 
 	fakeRegID := int64(0xB00)
 
+	// NOTE(@cpu): We use unique `names` for each of these orders because
+	// otherwise only *one* order is created & reused. The first test case to
+	// finalize the order will put it into processing state and the other tests
+	// will fail because you can't finalize an order that is already being
+	// processed.
 	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
-		Names:          []string{"example.com"},
+		Names:          []string{"000.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake order ID")
 
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
-		Names:          []string{"example.com"},
+		Names:          []string{"001.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake reg ID order ID")
 
 	missingAuthzOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
-		Names:          []string{"example.com"},
+		Names:          []string{"002.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
 
@@ -2744,6 +2885,132 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
 	// It *should* be a NotFound error
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+}
+
+var previousIssuanceRegId int64 = 98765
+var previousIssuanceDomain string = "example.com"
+
+// mockSAPreexistingCertificate acts as an SA that has an existing certificate
+// for "example.com".
+type mockSAPreexistingCertificate struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	t := true
+	f := false
+	if *req.RegID == previousIssuanceRegId &&
+		*req.Domain == previousIssuanceDomain {
+		return &sapb.Exists{Exists: &t}, nil
+	}
+	return &sapb.Exists{Exists: &f}, nil
+}
+
+// With TLS-SNI-01 disabled, an account that previously issued a certificate for
+// example.com should still be able to get a new authorization.
+func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	challenges := map[string]bool{
+		core.ChallengeTypeHTTP01: true,
+	}
+	_ = features.Set(map[string]bool{
+		"EnforceChallengeDisable": true,
+		"TLSSNIRevalidation":      true,
+	})
+	pa, err := policy.New(challenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	ra.PA = pa
+
+	ra.SA = &mockSAPreexistingCertificate{}
+
+	// Test with a reg ID and hostname that have a previous issuance, expect to
+	// see TLS-SNI-01.
+	authz, err := ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+
+	hasTLSSNI := func(challenges []core.Challenge) bool {
+		var foundTLSSNI bool
+		for _, c := range challenges {
+			if c.Type == core.ChallengeTypeTLSSNI01 {
+				foundTLSSNI = true
+			}
+		}
+		return foundTLSSNI
+	}
+	if !hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was not created during revalidation.")
+	}
+
+	// Test with a different reg ID, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
+			},
+		}, 1234)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different regID).")
+	}
+
+	// Test with a different domain, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: "not.example.com",
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different domain).")
+	}
+}
+
+func TestValidChallengeStillGood(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeTLSSNI01: true,
+	})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
+
+	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
+}
+
+func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	pa, err := policy.New(map[string]bool{})
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+
+	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+
+	exp := fc.Now().Add(10 * time.Hour)
+	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})
+	test.AssertError(t, err, "ra.UpdateAuthorization allowed a update to a authorization")
+	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
 }
 
 var CAkeyPEM = `

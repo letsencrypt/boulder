@@ -37,7 +37,12 @@ logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
-ACCEPTABLE_TOS = "https://boulder:4431/terms/v7"
+ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
+PORT = os.getenv('PORT', '5002')
+
+# URLs to control dns-test-srv
+SET_TXT = "http://localhost:8055/set-txt"
+CLEAR_TXT = "http://localhost:8055/clear-txt"
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
@@ -138,22 +143,28 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
         cleanup()
 
 def do_dns_challenges(client, authzs):
+    cleanup_hosts = []
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.key))
-        urllib2.urlopen("http://localhost:8055/set-txt",
+        cleanup_hosts.append(name)
+        urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
                 "value": value,
             })).read()
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        pass
+        for host in cleanup_hosts:
+            urllib2.urlopen(CLEAR_TXT,
+                data=json.dumps({
+                    "host": host + ".",
+                })).read()
     return cleanup
 
 def do_http_challenges(client, authzs):
-    port = 5002
+    port = int(PORT)
     challs = [get_chall(a, challenges.HTTP01) for a in authzs]
     answers = set([http_01_answer(client, c) for c in challs])
     server = standalone.HTTP01Server(("", port), answers)

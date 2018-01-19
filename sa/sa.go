@@ -64,6 +64,18 @@ type authzModel struct {
 	core.Authorization
 }
 
+// orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type orderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
 const (
 	authorizationTable        = "authz"
 	pendingAuthorizationTable = "pendingAuthorizations"
@@ -210,24 +222,10 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		authz = pa.Authorization
 	}
 
-	var challObjs []challModel
-	_, err = tx.Select(
-		&challObjs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authz.ID},
-	)
+	authz.Challenges, err = ssa.getChallenges(authz.ID)
 	if err != nil {
-		return authz, Rollback(tx, err)
+		return authz, err
 	}
-	var challs []core.Challenge
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return authz, Rollback(tx, err)
-		}
-		challs = append(challs, chall)
-	}
-	authz.Challenges = challs
 
 	return authz, tx.Commit()
 }
@@ -806,7 +804,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		return Rollback(tx, err)
 	}
 	if statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("authorization with ID %q is not pending", authz.ID)
+		err = berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
 		return Rollback(tx, err)
 	}
 
@@ -1075,6 +1073,52 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 	})
 }
 
+// addOrderFQDNSet creates a new OrderFQDNSet row using the provided
+// information. This function accepts a transaction so that the orderFqdnSet
+// addition can take place within the order addition transaction. The caller is
+// required to rollback the transaction if an error is returned.
+func addOrderFQDNSet(
+	tx *gorp.Transaction,
+	names []string,
+	orderID int64,
+	regID int64,
+	expires time.Time) error {
+	return tx.Insert(&orderFQDNSet{
+		SetHash:        hashNames(names),
+		OrderID:        orderID,
+		RegistrationID: regID,
+		Expires:        expires,
+	})
+}
+
+// deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
+// orderID. This function accepts a transaction so that the deletion can
+// take place within the finalization transaction. The caller is required to
+// rollback the transaction if an error is returned.
+func deleteOrderFQDNSet(
+	tx *gorp.Transaction,
+	orderID int64) error {
+
+	result, err := tx.Exec(`
+	  DELETE FROM orderFqdnSets
+		WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return err
+	}
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// We always expect there to be an order FQDN set row for each
+	// pending/processing order that is being finalized. If there isn't one then
+	// something is amiss and should be raised as an internal server error
+	if rowsDeleted == 0 {
+		return berrors.InternalServerError("No orderFQDNSet exists to delete")
+	}
+	return nil
+}
+
 type execable interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }
@@ -1233,6 +1277,64 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
+// PreviousCertificateExists returns true iff there was at least one certificate
+// issued with the provided domain name, and the most recent such certificate
+// was issued by the provided registration ID. Note: This means that if two
+// different accounts were issuing certificates for a domain, only one gets the
+// right to revalidate using TLS-SNI-01. We think this is an acceptable tradeoff
+// of complexity versus coverage, though we may reconsider in the future.
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	t := true
+	exists := &sapb.Exists{Exists: &t}
+
+	f := false
+	notExists := &sapb.Exists{Exists: &f}
+
+	// Find the most recently issued certificate containing this domain name.
+	var serial string
+	err := ssa.dbMap.SelectOne(
+		&serial,
+		`SELECT serial FROM issuedNames
+		WHERE reversedName = ?
+		ORDER BY notBefore DESC
+		LIMIT 1`,
+		ReverseName(*req.Domain),
+	)
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check whether that certificate was issued to the specified account.
+	var count int
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE serial = ?
+		AND registrationID = ?`,
+		serial,
+		*req.RegID,
+	)
+	// If no rows found, that means the certificate we found in issuedNames wasn't
+	// issued by the registration ID we are checking right now, but is not an
+	// error.
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return exists, nil
+	}
+	return notExists, nil
+}
+
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
 	_, err := ssa.dbMap.Exec(
@@ -1307,10 +1409,17 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 	}
 
+	// Add an FQDNSet entry for the order
+	if err := addOrderFQDNSet(
+		tx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+		return nil, Rollback(tx, err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
+	// Update the request with the ID that the order received
 	req.Id = &order.ID
 	return req, nil
 }
@@ -1374,6 +1483,12 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
 		err = berrors.InternalServerError("no order updated for finalization")
+		return Rollback(tx, err)
+	}
+
+	// Delete the orderFQDNSet row for the order now that it has been finalized.
+	// We use this table for order reuse and should not reuse a finalized order.
+	if err := deleteOrderFQDNSet(tx, *req.Id); err != nil {
 		return Rollback(tx, err)
 	}
 
@@ -1474,10 +1589,50 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
+			if features.Enabled(features.EnforceChallengeDisable) {
+				// Retrieve challenges for the authz
+				auth.Challenges, err = ssa.getChallenges(auth.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			byName[auth.Identifier.Value] = auth
 		}
 	}
 	return byName, nil
+}
+
+// GetOrderForNames tries to find an order with the exact set of names
+// requested, associated with the given accountID. Only unexpired orders are
+// considered. If no order is found a nil corepb.Order pointer is returned.
+func (ssa *SQLStorageAuthority) GetOrderForNames(
+	ctx context.Context,
+	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+
+	// Hash the names requested for lookup in the orderFqdnSets table
+	fqdnHash := hashNames(req.Names)
+
+	var orderID int64
+	err := ssa.dbMap.SelectOne(&orderID, `
+	SELECT orderID
+	FROM orderFqdnSets
+	WHERE setHash = ?
+	AND registrationID = ?
+	AND expires > ?`,
+		fqdnHash, *req.AcctID, ssa.clk.Now())
+
+	// There isn't an unexpired order for the provided AcctID that has the
+	// fqdnHash requested.
+	if err == sql.ErrNoRows {
+		return nil, berrors.NotFoundError("no order matching request found")
+	} else if err != nil {
+		// An unexpected error occurred
+		return nil, err
+	}
+
+	// Get & return the order
+	return ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
@@ -1518,11 +1673,20 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		if auth.Expires == nil {
 			continue
 		}
+
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
+			if features.Enabled(features.EnforceChallengeDisable) {
+				// Retrieve challenges for the authz
+				auth.Challenges, err = ssa.getChallenges(auth.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 			byName[auth.Identifier.Value] = auth
 		}
 	}
@@ -1589,23 +1753,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 	if features.Enabled(features.WildcardDomains) {
 		// Fetch each of the authorizations' associated challenges
 		for _, authz := range authzMap {
-			var challObjs []challModel
-			_, err = ssa.dbMap.Select(
-				&challObjs,
-				getChallengesQuery,
-				map[string]interface{}{"authID": authz.ID},
-			)
-			if err != nil {
-				return nil, err
-			}
-			authz.Challenges = make([]core.Challenge, len(challObjs))
-			for i, c := range challObjs {
-				chall, err := modelToChallenge(&c)
-				if err != nil {
-					return nil, err
-				}
-				authz.Challenges[i] = chall
-			}
+			authz.Challenges, err = ssa.getChallenges(authz.ID)
 		}
 	}
 	return authzMapToPB(authzMap)
@@ -1626,4 +1774,25 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 		ids = append(ids, result.ID)
 	}
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
+}
+
+func (ssa *SQLStorageAuthority) getChallenges(authID string) ([]core.Challenge, error) {
+	var challObjs []challModel
+	_, err := ssa.dbMap.Select(
+		&challObjs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	var challs []core.Challenge
+	for _, c := range challObjs {
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			return nil, err
+		}
+		challs = append(challs, chall)
+	}
+	return challs, nil
 }

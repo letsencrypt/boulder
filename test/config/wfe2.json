@@ -29,12 +29,7 @@
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
-    "features": {
-      "AllowAccountDeactivation": true,
-      "AllowKeyRollover": true,
-      "RandomDirectoryEntry": true,
-      "DirectoryMeta": true
-    }
+    "features": {}
   },
 
   "syslog": {
@@ -43,6 +38,6 @@
   },
 
   "common": {
-    "issuerCert": "test/test-ca.pem"
+    "issuerCert": "test/test-ca2.pem"
   }
 }

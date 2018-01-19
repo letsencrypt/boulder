@@ -91,6 +91,17 @@ func (sa *mockInvalidAuthorizationsAuthority) CountFQDNSets(ctx context.Context,
 	return nil, nil
 }
 
+func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+	_ ...grpc.CallOption,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
+}
+
 func (sa *mockInvalidAuthorizationsAuthority) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
 	return nil, nil
 }
@@ -144,6 +155,10 @@ func (sa *mockInvalidAuthorizationsAuthority) NewOrder(ctx context.Context, in *
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) GetOrder(ctx context.Context, in *sapb.OrderRequest, opts ...grpc.CallOption) (*core.Order, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetOrderForNames(ctx context.Context, in *sapb.GetOrderForNamesRequest, opts ...grpc.CallOption) (*core.Order, error) {
 	return nil, nil
 }
 

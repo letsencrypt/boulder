@@ -49,7 +49,6 @@ const (
 	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
-	termsPath         = "/terms"
 	issuerPath        = "/acme/issuer-cert"
 	buildIDPath       = "/build"
 	rolloverPath      = "/acme/key-change"
@@ -85,12 +84,6 @@ type WebFrontEndImpl struct {
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
-
-	// Cache settings
-	CertCacheDuration           time.Duration
-	CertNoCacheExpirationWindow time.Duration
-	IndexCacheDuration          time.Duration
-	IssuerCacheDuration         time.Duration
 
 	// CORS settings
 	AllowOrigins []string
@@ -314,7 +307,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
-	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
@@ -497,11 +489,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		// TODO(#595): check for missing account err
-		wfe.sendError(response, logEvent, probs.Conflict("Account key is already in use"), err)
+		response.WriteHeader(http.StatusOK)
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
 		return
 	}
 
@@ -1222,12 +1213,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	return
 }
 
-// Terms is used by the client to obtain the current Terms of Service /
-// Subscriber Agreement to which the subscriber must agree.
-func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
-}
-
 // Issuer obtains the issuer certificate used by this instance of Boulder.
 func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// TODO Content negotiation
@@ -1300,7 +1285,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 		// For an OPTIONS request: allow all methods handled at this URL.
 		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
 	}
-	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
@@ -1353,7 +1338,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
 	if err != nil {
 		// This should not happen - both the old and new key have been validated by now
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), err)
 		return
 	}
 	if keysEqual {
@@ -1364,11 +1349,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
+		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
 
@@ -1673,10 +1661,14 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 		return
 	}
 
+	orderURL := wfe.relativeEndpoint(request,
+		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *updatedOrder.Id))
+	response.Header().Set("Location", orderURL)
+
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), nil)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
 	}
 }

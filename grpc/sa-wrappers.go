@@ -318,6 +318,20 @@ func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, wind
 	return *response.Count, nil
 }
 
+func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	exists, err := sac.inner.PreviousCertificateExists(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if exists == nil || exists.Exists == nil {
+		return nil, errIncompleteResponse
+	}
+	return exists, err
+}
+
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
 	response, err := sac.inner.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: domains})
 	if err != nil {
@@ -510,6 +524,20 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil || !orderValid(resp) {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
+func (sas StorageAuthorityClientWrapper) GetOrderForNames(
+	ctx context.Context,
+	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+	resp, err := sas.inner.GetOrderForNames(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	// If there is an order response, it must be a valid order
 	if resp == nil || !orderValid(resp) {
 		return nil, errIncompleteResponse
 	}
@@ -858,6 +886,16 @@ func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, requ
 	return &sapb.Exists{Exists: &exists}, nil
 }
 
+func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	if req == nil || req.Domain == nil || req.RegID == nil {
+		return nil, errIncompleteRequest
+	}
+	return sac.inner.PreviousCertificateExists(ctx, req)
+}
+
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
@@ -1064,6 +1102,15 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 	}
 
 	return sas.inner.GetOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) GetOrderForNames(
+	ctx context.Context,
+	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+	if request == nil || request.AcctID == nil || len(request.Names) == 0 {
+		return nil, errIncompleteRequest
+	}
+	return sas.inner.GetOrderForNames(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
