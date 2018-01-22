@@ -9,7 +9,7 @@
     "maxNames": 100,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
-    "authorizationLifetimeDays": 60,
+    "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
