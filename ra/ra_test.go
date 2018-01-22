@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -2166,7 +2167,14 @@ func TestNewOrder(t *testing.T) {
 	// Abuse the order of the queries used to extract the reused authorizations
 	existing := orderC.Authorizations[:3]
 	sort.Strings(existing)
-	test.AssertDeepEquals(t, existing, orderA.Authorizations)
+
+	// We expect the pending authorizations were not reused between separate
+	// orders
+	// NOTE(@cpu): There's no test.AssertNotDeepEquals to use here so we call
+	// reflect.DeepEqual ourselves.
+	if reflect.DeepEqual(existing, orderA.Authorizations) {
+		t.Fatal("existing authorizations matched orderA authorizations")
+	}
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
@@ -2282,6 +2290,62 @@ func TestNewOrderReuse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewOrderReuseInvalidAuthz(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com"}
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// First, add an order with `names` for regA
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// It should have an ID
+	test.AssertNotNil(t, order.Id, "Initial order had a nil ID")
+	// It should have one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+
+	// Fetch the full authz by the ID
+	authzID := order.Authorizations[0]
+	authz, err := ra.SA.GetAuthorization(ctx, authzID)
+	test.AssertNotError(t, err, "Error getting order authorization")
+
+	// Finalize the authz to an invalid status
+	authz.Status = core.StatusInvalid
+	err = ra.SA.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, fmt.Sprintf("Could not finalize authorization %q", authzID))
+
+	// The order associated with the authz should now be invalid
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "Error getting order to check status")
+	test.AssertEquals(t, *updatedOrder.Status, "invalid")
+
+	// Create a second order for the same names/regID
+	secondOrder, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// It should have a different ID than the first now-invalid order
+	test.AssertNotEquals(t, *secondOrder.Id, *order.Id)
+	// It should be status pending
+	test.AssertEquals(t, *secondOrder.Status, "pending")
+	// It should have one authorization
+	test.AssertEquals(t, len(secondOrder.Authorizations), 1)
+	// It should have a different authorization than the first order's now-invalid authorization
+	test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
 }
 
 func TestNewOrderWildcard(t *testing.T) {
