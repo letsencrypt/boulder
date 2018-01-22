@@ -10,6 +10,9 @@ import random
 import shutil
 import subprocess
 import tempfile
+import requests
+import datetime
+import time
 
 import startservers
 
@@ -138,12 +141,19 @@ def test_order_reuse_failed_authz():
     # Answer it, but with nothing set up to solve the challenge request
     client.answer_challenge(chall_body, chall_body.response(client.key))
 
-    # Wait for validation to occur
-    # TODO(@cpu): This should be handled better but it involves Python
-    # concurrency and I'm going to punt on that while working on other parts of
-    # this PR
-    import time
-    time.sleep(10)
+    # Poll for a fixed amount of time checking for the order to become invalid
+    # from the authorization attempt initiated above failing
+    deadline = datetime.datetime.now() + datetime.timedelta(seconds=60)
+    while datetime.datetime.now() < deadline:
+        time.sleep(1)
+        updatedOrder = requests.get(firstOrderURI).json()
+        if updatedOrder['status'] == "invalid":
+            break
+
+    # If the loop ended and the status isn't invalid then we reached the
+    # deadline waiting for the order to become invalid, fail the test
+    if updatedOrder['status'] != "invalid":
+        raise Exception("timed out waiting for order %s to become invalid" % firstOrderURI)
 
     # Make another order with the same domains
     order = client.new_order(csr_pem)
