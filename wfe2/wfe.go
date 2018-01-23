@@ -685,13 +685,22 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	}
 	// For Key ID revocations we decide if an account is able to revoke a specific
 	// certificate by checking that the account has valid authorizations for all
-	// of the names in the certificate
+	// of the names in the certificate or was the issuing account
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		cert, err := wfe.SA.GetCertificate(ctx, core.SerialToString(parsedCertificate.SerialNumber))
+		if err != nil {
+			return probs.ServerInternal("Failed to retrieve certificate")
+		}
+		if cert.RegistrationID == acct.ID {
+			return nil
+		}
+		fmt.Println("Get ready", core.SerialToString(parsedCertificate.SerialNumber), cert.RegistrationID)
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
 		}
 		if !valid {
+			fmt.Println("bork")
 			return probs.Unauthorized(
 				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
 		}
