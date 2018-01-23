@@ -694,13 +694,11 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		if cert.RegistrationID == acct.ID {
 			return nil
 		}
-		fmt.Println("Get ready", core.SerialToString(parsedCertificate.SerialNumber), cert.RegistrationID)
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
 		}
 		if !valid {
-			fmt.Println("bork")
 			return probs.Unauthorized(
 				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
 		}
