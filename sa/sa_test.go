@@ -1109,6 +1109,10 @@ func TestDeactivateAuthorization(t *testing.T) {
 	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 	test.AssertEquals(t, dbPa.Status, core.StatusDeactivated)
+
+	pendingObj, err := sa.dbMap.Get(&pendingauthzModel{}, PA.ID)
+	test.AssertNotError(t, err, "sa.dbMap.Get failed to get pending authz")
+	test.Assert(t, pendingObj == nil, "Deactivated authorization still in pending table")
 }
 
 func TestDeactivateAccount(t *testing.T) {

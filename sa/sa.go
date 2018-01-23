@@ -1352,23 +1352,35 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
-	table := authorizationTable
-	oldStatus := core.StatusValid
+
 	if existingPending(tx, id) {
-		table = pendingAuthorizationTable
-		oldStatus = core.StatusPending
+		authzObj, err := tx.Get(&pendingauthzModel{}, id)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		_, err = tx.Delete(authzObj)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		authz := authzObj.(*pendingauthzModel)
+		authz.Status = core.StatusDeactivated
+		err = tx.Insert(&authzModel{authz.Authorization})
+		if err != nil {
+			return Rollback(tx, err)
+		}
+	} else {
+		authzObj, err := tx.Get(&authzModel{}, id)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		authz := authzObj.(*authzModel)
+		authz.Status = core.StatusDeactivated
+		_, err = tx.Update(authz)
+		if err != nil {
+			return Rollback(tx, err)
+		}
 	}
 
-	_, err = tx.Exec(
-		fmt.Sprintf(`UPDATE %s SET status = ? WHERE id = ? and status = ?`, table),
-		string(core.StatusDeactivated),
-		id,
-		string(oldStatus),
-	)
-	if err != nil {
-		err = Rollback(tx, err)
-		return err
-	}
 	return tx.Commit()
 }
 
