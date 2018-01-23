@@ -278,7 +278,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -751,7 +751,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	// We expect that calling NewAuthorization will fail gracefully with an error
 	// about the existing validations
 	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com")
+	test.AssertEquals(t, err.Error(), "unable to get existing validations for regID: 1, identifier: not-example.com, mockSAWithBadGetValidAuthz always errors!")
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -2887,48 +2887,97 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 }
 
-func TestDisabledChallengeValidAuthz(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+var previousIssuanceRegId int64 = 98765
+var previousIssuanceDomain string = "example.com"
+
+// mockSAPreexistingCertificate acts as an SA that has an existing certificate
+// for "example.com".
+type mockSAPreexistingCertificate struct {
+	mocks.StorageAuthority
+}
+
+func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	t := true
+	f := false
+	if *req.RegID == previousIssuanceRegId &&
+		*req.Domain == previousIssuanceDomain {
+		return &sapb.Exists{Exists: &t}, nil
+	}
+	return &sapb.Exists{Exists: &f}, nil
+}
+
+// With TLS-SNI-01 disabled, an account that previously issued a certificate for
+// example.com should still be able to get a new authorization.
+func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	challenges := map[string]bool{
 		core.ChallengeTypeHTTP01: true,
 	}
+	_ = features.Set(map[string]bool{
+		"EnforceChallengeDisable": true,
+		"TLSSNIRevalidation":      true,
+	})
 	pa, err := policy.New(challenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 	ra.PA = pa
 
-	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
+	ra.SA = &mockSAPreexistingCertificate{}
 
-	exp := fc.Now().Add(10 * time.Hour)
-
-	err = ra.checkAuthorizationsCAA(
-		context.Background(),
-		[]string{"test.com"},
-		map[string]*core.Authorization{"test.com": &core.Authorization{
-			Expires: &exp,
-			Challenges: []core.Challenge{
-				{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01},
+	// Test with a reg ID and hostname that have a previous issuance, expect to
+	// see TLS-SNI-01.
+	authz, err := ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
 			},
-		}},
-		0,
-		fc.Now(),
-	)
-	test.AssertError(t, err, "RA didn't prevent use of an authorization which used a disabled challenge type")
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
 
-	err = ra.checkAuthorizationsCAA(
-		context.Background(),
-		[]string{"test.com"},
-		map[string]*core.Authorization{"test.com": &core.Authorization{
-			Expires: &exp,
-			Challenges: []core.Challenge{
-				{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01},
+	hasTLSSNI := func(challenges []core.Challenge) bool {
+		var foundTLSSNI bool
+		for _, c := range challenges {
+			if c.Type == core.ChallengeTypeTLSSNI01 {
+				foundTLSSNI = true
+			}
+		}
+		return foundTLSSNI
+	}
+	if !hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was not created during revalidation.")
+	}
+
+	// Test with a different reg ID, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: previousIssuanceDomain,
 			},
-		}},
-		0,
-		fc.Now(),
-	)
-	test.AssertNotError(t, err, "RA prevented use of an authorization which used an enabled challenge type")
+		}, 1234)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different regID).")
+	}
+
+	// Test with a different domain, expect no TLS-SNI-01.
+	authz, err = ra.NewAuthorization(context.Background(),
+		core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: "not.example.com",
+			},
+		}, previousIssuanceRegId)
+	test.AssertNotError(t, err, "creating authz with domain for revalidation")
+	if hasTLSSNI(authz.Challenges) {
+		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
+			"(different domain).")
+	}
 }
 
 func TestValidChallengeStillGood(t *testing.T) {

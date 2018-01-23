@@ -1277,6 +1277,64 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []strin
 	return count > 0, err
 }
 
+// PreviousCertificateExists returns true iff there was at least one certificate
+// issued with the provided domain name, and the most recent such certificate
+// was issued by the provided registration ID. Note: This means that if two
+// different accounts were issuing certificates for a domain, only one gets the
+// right to revalidate using TLS-SNI-01. We think this is an acceptable tradeoff
+// of complexity versus coverage, though we may reconsider in the future.
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(
+	ctx context.Context,
+	req *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	t := true
+	exists := &sapb.Exists{Exists: &t}
+
+	f := false
+	notExists := &sapb.Exists{Exists: &f}
+
+	// Find the most recently issued certificate containing this domain name.
+	var serial string
+	err := ssa.dbMap.SelectOne(
+		&serial,
+		`SELECT serial FROM issuedNames
+		WHERE reversedName = ?
+		ORDER BY notBefore DESC
+		LIMIT 1`,
+		ReverseName(*req.Domain),
+	)
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check whether that certificate was issued to the specified account.
+	var count int
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE serial = ?
+		AND registrationID = ?`,
+		serial,
+		*req.RegID,
+	)
+	// If no rows found, that means the certificate we found in issuedNames wasn't
+	// issued by the registration ID we are checking right now, but is not an
+	// error.
+	if err == sql.ErrNoRows {
+		return notExists, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return exists, nil
+	}
+	return notExists, nil
+}
+
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
 	_, err := ssa.dbMap.Exec(

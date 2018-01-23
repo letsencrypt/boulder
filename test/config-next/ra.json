@@ -9,7 +9,7 @@
     "maxNames": 100,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
-    "authorizationLifetimeDays": 60,
+    "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyDirectory": "test/example-weak-keys.json",
     "orderLifetime": "168h",
@@ -43,6 +43,7 @@
     },
     "features": {
       "WildcardDomains": true,
+      "TLSSNIRevalidation": true,
       "AllowKeyRollover": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
