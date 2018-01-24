@@ -11,8 +11,10 @@ import shutil
 import subprocess
 import tempfile
 import base64
+import os
 
 import OpenSSL
+import josepy as jose
 
 import startservers
 
@@ -20,6 +22,8 @@ import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
 from acme.messages import Status
+from acme import crypto_util as acme_crypto_util
+from acme import client as acme_client
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -136,7 +140,7 @@ def test_revoke_by_issuer():
         cleanup()
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
+    client.revoke(jose.ComparableX509(cert), 0)
 
 def test_revoke_by_authz():
     client = make_client(None)
@@ -153,14 +157,14 @@ def test_revoke_by_authz():
     client = make_client(None)
     csr_pem = make_csr(domains)
     second_order = client.new_order(csr_pem)
-    cleanup = do_http_challenges(client, order.authorizations)
+    cleanup = do_http_challenges(client, second_order.authorizations)
     try:
-        second_order = client.poll_order_and_request_issuance(order)
+        second_order = client.poll_order_and_request_issuance(second_order)
     finally:
         cleanup()
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
+    client.revoke(jose.ComparableX509(cert), 0)
 
 def test_revoke_by_privkey():
     client = make_client(None)
@@ -168,7 +172,7 @@ def test_revoke_by_privkey():
     key = OpenSSL.crypto.PKey()
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
     key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
-    csr_pem = acme_crypto_util.make_csr(pem, domains, False)
+    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
     order = client.new_order(csr_pem)
     cleanup = do_http_challenges(client, order.authorizations)
     try:
@@ -177,14 +181,14 @@ def test_revoke_by_privkey():
         cleanup()
 
     # Create a new client with the JWK as the cert private key
-    jwk = josepy.JWKRSA(key=key)
+    jwk = jose.JWKRSA(key=key)
     net = acme_client.ClientNetwork(key, acme_version=2,
                                     user_agent="Boulder integration tester")
 
-    new_client = acme_client.Client(DIRECTORY, key=jwk, net=net, acme_version=2)
+    new_client = acme_client.Client(os.getenv('DIRECTORY', 'http://localhost:4001/directory'), key=jwk, net=net, acme_version=2)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
+    client.revoke(jose.ComparableX509(cert), 0)
 
 if __name__ == "__main__":
     try:
