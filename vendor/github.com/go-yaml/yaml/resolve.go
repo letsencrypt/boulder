@@ -3,9 +3,10 @@ package yaml
 import (
 	"encoding/base64"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
+	"time"
 )
 
 type resolveMapItem struct {
@@ -13,20 +14,28 @@ type resolveMapItem struct {
 	tag   string
 }
 
+// MergeTag is the value used for a merge tag (!!merge "<<").
+// When marshaled as a map key, the << will not be quoted,
+// which makes it possible to include merge tags explicitly
+// when encoding YAML values.
+var MergeTag = mergeTag{}
+
+type mergeTag struct{}
+
 var resolveTable = make([]byte, 256)
 var resolveMap = make(map[string]resolveMapItem)
 
 func init() {
 	t := resolveTable
-	t[int('+')] = 'S' // Sign
-	t[int('-')] = 'S'
+	t['+'] = 'S' // Sign
+	t['-'] = 'S'
 	for _, c := range "0123456789" {
-		t[int(c)] = 'D' // Digit
+		t[c] = 'D' // Digit
 	}
-	for _, c := range "yYnNtTfFoO~" {
-		t[int(c)] = 'M' // In map
+	for _, c := range "yYnNtTfFoO~<" {
+		t[c] = 'M' // In resolveMap
 	}
-	t[int('.')] = '.' // Float (potentially in map)
+	t['.'] = '.' // Float (potentially in map)
 
 	var resolveMapList = []struct {
 		v   interface{}
@@ -44,7 +53,7 @@ func init() {
 		{math.Inf(+1), yaml_FLOAT_TAG, []string{".inf", ".Inf", ".INF"}},
 		{math.Inf(+1), yaml_FLOAT_TAG, []string{"+.inf", "+.Inf", "+.INF"}},
 		{math.Inf(-1), yaml_FLOAT_TAG, []string{"-.inf", "-.Inf", "-.INF"}},
-		{"<<", yaml_MERGE_TAG, []string{"<<"}},
+		{MergeTag, yaml_MERGE_TAG, []string{"<<"}},
 	}
 
 	m := resolveMap
@@ -74,11 +83,13 @@ func longTag(tag string) string {
 
 func resolvableTag(tag string) bool {
 	switch tag {
-	case "", yaml_STR_TAG, yaml_BOOL_TAG, yaml_INT_TAG, yaml_FLOAT_TAG, yaml_NULL_TAG:
+	case "", yaml_STR_TAG, yaml_BOOL_TAG, yaml_INT_TAG, yaml_FLOAT_TAG, yaml_NULL_TAG, yaml_TIMESTAMP_TAG, yaml_MERGE_TAG:
 		return true
 	}
 	return false
 }
+
+var yamlStyleFloat = regexp.MustCompile(`^[-+]?[0-9]*\.?[0-9]+([eE][-+][0-9]+)?$`)
 
 func resolve(tag string, in string) (rtag string, out interface{}) {
 	if !resolvableTag(tag) {
@@ -122,6 +133,15 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 
 		case 'D', 'S':
 			// Int, float, or timestamp.
+			// Only try values as a timestamp if the value is unquoted or there's an explicit
+			// !!timestamp tag.
+			if tag == "" || tag == yaml_TIMESTAMP_TAG {
+				t, ok := parseTimestamp(in)
+				if ok {
+					return yaml_TIMESTAMP_TAG, t
+				}
+			}
+
 			plain := strings.Replace(in, "_", "", -1)
 			intv, err := strconv.ParseInt(plain, 0, 64)
 			if err == nil {
@@ -135,9 +155,11 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			if err == nil {
 				return yaml_INT_TAG, uintv
 			}
-			floatv, err := strconv.ParseFloat(plain, 64)
-			if err == nil {
-				return yaml_FLOAT_TAG, floatv
+			if yamlStyleFloat.MatchString(plain) {
+				floatv, err := strconv.ParseFloat(plain, 64)
+				if err == nil {
+					return yaml_FLOAT_TAG, floatv
+				}
 			}
 			if strings.HasPrefix(plain, "0b") {
 				intv, err := strconv.ParseInt(plain[2:], 2, 64)
@@ -162,19 +184,11 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 					}
 				}
 			}
-			// XXX Handle timestamps here.
-
 		default:
 			panic("resolveTable item not yet handled: " + string(rune(hint)) + " (with " + in + ")")
 		}
 	}
-	if tag == yaml_BINARY_TAG {
-		return yaml_BINARY_TAG, in
-	}
-	if utf8.ValidString(in) {
-		return yaml_STR_TAG, in
-	}
-	return yaml_BINARY_TAG, encodeBase64(in)
+	return yaml_STR_TAG, in
 }
 
 // encodeBase64 encodes s as base64 that is broken up into multiple lines
@@ -200,4 +214,40 @@ func encodeBase64(s string) string {
 		}
 	}
 	return string(out[:k])
+}
+
+// This is a subset of the formats allowed by the regular expression
+// defined at http://yaml.org/type/timestamp.html.
+var allowedTimestampFormats = []string{
+	"2006-1-2T15:4:5Z07:00",
+	"2006-1-2t15:4:5Z07:00", // RFC3339 with lower-case "t".
+	"2006-1-2 15:4:5",       // space separated with no time zone
+	"2006-1-2",              // date only
+	// Notable exception: time.Parse cannot handle: "2001-12-14 21:59:43.10 -5"
+	// from the set of examples.
+}
+
+// parseTimestamp parses s as a timestamp string and
+// returns the timestamp and reports whether it succeeded.
+// Timestamp formats are defined at http://yaml.org/type/timestamp.html
+func parseTimestamp(s string) (time.Time, bool) {
+	// TODO write code to check all the formats supported by
+	// http://yaml.org/type/timestamp.html instead of using time.Parse.
+
+	// Quick check: all date formats start with YYYY-.
+	i := 0
+	for ; i < len(s); i++ {
+		if c := s[i]; c < '0' || c > '9' {
+			break
+		}
+	}
+	if i != 4 || i == len(s) || s[i] != '-' {
+		return time.Time{}, false
+	}
+	for _, format := range allowedTimestampFormats {
+		if t, err := time.Parse(format, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
