@@ -11,6 +11,7 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - /tmp:/tmp
+          - /Users/rolandshoemaker/code/certbot-v2:/certbot
         network_mode: bridge
         extra_hosts:
           - le.wtf:127.0.0.1
