@@ -1390,7 +1390,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		authz := authzObj.(*authzModel)
 		if authz.Status != core.StatusValid {
 			_ = Rollback(tx, err)
-			return berrors.WrongAuthorizationStateError("authorization not pending")
+			return berrors.WrongAuthorizationStateError("authorization not valid")
 		}
 		authz.Status = core.StatusDeactivated
 		result, err := tx.Update(authz)
