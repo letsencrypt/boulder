@@ -136,7 +136,7 @@ def test_revoke_by_issuer():
         cleanup()
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_DER, cert)), 0)
+    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
 
 def test_revoke_by_authz():
     client = make_client(None)
@@ -160,7 +160,7 @@ def test_revoke_by_authz():
         cleanup()
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_DER, cert)), 0)
+    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
 
 def test_revoke_by_privkey():
     client = make_client(None)
@@ -184,7 +184,7 @@ def test_revoke_by_privkey():
     new_client = acme_client.Client(DIRECTORY, key=jwk, net=net, acme_version=2)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_DER, cert)), 0)
+    client.revoke(base64.urlsafe_b64encode(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)), 0)
 
 if __name__ == "__main__":
     try:
