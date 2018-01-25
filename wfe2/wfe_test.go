@@ -1813,6 +1813,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
+			Name:         "POST, notAfter and notBefore in payload",
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
+		},
+		{
 			Name:    "POST, good payload",
 			Request: signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService),
 			ExpectedBody: `

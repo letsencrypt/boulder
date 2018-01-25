@@ -1505,10 +1505,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// We only allow specifying Identifiers in a new order request - we ignore the
-	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-08
+	// We only allow specifying Identifiers in a new order request - if the
+	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
+	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers []core.AcmeIdentifier `json:"identifiers"`
+		Identifiers         []core.AcmeIdentifier `json:"identifiers"`
+		NotBefore, NotAfter string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -1520,6 +1522,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if len(newOrderRequest.Identifiers) == 0 {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("NewOrder request did not specify any identifiers"), nil)
+		return
+	}
+	if newOrderRequest.NotBefore != "" || newOrderRequest.NotAfter != "" {
+		wfe.sendError(response, logEvent, probs.Malformed("NotBefore and NotAfter are not supported"), nil)
 		return
 	}
 
