@@ -41,9 +41,7 @@
       ]
     },
     "features": {
-      "AllowKeyRollover": true,
       "CountCertificatesExact": true,
-      "RecheckCAA": true,
       "ReusePendingAuthz": false,
       "EnforceChallengeDisable": true
     }
