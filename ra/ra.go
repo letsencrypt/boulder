@@ -815,6 +815,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
+	if err := csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+		return nil, berrors.MalformedError(err.Error())
+	}
+
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := core.UniqueLowerNames(csrOb.DNSNames)
