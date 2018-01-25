@@ -1161,12 +1161,6 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2106,12 +2100,6 @@ func TestRecheckCAAFail(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2180,12 +2168,6 @@ func TestNewOrder(t *testing.T) {
 // an identical order results in only one order being created & subsequently
 // reused.
 func TestNewOrderReuse(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2285,12 +2267,6 @@ func TestNewOrderReuse(t *testing.T) {
 }
 
 func TestNewOrderWildcard(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2484,12 +2460,6 @@ func TestNewOrderWildcard(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2730,12 +2700,6 @@ func TestFinalizeOrder(t *testing.T) {
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 

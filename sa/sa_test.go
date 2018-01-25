@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -1330,12 +1329,6 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1371,12 +1364,6 @@ func TestNewOrder(t *testing.T) {
 }
 
 func TestSetOrderProcessing(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1415,12 +1402,6 @@ func TestSetOrderProcessing(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1462,12 +1443,6 @@ func TestFinalizeOrder(t *testing.T) {
 }
 
 func TestOrder(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1498,12 +1473,6 @@ func TestOrder(t *testing.T) {
 }
 
 func TestGetOrderAuthorizations(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1657,12 +1626,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 }
 
 func TestCountPendingOrders(t *testing.T) {
-	// Only run under test/config-next config where 20170731115209_AddOrders.sql
-	// has been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1735,12 +1698,6 @@ func TestCountPendingOrders(t *testing.T) {
 }
 
 func TestGetOrderForNames(t *testing.T) {
-	// Only run under test/config-next config where required migrations
-	// have been applied
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
