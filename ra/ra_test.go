@@ -1238,6 +1238,11 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	validCSRBlock, _ := pem.Decode(CSRPEM)
 	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
 
+	// Artificially set the order's status to pending since it didn't come from
+	// a sa.GetOrder call that populates the field.
+	pendingStatus := string(core.StatusPending)
+	order.Status = &pendingStatus
+
 	// Finalize the order with a CSR to change it from pending status to valid status
 	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Order: order,

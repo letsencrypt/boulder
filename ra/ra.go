@@ -1582,12 +1582,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
-	status := string(core.StatusPending)
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 		Expires:        &expires,
-		Status:         &status,
 	}
 
 	// Check that the registration ID in question has rate limit space for another
@@ -1657,10 +1655,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 		authz := nameToExistingAuthz[name]
 		// If the existing authz isn't valid, note that its missing and continue.
-		// Since we reuse whole pending orders there isn't any benefit to reusing
-		// individual pending authorizations between orders. Worse, it makes the
-		// process of invalidating an order when an authorization is invalidated
-		// confusing because multiple orders would be invalidated simultaneously.
+		// Reusing pending authorizations between orders is primarily an effort to
+		// prevent clients hitting the pending authz limit, but in a V2 world order
+		// reuse accomplishes the same thing.
 		if *authz.Status != string(core.StatusValid) {
 			missingAuthzNames = append(missingAuthzNames, name)
 			continue
@@ -1717,6 +1714,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
+	fmt.Printf("ra.SA.NewOrder err: %#v\n", err)
 	if err != nil {
 		return nil, err
 	}
