@@ -791,7 +791,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 
 // FinalizeAuthorization converts a Pending Authorization to a final one. If the
 // Authorization is not found a berrors.NotFound result is returned. If the
-// Authorization is status pending an berrors.InternalServer error is returned.
+// Authorization is status pending a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
