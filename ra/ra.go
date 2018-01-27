@@ -1714,7 +1714,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
-	fmt.Printf("ra.SA.NewOrder err: %#v\n", err)
 	if err != nil {
 		return nil, err
 	}
