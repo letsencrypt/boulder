@@ -2106,6 +2106,10 @@ func TestRecheckCAAFail(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2181,6 +2185,10 @@ func TestNewOrder(t *testing.T) {
 // an identical order results in only one order being created & subsequently
 // reused.
 func TestNewOrderReuse(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2336,6 +2344,10 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 }
 
 func TestNewOrderWildcard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2529,6 +2541,10 @@ func TestNewOrderWildcard(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2769,6 +2785,10 @@ func TestFinalizeOrder(t *testing.T) {
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 

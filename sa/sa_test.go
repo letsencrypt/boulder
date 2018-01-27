@@ -1328,6 +1328,10 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1547,6 +1551,10 @@ func TestOrder(t *testing.T) {
 }
 
 func TestGetOrderAuthorizations(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1700,6 +1708,10 @@ func TestAddPendingAuthorizations(t *testing.T) {
 }
 
 func TestCountPendingOrders(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1789,6 +1801,10 @@ func TestCountPendingOrders(t *testing.T) {
 }
 
 func TestGetOrderForNames(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
