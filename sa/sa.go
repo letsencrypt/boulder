@@ -1480,6 +1480,38 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 	return tx.Commit()
 }
 
+// SetOrderError updates a provided Order's error field.
+func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+
+	om, err := orderToModel(order)
+	if err != nil {
+		return err
+	}
+
+	result, err := tx.Exec(`
+		UPDATE orders
+		SET error = ?
+		WHERE id = ?`,
+		om.Error,
+		om.ID)
+	if err != nil {
+		err = berrors.InternalServerError("error updating order error field")
+		return Rollback(tx, err)
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		err = berrors.InternalServerError("no order updated with new error field")
+		return Rollback(tx, err)
+	}
+
+	return tx.Commit()
+}
+
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
@@ -1549,7 +1581,10 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	order := modelToOrder(omObj.(*orderModel))
+	order, err := modelToOrder(omObj.(*orderModel))
+	if err != nil {
+		return nil, err
+	}
 	authzIDs, err := ssa.authzForOrder(*order.Id)
 	if err != nil {
 		return nil, err
@@ -1583,6 +1618,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 
 // statusForOrder examines the status of a provided order's authorizations to
 // determine what the overall status of the order should be. In summary:
+//   * If the order has an error, the order is invalid
 //   * If any of the order's authorizations are invalid, the order is invalid.
 //   * If any of the order's authorizations are deactivated, the order is deactivated.
 //   * If any of the order's authorizations are pending, the order is pending.
@@ -1594,6 +1630,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //     processing, then the order is pending waiting a finalization request.
 // An error is returned for any other case.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
+	// Without any further work we know an order with an error is invalid
+	if order.Error != nil {
+		return string(core.StatusInvalid), nil
+	}
+
 	// Get the full Authorization objects for the order
 	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
 	// If there was an error getting the authorizations, return it immediately

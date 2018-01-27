@@ -512,6 +512,13 @@ func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context,
 	return nil
 }
 
+func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, order *corepb.Order) error {
+	if _, err := sac.inner.SetOrderError(ctx, order); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) error {
 	if _, err := sac.inner.FinalizeOrder(ctx, order); err != nil {
 		return err
@@ -1078,6 +1085,18 @@ func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context,
 	}
 
 	if err := sas.inner.SetOrderProcessing(ctx, order); err != nil {
+		return nil, err
+	}
+
+	return &corepb.Empty{}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, order *corepb.Order) (*corepb.Empty, error) {
+	if order == nil || !orderValid(order) {
+		return nil, errIncompleteRequest
+	}
+
+	if err := sas.inner.SetOrderError(ctx, order); err != nil {
 		return nil, err
 	}
 

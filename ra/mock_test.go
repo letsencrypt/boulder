@@ -178,6 +178,10 @@ func (sa *mockInvalidAuthorizationsAuthority) SetOrderProcessing(ctx context.Con
 	return nil, nil
 }
 
+func (sa *mockInvalidAuthorizationsAuthority) SetOrderError(ctx context.Context, in *core.Order, opts ...grpc.CallOption) (*core.Empty, error) {
+	return nil, nil
+}
+
 func (sa *mockInvalidAuthorizationsAuthority) FinalizeOrder(ctx context.Context, in *core.Order, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }
