@@ -1162,6 +1162,10 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
