@@ -25,7 +25,6 @@
       ]
     },
     "features": {
-      "AllowAccountDeactivation": true,
       "EnforceChallengeDisable": true
     }
   },
