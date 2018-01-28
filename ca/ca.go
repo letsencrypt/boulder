@@ -277,13 +277,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	// TODO(briansmith): Make the backdate setting mandatory after the
-	// production ca.json has been updated to include it. Until then, manually
-	// default to 1h, which is the backdating duration we currently use.
-	ca.backdate = config.Backdate.Duration
-	if ca.backdate == 0 {
-		ca.backdate = time.Hour
+	if config.Backdate.Duration == 0 {
+		return nil, errors.New("Config must specify a backdate duration.")
 	}
+	ca.backdate = config.Backdate.Duration
 
 	ca.maxNames = config.MaxNames
 

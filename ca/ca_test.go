@@ -203,10 +203,7 @@ func setup(t *testing.T) *testCtx {
 		ECDSAProfile: ecdsaProfileName,
 		SerialPrefix: 17,
 		Expiry:       "8760h",
-		// TODO(briansmith): When the defaulting of Backdate is removed, this
-		// will need to be uncommented. Leave it commented for now to test the
-		// defaulting logic.
-		// Backdate:     cmd.ConfigDuration{Duration: time.Hour},
+		Backdate:     cmd.ConfigDuration{Duration: 1 * time.Hour},
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
 		CFSSL: cfsslConfig.Config{
