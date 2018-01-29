@@ -155,14 +155,16 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-			// We do not propagate errors here, because (1) they should be
-			// transient, and (2) they fail closed.
-			nonce, err := wfe.nonceService.Nonce()
-			if err == nil {
-				response.Header().Set("Replay-Nonce", nonce)
-				logEvent.ResponseNonce = nonce
-			} else {
-				logEvent.AddError("unable to make nonce: %s", err)
+			if request.Method != "GET" || pattern == newNoncePath {
+				// We do not propagate errors here, because (1) they should be
+				// transient, and (2) they fail closed.
+				nonce, err := wfe.nonceService.Nonce()
+				if err == nil {
+					response.Header().Set("Replay-Nonce", nonce)
+					logEvent.ResponseNonce = nonce
+				} else {
+					logEvent.AddError("unable to make nonce: %s", err)
+				}
 			}
 
 			logEvent.Endpoint = pattern
