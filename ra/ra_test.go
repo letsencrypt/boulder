@@ -2285,7 +2285,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	_, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertError(t, err, "NewOrder with wildcard names did not error with "+
 		"WildcardDomains feature disabled")
-	test.AssertEquals(t, err.Error(), "Invalid character in DNS name")
+	test.AssertEquals(t, err.Error(), "Wildcard names not supported")
 
 	// Now test with WildcardDomains feature enabled
 	features.Reset()
