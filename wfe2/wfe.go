@@ -155,14 +155,16 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-			// We do not propagate errors here, because (1) they should be
-			// transient, and (2) they fail closed.
-			nonce, err := wfe.nonceService.Nonce()
-			if err == nil {
-				response.Header().Set("Replay-Nonce", nonce)
-				logEvent.ResponseNonce = nonce
-			} else {
-				logEvent.AddError("unable to make nonce: %s", err)
+			if request.Method != "GET" || pattern == newNoncePath {
+				// We do not propagate errors here, because (1) they should be
+				// transient, and (2) they fail closed.
+				nonce, err := wfe.nonceService.Nonce()
+				if err == nil {
+					response.Header().Set("Replay-Nonce", nonce)
+					logEvent.ResponseNonce = nonce
+				} else {
+					logEvent.AddError("unable to make nonce: %s", err)
+				}
 			}
 
 			logEvent.Endpoint = pattern
@@ -685,8 +687,15 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	}
 	// For Key ID revocations we decide if an account is able to revoke a specific
 	// certificate by checking that the account has valid authorizations for all
-	// of the names in the certificate
+	// of the names in the certificate or was the issuing account
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		cert, err := wfe.SA.GetCertificate(ctx, core.SerialToString(parsedCertificate.SerialNumber))
+		if err != nil {
+			return probs.ServerInternal("Failed to retrieve certificate")
+		}
+		if cert.RegistrationID == acct.ID {
+			return nil
+		}
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
@@ -1505,10 +1514,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// We only allow specifying Identifiers in a new order request - we ignore the
-	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-08
+	// We only allow specifying Identifiers in a new order request - if the
+	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
+	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers []core.AcmeIdentifier `json:"identifiers"`
+		Identifiers         []core.AcmeIdentifier `json:"identifiers"`
+		NotBefore, NotAfter string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -1520,6 +1531,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if len(newOrderRequest.Identifiers) == 0 {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("NewOrder request did not specify any identifiers"), nil)
+		return
+	}
+	if newOrderRequest.NotBefore != "" || newOrderRequest.NotAfter != "" {
+		wfe.sendError(response, logEvent, probs.Malformed("NotBefore and NotAfter are not supported"), nil)
 		return
 	}
 

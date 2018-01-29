@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -2370,7 +2371,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	_, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertError(t, err, "NewOrder with wildcard names did not error with "+
 		"WildcardDomains feature disabled")
-	test.AssertEquals(t, err.Error(), "Invalid character in DNS name")
+	test.AssertEquals(t, err.Error(), "Wildcard names not supported")
 
 	// Now test with WildcardDomains feature enabled
 	features.Reset()
@@ -2786,6 +2787,87 @@ func TestFinalizeOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
+
+	// Pick an expiry in the future
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+
+	// Create one finalized authorization for Registration.ID for not-example.com
+	var err error
+	finalAuthz := AuthzInitial
+	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Status = "valid"
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err = sa.NewPendingAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Create one finalized authorization for Registration.ID for www.not-example.org
+	finalAuthzB := AuthzInitial
+	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Status = "valid"
+	finalAuthzB.Expires = &exp
+	finalAuthzB.Challenges[0].Status = "valid"
+	finalAuthzB.RegistrationID = Registration.ID
+	finalAuthzB, err = sa.NewPendingAuthorization(ctx, finalAuthzB)
+	test.AssertNotError(t, err, "Could not store 2nd test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, finalAuthzB)
+	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
+
+	// Create a new order to finalize with names in SAN and CN
+	expUnix := exp.Unix()
+	pendingStatus := "pending"
+	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &Registration.ID,
+		Expires:        &expUnix,
+		Names:          []string{"not-example.com", "www.not-example.com"},
+		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
+		Status:         &pendingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	mixedCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           []string{"www.not-example.com"},
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create mixed CSR")
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(12),
+		DNSNames:              []string{"www.not-example.com", "not-example.com"},
+		NotBefore:             time.Now(),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create mixed cert")
+
+	ra.CA = &mocks.MockCA{
+		PEM: pem.EncodeToMemory(&pem.Block{
+			Bytes: cert,
+		}),
+	}
+
+	_, result := ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{Order: mixedOrder, Csr: mixedCSR})
+	test.AssertNotError(t, result, fmt.Sprintf("FinalizeOrder result was %#v, expected nil", result))
+	// Check that the order now has a serial for the issued certificate
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: mixedOrder.Id})
+	test.AssertNotError(t, err, "Error getting order to check serial")
+	test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
+	test.AssertEquals(t, *updatedOrder.Status, "valid")
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {

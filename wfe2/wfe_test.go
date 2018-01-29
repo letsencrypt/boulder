@@ -416,14 +416,14 @@ func TestHandleFunc(t *testing.T) {
 	var mux *http.ServeMux
 	var rw *httptest.ResponseRecorder
 	var stubCalled bool
-	runWrappedHandler := func(req *http.Request, allowed ...string) {
+	runWrappedHandler := func(req *http.Request, pattern string, allowed ...string) {
 		mux = http.NewServeMux()
 		rw = httptest.NewRecorder()
 		stubCalled = false
-		wfe.HandleFunc(mux, "/test", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
+		wfe.HandleFunc(mux, pattern, func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
 			stubCalled = true
 		}, allowed...)
-		req.URL = mustParseURL("/test")
+		req.URL = mustParseURL(pattern)
 		mux.ServeHTTP(rw, req)
 	}
 
@@ -433,17 +433,19 @@ func TestHandleFunc(t *testing.T) {
 		reqMethod      string
 		shouldCallStub bool
 		shouldSucceed  bool
+		pattern        string
 	}
 	var lastNonce string
 	for _, c := range []testCase{
-		{[]string{"GET", "POST"}, "GET", true, true},
-		{[]string{"GET", "POST"}, "POST", true, true},
-		{[]string{"GET"}, "", false, false},
-		{[]string{"GET"}, "POST", false, false},
-		{[]string{"GET"}, "OPTIONS", false, true},
-		{[]string{"GET"}, "MAKE-COFFEE", false, false}, // 405, or 418?
+		{[]string{"GET", "POST"}, "GET", true, true, "/test"},
+		{[]string{"GET", "POST"}, "GET", true, true, newNoncePath},
+		{[]string{"GET", "POST"}, "POST", true, true, "/test"},
+		{[]string{"GET"}, "", false, false, "/test"},
+		{[]string{"GET"}, "POST", false, false, "/test"},
+		{[]string{"GET"}, "OPTIONS", false, true, "/test"},
+		{[]string{"GET"}, "MAKE-COFFEE", false, false, "/test"}, // 405, or 418?
 	} {
-		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
+		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.pattern, c.allowed...)
 		test.AssertEquals(t, stubCalled, c.shouldCallStub)
 		if c.shouldSucceed {
 			test.AssertEquals(t, rw.Code, http.StatusOK)
@@ -454,25 +456,30 @@ func TestHandleFunc(t *testing.T) {
 				rw.Body.String(),
 				`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 		}
-		nonce := rw.Header().Get("Replay-Nonce")
-		test.AssertNotEquals(t, nonce, lastNonce)
-		test.AssertNotEquals(t, nonce, "")
-		lastNonce = nonce
+		if c.reqMethod == "GET" && c.pattern != newNoncePath {
+			nonce := rw.Header().Get("Replay-Nonce")
+			test.AssertEquals(t, nonce, "")
+		} else {
+			nonce := rw.Header().Get("Replay-Nonce")
+			test.AssertNotEquals(t, nonce, lastNonce)
+			test.AssertNotEquals(t, nonce, "")
+			lastNonce = nonce
+		}
 	}
 
 	// Disallowed method returns error JSON in body
-	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
+	runWrappedHandler(&http.Request{Method: "PUT"}, "/test", "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
-	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "/test", "GET", "POST")
 	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
 
 	// HEAD doesn't work with POST-only endpoints
-	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "/test", "POST")
 	test.AssertEquals(t, stubCalled, false)
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
@@ -488,7 +495,7 @@ func TestHandleFunc(t *testing.T) {
 		Header: map[string][]string{
 			"Origin": {testOrigin},
 		},
-	}, "GET")
+	}, "/test", "GET")
 	test.AssertEquals(t, stubCalled, false)
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 
@@ -498,7 +505,7 @@ func TestHandleFunc(t *testing.T) {
 		Header: map[string][]string{
 			"Origin": {testOrigin},
 		},
-	}, "GET", "POST")
+	}, "/test", "GET", "POST")
 	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
@@ -512,7 +519,7 @@ func TestHandleFunc(t *testing.T) {
 			"Origin":                        {testOrigin},
 			"Access-Control-Request-Method": {"POST"},
 		},
-	}, "GET")
+	}, "/test", "GET")
 	test.AssertEquals(t, stubCalled, false)
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Allow"), "GET, HEAD")
@@ -526,7 +533,7 @@ func TestHandleFunc(t *testing.T) {
 			"Access-Control-Request-Method":  {"POST"},
 			"Access-Control-Request-Headers": {"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"},
 		},
-	}, "GET", "POST")
+	}, "/test", "GET", "POST")
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
@@ -540,7 +547,7 @@ func TestHandleFunc(t *testing.T) {
 		Header: map[string][]string{
 			"Access-Control-Request-Method": {"POST"},
 		},
-	}, "GET", "POST")
+	}, "/test", "GET", "POST")
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
@@ -553,7 +560,7 @@ func TestHandleFunc(t *testing.T) {
 			Header: map[string][]string{
 				"Origin": {testOrigin},
 			},
-		}, allowedMethod)
+		}, "/test", allowedMethod)
 		test.AssertEquals(t, rw.Code, http.StatusOK)
 		if allowedMethod == "GET" {
 			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
@@ -576,7 +583,7 @@ func TestHandleFunc(t *testing.T) {
 				"Origin":                        {testOrigin},
 				"Access-Control-Request-Method": {"POST"},
 			},
-		}, "POST")
+		}, "/test", "POST")
 		test.AssertEquals(t, rw.Code, http.StatusOK)
 		for _, h := range []string{
 			"Access-Control-Allow-Methods",
@@ -600,7 +607,7 @@ func TestHandleFunc(t *testing.T) {
 				"Origin":                        {testOrigin},
 				"Access-Control-Request-Method": {"POST"},
 			},
-		}, "POST")
+		}, "/test", "POST")
 		test.AssertEquals(t, rw.Code, http.StatusOK)
 		test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), testOrigin)
 		// http://www.w3.org/TR/cors/ section 6.4:
@@ -1813,6 +1820,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
+			Name:         "POST, notAfter and notBefore in payload",
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
+		},
+		{
 			Name:    "POST, good payload",
 			Request: signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService),
 			ExpectedBody: `
@@ -2287,8 +2299,27 @@ func TestRevokeCertificateReasons(t *testing.T) {
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
-// key.
-func TestRevokeCertificateAccountKey(t *testing.T) {
+// that issued the cert.
+func TestRevokeCertificateIssuingAccount(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	// NOTE: this account doesn't have any authorizations for the
+	// names in the cert, but it is the account that issued it
+	// originally
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+// Valid revocation request for existing, non-revoked cert, signed with account
+// that has authorizations for names in cert
+func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)

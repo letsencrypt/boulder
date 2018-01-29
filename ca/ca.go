@@ -212,6 +212,12 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("Config must specify an OCSP lifespan period.")
 	}
 
+	for _, profile := range cfsslConfigObj.Signing.Profiles {
+		if len(profile.IssuerURL) > 1 {
+			return nil, errors.New("only one issuer_url supported")
+		}
+	}
+
 	internalIssuers, err := makeInternalIssuers(
 		issuers,
 		cfsslConfigObj.Signing,

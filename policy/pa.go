@@ -177,24 +177,25 @@ func isDNSCharacter(ch byte) bool {
 }
 
 var (
-	errInvalidIdentifier   = berrors.MalformedError("Invalid identifier type")
-	errNonPublic           = berrors.MalformedError("Name does not end in a public suffix")
-	errICANNTLD            = berrors.MalformedError("Name is an ICANN TLD")
-	errBlacklisted         = berrors.RejectedIdentifierError("Policy forbids issuing for name")
-	errInvalidDNSCharacter = berrors.MalformedError("Invalid character in DNS name")
-	errNameTooLong         = berrors.MalformedError("DNS name too long")
-	errIPAddress           = berrors.MalformedError("Issuance for IP addresses not supported")
-	errTooManyLabels       = berrors.MalformedError("DNS name has too many labels")
-	errEmptyName           = berrors.MalformedError("DNS name was empty")
-	errNameEndsInDot       = berrors.MalformedError("DNS name ends in a period")
-	errTooFewLabels        = berrors.MalformedError("DNS name does not have enough labels")
-	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
-	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
-	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
-	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
-	errTooManyWildcards    = berrors.MalformedError("DNS name had more than one wildcard")
-	errMalformedWildcard   = berrors.MalformedError("DNS name had a malformed wildcard label")
-	errICANNTLDWildcard    = berrors.MalformedError("DNS name was a wildcard for an ICANN TLD")
+	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
+	errNonPublic            = berrors.MalformedError("Name does not end in a public suffix")
+	errICANNTLD             = berrors.MalformedError("Name is an ICANN TLD")
+	errBlacklisted          = berrors.RejectedIdentifierError("Policy forbids issuing for name")
+	errInvalidDNSCharacter  = berrors.MalformedError("Invalid character in DNS name")
+	errNameTooLong          = berrors.MalformedError("DNS name too long")
+	errIPAddress            = berrors.MalformedError("Issuance for IP addresses not supported")
+	errTooManyLabels        = berrors.MalformedError("DNS name has too many labels")
+	errEmptyName            = berrors.MalformedError("DNS name was empty")
+	errNameEndsInDot        = berrors.MalformedError("DNS name ends in a period")
+	errTooFewLabels         = berrors.MalformedError("DNS name does not have enough labels")
+	errLabelTooShort        = berrors.MalformedError("DNS label is too short")
+	errLabelTooLong         = berrors.MalformedError("DNS label is too long")
+	errMalformedIDN         = berrors.MalformedError("DNS label contains malformed punycode")
+	errInvalidRLDH          = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
+	errTooManyWildcards     = berrors.MalformedError("DNS name had more than one wildcard")
+	errMalformedWildcard    = berrors.MalformedError("DNS name had a malformed wildcard label")
+	errICANNTLDWildcard     = berrors.MalformedError("DNS name was a wildcard for an ICANN TLD")
+	errWildcardNotSupported = berrors.MalformedError("Wildcard names not supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -226,6 +227,10 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	if domain == "" {
 		return errEmptyName
+	}
+
+	if strings.HasPrefix(domain, "*.") {
+		return errWildcardNotSupported
 	}
 
 	for _, ch := range []byte(domain) {
