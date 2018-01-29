@@ -1364,16 +1364,14 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		}
 		authz := authzObj.(*pendingauthzModel)
 		if authz.Status != core.StatusPending {
-			_ = Rollback(tx, nil)
-			return berrors.WrongAuthorizationStateError("authorization not pending")
+			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
 		}
 		result, err := tx.Delete(authzObj)
 		if err != nil {
 			return Rollback(tx, err)
 		}
 		if result != 1 {
-			_ = Rollback(tx, nil)
-			return berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result)
+			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
 		}
 		authz.Status = core.StatusDeactivated
 		err = tx.Insert(&authzModel{authz.Authorization})
@@ -1381,26 +1379,14 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 			return Rollback(tx, err)
 		}
 	} else {
-		authzObj, err := tx.Get(&authzModel{}, id)
+		_, err = tx.Exec(
+			`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
+			string(core.StatusDeactivated),
+			id,
+			string(core.StatusValid),
+		)
 		if err != nil {
 			return Rollback(tx, err)
-		}
-		if authzObj == nil {
-			return berrors.NotFoundError("authorization not found")
-		}
-		authz := authzObj.(*authzModel)
-		if authz.Status != core.StatusValid {
-			_ = Rollback(tx, nil)
-			return berrors.WrongAuthorizationStateError("authorization not valid")
-		}
-		authz.Status = core.StatusDeactivated
-		result, err := tx.Update(authz)
-		if err != nil {
-			return Rollback(tx, err)
-		}
-		if result != 1 {
-			_ = Rollback(tx, nil)
-			return berrors.InternalServerError("wrong number of rows updated: expected 1, got %d", result)
 		}
 	}
 
