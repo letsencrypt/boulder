@@ -64,6 +64,14 @@ type SignRequest struct {
 	// for canonicalization) as the value of the notAfter field of the
 	// certificate.
 	NotAfter time.Time
+	// If provided, the resultant certificate is checked to match the
+	// PEM-encoded precertificate encoded in PrecertToMatch. It ia
+	// currently assumeed that the precertificate was signed by the
+	// same public key; this may be checked in future versions. It is
+	// currently required that Serial, NotBefore, and NotAfter be
+	// provided when PrecertToMatch is provided; this may be changed
+	// in future versions.
+	PrecertToMatch string
 }
 
 // appendIf appends to a if s is not an empty string.

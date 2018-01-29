@@ -336,7 +336,28 @@ func (s *Signer) Sign(req signer.SignRequest) ([]byte, error) {
 
 	var certTBS = safeTemplate
 
-	if len(profile.CTLogServers) > 0 {
+	var precertToMatch *x509.Certificate = nil
+	if len(req.PrecertToMatch) > 0 {
+		// Serial, NotBefore, and NotAfter must be provided in order for there
+		// be any hope for the certificate to match the precertificate. This
+		// doesn't need to be explicitly checked since the matching will fail
+		// if they aren't provided.
+
+		block, _ := pem.Decode([]byte(req.PrecertToMatch))
+		if block == nil || block.Type != "CERTIFICATE" {
+			return nil, cferr.New(cferr.CTError, cferr.PrecertParsingFailed)
+		}
+		precertToMatch, err = x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, cferr.Wrap(cferr.CTError, cferr.PrecertParsingFailed, err)
+		}
+
+		if findCTPoisonExtension(precertToMatch) == nil {
+			return nil, cferr.New(cferr.CTError, cferr.PrecertNotAPrecert)
+		}
+	}
+
+	if precertToMatch == nil && len(profile.CTLogServers) > 0 {
 		// Add a poison extension which prevents validation
 		var poisonExtension = pkix.Extension{Id: signer.CTPoisonOID, Critical: true, Value: []byte{0x05, 0x00}}
 		var poisonedPreCert = certTBS
@@ -384,6 +405,20 @@ func (s *Signer) Sign(req signer.SignRequest) ([]byte, error) {
 		return nil, err
 	}
 
+	if precertToMatch != nil {
+		// TODO: Check that the certificate and precertificate match *before*
+		// signing the certificate.
+		err = matchCertWithPrecert(signedDER, precertToMatch)
+		if err != nil {
+			// Destroy the mismatching certificate to the best of our ability by
+			// overwriting it with garbage. We hope rand.Read() isn't optimized
+			// away and we intentionally ignore its return value.
+			_, _ = rand.Read(signedDER)
+			signedDER = []byte{}
+			return nil, err
+		}
+	}
+
 	// Get the AKI from signedCert.  This is required to support Go 1.9+.
 	// In prior versions of Go, x509.CreateCertificate updated the
 	// AuthorityKeyId of certTBS.
@@ -411,6 +446,88 @@ func (s *Signer) Sign(req signer.SignRequest) ([]byte, error) {
 	}
 
 	return signedCert, nil
+}
+
+// Verifies that the given certificate matches the given precertificate, assuming
+// both are signed with the same signer.
+func matchCertWithPrecert(certDER []byte, precert *x509.Certificate) error {
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return cferr.New(cferr.CTError, cferr.CertParsingFailed)
+	}
+
+	// Check all fields match between each cert. See
+	// https://tools.ietf.org/html/rfc5280#section-4.1
+	//
+	// XXX: Assume we never put issuerUniqueID, subjectUniqueID, or any tagged field
+	// other than [0] (version) and [3] (extensions) into certificates. This version
+	// check partially enforces that since new non-extension fields are more likely
+	// to be added in a new X509 version (e.g. X509v5) than to the current version
+	// (X509v3).
+	if cert.Version != 3 {
+		return cferr.New(cferr.CTError, cferr.CertIsNotV3)
+	}
+
+	if cert.Version != precert.Version {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedVersion)
+	}
+	if cert.SerialNumber.Cmp(precert.SerialNumber) != 0 {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedSerialNumber)
+	}
+	// XXX: The `Signature` field isn't represented in x509.Certificate. Assume that we comply
+	// with RFC 5280 and `SignatureAlgorithm` (checked below) matches `Signature`.
+
+	if !bytes.Equal(cert.RawIssuer, precert.RawIssuer) {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedIssuer)
+	}
+	if cert.NotBefore != precert.NotBefore {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedNotBefore)
+	}
+	if cert.NotAfter != precert.NotAfter {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedNotAfter)
+	}
+	if !bytes.Equal(cert.RawSubject, precert.RawSubject) {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedSubject)
+	}
+	if !bytes.Equal(cert.RawSubjectPublicKeyInfo, precert.RawSubjectPublicKeyInfo) {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedSubjectPublicKeyInfo)
+	}
+	// Assume issuerUniqueID is not present; see comment above.
+	// Assume subjectUniqueID is not present; see comment above.
+
+	// The extensions must be the same, in the same order, except |cert| may have
+	// an SCT list extension and |precert| may have a CT poison extension.
+	certExtensions, err := allExtensionsExcept(cert.Extensions, signer.SCTListOID, cferr.MultipleSCTListExtensions)
+	if err != nil {
+		return err
+	}
+	precertExtensions, err := allExtensionsExcept(cert.Extensions, signer.CTPoisonOID, cferr.MultiplePoisonExtensions)
+	if err != nil {
+		return err
+	}
+	if len(certExtensions) != len(precertExtensions) {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedExtensionCount)
+	}
+	for i, certExt := range certExtensions {
+		precertExt := precertExtensions[i]
+		if !certExt.Id.Equal(precertExt.Id) {
+			return cferr.New(cferr.CTError, cferr.CTMismatchedExtensionID)
+		}
+		if certExt.Critical != precertExt.Critical {
+			return cferr.New(cferr.CTError, cferr.CTMismatchedExtensionCritical)
+		}
+		if !bytes.Equal(certExt.Value, precertExt.Value) {
+			return cferr.New(cferr.CTError, cferr.CTMismatchedExtensionValue)
+		}
+	}
+
+	if cert.SignatureAlgorithm != precert.SignatureAlgorithm {
+		return cferr.New(cferr.CTError, cferr.CTMismatchedSignatureAlgorithm)
+	}
+
+	// The signatures are expected to be different, so don't compare them.
+
+	return nil
 }
 
 // Info return a populated info.Resp struct or an error.
@@ -469,4 +586,29 @@ func (s *Signer) SetReqModifier(func(*http.Request, []byte)) {
 // Policy returns the signer's policy.
 func (s *Signer) Policy() *config.Signing {
 	return s.policy
+}
+
+func findCTPoisonExtension(cert *x509.Certificate) *pkix.Extension {
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(signer.CTPoisonOID) {
+			return &ext
+		}
+	}
+	return nil
+}
+
+func allExtensionsExcept(input []pkix.Extension, idToExclude asn1.ObjectIdentifier, duplicateError cferr.Reason) ([]pkix.Extension, error) {
+	result := []pkix.Extension{}
+	found := false
+	for _, extension := range input {
+		if idToExclude.Equal(extension.Id) {
+			if found {
+				return nil, cferr.New(cferr.CTError, duplicateError)
+			}
+			found = true
+		} else {
+			result = append(result, extension)
+		}
+	}
+	return result, nil
 }
