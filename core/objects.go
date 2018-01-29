@@ -172,16 +172,16 @@ type Registration struct {
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// DNS only
-	Authorities []string `json:",omitempty"`
+	Authorities []string `json:"-"`
 
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
 
 	// Shared
 	Hostname          string   `json:"hostname"`
-	Port              string   `json:"port"`
-	AddressesResolved []net.IP `json:"addressesResolved"`
-	AddressUsed       net.IP   `json:"addressUsed"`
+	Port              string   `json:"port,omitempty"`
+	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
+	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
 	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
 	// Presently this will only ever be one IP from `AddressesResolved` since the
 	// only retry is in the case of a v6 failure with one v4 fallback. E.g. if
@@ -196,7 +196,7 @@ type ValidationRecord struct {
 	//   AddressesTried: [ ::1 ],
 	//   ...
 	// }
-	AddressesTried []net.IP `json:"addressesTried"`
+	AddressesTried []net.IP `json:"addressesTried,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
