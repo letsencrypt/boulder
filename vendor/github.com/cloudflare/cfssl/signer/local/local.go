@@ -97,12 +97,12 @@ func NewSignerFromFile(caFile, caKeyFile string, policy *config.Signing) (*Signe
 	return NewSigner(priv, parsedCa, signer.DefaultSigAlgo(priv), policy)
 }
 
-func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile, notBefore time.Time, notAfter time.Time) (cert []byte, err error) {
-	var distPoints = template.CRLDistributionPoints
+func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile, notBefore time.Time, notAfter time.Time) ([]byte, error) {
+	var distPoints= template.CRLDistributionPoints
 	if distPoints != nil && len(distPoints) > 0 {
 		template.CRLDistributionPoints = distPoints
 	}
-	err = signer.FillTemplate(template, s.policy.Default, profile, notBefore, notAfter)
+	err := signer.FillTemplate(template, s.policy.Default, profile, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +110,7 @@ func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile
 	var initRoot bool
 	if s.ca == nil {
 		if !template.IsCA {
-			err = cferr.New(cferr.PolicyError, cferr.InvalidRequest)
-			return
+			return nil, cferr.New(cferr.PolicyError, cferr.InvalidRequest)
 		}
 		template.DNSNames = nil
 		template.EmailAddresses = nil
@@ -130,9 +129,8 @@ func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile
 		}
 	}
 
-	cert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	log.Infof("signed certificate with serial number %d", template.SerialNumber)
-	return
+	return derBytes, nil
 }
 
 // replaceSliceIfEmpty replaces the contents of replaced with newContents if
@@ -193,10 +191,10 @@ func OverrideHosts(template *x509.Certificate, hosts []string) {
 // Sign signs a new certificate based on the PEM-encoded client
 // certificate or certificate request with the signing profile,
 // specified by profileName.
-func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
+func (s *Signer) Sign(req signer.SignRequest) ([]byte, error) {
 	profile, err := signer.Profile(s, req.Profile)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	block, _ := pem.Decode([]byte(req.Request))
@@ -343,13 +341,12 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		var poisonExtension = pkix.Extension{Id: signer.CTPoisonOID, Critical: true, Value: []byte{0x05, 0x00}}
 		var poisonedPreCert = certTBS
 		poisonedPreCert.ExtraExtensions = append(safeTemplate.ExtraExtensions, poisonExtension)
-		cert, err = s.sign(&poisonedPreCert, profile, req.NotBefore, req.NotAfter)
+		derCert, err := s.sign(&poisonedPreCert, profile, req.NotBefore, req.NotAfter)
 		if err != nil {
-			return
+			return nil, err
 		}
 
-		derCert, _ := pem.Decode(cert)
-		prechain := []ct.ASN1Cert{{Data: derCert.Bytes}, {Data: s.ca.Raw}}
+		prechain := []ct.ASN1Cert{{Data: derCert}, {Data: s.ca.Raw}}
 		var sctList []ct.SignedCertificateTimestamp
 
 		for _, server := range profile.CTLogServers {
@@ -382,8 +379,7 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		var SCTListExtension = pkix.Extension{Id: signer.SCTListOID, Critical: false, Value: serializedSCTList}
 		certTBS.ExtraExtensions = append(certTBS.ExtraExtensions, SCTListExtension)
 	}
-	var signedCert []byte
-	signedCert, err = s.sign(&certTBS, profile, req.NotBefore, req.NotAfter)
+	signedDER, err := s.sign(&certTBS, profile, req.NotBefore, req.NotAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +387,9 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 	// Get the AKI from signedCert.  This is required to support Go 1.9+.
 	// In prior versions of Go, x509.CreateCertificate updated the
 	// AuthorityKeyId of certTBS.
-	parsedCert, _ := helpers.ParseCertificatePEM(signedCert)
+	parsedCert, _ := x509.ParseCertificate(signedDER)
+
+	signedCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: signedDER})
 
 	if s.dbAccessor != nil {
 		var certRecord = certdb.CertificateRecord{
