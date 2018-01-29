@@ -10,6 +10,11 @@ import random
 import shutil
 import subprocess
 import tempfile
+import base64
+import os
+
+import OpenSSL
+import josepy as jose
 
 import startservers
 
@@ -17,6 +22,8 @@ import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
 from acme.messages import Status
+from acme import crypto_util as acme_crypto_util
+from acme import client as acme_client
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -34,6 +41,9 @@ def main():
     test_overlapping_wildcard()
     test_wildcard_exactblacklist()
     test_wildcard_authz_reuse()
+    test_revoke_by_issuer()
+    test_revoke_by_authz()
+    test_revoke_by_privkey()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -117,6 +127,68 @@ def test_wildcard_authz_reuse():
         if authz.body.status != Status("pending"):
             raise Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" %
                     ((domains), str(authz.body.status)))
+
+def test_revoke_by_issuer():
+    client = make_client(None)
+    domains = [random_domain()]
+    csr_pem = make_csr(domains)
+    order = client.new_order(csr_pem)
+    cleanup = do_http_challenges(client, order.authorizations)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    client.revoke(jose.ComparableX509(cert), 0)
+
+def test_revoke_by_authz():
+    client = make_client(None)
+    domains = [random_domain()]
+    csr_pem = make_csr(domains)
+    order = client.new_order(csr_pem)
+    cleanup = do_http_challenges(client, order.authorizations)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
+
+    # create a new client and re-authz
+    client = make_client(None)
+    csr_pem = make_csr(domains)
+    second_order = client.new_order(csr_pem)
+    cleanup = do_http_challenges(client, second_order.authorizations)
+    try:
+        second_order = client.poll_order_and_request_issuance(second_order)
+    finally:
+        cleanup()
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    client.revoke(jose.ComparableX509(cert), 0)
+
+def test_revoke_by_privkey():
+    client = make_client(None)
+    domains = [random_domain()]
+    key = OpenSSL.crypto.PKey()
+    key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+    key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
+    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
+    order = client.new_order(csr_pem)
+    cleanup = do_http_challenges(client, order.authorizations)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
+
+    # Create a new client with the JWK as the cert private key
+    jwk = jose.JWKRSA(key=key)
+    net = acme_client.ClientNetwork(key, acme_version=2,
+                                    user_agent="Boulder integration tester")
+
+    new_client = acme_client.Client(os.getenv('DIRECTORY', 'http://localhost:4001/directory'), key=jwk, net=net, acme_version=2)
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    client.revoke(jose.ComparableX509(cert), 0)
 
 if __name__ == "__main__":
     try:

@@ -2299,8 +2299,27 @@ func TestRevokeCertificateReasons(t *testing.T) {
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
-// key.
-func TestRevokeCertificateAccountKey(t *testing.T) {
+// that issued the cert.
+func TestRevokeCertificateIssuingAccount(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	// NOTE: this account doesn't have any authorizations for the
+	// names in the cert, but it is the account that issued it
+	// originally
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+// Valid revocation request for existing, non-revoked cert, signed with account
+// that has authorizations for names in cert
+func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
