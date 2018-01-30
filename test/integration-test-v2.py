@@ -231,6 +231,11 @@ def test_revoke_by_privkey():
     key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
     csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
     order = client.new_order(csr_pem)
+    cleanup = do_http_challenges(client, order.authorizations)
+    try:
+        order = client.poll_order_and_request_issuance(order)
+    finally:
+        cleanup()
 
     # Create a new client with the JWK as the cert private key
     jwk = jose.JWKRSA(key=key)
