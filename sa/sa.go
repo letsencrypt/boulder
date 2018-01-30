@@ -1699,7 +1699,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		_, err := ssa.dbMap.Select(
 			&authzs,
 			fmt.Sprintf(`SELECT %s from %s AS authz
-		LEFT JOIN orderToAuthz
+		INNER JOIN orderToAuthz
 		ON authz.ID = orderToAuthz.authzID
 		WHERE authz.registrationID = ? AND
 		authz.expires > ? AND
