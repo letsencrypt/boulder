@@ -1722,10 +1722,14 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
-		existing, present := byName[auth.Identifier.Value]
-		if !present || auth.Expires.After(*existing.Expires) {
-			byName[auth.Identifier.Value] = auth
+		// We don't expect there to be multiple authorizations for the same name
+		// within the same order
+		if _, present := byName[auth.Identifier.Value]; present {
+			return nil, berrors.InternalServerError(
+				"Found multiple authorizations within one order for identifier %q",
+				auth.Identifier.Value)
 		}
+		byName[auth.Identifier.Value] = auth
 	}
 	return byName, nil
 }
