@@ -428,6 +428,42 @@ func New(category Category, reason Reason) *Error {
 			msg = "Certificate transparency parsing failed due to unknown error"
 		case PrecertSubmissionFailed:
 			msg = "Certificate transparency precertificate submission failed"
+		case PrecertParsingFailed:
+			msg = "PrecertParsingFailed"
+		case PrecertNotAPrecert:
+			msg = "PrecertNotAPrecert"
+		case CertParsingFailed:
+			msg = "CertParsingFailed"
+		case CertIsNotV3:
+			msg = "CertIsNotV3"
+		case CTMismatchedVersion:
+			msg = "CTMismatchedVersion"
+		case CTMismatchedSerialNumber:
+			msg = "CTMismatchedSerialNumber"
+		case CTMismatchedIssuer:
+			msg = "CTMismatchedIssuer"
+		case CTMismatchedNotBefore:
+			msg = "CTMismatchedNotBefore"
+		case CTMismatchedNotAfter:
+			msg = "CTMismatchedNotAfter"
+		case CTMismatchedSubject:
+			msg = "CTMismatchedSubject"
+		case CTMismatchedSubjectPublicKeyInfo:
+			msg = "CTMismatchedSubjectPublicKeyInfo"
+		case CTMismatchedExtensionCount:
+			msg = "CTMismatchedExtensionCount"
+		case MultiplePoisonExtensions:
+			msg = "MultiplePoisonExtensions"
+		case MultipleSCTListExtensions:
+			msg = "MultipleSCTListExtensions"
+		case CTMismatchedExtensionID:
+			msg = "CTMismatchedExtensionID"
+		case CTMismatchedExtensionCritical:
+			msg = "CTMismatchedExtensionCritical"
+		case CTMismatchedExtensionValue:
+			msg = "CTMismatchedExtensionValue"
+		case CTMismatchedSignatureAlgorithm:
+			msg = "CTMismatchedSignatureAlgorithm"
 		default:
 			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category CTError.", reason))
 		}
