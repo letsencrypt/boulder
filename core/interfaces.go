@@ -169,4 +169,5 @@ type StorageAuthority interface {
 type Publisher interface {
 	SubmitToCT(ctx context.Context, der []byte) error
 	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
+	SubmitToSingleCTWithResult(ctx context.Context, logURL, logPublicKey string, der []byte) ([]byte, error)
 }
