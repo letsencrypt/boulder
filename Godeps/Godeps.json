@@ -396,13 +396,13 @@
 			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
 		},
 		{
-			"ImportPath": "github.com/kisielk/sqlstruct",
-			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
-		},
-		{
 			"ImportPath": "github.com/jmoiron/sqlx/reflectx",
 			"Comment": "sqlx-v1.1-131-g05cef07",
 			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
+		},
+		{
+			"ImportPath": "github.com/kisielk/sqlstruct",
+			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
 		}
 	]
 }
