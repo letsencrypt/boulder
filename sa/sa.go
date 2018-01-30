@@ -995,6 +995,8 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 
 	// Iterate the order IDs, fetching the full order & associated authorizations
 	// for each
+	// TODO(@cpu): This is not performant and we should optimize:
+	//  https://github.com/letsencrypt/boulder/issues/3410
 	for _, orderID := range orderIDs {
 		order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 		if err != nil {
