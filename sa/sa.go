@@ -1650,7 +1650,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return string(core.StatusPending), nil
 	}
 
-	// An order is fully authorizsed if it has valid authzs for each of the order
+	// An order is fully authorized if it has valid authzs for each of the order
 	// names
 	fullyAuthorized := len(order.Names) == validAuthzs
 
