@@ -1352,23 +1352,44 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
-	table := authorizationTable
-	oldStatus := core.StatusValid
+
 	if existingPending(tx, id) {
-		table = pendingAuthorizationTable
-		oldStatus = core.StatusPending
+		authzObj, err := tx.Get(&pendingauthzModel{}, id)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		if authzObj == nil {
+			// InternalServerError because existingPending already told us it existed
+			return berrors.InternalServerError("failure retrieving pending authorization")
+		}
+		authz := authzObj.(*pendingauthzModel)
+		if authz.Status != core.StatusPending {
+			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
+		}
+		result, err := tx.Delete(authzObj)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		if result != 1 {
+			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
+		}
+		authz.Status = core.StatusDeactivated
+		err = tx.Insert(&authzModel{authz.Authorization})
+		if err != nil {
+			return Rollback(tx, err)
+		}
+	} else {
+		_, err = tx.Exec(
+			`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
+			string(core.StatusDeactivated),
+			id,
+			string(core.StatusValid),
+		)
+		if err != nil {
+			return Rollback(tx, err)
+		}
 	}
 
-	_, err = tx.Exec(
-		fmt.Sprintf(`UPDATE %s SET status = ? WHERE id = ? and status = ?`, table),
-		string(core.StatusDeactivated),
-		id,
-		string(oldStatus),
-	)
-	if err != nil {
-		err = Rollback(tx, err)
-		return err
-	}
 	return tx.Commit()
 }
 
