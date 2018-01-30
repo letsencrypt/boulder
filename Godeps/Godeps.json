@@ -21,6 +21,16 @@
 			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/certdb/dbconf",
+			"Comment": "1.2.0-208-ged5223a",
+			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/certdb/sql",
+			"Comment": "1.2.0-208-ged5223a",
+			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
 			"Comment": "1.2.0-208-ged5223a",
 			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
@@ -169,6 +179,20 @@
 			"ImportPath": "github.com/jmhodges/clock",
 			"Comment": "v1.1",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
+		},
+		{
+			"ImportPath": "github.com/jmoiron/sqlx",
+			"Comment": "sqlx-v1.1-131-g05cef07",
+			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
+		},
+		{
+			"ImportPath": "github.com/jmoiron/sqlx/reflectx",
+			"Comment": "sqlx-v1.1-131-g05cef07",
+			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
+		},
+		{
+			"ImportPath": "github.com/kisielk/sqlstruct",
+			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
@@ -379,30 +403,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/certdb/dbconf",
-			"Comment": "1.2.0-208-ged5223a",
-			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/certdb/sql",
-			"Comment": "1.2.0-208-ged5223a",
-			"Rev": "ed5223a490ece4d66899bbb292e3e46c0677cb86"
-		},
-		{
-			"ImportPath": "github.com/jmoiron/sqlx",
-			"Comment": "sqlx-v1.1-131-g05cef07",
-			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
-		},
-		{
-			"ImportPath": "github.com/jmoiron/sqlx/reflectx",
-			"Comment": "sqlx-v1.1-131-g05cef07",
-			"Rev": "05cef0741ade10ca668982355b3f3f0bcf0ff0a8"
-		},
-		{
-			"ImportPath": "github.com/kisielk/sqlstruct",
-			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
 		}
 	]
 }
