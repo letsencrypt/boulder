@@ -44,7 +44,7 @@ service StorageAuthority {
         rpc SetOrderProcessing(core.Order) returns (core.Empty) {}
         rpc FinalizeOrder(core.Order) returns (core.Empty) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
-        rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+        rpc GetValidOrderAuthorizations(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
@@ -198,7 +198,7 @@ message OrderRequest {
         optional int64 id = 1;
 }
 
-message GetOrderAuthorizationsRequest {
+message GetValidOrderAuthorizationsRequest {
         optional int64 id = 1;
         optional int64 acctID = 2;
 }

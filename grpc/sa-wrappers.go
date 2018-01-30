@@ -544,10 +544,10 @@ func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 	return resp, nil
 }
 
-func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
+func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations(
 	ctx context.Context,
-	request *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	resp, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	request *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	resp, err := sas.inner.GetValidOrderAuthorizations(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -1113,14 +1113,14 @@ func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 	return sas.inner.GetOrderForNames(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
+func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations(
 	ctx context.Context,
-	request *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	request *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if request == nil || request.Id == nil {
 		return nil, errIncompleteRequest
 	}
 
-	authzs, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	authzs, err := sas.inner.GetValidOrderAuthorizations(ctx, request)
 	if err != nil {
 		return nil, err
 	}

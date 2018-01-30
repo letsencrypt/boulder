@@ -1573,11 +1573,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	return order, nil
 }
 
-// GetOrderAuthorizations is used to find the valid, unexpired authorizations
+// GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
 // associated with a specific order and account ID.
-func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
+func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	ctx context.Context,
-	req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	now := ssa.clk.Now()
 	// Select the full authorization data for all *valid, unexpired*
 	// authorizations that are owned by the correct account ID and associated with
