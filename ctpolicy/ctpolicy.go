@@ -50,16 +50,14 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 				Der:          cert,
 			})
 			if err != nil {
+				// Only log the error if it is not a result of canceling subCtx
 				if err != context.Canceled {
 					ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
 				}
 				results <- result{err: err}
 				return
 			}
-			select {
-			case results <- result{sct: sct.Sct}:
-			case <-subCtx.Done():
-			}
+			results <- result{sct: sct.Sct}
 		}(l)
 	}
 
@@ -70,9 +68,14 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 			return nil, ctx.Err()
 		case res := <-results:
 			if res.sct != nil {
+				// Return the very first SCT we get back and cancel any other
+				// in progress work.
 				cancel()
 				return res.sct, nil
 			}
+			// We will continue waiting for an SCT until we've seen the same number
+			// of errors as there are logs in the group as we may still get a SCT
+			// back from another log.
 			numErr++
 			if numErr == len(group) {
 				return nil, errors.New("all submissions for group failed")
@@ -93,21 +96,24 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 		go func(g []cmd.LogDescription) {
 			defer wg.Done()
 			sct, err := ctp.race(subCtx, cert, g)
-			if err != nil {
-				results <- result{err: err}
-				return
-			}
-			results <- result{sct: sct}
+			// Only one of these will be non-nil
+			results <- result{sct: sct, err: err}
 		}(g)
 	}
 
 	go func() {
+		// The for loop below is blocked on the results channel being open,
+		// once all of the goroutines spawned above are finished and any
+		// writes to the channel have been completed close it so that the
+		// loop can break.
 		wg.Wait()
 		close(results)
 	}()
 
 	ret := []core.SCTDER{}
 	for res := range results {
+		// If any one group fails to get a SCT then we fail out immediately
+		// cancel any other in progress work as we can't continue
 		if res.err != nil {
 			cancel()
 			return nil, res.err
