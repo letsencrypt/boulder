@@ -1632,10 +1632,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Check whether there are existing non-expired authorizations for the set of
 	// order names
 	now := ra.clk.Now().UnixNano()
+	noLegacyAuthzs := true
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID: order.RegistrationID,
 		Now:            &now,
 		Domains:        order.Names,
+		NoLegacyAuthzs: &noLegacyAuthzs,
 	})
 	if err != nil {
 		return nil, err

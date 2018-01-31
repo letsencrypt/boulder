@@ -212,6 +212,7 @@ message GetAuthorizationsRequest {
         optional int64 registrationID = 1;
         repeated string domains = 2;
         optional int64 now = 3; // Unix timestamp (nanoseconds)
+        optional bool noLegacyAuthzs = 4; // Do not include legacy V1 authzs
 }
 
 message Authorizations {

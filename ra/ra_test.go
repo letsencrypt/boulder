@@ -1194,38 +1194,23 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	// Advancing the clock by hour should expire the first pending order and allow creation of another
 	fc.Add(time.Hour)
-
-	// Create one finalized Authz for Registration.ID for "not-example.com" and
-	// "www.not-example.com" to allow the order we will create next to be
-	// finalized
-	exp := ra.clk.Now().Add(time.Hour)
-	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
-	finalAuthz.Status = "valid"
-	finalAuthz.Expires = &exp
-	finalAuthz.Challenges[0].Status = "valid"
-	finalAuthz.RegistrationID = Registration.ID
-	finalAuthz, err = ra.SA.NewPendingAuthorization(ctx, finalAuthz)
-	test.AssertNotError(t, err, "Could not store test pending authorization")
-	err = ra.SA.FinalizeAuthorization(ctx, finalAuthz)
-	test.AssertNotError(t, err, "Could not finalize test pending authorization")
-
-	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
-	finalAuthzB.Status = "valid"
-	finalAuthzB.Expires = &exp
-	finalAuthzB.Challenges[0].Status = "valid"
-	finalAuthzB.RegistrationID = Registration.ID
-	finalAuthzB, err = ra.SA.NewPendingAuthorization(ctx, finalAuthzB)
-	test.AssertNotError(t, err, "Could not store 2nd test pending authorization")
-	err = ra.SA.FinalizeAuthorization(ctx, finalAuthzB)
-	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
-
 	order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
 		Names:          []string{"not-example.com", "www.not-example.com"},
 	})
 	test.AssertNotError(t, err, "NewOrder failed")
+
+	// Finalize the order's authorizations to fake validation and allow
+	// finalization of the order
+	for _, authzId := range order.Authorizations {
+		authz, err := ra.SA.GetAuthorization(ctx, authzId)
+		test.AssertNotError(t, err, "SA.GetAuthorization failed")
+
+		authz.Status = core.StatusValid
+		authz.Challenges[0].Status = core.StatusValid
+		err = ra.SA.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "SA.FinalizeAuthorization failed")
+	}
 
 	// Swallowing errors here because the CSRPEM is hardcoded test data expected
 	// to parse in all instance
@@ -2163,6 +2148,68 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
 	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
+}
+
+// TestNewOrderLegacyAuthzReuse tests that a legacy acme v1 authorization from
+// the `new-authz` endpoint isn't reused by a V2 order created by the same
+// account.
+func TestNewOrderLegacyAuthzReuse(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
+
+	// Create a legacy pending authz, not associated with an order
+	legacyAuthz := AuthzInitial
+	legacyAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	legacyAuthz.RegistrationID = Registration.ID
+	legacyAuthz.Status = core.StatusPending
+	exp := fc.Now().Add(time.Hour)
+	legacyAuthz.Expires = &exp
+	legacyAuthz, err := ra.SA.NewPendingAuthorization(ctx, legacyAuthz)
+	test.AssertNotError(t, err, "Could not create legacy pending authorization")
+
+	// Finalize the legacy authz to valid status
+	legacyAuthz.Status = core.StatusValid
+	legacyAuthz.Challenges[0].Status = core.StatusValid
+	err = ra.SA.FinalizeAuthorization(ctx, legacyAuthz)
+	test.AssertNotError(t, err, "Could not finalize legacy pending authorization to valid")
+
+	// Create an order request for the same name as the legacy authz
+	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{"not-example.com"},
+	})
+	// It should not produce an error
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	// There should be only one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// The authorization should not be the legacy authz
+	test.AssertNotEquals(t, order.Authorizations[0], legacyAuthz.ID)
+	// The order should be pending status
+	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+
+	// Create an order request for a superset of the names from the order above to
+	// test that V2 reuse still functions.
+	secondOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{"not-example.com", "deffo.not-example.com"},
+	})
+	// It should not produce an error
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	// There should be only two authorizations
+	test.AssertEquals(t, len(secondOrder.Authorizations), 2)
+
+	// Check each of the authorizations
+	var reusedAuthz bool
+	for _, authzID := range secondOrder.Authorizations {
+		// If the ID is equal to the original order's authorization ID then the
+		// authz was reused
+		if authzID == order.Authorizations[0] {
+			reusedAuthz = true
+		}
+	}
+	// We expect the authz to have been reused.
+	test.AssertEquals(t, reusedAuthz, true)
 }
 
 // TestNewOrderReuse tests that subsequent requests by an ACME account to create
