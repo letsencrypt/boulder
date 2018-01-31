@@ -8,6 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -33,13 +34,14 @@ func (mp *alwaysFail) SubmitToSingleCTWithResult(ctx context.Context, logURL, lo
 }
 
 func TestGetSCTs(t *testing.T) {
-	expired, _ := context.WithDeadline(context.Background(), time.Now())
+	expired, cancel := context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
 	testCases := []struct {
 		name   string
 		mock   core.Publisher
 		groups [][]cmd.LogDescription
 		ctx    context.Context
-		result [][]byte
+		result []core.SCTDER
 		err    error
 	}{
 		{
@@ -56,7 +58,7 @@ func TestGetSCTs(t *testing.T) {
 				},
 			},
 			ctx:    context.Background(),
-			result: [][]byte{[]byte{0}, []byte{0}},
+			result: []core.SCTDER{[]byte{0}, []byte{0}},
 		},
 		{
 			name: "basic failure case",
@@ -94,7 +96,7 @@ func TestGetSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.groups)
+			ctp := New(tc.mock, tc.groups, blog.NewMock())
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
