@@ -3,12 +3,17 @@ syntax = "proto2";
 service Publisher {
         rpc SubmitToCT(Request) returns (Empty) {}
         rpc SubmitToSingleCT(Request) returns (Empty) {}
+        rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
 }
 
 message Request {
         optional bytes der = 1;
         optional string LogURL = 2;
         optional string LogPublicKey = 3;
+}
+
+message Result {
+        optional bytes sct = 1;
 }
 
 message Empty {

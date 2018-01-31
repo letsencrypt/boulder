@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -21,15 +22,15 @@ func (mp *mockPub) SubmitToCT(ctx context.Context, der []byte) error {
 func (mp *mockPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
 	return nil
 }
-func (mp *mockPub) SubmitToSingleCTWithResult(ctx context.Context, logURL, logPublicKey string, der []byte) ([]byte, error) {
-	return []byte{0}, nil
+func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
 type alwaysFail struct {
 	mockPub
 }
 
-func (mp *alwaysFail) SubmitToSingleCTWithResult(ctx context.Context, logURL, logPublicKey string, der []byte) ([]byte, error) {
+func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
 	return nil, errors.New("BAD")
 }
 

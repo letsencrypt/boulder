@@ -11,6 +11,7 @@ import (
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -169,5 +170,5 @@ type StorageAuthority interface {
 type Publisher interface {
 	SubmitToCT(ctx context.Context, der []byte) error
 	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
-	SubmitToSingleCTWithResult(ctx context.Context, logURL, logPublicKey string, der []byte) ([]byte, error)
+	SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error)
 }

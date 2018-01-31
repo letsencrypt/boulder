@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // CTPolicy is used to hold information about SCTs required from various
@@ -43,17 +44,20 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 	defer cancel()
 	for _, l := range group {
 		go func(l cmd.LogDescription) {
-			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, l.URI, l.Key, cert)
+			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
+				LogURL:       &l.URI,
+				LogPublicKey: &l.Key,
+				Der:          cert,
+			})
 			if err != nil {
-				// NOTE(@roland): I'm not sure if calling cancel() will trigger context.DeadlineExceeded
-				// errors here, but I think it will. Probably in that case we should ignore those errors
-				// but that will mask cases where we are _actually_ timing out regularly... ¯\_(ツ)_/¯
-				ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
+				if err != context.Canceled {
+					ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
+				}
 				results <- result{err: err}
 				return
 			}
 			select {
-			case results <- result{sct: sct}:
+			case results <- result{sct: sct.Sct}:
 			case <-subCtx.Done():
 			}
 		}(l)

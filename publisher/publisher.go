@@ -13,12 +13,14 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
+	"github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // Log contains the CT client and signature verifier for a particular CT log
@@ -185,46 +187,50 @@ func New(
 
 // SubmitToSingleCT will submit the certificate represented by certDER to the CT
 // log specified by log URL and public key (base64)
-func (pub *Impl) SubmitToSingleCT(
-	ctx context.Context,
-	logURL, logPublicKey string,
-	der []byte) error {
-	cert, err := x509.ParseCertificate(der)
+func (pub *Impl) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
+	// NOTE(@roland): historically we've always thrown any errors away when
+	// using this method. In order to preserve this behaviour we just ignore
+	// any returns and return nil.
+	_, _ = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &logURL, LogPublicKey: &logPublicKey, Der: der})
+	return nil
+}
+
+// SubmitToSingleCTWithResult will submit the certificate represented by certDER to the CT
+// log specified by log URL and public key (base64) and return the SCT to the caller
+func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+	cert, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		pub.log.AuditErr(fmt.Sprintf("Failed to parse certificate: %s", err))
-		return err
+		return nil, err
 	}
 
-	chain := append([]ct.ASN1Cert{ct.ASN1Cert{der}}, pub.issuerBundle...)
+	chain := append([]ct.ASN1Cert{ct.ASN1Cert{req.Der}}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
 	// and returned.
-	ctLog, err := pub.ctLogsCache.AddLog(logURL, logPublicKey, pub.log)
+	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.log)
 	if err != nil {
 		pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
-		return err
+		return nil, err
 	}
 
-	start := time.Now()
-	err = pub.singleLogSubmit(
+	sct, err := pub.singleLogSubmit(
 		ctx,
 		chain,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
-	took := time.Since(start).Seconds()
-	status := "success"
 	if err != nil {
 		pub.log.AuditErr(
 			fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
-		status = "error"
+		return nil, err
 	}
-	pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":    ctLog.uri,
-		"status": status,
-	}).Observe(took)
 
-	return nil
+	sctBytes, err := tls.Marshal(*sct)
+	if err != nil {
+		return nil, err
+	}
+	return &pubpb.Result{Sct: sctBytes}, nil
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
@@ -251,11 +257,21 @@ func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
 	serial string,
-	ctLog *Log) error {
+	ctLog *Log) (*ct.SignedCertificateTimestamp, error) {
 
+	start := time.Now()
 	sct, err := ctLog.client.AddChain(ctx, chain)
+	took := time.Since(start).Seconds()
+	status := "success"
+	defer func() {
+		pub.metrics.submissionLatency.With(prometheus.Labels{
+			"log":    ctLog.uri,
+			"status": status,
+		}).Observe(took)
+	}()
 	if err != nil {
-		return err
+		status = "error"
+		return nil, err
 	}
 
 	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
@@ -268,14 +284,14 @@ func (pub *Impl) singleLogSubmit(
 		},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return sct, nil
 }
 
 func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) core.SignedCertificateTimestamp {
