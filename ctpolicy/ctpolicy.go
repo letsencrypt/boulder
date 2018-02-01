@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -84,27 +83,15 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 // the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCTDER, error) {
 	results := make(chan result, len(ctp.groups))
-	wg := new(sync.WaitGroup)
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for _, g := range ctp.groups {
-		wg.Add(1)
 		go func(g []cmd.LogDescription) {
-			defer wg.Done()
 			sct, err := ctp.race(subCtx, cert, g)
 			// Only one of these will be non-nil
 			results <- result{sct: sct, err: err}
 		}(g)
 	}
-
-	go func() {
-		// The for loop below is blocked on the results channel being open,
-		// once all of the goroutines spawned above are finished and any
-		// writes to the channel have been completed close it so that the
-		// loop can break.
-		wg.Wait()
-		close(results)
-	}()
 
 	var ret []core.SCTDER
 	for i := 0; i < len(ctp.groups); i++ {
