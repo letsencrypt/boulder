@@ -1690,7 +1690,6 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 	ctx context.Context,
 	orderID, acctID int64) (map[string]*core.Authorization, error) {
-
 	now := ssa.clk.Now()
 	var allAuthzs []*core.Authorization
 
