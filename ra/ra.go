@@ -1657,14 +1657,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			continue
 		}
 		authz := nameToExistingAuthz[name]
-		// If the existing authz isn't valid, note that its missing and continue.
-		// Reusing pending authorizations between orders is primarily an effort to
-		// prevent clients hitting the pending authz limit, but in a V2 world order
-		// reuse accomplishes the same thing.
-		if *authz.Status != string(core.StatusValid) {
-			missingAuthzNames = append(missingAuthzNames, name)
-			continue
-		}
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix
