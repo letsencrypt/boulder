@@ -1713,7 +1713,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		allAuthzs = append(allAuthzs, authzs...)
 	}
 
-	// Collapse & dedupe the returned authorizations into a mapping from name to
+	// Collapse the returned authorizations into a mapping from name to
 	// authorization
 	byName := make(map[string]*core.Authorization)
 	for _, auth := range allAuthzs {
@@ -1785,9 +1785,10 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find an order with the exact set of names
-// requested, associated with the given accountID. Only unexpired orders are
-// considered. If no order is found a nil corepb.Order pointer is returned.
+// GetOrderForNames tries to find a **pending** order with the exact set of
+// names requested, associated with the given accountID. Only unexpired orders
+// with status pending are considered. If no order meeting these requirements is
+// found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
