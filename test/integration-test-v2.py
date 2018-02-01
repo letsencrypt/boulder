@@ -130,38 +130,18 @@ def test_wildcard_authz_reuse():
 
 def test_revoke_by_issuer():
     client = make_client(None)
-    domains = [random_domain()]
-    csr_pem = make_csr(domains)
-    order = client.new_order(csr_pem)
-    cleanup = do_http_challenges(client, order.authorizations)
-    try:
-        order = client.poll_order_and_request_issuance(order)
-    finally:
-        cleanup()
+    order = auth_and_issue([random_domain()], client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
 
 def test_revoke_by_authz():
-    client = make_client(None)
     domains = [random_domain()]
-    csr_pem = make_csr(domains)
-    order = client.new_order(csr_pem)
-    cleanup = do_http_challenges(client, order.authorizations)
-    try:
-        order = client.poll_order_and_request_issuance(order)
-    finally:
-        cleanup()
+    order = auth_and_issue(domains)
 
     # create a new client and re-authz
     client = make_client(None)
-    csr_pem = make_csr(domains)
-    second_order = client.new_order(csr_pem)
-    cleanup = do_http_challenges(client, second_order.authorizations)
-    try:
-        second_order = client.poll_order_and_request_issuance(second_order)
-    finally:
-        cleanup()
+    auth_and_issue(domains, client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
