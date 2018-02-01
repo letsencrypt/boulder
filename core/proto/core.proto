@@ -85,6 +85,7 @@ message Order {
         repeated string authorizations = 6;
         optional string status = 7;
         repeated string names = 8;
+        optional bool beganProcessing = 9;
 }
 
 message Empty {}

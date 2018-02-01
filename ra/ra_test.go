@@ -1162,6 +1162,10 @@ func TestAuthzRateLimiting(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -1231,6 +1235,11 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// to parse in all instance
 	validCSRBlock, _ := pem.Decode(CSRPEM)
 	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
+
+	// Artificially set the order's status to pending since it didn't come from
+	// a sa.GetOrder call that populates the field.
+	pendingStatus := string(core.StatusPending)
+	order.Status = &pendingStatus
 
 	// Finalize the order with a CSR to change it from pending status to valid status
 	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
@@ -2101,6 +2110,10 @@ func TestRecheckCAAFail(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2169,6 +2182,10 @@ func TestNewOrder(t *testing.T) {
 // an identical order results in only one order being created & subsequently
 // reused.
 func TestNewOrderReuse(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2267,7 +2284,67 @@ func TestNewOrderReuse(t *testing.T) {
 	}
 }
 
+func TestNewOrderReuseInvalidAuthz(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com"}
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// First, add an order with `names` for regA
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// It should have an ID
+	test.AssertNotNil(t, order.Id, "Initial order had a nil ID")
+	// It should have one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+
+	// Fetch the full authz by the ID
+	authzID := order.Authorizations[0]
+	authz, err := ra.SA.GetAuthorization(ctx, authzID)
+	test.AssertNotError(t, err, "Error getting order authorization")
+
+	// Finalize the authz to an invalid status
+	authz.Status = core.StatusInvalid
+	err = ra.SA.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, fmt.Sprintf("Could not finalize authorization %q", authzID))
+
+	// The order associated with the authz should now be invalid
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "Error getting order to check status")
+	test.AssertEquals(t, *updatedOrder.Status, "invalid")
+
+	// Create a second order for the same names/regID
+	secondOrder, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// It should have a different ID than the first now-invalid order
+	test.AssertNotEquals(t, *secondOrder.Id, *order.Id)
+	// It should be status pending
+	test.AssertEquals(t, *secondOrder.Status, "pending")
+	// It should have one authorization
+	test.AssertEquals(t, len(secondOrder.Authorizations), 1)
+	// It should have a different authorization than the first order's now-invalid authorization
+	test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
+}
+
 func TestNewOrderWildcard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2461,6 +2538,10 @@ func TestNewOrderWildcard(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2701,6 +2782,10 @@ func TestFinalizeOrder(t *testing.T) {
 }
 
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
@@ -2782,6 +2867,10 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
