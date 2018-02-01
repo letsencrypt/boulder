@@ -142,6 +142,8 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
     finally:
         cleanup()
 
+    return order
+
 def do_dns_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
