@@ -262,17 +262,17 @@ func (pub *Impl) singleLogSubmit(
 	start := time.Now()
 	sct, err := ctLog.client.AddChain(ctx, chain)
 	took := time.Since(start).Seconds()
-	status := "success"
-	defer func() {
+	if err != nil {
 		pub.metrics.submissionLatency.With(prometheus.Labels{
 			"log":    ctLog.uri,
-			"status": status,
+			"status": "error",
 		}).Observe(took)
-	}()
-	if err != nil {
-		status = "error"
 		return nil, err
 	}
+	pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":    ctLog.uri,
+		"status": "success",
+	}).Observe(took)
 
 	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
 		Leaf: ct.MerkleTreeLeaf{

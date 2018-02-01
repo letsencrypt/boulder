@@ -61,8 +61,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 		}(l)
 	}
 
-	numErr := 0
-	for {
+	for i := 0; i < len(group); i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -76,12 +75,9 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 			// We will continue waiting for an SCT until we've seen the same number
 			// of errors as there are logs in the group as we may still get a SCT
 			// back from another log.
-			numErr++
-			if numErr == len(group) {
-				return nil, errors.New("all submissions for group failed")
-			}
 		}
 	}
+	return nil, errors.New("all submissions for group failed")
 }
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
@@ -110,8 +106,9 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 		close(results)
 	}()
 
-	ret := []core.SCTDER{}
-	for res := range results {
+	var ret []core.SCTDER
+	for i := 0; i < len(ctp.groups); i++ {
+		res := <-results
 		// If any one group fails to get a SCT then we fail out immediately
 		// cancel any other in progress work as we can't continue
 		if res.err != nil {
