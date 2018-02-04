@@ -25,7 +25,11 @@ go get \
  cd protobuf-2.6.1 && ./configure --prefix=$HOME && make && make install) &
 
 # Wait for all the background commands to finish.
-wait
+# capture their error codes, then if bad, exit.
+RC=0
+wait %1 || RC=$?
+wait %2 || RC=$?
+(exit $RC)
 
 # Create the database and roles
 ./test/create_db.sh
