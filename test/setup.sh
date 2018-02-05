@@ -26,10 +26,8 @@ go get \
 
 # Wait for all the background commands to finish.
 # capture their error codes, then if bad, exit.
-RC=0
-wait %1 || RC=$?
-wait %2 || RC=$?
-(exit $RC)
+wait %1 || exit $?
+wait %2 || exit $?
 
 # Create the database and roles
 ./test/create_db.sh
