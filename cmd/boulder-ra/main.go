@@ -14,6 +14,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -73,6 +74,8 @@ type config struct {
 		WeakKeyFile string
 
 		OrderLifetime cmd.ConfigDuration
+
+		CTLogGroups [][]cmd.LogDescription
 
 		Features map[string]bool
 	}
@@ -169,6 +172,11 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
+	var ctp *ctpolicy.CTPolicy
+	if c.RA.CTLogGroups != nil && pubc != nil {
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
+	}
+
 	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
@@ -186,6 +194,7 @@ func main() {
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		ctp,
 	)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)

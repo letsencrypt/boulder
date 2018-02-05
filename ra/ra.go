@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -90,6 +92,9 @@ type RegistrationAuthorityImpl struct {
 	pendOrdersByRegIDStats metrics.Scope
 	certsForDomainStats    metrics.Scope
 	totalCertsStats        metrics.Scope
+
+	ctpolicy        *ctpolicy.CTPolicy
+	ctpolicyResults *prometheus.CounterVec
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -107,7 +112,17 @@ func NewRegistrationAuthorityImpl(
 	pubc core.Publisher,
 	caaClient caaChecker,
 	orderLifetime time.Duration,
+	ctp *ctpolicy.CTPolicy,
 ) *RegistrationAuthorityImpl {
+	ctpolicyResults := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ctpolicy_results",
+			Help: "Counter of calls to ctpolicy.GetSCTs with success/failure labels",
+		},
+		[]string{"result"},
+	)
+	stats.MustRegister(ctpolicyResults)
+
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -130,6 +145,8 @@ func NewRegistrationAuthorityImpl(
 		publisher:                    pubc,
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
+		ctpolicy:                     ctp,
+		ctpolicyResults:              ctpolicyResults,
 	}
 	return ra
 }
@@ -993,6 +1010,24 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 			// This context is limited by the gRPC timeout.
 			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
+	} else if ra.ctpolicy != nil {
+		currentDeadline, ok := ctx.Deadline()
+		if !ok {
+			// ???
+		}
+		until := time.Until(currentDeadline)
+		ctCtx, cancel := context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
+		defer cancel()
+		_, err := ra.ctpolicy.GetSCTs(ctCtx, cert.DER)
+		// The final cert has already been issued so actually return it to the
+		// user even if this fails since we aren't actually doing anything with
+		// the SCTs yet.
+		if err != nil {
+			ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"}).Inc()
+			ra.log.Info(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
+		} else if err != nil {
+			ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Inc()
+		}
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
