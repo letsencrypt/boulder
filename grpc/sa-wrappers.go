@@ -1141,7 +1141,7 @@ func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
 func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations(
 	ctx context.Context,
 	request *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if request == nil || request.Id == nil {
+	if request == nil || request.Id == nil || request.AcctID == nil {
 		return nil, errIncompleteRequest
 	}
 
