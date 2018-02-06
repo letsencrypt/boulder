@@ -1011,13 +1011,26 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
 		}()
 	} else if ra.ctpolicy != nil {
+		var ctCtx context.Context
 		currentDeadline, ok := ctx.Deadline()
 		if !ok {
-			// ???
+			// Current context doesn't have a deadline, this should
+			// never happen so it's a internal server error... but
+			// we already issued the cert so we can't fail out now.
+			// Just use a background context that lasts forever
+			// instead.
+			ctCtx = context.Background()
+		} else {
+			// NOTE: We want to check how putting the SCT submission/collection
+			// effects calls to IssueCertificate so we take the current context
+			// and allocate 80% of the remaining time to calling CTPolicy.GetSCTs.
+			// This way if we exceed the child context we won't time out the
+			// parent call and can still return the cert to the user.
+			until := time.Until(currentDeadline)
+			var cancel func()
+			ctCtx, cancel = context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
+			defer cancel()
 		}
-		until := time.Until(currentDeadline)
-		ctCtx, cancel := context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
-		defer cancel()
 		_, err := ra.ctpolicy.GetSCTs(ctCtx, cert.DER)
 		// The final cert has already been issued so actually return it to the
 		// user even if this fails since we aren't actually doing anything with
@@ -1025,7 +1038,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		if err != nil {
 			ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"}).Inc()
 			ra.log.Info(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
-		} else if err != nil {
+		} else if err == nil {
 			ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Inc()
 		}
 	}
