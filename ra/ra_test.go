@@ -43,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -3120,7 +3121,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		CSR: ExampleCSR,
 	}, accountID(Registration.ID), 0)
 	test.AssertNotError(t, err, "ra.issueCertificate failed when CTPolicy.GetSCTs timed out")
-	test.AssertEquals(t, test.CountCounterVec("result", "failure", ra.ctpolicyResults), 1)
+	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
 }
 
 var CAkeyPEM = `

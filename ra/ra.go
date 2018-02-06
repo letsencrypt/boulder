@@ -94,7 +94,7 @@ type RegistrationAuthorityImpl struct {
 	totalCertsStats        metrics.Scope
 
 	ctpolicy        *ctpolicy.CTPolicy
-	ctpolicyResults *prometheus.CounterVec
+	ctpolicyResults *prometheus.HistogramVec
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -114,10 +114,11 @@ func NewRegistrationAuthorityImpl(
 	orderLifetime time.Duration,
 	ctp *ctpolicy.CTPolicy,
 ) *RegistrationAuthorityImpl {
-	ctpolicyResults := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ctpolicy_results",
-			Help: "Counter of calls to ctpolicy.GetSCTs with success/failure labels",
+	ctpolicyResults := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "ctpolicy_results",
+			Help:    "Histogram of latencies of ctpolicy.GetSCTs calls with success/failure/deadlineExceeded labels",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
 		},
 		[]string{"result"},
 	)
@@ -1005,42 +1006,49 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		return emptyCert, err
 	}
 
-	if ra.publisher != nil {
-		go func() {
-			// This context is limited by the gRPC timeout.
-			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
-		}()
-	} else if ra.ctpolicy != nil {
+	if ra.ctpolicy != nil {
 		var ctCtx context.Context
+		var cancel func()
 		currentDeadline, ok := ctx.Deadline()
 		if !ok {
 			// Current context doesn't have a deadline, this should
 			// never happen so it's a internal server error... but
 			// we already issued the cert so we can't fail out now.
-			// Just use a background context that lasts forever
-			// instead.
-			ctCtx = context.Background()
+			// Just use a background context with a 30s timeout added.
+			ctCtx, cancel = context.WithTimeout(context.Background(), time.Second*30)
 		} else {
 			// NOTE: We want to check how putting the SCT submission/collection
-			// effects calls to IssueCertificate so we take the current context
+			// affects calls to IssueCertificate so we take the current context
 			// and allocate 80% of the remaining time to calling CTPolicy.GetSCTs.
 			// This way if we exceed the child context we won't time out the
 			// parent call and can still return the cert to the user.
 			until := time.Until(currentDeadline)
-			var cancel func()
 			ctCtx, cancel = context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
-			defer cancel()
 		}
+		defer cancel()
+		started := ra.clk.Now()
 		_, err := ra.ctpolicy.GetSCTs(ctCtx, cert.DER)
+		took := ra.clk.Since(started)
 		// The final cert has already been issued so actually return it to the
 		// user even if this fails since we aren't actually doing anything with
 		// the SCTs yet.
+		var state string
 		if err != nil {
-			ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"}).Inc()
+			fmt.Println("TEST", err)
+			state = "failure"
+			if err == context.DeadlineExceeded {
+				state = "deadlineExceeded"
+			}
 			ra.log.Info(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
 		} else if err == nil {
-			ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Inc()
+			state = "success"
 		}
+		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
+	} else if ra.publisher != nil {
+		go func() {
+			// This context is limited by the gRPC timeout.
+			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
+		}()
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))

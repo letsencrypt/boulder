@@ -75,6 +75,11 @@ type config struct {
 
 		OrderLifetime cmd.ConfigDuration
 
+		// CTLogGroups contains groupings of CT logs which we want SCTs from.
+		// When we retrieve SCTs we will submit the certificate to each log
+		// in a group and the first SCT returned will be used. This allows
+		// us to comply with Chrome CT policy which requires one SCT from a
+		// Google log and one SCT from any other log included in their policy.
 		CTLogGroups [][]cmd.LogDescription
 
 		Features map[string]bool
