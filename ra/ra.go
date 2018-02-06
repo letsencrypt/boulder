@@ -788,7 +788,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 	return nil
 }
 
-// failOrder marks an order as invalid by setting the problem details field of
+// failOrder marks an order as failed by setting the problem details field of
 // the order & persisting it through the SA. If an error occurs doing this we
 // log it and return the order as-is. There aren't any alternatives if we can't
 // add the error to the order.
