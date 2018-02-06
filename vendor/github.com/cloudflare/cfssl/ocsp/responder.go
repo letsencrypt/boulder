@@ -13,16 +13,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/cloudflare/cfssl/certdb"
+	"github.com/cloudflare/cfssl/certdb/dbconf"
+	"github.com/cloudflare/cfssl/certdb/sql"
+	"github.com/cloudflare/cfssl/log"
+	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
 	"time"
-
-	"github.com/cloudflare/cfssl/certdb"
-	"github.com/cloudflare/cfssl/log"
-	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/ocsp"
 )
 
 var (
@@ -158,6 +159,22 @@ func NewSourceFromFile(responseFile string) (Source, error) {
 	return src, nil
 }
 
+// NewSourceFromDB reads the given database configuration file
+// and creates a database data source for use with the OCSP responder
+func NewSourceFromDB(DBConfigFile string) (Source, error) {
+	// Load DB from cofiguration file
+	db, err := dbconf.DBFromConfig(DBConfigFile)
+
+	if err != nil {
+		return nil, err
+	}
+	// Create accesor
+	accessor := sql.NewAccessor(db)
+	src := NewDBSource(accessor)
+
+	return src, nil
+}
+
 // A Responder object provides the HTTP logic to expose a
 // Source of OCSP responses.
 type Responder struct {
@@ -209,7 +226,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	case "GET":
 		base64Request, err := url.QueryUnescape(request.URL.Path)
 		if err != nil {
-			log.Infof("Error decoding URL: %s", request.URL.Path)
+			log.Debugf("Error decoding URL: %s", request.URL.Path)
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -232,7 +249,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		}
 		requestBody, err = base64.StdEncoding.DecodeString(string(base64RequestBytes))
 		if err != nil {
-			log.Infof("Error decoding base64 from URL: %s", string(base64RequestBytes))
+			log.Debugf("Error decoding base64 from URL: %s", string(base64RequestBytes))
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -261,7 +278,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	//      should return unauthorizedRequest instead of malformed.
 	ocspRequest, err := ocsp.ParseRequest(requestBody)
 	if err != nil {
-		log.Infof("Error decoding request body: %s", b64Body)
+		log.Debugf("Error decoding request body: %s", b64Body)
 		response.WriteHeader(http.StatusBadRequest)
 		response.Write(malformedRequestErrorResponse)
 		return

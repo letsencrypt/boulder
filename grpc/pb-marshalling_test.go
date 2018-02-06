@@ -339,6 +339,7 @@ func TestOrderValid(t *testing.T) {
 	testID := int64(1)
 	testExpires := int64(1)
 	emptyString := ""
+	falseBool := false
 
 	testCases := []struct {
 		Name          string
@@ -353,20 +354,20 @@ func TestOrderValid(t *testing.T) {
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
 				Authorizations:    []string{},
-				Status:            &emptyString,
 				Names:             []string{},
+				BeganProcessing:   &falseBool,
 			},
 			ExpectedValid: true,
 		},
 		{
 			Name: "Serial nil",
 			Order: &corepb.Order{
-				Id:             &testID,
-				RegistrationID: &testID,
-				Expires:        &testExpires,
-				Authorizations: []string{},
-				Status:         &emptyString,
-				Names:          []string{},
+				Id:              &testID,
+				RegistrationID:  &testID,
+				Expires:         &testExpires,
+				Authorizations:  []string{},
+				Names:           []string{},
+				BeganProcessing: &falseBool,
 			},
 			ExpectedValid: true,
 		},
@@ -381,8 +382,8 @@ func TestOrderValid(t *testing.T) {
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
 				Authorizations:    []string{},
-				Status:            &emptyString,
 				Names:             []string{},
+				BeganProcessing:   &falseBool,
 			},
 		},
 		{
@@ -392,8 +393,8 @@ func TestOrderValid(t *testing.T) {
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
 				Authorizations:    []string{},
-				Status:            &emptyString,
 				Names:             []string{},
+				BeganProcessing:   &falseBool,
 			},
 		},
 		{
@@ -403,8 +404,8 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				CertificateSerial: &emptyString,
 				Authorizations:    []string{},
-				Status:            &emptyString,
 				Names:             []string{},
+				BeganProcessing:   &falseBool,
 			},
 		},
 		{
@@ -414,12 +415,12 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Status:            &emptyString,
 				Names:             []string{},
+				BeganProcessing:   &falseBool,
 			},
 		},
 		{
-			Name: "Status nil",
+			Name: "BeganProcessing nil",
 			Order: &corepb.Order{
 				Id:                &testID,
 				RegistrationID:    &testID,
@@ -437,7 +438,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
 				Authorizations:    []string{},
-				Status:            &emptyString,
+				BeganProcessing:   &falseBool,
 			},
 		},
 	}

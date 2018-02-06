@@ -791,7 +791,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 
 // FinalizeAuthorization converts a Pending Authorization to a final one. If the
 // Authorization is not found a berrors.NotFound result is returned. If the
-// Authorization is not valid a berrors.InternalServer error is returned.
+// Authorization is status pending a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -978,17 +978,38 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 // orders for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
 	var count int
-	err := ssa.dbMap.SelectOne(&count,
-		`SELECT count(1) FROM orders
+
+	// Find all of the unexpired order IDs for the given account
+	var orderIDs []int64
+	_, err := ssa.dbMap.Select(&orderIDs,
+		`SELECT ID FROM orders
 		WHERE registrationID = :regID AND
-		expires > :now AND
-		status = :pending`,
+		expires > :now`,
 		map[string]interface{}{
-			"regID":   regID,
-			"now":     ssa.clk.Now(),
-			"pending": string(core.StatusPending),
+			"regID": regID,
+			"now":   ssa.clk.Now(),
 		})
-	return count, err
+	if err != nil {
+		return 0, err
+	}
+
+	// Iterate the order IDs, fetching the full order & associated authorizations
+	// for each
+	// TODO(@cpu): This is not performant and we should optimize:
+	//  https://github.com/letsencrypt/boulder/issues/3410
+	for _, orderID := range orderIDs {
+		order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+		if err != nil {
+			return 0, err
+		}
+
+		// If the order is pending, increment the pending count
+		if *order.Status == string(core.StatusPending) {
+			count++
+		}
+	}
+
+	return count, nil
 }
 
 // CountInvalidAuthorizations counts invalid authorizations for a user expiring
@@ -1398,7 +1419,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	order := &orderModel{
 		RegistrationID: *req.RegistrationID,
 		Expires:        time.Unix(0, *req.Expires),
-		Status:         core.AcmeStatus(*req.Status),
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -1442,13 +1462,19 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	// Update the request with the ID that the order received
 	req.Id = &order.ID
+
+	// Update the request with pending status (No need to calculate the status
+	// based on authzs here, we know a brand new order is always pending)
+	pendingStatus := string(core.StatusPending)
+	req.Status = &pendingStatus
+	processingStatus := false
+	req.BeganProcessing = &processingStatus
 	return req, nil
 }
 
 // SetOrderProcessing updates a provided *corepb.Order in pending status to be
-// in processing status by updating the status field of the corresponding Order
-// table row in the DB. We avoid introducing a general purpose "Update this
-// order" RPC to ensure we have minimally permissive RPCs.
+// in processing status by updating the `beganProcessing` field of the
+// corresponding Order table row in the DB.
 func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -1457,20 +1483,20 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 	result, err := tx.Exec(`
 		UPDATE orders
-		SET status = ?
+		SET beganProcessing = ?
 		WHERE id = ?
-		AND status = ?`,
-		string(core.StatusProcessing),
+		AND beganProcessing = ?`,
+		true,
 		*req.Id,
-		string(core.StatusPending))
+		false)
 	if err != nil {
-		err = berrors.InternalServerError("error updating order to processing status")
+		err = berrors.InternalServerError("error updating order to beganProcessing status")
 		return Rollback(tx, err)
 	}
 
 	n, err := result.RowsAffected()
 	if err != nil || n == 0 {
-		err = berrors.InternalServerError("no order updated to processing status")
+		err = berrors.InternalServerError("no order updated to beganProcessing status")
 		return Rollback(tx, err)
 	}
 
@@ -1489,13 +1515,11 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 	result, err := tx.Exec(`
 		UPDATE orders
-		SET certificateSerial = ?, status = ?
-		WHERE id = ?
-		AND status = ?`,
+		SET certificateSerial = ?
+		WHERE id = ? AND
+		beganProcessing = true`,
 		*req.CertificateSerial,
-		string(core.StatusValid),
-		*req.Id,
-		string(core.StatusProcessing))
+		*req.Id)
 	if err != nil {
 		err = berrors.InternalServerError("error updating order for finalization")
 		return Rollback(tx, err)
@@ -1570,7 +1594,164 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	}
 	order.Names = reversedNames
 
+	// Calculate the status for the order
+	status, err := ssa.statusForOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	order.Status = &status
+
 	return order, nil
+}
+
+// statusForOrder examines the status of a provided order's authorizations to
+// determine what the overall status of the order should be. In summary:
+//   * If any of the order's authorizations are invalid, the order is invalid.
+//   * If any of the order's authorizations are deactivated, the order is deactivated.
+//   * If any of the order's authorizations are pending, the order is pending.
+//   * If all of the order's authorizations are valid, and there is
+//     a certificate serial, the order is valid.
+//   * If all of the order's authorizations are valid, and we have began
+//     processing, but there is no certificate serial, the order is processing.
+//   * If all of the order's authorizations are valid, and we haven't begun
+//     processing, then the order is pending waiting a finalization request.
+// An error is returned for any other case.
+func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
+	// Get the full Authorization objects for the order
+	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
+	// If there was an error getting the authorizations, return it immediately
+	if err != nil {
+		return "", err
+	}
+
+	// If GetOrderAuthorizations returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
+	// wrong worth raising an internal error about.
+	if len(authzs) != len(order.Authorizations) {
+		return "", berrors.InternalServerError(
+			"GetOrderAuthorizations returned the wrong number of authorizations "+
+				"(%d vs expected %d) for order %d",
+			len(authzs), len(order.Authorizations), *order.Id)
+	}
+
+	// Keep a count of the authorizations seen
+	invalidAuthzs := 0
+	deactivatedAuthzs := 0
+	pendingAuthzs := 0
+	validAuthzs := 0
+
+	// Loop over each of the order's authorization objects to examine the authz status
+	for _, authz := range authzs {
+		switch authz.Status {
+		case core.StatusInvalid:
+			invalidAuthzs++
+		case core.StatusDeactivated:
+			deactivatedAuthzs++
+		case core.StatusPending:
+			pendingAuthzs++
+		case core.StatusValid:
+			validAuthzs++
+		default:
+			return "", berrors.InternalServerError(
+				"Order is in an invalid state. Authz %s has invalid status %q",
+				authz.ID, authz.Status)
+		}
+	}
+
+	// An order is invalid if **any** of its authzs are invalid
+	if invalidAuthzs > 0 {
+		return string(core.StatusInvalid), nil
+	}
+	// An order is deactivated if **any** of its authzs are deactivated
+	if deactivatedAuthzs > 0 {
+		return string(core.StatusDeactivated), nil
+	}
+	// An order is pending if **any** of its authzs are pending
+	if pendingAuthzs > 0 {
+		return string(core.StatusPending), nil
+	}
+
+	// An order is fully authorized if it has valid authzs for each of the order
+	// names
+	fullyAuthorized := len(order.Names) == validAuthzs
+
+	// If the order isn't fully authorized we've encountered an internal error:
+	// Above we checked for any invalid or pending authzs and should have returned
+	// early. Somehow we made it this far but also don't have the correct number
+	// of valid authzs.
+	if !fullyAuthorized {
+		return "", berrors.InternalServerError(
+			"Order has the incorrect number of valid authorizations & no pending, " +
+				"deactivated or invalid authorizations")
+	}
+
+	// If the order is fully authorized and the certificate serial is set then the
+	// order is valid
+	if fullyAuthorized && order.CertificateSerial != nil && *order.CertificateSerial != "" {
+		return string(core.StatusValid), nil
+	}
+
+	// If the order is fully authorized, and we have began processing it, then the
+	// order is processing.
+	if fullyAuthorized && order.BeganProcessing != nil && *order.BeganProcessing {
+		return string(core.StatusProcessing), nil
+	}
+
+	// If the order is fully authorized, and we haven't begun processing it, then
+	// the order is still pending waiting a finalization request.
+	if fullyAuthorized && order.BeganProcessing != nil && !*order.BeganProcessing {
+		return string(core.StatusPending), nil
+	}
+
+	return "", berrors.InternalServerError(
+		"Order %d is in an invalid state. No state known for this order's "+
+			"authorizations", *order.Id)
+}
+
+func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
+	ctx context.Context,
+	orderID, acctID int64) (map[string]*core.Authorization, error) {
+	now := ssa.clk.Now()
+	var allAuthzs []*core.Authorization
+
+	for _, table := range authorizationTables {
+		var authzs []*core.Authorization
+		_, err := ssa.dbMap.Select(
+			&authzs,
+			fmt.Sprintf(`SELECT %s from %s AS authz
+		INNER JOIN orderToAuthz
+		ON authz.ID = orderToAuthz.authzID
+		WHERE authz.registrationID = ? AND
+		authz.expires > ? AND
+		orderToAuthz.orderID = ?`, authzFields, table),
+			acctID,
+			now,
+			orderID)
+		if err != nil {
+			return nil, err
+		}
+
+		allAuthzs = append(allAuthzs, authzs...)
+	}
+
+	// Collapse the returned authorizations into a mapping from name to
+	// authorization
+	byName := make(map[string]*core.Authorization)
+	for _, auth := range allAuthzs {
+		// We only expect to get back DNS identifiers
+		if auth.Identifier.Type != core.IdentifierDNS {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
+		}
+		// We don't expect there to be multiple authorizations for the same name
+		// within the same order
+		if _, present := byName[auth.Identifier.Value]; present {
+			return nil, berrors.InternalServerError(
+				"Found multiple authorizations within one order for identifier %q",
+				auth.Identifier.Value)
+		}
+		byName[auth.Identifier.Value] = auth
+	}
+	return byName, nil
 }
 
 // GetOrderAuthorizations has been renamed to GetValidOrderAuthorizations. To
@@ -1642,9 +1823,10 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find an order with the exact set of names
-// requested, associated with the given accountID. Only unexpired orders are
-// considered. If no order is found a nil corepb.Order pointer is returned.
+// GetOrderForNames tries to find a **pending** order with the exact set of
+// names requested, associated with the given accountID. Only unexpired orders
+// with status pending are considered. If no order meeting these requirements is
+// found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
@@ -1670,8 +1852,16 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 
-	// Get & return the order
-	return ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	// Get the order
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	if err != nil {
+		return nil, err
+	}
+	// Only return a pending order
+	if *order.Status != string(core.StatusPending) {
+		return nil, berrors.NotFoundError("no order matching request found")
+	}
+	return order, nil
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
