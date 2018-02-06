@@ -575,7 +575,7 @@ func TestValidNonce(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.validNonce(tc.JWS, newRequestEvent())
+			prob := wfe.validNonce(tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
 			} else {

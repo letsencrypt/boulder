@@ -161,7 +161,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				nonce, err := wfe.nonceService.Nonce()
 				if err == nil {
 					response.Header().Set("Replay-Nonce", nonce)
-					logEvent.ResponseNonce = nonce
 				} else {
 					logEvent.AddError("unable to make nonce: %s", err)
 				}
