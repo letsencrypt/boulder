@@ -21,6 +21,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/publisher/mock_publisher"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -107,6 +108,10 @@ func (p *mockPub) SubmitToSingleCT(_ context.Context, _, logPublicKey string, _ 
 	}
 	err = p.sa.AddSCTReceipt(ctx, sct)
 	return err
+}
+
+func (p *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+	return nil, nil
 }
 
 var log = blog.UseMock()
