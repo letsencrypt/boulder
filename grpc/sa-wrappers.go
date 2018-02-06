@@ -513,10 +513,8 @@ func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context,
 }
 
 func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	if _, err := sac.inner.SetOrderError(ctx, order); err != nil {
-		return err
-	}
-	return nil
+	_, err := sac.inner.SetOrderError(ctx, order)
+	return err
 }
 
 func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) error {
