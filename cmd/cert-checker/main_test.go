@@ -182,7 +182,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has common name >64 characters long (65)":                      1,
 		"Policy Authority was willing to issue but domain 'foodnotbombs.mil' " +
 			"matches forbiddenDomains entry \"\\\\.mil$\"": 1,
-		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Invalid character in DNS name": 1,
+		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]

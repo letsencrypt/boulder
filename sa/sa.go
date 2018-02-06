@@ -995,6 +995,8 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 
 	// Iterate the order IDs, fetching the full order & associated authorizations
 	// for each
+	// TODO(@cpu): This is not performant and we should optimize:
+	//  https://github.com/letsencrypt/boulder/issues/3410
 	for _, orderID := range orderIDs {
 		order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 		if err != nil {
@@ -1371,23 +1373,44 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
-	table := authorizationTable
-	oldStatus := core.StatusValid
+
 	if existingPending(tx, id) {
-		table = pendingAuthorizationTable
-		oldStatus = core.StatusPending
+		authzObj, err := tx.Get(&pendingauthzModel{}, id)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		if authzObj == nil {
+			// InternalServerError because existingPending already told us it existed
+			return berrors.InternalServerError("failure retrieving pending authorization")
+		}
+		authz := authzObj.(*pendingauthzModel)
+		if authz.Status != core.StatusPending {
+			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
+		}
+		result, err := tx.Delete(authzObj)
+		if err != nil {
+			return Rollback(tx, err)
+		}
+		if result != 1 {
+			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
+		}
+		authz.Status = core.StatusDeactivated
+		err = tx.Insert(&authzModel{authz.Authorization})
+		if err != nil {
+			return Rollback(tx, err)
+		}
+	} else {
+		_, err = tx.Exec(
+			`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
+			string(core.StatusDeactivated),
+			id,
+			string(core.StatusValid),
+		)
+		if err != nil {
+			return Rollback(tx, err)
+		}
 	}
 
-	_, err = tx.Exec(
-		fmt.Sprintf(`UPDATE %s SET status = ? WHERE id = ? and status = ?`, table),
-		string(core.StatusDeactivated),
-		id,
-		string(oldStatus),
-	)
-	if err != nil {
-		err = Rollback(tx, err)
-		return err
-	}
 	return tx.Commit()
 }
 
@@ -1689,7 +1712,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return string(core.StatusPending), nil
 	}
 
-	// An order is fully authorizsed if it has valid authzs for each of the order
+	// An order is fully authorized if it has valid authzs for each of the order
 	// names
 	fullyAuthorized := len(order.Names) == validAuthzs
 
@@ -1729,7 +1752,6 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 	ctx context.Context,
 	orderID, acctID int64) (map[string]*core.Authorization, error) {
-
 	now := ssa.clk.Now()
 	var allAuthzs []*core.Authorization
 
@@ -1738,7 +1760,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		_, err := ssa.dbMap.Select(
 			&authzs,
 			fmt.Sprintf(`SELECT %s from %s AS authz
-		LEFT JOIN orderToAuthz
+		INNER JOIN orderToAuthz
 		ON authz.ID = orderToAuthz.authzID
 		WHERE authz.registrationID = ? AND
 		authz.expires > ? AND
@@ -1753,7 +1775,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		allAuthzs = append(allAuthzs, authzs...)
 	}
 
-	// Collapse & dedupe the returned authorizations into a mapping from name to
+	// Collapse the returned authorizations into a mapping from name to
 	// authorization
 	byName := make(map[string]*core.Authorization)
 	for _, auth := range allAuthzs {
@@ -1761,10 +1783,14 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
-		existing, present := byName[auth.Identifier.Value]
-		if !present || auth.Expires.After(*existing.Expires) {
-			byName[auth.Identifier.Value] = auth
+		// We don't expect there to be multiple authorizations for the same name
+		// within the same order
+		if _, present := byName[auth.Identifier.Value]; present {
+			return nil, berrors.InternalServerError(
+				"Found multiple authorizations within one order for identifier %q",
+				auth.Identifier.Value)
 		}
+		byName[auth.Identifier.Value] = auth
 	}
 	return byName, nil
 }
@@ -1821,9 +1847,10 @@ func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find an order with the exact set of names
-// requested, associated with the given accountID. Only unexpired orders are
-// considered. If no order is found a nil corepb.Order pointer is returned.
+// GetOrderForNames tries to find a **pending** order with the exact set of
+// names requested, associated with the given accountID. Only unexpired orders
+// with status pending are considered. If no order meeting these requirements is
+// found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {

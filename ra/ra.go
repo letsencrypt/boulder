@@ -840,6 +840,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
+	if err := csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+		return nil, berrors.MalformedError(err.Error())
+	}
+
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := core.UniqueLowerNames(csrOb.DNSNames)
@@ -919,6 +923,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	// Verify the CSR
+	if err := csrlib.VerifyCSR(req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+		return core.Certificate{}, berrors.MalformedError(err.Error())
+	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
@@ -973,12 +981,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		return emptyCert, err
 	}
 
-	// Verify the CSR
 	csr := req.CSR
-	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, int64(acctID)); err != nil {
-		return emptyCert, berrors.MalformedError(err.Error())
-	}
-
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
