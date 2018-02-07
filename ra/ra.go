@@ -898,7 +898,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Parse the issued certificate to get the serial
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
-		// Fail the order with a server internal error. The certificaate we failed
+		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
 		ra.failOrder(ctx, order, probs.ServerInternal("Error parsing certificate DER"))
 		return nil, err
