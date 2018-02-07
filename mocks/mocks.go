@@ -468,6 +468,11 @@ func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.
 	return nil
 }
 
+// SetOrderError is a mock
+func (sa *StorageAuthority) SetOrderError(_ context.Context, order *corepb.Order) error {
+	return nil
+}
+
 // FinalizeOrder is a mock
 func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) error {
 	return nil
@@ -493,7 +498,7 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		Status:            &status,
 		Authorizations:    []string{"hello"},
 		CertificateSerial: &serial,
-		Error:             []byte("error"),
+		Error:             nil,
 	}
 
 	// Order ID doesn't have a certificate serial yet

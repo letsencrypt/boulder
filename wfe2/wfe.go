@@ -26,6 +26,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -1467,7 +1468,7 @@ type orderJSON struct {
 	Authorizations []string              `json:"authorizations"`
 	Finalize       string                `json:"finalize"`
 	Certificate    string                `json:"certificate,omitempty"`
-	Error          string                `json:",omitempty"`
+	Error          *probs.ProblemDetails `json:"error,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1487,6 +1488,16 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Identifiers:    idents,
 		Authorizations: make([]string, len(order.Authorizations)),
 		Finalize:       finalizeURL,
+	}
+	// If there is an order error, prefix its type with the V2 namespace
+	if order.Error != nil {
+		prob, err := bgrpc.PBToProblemDetails(order.Error)
+		if err != nil {
+			wfe.log.AuditErr(fmt.Sprintf("Internal error converting order ID %d "+
+				"proto buf prob to problem details: %q", *order.Id, err))
+		}
+		respObj.Error = prob
+		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
 	}
 	for i, authzID := range order.Authorizations {
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))

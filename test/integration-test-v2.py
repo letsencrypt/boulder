@@ -24,7 +24,7 @@ import startservers
 import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
-from acme.messages import Status
+from acme.messages import Status, CertificateRequest
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 
@@ -48,6 +48,7 @@ def main():
     test_revoke_by_issuer()
     test_revoke_by_authz()
     test_revoke_by_privkey()
+    test_order_finalize_early()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -184,6 +185,44 @@ def test_order_reuse_failed_authz():
         order = client.poll_order_and_request_issuance(order)
     finally:
         cleanup()
+
+def test_order_finalize_early():
+    """
+    Test that finalizing an order before its fully authorized results in the
+    order having an error set and the status being invalid.
+    """
+    # Create a client
+    client = make_client(None)
+
+    # Create a random domain and a csr
+    domains = [ random_domain() ]
+    csr_pem = make_csr(domains)
+
+    # Create an order for the domain
+    order = client.new_order(csr_pem)
+
+    # Finalize the order without doing anything with the authorizations. YOLO
+    # We expect this to generate an unauthorized error.
+    chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
+        lambda: client.net.post(order.body.finalize, CertificateRequest(csr=order.csr)))
+
+    # Poll for a fixed amount of time checking for the order to become invalid
+    # from the early finalization attempt initiated above failing
+    deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
+    while datetime.datetime.now() < deadline:
+        time.sleep(1)
+        updatedOrder = requests.get(order.uri).json()
+        if updatedOrder['status'] == "invalid":
+            break
+
+    # If the loop ended and the status isn't invalid then we reached the
+    # deadline waiting for the order to become invalid, fail the test
+    if updatedOrder['status'] != "invalid":
+        raise Exception("timed out waiting for order %s to become invalid" % order.uri)
+
+    # The order should have an error with the expected type
+    if updatedOrder['error']['type'] != 'urn:ietf:params:acme:error:unauthorized':
+        raise Exception("order %s has incorrect error field type: \"%s\"" % (order.uri, updatedOrder['error']['type']))
 
 def test_revoke_by_issuer():
     client = make_client(None)
