@@ -528,7 +528,11 @@ func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrder
 	return nil, nil
 }
 
-func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, _ *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidOrderAuthorizations(_ context.Context, _ *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	return nil, nil
 }
 

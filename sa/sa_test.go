@@ -1554,7 +1554,7 @@ func TestOrder(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
-func TestGetOrderAuthorizations(t *testing.T) {
+func TestGetValidOrderAuthorizations(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
 	}
@@ -1588,14 +1588,16 @@ func TestGetOrderAuthorizations(t *testing.T) {
 
 	// Now fetch the order authorizations for the order we added for the
 	// throw-away reg
-	authzMap, err := sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
-		Id:     order.Id,
-		AcctID: &reg.ID,
-	})
+	authzMap, err := sa.GetValidOrderAuthorizations(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     order.Id,
+			AcctID: &reg.ID,
+		})
 	// It should not fail and one valid authorization for the example.com domain
 	// should be present with ID and status equal to the authz we created earlier.
-	test.AssertNotError(t, err, "GetOrderAuthorizations failed")
-	test.AssertNotNil(t, authzMap, "GetOrderAuthorizations result was nil")
+	test.AssertNotError(t, err, "GetValidOrderAuthorizations failed")
+	test.AssertNotNil(t, authzMap, "GetValidOrderAuthorizations result was nil")
 	test.AssertEquals(t, len(authzMap), 1)
 	test.AssertNotNil(t, authzMap["example.com"], "Authz for example.com was nil")
 	test.AssertEquals(t, authzMap["example.com"].ID, authz.ID)
@@ -1603,21 +1605,25 @@ func TestGetOrderAuthorizations(t *testing.T) {
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
-	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
-		Id:     &missingID,
-		AcctID: &reg.ID,
-	})
-	test.AssertNotError(t, err, "GetOrderAuthorizations for non-existent order errored")
+	authzMap, err = sa.GetValidOrderAuthorizations(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     &missingID,
+			AcctID: &reg.ID,
+		})
+	test.AssertNotError(t, err, "GetValidOrderAuthorizations for non-existent order errored")
 	test.AssertEquals(t, len(authzMap), 0)
 
 	// Getting the order authorizations for an order that does exist, but for the
 	// wrong acct ID should return nothing
 	wrongAcctID := int64(0xDEADDA7ABA5E)
-	authzMap, err = sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
-		Id:     order.Id,
-		AcctID: &wrongAcctID,
-	})
-	test.AssertNotError(t, err, "GetOrderAuthorizations for existent order, wrong acctID errored")
+	authzMap, err = sa.GetValidOrderAuthorizations(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     order.Id,
+			AcctID: &wrongAcctID,
+		})
+	test.AssertNotError(t, err, "GetValidOrderAuthorizations for existent order, wrong acctID errored")
 	test.AssertEquals(t, len(authzMap), 0)
 }
 

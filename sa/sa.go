@@ -1765,12 +1765,29 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 	return byName, nil
 }
 
-// TODO(@cpu): Rename this to `GetValidOrderAuthorizations`
-// GetOrderAuthorizations is used to find the valid, unexpired authorizations
-// associated with a specific order and account ID.
+// GetOrderAuthorizations has been renamed to GetValidOrderAuthorizations. To
+// satisfy deployability requirements we leave the old function in place,
+// redirecting to the new. Once Boulder has been updated in staging and
+// production we can remove this legacy implementation in favour of just
+// GetValidOrderAuthorizations.
 func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
 	ctx context.Context,
 	req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+
+	// Call the renamed version of this function
+	return ssa.GetValidOrderAuthorizations(
+		ctx,
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     req.Id,
+			AcctID: req.AcctID,
+		})
+}
+
+// GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
+// associated with a specific order and account ID.
+func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
+	ctx context.Context,
+	req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	now := ssa.clk.Now()
 	// Select the full authorization data for all *valid, unexpired*
 	// authorizations that are owned by the correct account ID and associated with
