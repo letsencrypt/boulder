@@ -135,6 +135,7 @@ type StorageGetter interface {
 	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
 	GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error)
 	GetOrderAuthorizations(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest) (map[string]*Authorization, error)
+	GetValidOrderAuthorizations(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*Authorization, error)
 	CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error)
 	GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
 }

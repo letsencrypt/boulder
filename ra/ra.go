@@ -657,10 +657,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	orderID orderID) error {
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
-	// Get all of the authorizations for this account/order
-	authzs, err := ra.SA.GetOrderAuthorizations(
+	// Get all of the valid authorizations for this account/order
+	authzs, err := ra.SA.GetValidOrderAuthorizations(
 		ctx,
-		&sapb.GetOrderAuthorizationsRequest{
+		&sapb.GetValidOrderAuthorizationsRequest{
 			Id:     &orderIDInt,
 			AcctID: &acctIDInt,
 		})
