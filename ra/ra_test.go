@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -2169,14 +2168,7 @@ func TestNewOrder(t *testing.T) {
 	// Abuse the order of the queries used to extract the reused authorizations
 	existing := orderC.Authorizations[:3]
 	sort.Strings(existing)
-
-	// We expect the pending authorizations were not reused between separate
-	// orders
-	// NOTE(@cpu): There's no test.AssertNotDeepEquals to use here so we call
-	// reflect.DeepEqual ourselves.
-	if reflect.DeepEqual(existing, orderA.Authorizations) {
-		t.Fatal("existing authorizations matched orderA authorizations")
-	}
+	test.AssertDeepEquals(t, existing, orderA.Authorizations)
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
