@@ -40,7 +40,6 @@ const (
 // forbiddenDomains array
 var forbiddenDomainPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*$`),
-	regexp.MustCompile(`\.mil$`),
 	regexp.MustCompile(`\.local$`),
 	regexp.MustCompile(`^localhost$`),
 	regexp.MustCompile(`\.localhost$`),

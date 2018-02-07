@@ -552,7 +552,19 @@ func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
 	ctx context.Context,
 	request *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	resp, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	// Call the wrapper function for the renamed version of this RPC
+	return sas.GetValidOrderAuthorizations(
+		ctx,
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     request.Id,
+			AcctID: request.AcctID,
+		})
+}
+
+func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations(
+	ctx context.Context,
+	request *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	resp, err := sas.inner.GetValidOrderAuthorizations(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -1133,11 +1145,24 @@ func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
 	ctx context.Context,
 	request *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if request == nil || request.Id == nil {
+
+	// Call the wrapper for the renamed version of this RPC
+	return sas.GetValidOrderAuthorizations(
+		ctx,
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     request.Id,
+			AcctID: request.AcctID,
+		})
+}
+
+func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations(
+	ctx context.Context,
+	request *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if request == nil || request.Id == nil || request.AcctID == nil {
 		return nil, errIncompleteRequest
 	}
 
-	authzs, err := sas.inner.GetOrderAuthorizations(ctx, request)
+	authzs, err := sas.inner.GetValidOrderAuthorizations(ctx, request)
 	if err != nil {
 		return nil, err
 	}
