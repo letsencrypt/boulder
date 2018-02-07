@@ -63,34 +63,34 @@ func TestJWK(t *testing.T) {
 }
 
 func TestProblemDetails(t *testing.T) {
-	pb, err := problemDetailsToPB(nil)
+	pb, err := ProblemDetailsToPB(nil)
 	test.AssertNotEquals(t, err, "problemDetailToPB failed")
 	test.Assert(t, pb == nil, "Returned corepb.ProblemDetails is not nil")
 
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
-	pb, err = problemDetailsToPB(prob)
+	pb, err = ProblemDetailsToPB(prob)
 	test.AssertNotError(t, err, "problemDetailToPB failed")
 	test.Assert(t, pb != nil, "return corepb.ProblemDetails is nill")
 	test.AssertDeepEquals(t, *pb.ProblemType, string(prob.Type))
 	test.AssertEquals(t, *pb.Detail, prob.Detail)
 	test.AssertEquals(t, int(*pb.HttpStatus), prob.HTTPStatus)
 
-	recon, err := pbToProblemDetails(pb)
-	test.AssertNotError(t, err, "pbToProblemDetails failed")
+	recon, err := PBToProblemDetails(pb)
+	test.AssertNotError(t, err, "PBToProblemDetails failed")
 	test.AssertDeepEquals(t, recon, prob)
 
-	recon, err = pbToProblemDetails(nil)
-	test.AssertNotError(t, err, "pbToProblemDetails failed")
+	recon, err = PBToProblemDetails(nil)
+	test.AssertNotError(t, err, "PBToProblemDetails failed")
 	test.Assert(t, recon == nil, "Returned core.PRoblemDetails is not nil")
-	_, err = pbToProblemDetails(&corepb.ProblemDetails{})
-	test.AssertError(t, err, "pbToProblemDetails did not fail")
+	_, err = PBToProblemDetails(&corepb.ProblemDetails{})
+	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 	empty := ""
-	_, err = pbToProblemDetails(&corepb.ProblemDetails{ProblemType: &empty})
-	test.AssertError(t, err, "pbToProblemDetails did not fail")
+	_, err = PBToProblemDetails(&corepb.ProblemDetails{ProblemType: &empty})
+	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToProblemDetails(&corepb.ProblemDetails{Detail: &empty})
-	test.AssertError(t, err, "pbToProblemDetails did not fail")
+	_, err = PBToProblemDetails(&corepb.ProblemDetails{Detail: &empty})
+	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 

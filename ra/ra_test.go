@@ -2648,6 +2648,9 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
 
+	emptyStr := ""
+	falseBool := false
+
 	testCases := []struct {
 		Name           string
 		OrderReq       *rapb.FinalizeOrderRequest
@@ -2713,10 +2716,13 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
-					Names:          []string{"example.org"},
-					RegistrationID: &Registration.ID,
-					Id:             emptyOrder.Id,
+					Status:            &pendingStatus,
+					Names:             []string{"example.org"},
+					RegistrationID:    &Registration.ID,
+					Id:                emptyOrder.Id,
+					Expires:           &expUnix,
+					CertificateSerial: &emptyStr,
+					BeganProcessing:   &falseBool,
 				},
 				Csr: policyForbidCSR,
 			},
@@ -2726,10 +2732,13 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing registration",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
-					Names:          []string{"a.com", "a.org"},
-					Id:             fakeRegOrder.Id,
-					RegistrationID: &fakeRegID,
+					Status:            &pendingStatus,
+					Names:             []string{"a.com", "a.org"},
+					Id:                fakeRegOrder.Id,
+					RegistrationID:    &fakeRegID,
+					Expires:           &expUnix,
+					CertificateSerial: &emptyStr,
+					BeganProcessing:   &falseBool,
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2739,10 +2748,13 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
-					Names:          []string{"a.com", "a.org", "b.com"},
-					Id:             missingAuthzOrder.Id,
-					RegistrationID: &Registration.ID,
+					Status:            &pendingStatus,
+					Names:             []string{"a.com", "a.org", "b.com"},
+					Id:                missingAuthzOrder.Id,
+					RegistrationID:    &Registration.ID,
+					Expires:           &expUnix,
+					CertificateSerial: &emptyStr,
+					BeganProcessing:   &falseBool,
 				},
 				Csr: threeDomainCSR,
 			},

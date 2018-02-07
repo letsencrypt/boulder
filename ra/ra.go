@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/letsencrypt/boulder/web"
 	grpc "google.golang.org/grpc"
 )
 
@@ -787,6 +788,30 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 	return nil
 }
 
+// failOrder marks an order as failed by setting the problem details field of
+// the order & persisting it through the SA. If an error occurs doing this we
+// log it and return the order as-is. There aren't any alternatives if we can't
+// add the error to the order.
+func (ra *RegistrationAuthorityImpl) failOrder(
+	ctx context.Context,
+	order *corepb.Order,
+	prob *probs.ProblemDetails) *corepb.Order {
+
+	// Convert the problem to a protobuf problem for the *corepb.Order field
+	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
+	if err != nil {
+		ra.log.AuditErr(fmt.Sprintf("Could not convert order error problem to PB: %q", err))
+		return order
+	}
+
+	// Assign the protobuf problem to the field and save it via the SA
+	order.Error = pbProb
+	if err := ra.SA.SetOrderError(ctx, order); err != nil {
+		ra.log.AuditErr(fmt.Sprintf("Could not persist order error: %q", err))
+	}
+	return order
+}
+
 // FinalizeOrder accepts a request to finalize an order object and, if possible,
 // issues a certificate to satisfy the order. If an order does not have valid,
 // unexpired authorizations for all of its associated names an error is
@@ -839,7 +864,16 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Update the order to be status processing - we issue synchronously at the
 	// present time so this is somewhat artificial/unnecessary but allows planning
 	// for the future.
+	//
+	// NOTE(@cpu): After this point any errors that are encountered must update
+	// the state of the order to invalid by setting the order's error field.
+	// Otherwise the order will be "stuck" in processing state. It can not be
+	// finalized because it isn't pending, but we aren't going to process it
+	// further because we already did and encountered an error.
 	if err := ra.SA.SetOrderProcessing(ctx, order); err != nil {
+		// Fail the order with a server internal error - we weren't able to set the
+		// status to processing and that's unexpected & weird.
+		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
 		return nil, err
 	}
 
@@ -851,12 +885,22 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	}
 	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*order.RegistrationID), orderID(*order.Id))
 	if err != nil {
+		// Fail the order. The problem is computed using
+		// `web.ProblemDetailsForError`, the same function the WFE uses to convert
+		// between `berrors` and problems. This will turn normal expected berrors like
+		// berrors.UnauthorizedError into the correct
+		// `urn:ietf:params:acme:error:unauthorized` problem while not letting
+		// anything like a server internal error through with sensitive info.
+		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
 		return nil, err
 	}
 
 	// Parse the issued certificate to get the serial
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		// Fail the order with a server internal error. The certificate we failed
+		// to parse was from our own CA. Bad news!
+		ra.failOrder(ctx, order, probs.ServerInternal("Error parsing certificate DER"))
 		return nil, err
 	}
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
@@ -864,6 +908,9 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = &serial
 	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
+		// Fail the order with a server internal error. We weren't able to persist
+		// the certificate serial and that's unexpected & weird.
+		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
 		return nil, err
 	}
 
