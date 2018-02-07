@@ -2167,6 +2167,10 @@ func TestNewOrder(t *testing.T) {
 // the `new-authz` endpoint isn't reused by a V2 order created by the same
 // account.
 func TestNewOrderLegacyAuthzReuse(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
