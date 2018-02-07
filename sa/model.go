@@ -312,7 +312,7 @@ type orderModel struct {
 	Expires           time.Time
 	Error             []byte
 	CertificateSerial string
-	Status            core.AcmeStatus
+	BeganProcessing   bool
 }
 
 type requestedNameModel struct {
@@ -328,13 +328,12 @@ type orderToAuthzModel struct {
 
 func modelToOrder(om *orderModel) *corepb.Order {
 	expires := om.Expires.UnixNano()
-	status := string(om.Status)
 	return &corepb.Order{
 		Id:                &om.ID,
 		RegistrationID:    &om.RegistrationID,
 		Expires:           &expires,
 		Error:             om.Error,
 		CertificateSerial: &om.CertificateSerial,
-		Status:            &status,
+		BeganProcessing:   &om.BeganProcessing,
 	}
 }

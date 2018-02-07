@@ -1585,12 +1585,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
-	status := string(core.StatusPending)
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 		Expires:        &expires,
-		Status:         &status,
 	}
 
 	// Check that the registration ID in question has rate limit space for another

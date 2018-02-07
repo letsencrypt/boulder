@@ -407,19 +407,20 @@ func registrationValid(reg *corepb.Registration) bool {
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID is not nil.
+// from `newOrderValid` it ensures the order ID and the BeganProcessing fields
+// are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && newOrderValid(order)
+	return order.Id != nil && order.BeganProcessing != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
 // `order.Id` because the order has not been assigned an ID yet when it is being
-// created initially. It also allows `order.CertificateSerial` to be nil such
-// that it can be used in places where the order has not been finalized yet.
-// Callers must additionally ensure the `CertificateSerial` field is non-nil if
-// they intend to use it.
+// created initially. It allows `order.BeganProcessing` to be nil because
+// `sa.NewOrder` explicitly sets it to the default value. It also allows
+// `order.CertificateSerial` to be nil such that it can be used in places where
+// the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Status == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {

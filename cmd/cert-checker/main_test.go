@@ -172,16 +172,14 @@ func TestCheckCert(t *testing.T) {
 	problems := checker.checkCert(cert)
 
 	problemsMap := map[string]int{
-		"Stored digest doesn't match certificate digest":                            1,
-		"Stored serial doesn't match certificate serial":                            1,
-		"Stored expiration doesn't match certificate NotAfter":                      1,
-		"Certificate doesn't have basic constraints set":                            1,
-		"Certificate has a validity period longer than 2160h0m0s":                   1,
-		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
-		"Certificate has incorrect key usage extensions":                            1,
-		"Certificate has common name >64 characters long (65)":                      1,
-		"Policy Authority was willing to issue but domain 'foodnotbombs.mil' " +
-			"matches forbiddenDomains entry \"\\\\.mil$\"": 1,
+		"Stored digest doesn't match certificate digest":                                                 1,
+		"Stored serial doesn't match certificate serial":                                                 1,
+		"Stored expiration doesn't match certificate NotAfter":                                           1,
+		"Certificate doesn't have basic constraints set":                                                 1,
+		"Certificate has a validity period longer than 2160h0m0s":                                        1,
+		"Stored issuance date is outside of 6 hour window of certificate NotBefore":                      1,
+		"Certificate has incorrect key usage extensions":                                                 1,
+		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
 	}
 	for _, p := range problems {
@@ -194,7 +192,7 @@ func TestCheckCert(t *testing.T) {
 	for k := range problemsMap {
 		t.Errorf("Expected problem but didn't find it: '%s'.", k)
 	}
-	test.AssertEquals(t, len(problems), 10)
+	test.AssertEquals(t, len(problems), 9)
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
@@ -361,10 +359,6 @@ func TestIsForbiddenDomain(t *testing.T) {
 		// Whitespace only
 		{Name: "", Expected: true},
 		{Name: "   ", Expected: true},
-		// Anything .mil
-		{Name: "foodnotbombs.mil", Expected: true},
-		{Name: "www.foodnotbombs.mil", Expected: true},
-		{Name: ".mil", Expected: true},
 		// Anything .local
 		{Name: "yokel.local", Expected: true},
 		{Name: "off.on.remote.local", Expected: true},
