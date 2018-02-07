@@ -1882,7 +1882,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 		qmarks[i] = "?"
 	}
 
-	// If requested, filter out V1 authorizations by doing a left join on the
+	// If requested, filter out V1 authorizations by doing a JOIN on the
 	// orderToAuthz table, ensuring that all authorization IDs returned correspond
 	// to a V2 order.
 	queryPrefix := fmt.Sprintf(`SELECT %s FROM %s`, authzFields, table)
