@@ -105,6 +105,7 @@ func main() {
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}
+		conn.Close()
 	})
 
 	select {}

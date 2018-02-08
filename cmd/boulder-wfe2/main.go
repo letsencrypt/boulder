@@ -62,7 +62,11 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (
+	core.RegistrationAuthority,
+	core.StorageAuthority,
+	func(),
+) {
 	var tls *tls.Config
 	var err error
 	if c.WFE.TLS.CertFile != nil {
@@ -78,7 +82,11 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	return rac, sac
+	closeConns := func() {
+		raConn.Close()
+		saConn.Close()
+	}
+	return rac, sac, closeConns
 }
 
 func main() {
@@ -104,7 +112,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac := setupWFE(c, logger, scope)
+	rac, sac, closeConns := setupWFE(c, logger, scope)
 	wfe.RA = rac
 	wfe.SA = sac
 
@@ -168,6 +176,7 @@ func main() {
 		if tlsSrv != nil {
 			_ = tlsSrv.Shutdown(ctx)
 		}
+		closeConns()
 		done <- true
 	})
 
