@@ -132,15 +132,18 @@ func main() {
 		cmd.FailOnError(err, "TLS config")
 	}
 
+	var conns []*grpc.ClientConn
 	clientMetrics := bgrpc.NewClientMetrics(scope)
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Unable to create VA client")
+	conns = append(conns, vaConn)
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
 	caaClient := vaPB.NewCAAClient(vaConn)
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Unable to create CA client")
+	conns = append(conns, caConn)
 	// Build a CA client that is only capable of issuing certificates, not
 	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewCertificateAuthorityClient.
@@ -150,11 +153,13 @@ func main() {
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+		conns = append(conns, conn)
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 	}
 
 	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	conns = append(conns, conn)
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
@@ -236,6 +241,9 @@ func main() {
 	}
 
 	go cmd.CatchSignals(logger, func() {
+		for _, c := range conns {
+			c.Close()
+		}
 		if grpcSrv != nil {
 			grpcSrv.GracefulStop()
 		}

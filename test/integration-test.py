@@ -483,28 +483,28 @@ def main():
     if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, or --custom")
 
-    now = datetime.datetime.utcnow()
-    seventy_days_ago = now+datetime.timedelta(days=-70)
-    if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
-        raise Exception("startservers failed (mocking seventy days ago)")
-    setup_seventy_days_ago()
-    startservers.stop()
+    #now = datetime.datetime.utcnow()
+    #seventy_days_ago = now+datetime.timedelta(days=-70)
+    #if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
+    #    raise Exception("startservers failed (mocking seventy days ago)")
+    #setup_seventy_days_ago()
+    #startservers.stop()
 
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    if args.run_all or args.run_chisel:
-        run_chisel()
+    #if args.run_all or args.run_chisel:
+    #    run_chisel()
 
     # Simulate a disconnection to make sure gRPC reconnects work.
-    startservers.bounce_forward()
+    #startservers.bounce_forward()
 
-    if args.run_all or args.run_certbot:
-        run_client_tests()
+    #if args.run_all or args.run_certbot:
+    #    run_client_tests()
 
-    if args.custom:
-        run(args.custom)
-
+    #if args.custom:
+#        run(args.custom)
+#
     if not startservers.check():
         raise Exception("startservers.check failed")
 

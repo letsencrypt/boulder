@@ -263,7 +263,7 @@ func CatchSignals(logger blog.Logger, callback func()) {
 	if logger != nil {
 		logger.Info("Exiting")
 	}
-	os.Exit(0)
+	//	os.Exit(0)
 }
 
 // FilterShutdownErrors returns the input error, with the exception of "use of
