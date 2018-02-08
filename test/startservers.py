@@ -50,21 +50,21 @@ def start(race_detection, fakeclock=None):
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
     progs = [
+        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
+        'ct-test-srv',
+        'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
+        'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem',
+        'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
         'gsb-test-srv -apikey my-voice-is-my-passport',
-        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
-        'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
-        'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json"),
-        'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
-        'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
-        'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
-        'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
-        'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
-        'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
-        'ct-test-srv',
         'dns-test-srv',
-        'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'
+        'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
+        'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
+        'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
+        'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
+        'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json"),
+        'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
     ]
     if default_config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
@@ -83,6 +83,7 @@ def start(race_detection, fakeclock=None):
         if not check():
             # Don't keep building stuff if a server has already died.
             return False
+        time.sleep(0.3)
 
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
@@ -157,9 +158,10 @@ def stop():
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
     global processes
-    for p in processes:
+    for p in reversed(processes):
         if p.poll() is None:
             p.send_signal(signal.SIGTERM)
+            p.wait()
     for p in processes:
         p.wait()
     processes = []
