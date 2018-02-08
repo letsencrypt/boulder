@@ -11,12 +11,15 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTLS "github.com/google/certificate-transparency-go/tls"
@@ -76,8 +79,11 @@ type ctSubmissionRequest struct {
 }
 
 type integrationSrv struct {
-	submissions int64
-	key         *ecdsa.PrivateKey
+	sync.Mutex
+	submissions     int64
+	key             *ecdsa.PrivateKey
+	latencySchedule []float64
+	latencyItem     int
 }
 
 func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +96,14 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		if is.latencySchedule != nil {
+			is.Lock()
+			sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
+			is.latencyItem++
+			is.Unlock()
+			time.Sleep(sleepTime)
 		}
 
 		var addChainReq ctSubmissionRequest
@@ -137,17 +151,22 @@ type Personality struct {
 	Addr string
 	// Private key for signing SCTs
 	PrivKey string
-	// If present, sleep for the given number of nanos before replying. Each
+	// If present, sleep for the given number of seconds before replying. Each
 	// request uses the next number in the list, eventually cycling through.
-	LatencySchedule []int64
+	LatencySchedule []float64
 }
 
 func main() {
-	c := config{
-		Personalities: []Personality{
-			{":4500", "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==", nil},
-			{":4501", "MHcCAQEEIJSCFDYXt2xCIxv+G8BCzGdUsFIQDWEjxfJDfnn9JB5loAoGCCqGSM49AwEHoUQDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==", nil},
-		},
+	configFile := flag.String("config", "", "Path to config file.")
+	flag.Parse()
+	data, err := ioutil.ReadFile(*configFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var c config
+	err = json.Unmarshal(data, &c)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	for _, p := range c.Personalities {
@@ -159,7 +178,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		is := integrationSrv{key: key}
+		is := integrationSrv{
+			key:             key,
+			latencySchedule: p.LatencySchedule,
+		}
 		srv := &http.Server{
 			Addr:    p.Addr,
 			Handler: http.HandlerFunc(is.handler),
