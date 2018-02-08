@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -91,6 +93,9 @@ type RegistrationAuthorityImpl struct {
 	pendOrdersByRegIDStats metrics.Scope
 	certsForDomainStats    metrics.Scope
 	totalCertsStats        metrics.Scope
+
+	ctpolicy        *ctpolicy.CTPolicy
+	ctpolicyResults *prometheus.HistogramVec
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -108,7 +113,18 @@ func NewRegistrationAuthorityImpl(
 	pubc core.Publisher,
 	caaClient caaChecker,
 	orderLifetime time.Duration,
+	ctp *ctpolicy.CTPolicy,
 ) *RegistrationAuthorityImpl {
+	ctpolicyResults := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "ctpolicy_results",
+			Help:    "Histogram of latencies of ctpolicy.GetSCTs calls with success/failure/deadlineExceeded labels",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
+		},
+		[]string{"result"},
+	)
+	stats.MustRegister(ctpolicyResults)
+
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -131,6 +147,8 @@ func NewRegistrationAuthorityImpl(
 		publisher:                    pubc,
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
+		ctpolicy:                     ctp,
+		ctpolicyResults:              ctpolicyResults,
 	}
 	return ra
 }
@@ -1035,7 +1053,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		return emptyCert, err
 	}
 
-	if ra.publisher != nil {
+	if ra.ctpolicy != nil {
+		ra.getSCTs(ctx, cert.DER)
+	} else if ra.publisher != nil {
 		go func() {
 			// This context is limited by the gRPC timeout.
 			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
@@ -1069,6 +1089,44 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("NewCertificates", 1)
 	return cert, nil
+}
+
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) {
+	var ctCtx context.Context
+	var cancel func()
+	currentDeadline, ok := ctx.Deadline()
+	if !ok {
+		// Current context doesn't have a deadline, this should
+		// never happen so it's a internal server error... but
+		// we already issued the cert so we can't fail out now.
+		// Just use a background context with a 30s timeout added.
+		ctCtx, cancel = context.WithTimeout(context.Background(), time.Second*30)
+	} else {
+		// NOTE: We want to check how putting the SCT submission/collection
+		// affects calls to IssueCertificate so we take the current context
+		// and allocate 80% of the remaining time to calling CTPolicy.GetSCTs.
+		// This way if we exceed the child context we won't time out the
+		// parent call and can still return the cert to the user.
+		until := time.Until(currentDeadline)
+		ctCtx, cancel = context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
+	}
+	defer cancel()
+	started := ra.clk.Now()
+	_, err := ra.ctpolicy.GetSCTs(ctCtx, cert)
+	took := ra.clk.Since(started)
+	// The final cert has already been issued so actually return it to the
+	// user even if this fails since we aren't actually doing anything with
+	// the SCTs yet.
+	state := "failure"
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			state = "deadlineExceeded"
+		}
+		ra.log.Warning(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
+	} else if err == nil {
+		state = "success"
+	}
+	ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
 }
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
