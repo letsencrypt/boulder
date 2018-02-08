@@ -155,10 +155,15 @@ func main() {
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
 	var pubc core.Publisher
+	var ctp *ctpolicy.CTPolicy
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+		if c.RA.CTLogGroups != nil {
+			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
+		}
 	}
 
 	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
@@ -175,11 +180,6 @@ func main() {
 	pendingAuthorizationLifetime := 7 * 24 * time.Hour
 	if c.RA.PendingAuthorizationLifetimeDays != 0 {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
-	}
-
-	var ctp *ctpolicy.CTPolicy
-	if c.RA.CTLogGroups != nil && pubc != nil {
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
 	}
 
 	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile)
