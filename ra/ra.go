@@ -1717,12 +1717,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
 			order.Authorizations = append(order.Authorizations, *authz.Id)
 			continue
-		} else {
-			// If the identifier isn't a wildcard, we can reuse any authz that has
-			// the normal number of challenges (e.g. not just DNS-01)
+		} else if !strings.HasPrefix(name, "*.") {
+			// If the identifier isn't a wildcard, we can reuse any authz
 			order.Authorizations = append(order.Authorizations, *authz.Id)
 			continue
 		}
+
+		// If we reached this point then the existing authz was not acceptable for
+		// reuse and we need to mark the name as requiring a new pending authz
+		missingAuthzNames = append(missingAuthzNames, name)
 	}
 
 	// If the order isn't fully authorized we need to check that the client has
