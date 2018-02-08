@@ -232,8 +232,19 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
-func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(ctx, authorizationTable, string(core.StatusValid), registrationID, names, now)
+func (ssa *SQLStorageAuthority) GetValidAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string,
+	now time.Time) (map[string]*core.Authorization, error) {
+	return ssa.getAuthorizations(
+		ctx,
+		authorizationTable,
+		string(core.StatusValid),
+		registrationID,
+		names,
+		now,
+		false)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -1905,8 +1916,14 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	return order, nil
 }
 
-func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table string, status string,
-	registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+func (ssa *SQLStorageAuthority) getAuthorizations(
+	ctx context.Context,
+	table string,
+	status string,
+	registrationID int64,
+	names []string,
+	now time.Time,
+	requireV2Authzs bool) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, berrors.InternalServerError("no names received")
 	}
@@ -1923,14 +1940,25 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 		qmarks[i] = "?"
 	}
 
+	// If requested, filter out V1 authorizations by doing a JOIN on the
+	// orderToAuthz table, ensuring that all authorization IDs returned correspond
+	// to a V2 order.
+	queryPrefix := fmt.Sprintf(`SELECT %s FROM %s`, authzFields, table)
+	if requireV2Authzs {
+		queryPrefix = queryPrefix + `
+		JOIN orderToAuthz
+			ON ID = authzID`
+	}
+
 	var auths []*core.Authorization
 	_, err := ssa.dbMap.Select(
 		&auths,
-		fmt.Sprintf(`SELECT %s FROM %s
-	WHERE registrationID = ? AND
-	expires > ? AND
-	status = ? AND
-	identifier IN (%s)`, authzFields, table, strings.Join(qmarks, ",")),
+		fmt.Sprintf(`%s
+		WHERE registrationID = ? AND
+		expires > ? AND
+		status = ? AND
+		identifier IN (%s)`,
+			queryPrefix, strings.Join(qmarks, ",")),
 		append([]interface{}{registrationID, now, status}, params...)...)
 	if err != nil {
 		return nil, err
@@ -1964,8 +1992,18 @@ func (ssa *SQLStorageAuthority) getAuthorizations(ctx context.Context, table str
 	return byName, nil
 }
 
-func (ssa *SQLStorageAuthority) getPendingAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(ctx, pendingAuthorizationTable, string(core.StatusPending), registrationID, names, now)
+func (ssa *SQLStorageAuthority) getPendingAuthorizations(
+	ctx context.Context,
+	registrationID int64,
+	names []string, now time.Time) (map[string]*core.Authorization, error) {
+	return ssa.getAuthorizations(
+		ctx,
+		pendingAuthorizationTable,
+		string(core.StatusPending),
+		registrationID,
+		names,
+		now,
+		false)
 }
 
 func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
@@ -1983,7 +2021,9 @@ func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 }
 
 // GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
-func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (ssa *SQLStorageAuthority) GetAuthorizations(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzMap, err := ssa.getAuthorizations(
 		ctx,
 		authorizationTable,
@@ -1991,6 +2031,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(ctx context.Context, req *sapb
 		*req.RegistrationID,
 		req.Domains,
 		time.Unix(0, *req.Now),
+		*req.RequireV2Authzs,
 	)
 	if err != nil {
 		return nil, err
