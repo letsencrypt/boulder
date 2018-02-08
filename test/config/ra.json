@@ -9,7 +9,7 @@
     "maxNames": 100,
     "doNotForceCN": true,
     "reuseValidAuthz": true,
-    "authorizationLifetimeDays": 60,
+    "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyDirectory": "test/example-weak-keys.json",
     "tls": {
@@ -41,10 +41,9 @@
       ]
     },
     "features": {
-      "AllowKeyRollover": true,
       "CountCertificatesExact": true,
-      "RecheckCAA": true,
-      "ReusePendingAuthz": true
+      "ReusePendingAuthz": false,
+      "EnforceChallengeDisable": true
     }
   },
 
@@ -53,7 +52,8 @@
       "http-01": true,
       "tls-sni-01": true,
       "dns-01": true
-    }
+    },
+    "challengesWhitelistFile": "test/challenges-whitelist.json"
   },
 
   "syslog": {

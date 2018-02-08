@@ -11,49 +11,34 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	AllowAccountDeactivation
-	AllowKeyRollover
-	ResubmitMissingSCTsOnly
 	UseAIAIssuerURL
 	AllowTLS02Challenges
-	GenerateOCSPEarly
 	// For new-authz requests, if there is no valid authz, but there is a pending
 	// authz, return that instead of creating a new one.
 	ReusePendingAuthz
 	CountCertificatesExact
-	RandomDirectoryEntry
 	IPv6First
-	DirectoryMeta
 	AllowRenewalFirstRL
-	RecheckCAA
-	UDPDNS
-	ROCACheck
 	// Allow issuance of wildcard domains for ACMEv2
 	WildcardDomains
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
+	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
+	TLSSNIRevalidation
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused: false,
-	AllowAccountDeactivation: false,
-	AllowKeyRollover:         false,
-	ResubmitMissingSCTsOnly:  false,
-	UseAIAIssuerURL:          false,
-	AllowTLS02Challenges:     false,
-	GenerateOCSPEarly:        false,
-	ReusePendingAuthz:        false,
-	CountCertificatesExact:   false,
-	RandomDirectoryEntry:     false,
-	IPv6First:                false,
-	DirectoryMeta:            false,
-	AllowRenewalFirstRL:      false,
-	RecheckCAA:               false,
-	UDPDNS:                   false,
-	ROCACheck:                false,
-	WildcardDomains:          false,
-	EnforceChallengeDisable:  false,
+	unused:                  false,
+	UseAIAIssuerURL:         false,
+	AllowTLS02Challenges:    false,
+	ReusePendingAuthz:       false,
+	CountCertificatesExact:  false,
+	IPv6First:               false,
+	AllowRenewalFirstRL:     false,
+	WildcardDomains:         false,
+	EnforceChallengeDisable: false,
+	TLSSNIRevalidation:      false,
 }
 
 var fMu = new(sync.RWMutex)

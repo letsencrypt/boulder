@@ -56,7 +56,7 @@ func stringToJWK(in string) (*jose.JSONWebKey, error) {
 	return jwk, nil
 }
 
-func problemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
+func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
 	if prob == nil {
 		// nil problemDetails is valid
 		return nil, nil
@@ -70,7 +70,7 @@ func problemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, err
 	}, nil
 }
 
-func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
+func PBToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
 	if in == nil {
 		// nil problemDetails is valid
 		return nil, nil
@@ -90,7 +90,7 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 
 func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	st := string(challenge.Status)
-	prob, err := problemDetailsToPB(challenge.Error)
+	prob, err := ProblemDetailsToPB(challenge.Error)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 			}
 		}
 	}
-	prob, err := pbToProblemDetails(in.Error)
+	prob, err := PBToProblemDetails(in.Error)
 	if err != nil {
 		return core.Challenge{}, err
 	}
@@ -209,7 +209,7 @@ func validationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 			return nil, err
 		}
 	}
-	marshalledProbs, err := problemDetailsToPB(prob)
+	marshalledProbs, err := ProblemDetailsToPB(prob)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 			return nil, nil, err
 		}
 	}
-	prob, err := pbToProblemDetails(in.Problems)
+	prob, err := PBToProblemDetails(in.Problems)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -407,19 +407,20 @@ func registrationValid(reg *corepb.Registration) bool {
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID is not nil.
+// from `newOrderValid` it ensures the order ID and the BeganProcessing fields
+// are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && newOrderValid(order)
+	return order.Id != nil && order.BeganProcessing != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
 // `order.Id` because the order has not been assigned an ID yet when it is being
-// created initially. It also allows `order.CertificateSerial` to be nil such
-// that it can be used in places where the order has not been finalized yet.
-// Callers must additionally ensure the `CertificateSerial` field is non-nil if
-// they intend to use it.
+// created initially. It allows `order.BeganProcessing` to be nil because
+// `sa.NewOrder` explicitly sets it to the default value. It also allows
+// `order.CertificateSerial` to be nil such that it can be used in places where
+// the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Status == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {

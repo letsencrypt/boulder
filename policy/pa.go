@@ -177,24 +177,25 @@ func isDNSCharacter(ch byte) bool {
 }
 
 var (
-	errInvalidIdentifier   = berrors.MalformedError("Invalid identifier type")
-	errNonPublic           = berrors.MalformedError("Name does not end in a public suffix")
-	errICANNTLD            = berrors.MalformedError("Name is an ICANN TLD")
-	errBlacklisted         = berrors.RejectedIdentifierError("Policy forbids issuing for name")
-	errInvalidDNSCharacter = berrors.MalformedError("Invalid character in DNS name")
-	errNameTooLong         = berrors.MalformedError("DNS name too long")
-	errIPAddress           = berrors.MalformedError("Issuance for IP addresses not supported")
-	errTooManyLabels       = berrors.MalformedError("DNS name has too many labels")
-	errEmptyName           = berrors.MalformedError("DNS name was empty")
-	errNameEndsInDot       = berrors.MalformedError("DNS name ends in a period")
-	errTooFewLabels        = berrors.MalformedError("DNS name does not have enough labels")
-	errLabelTooShort       = berrors.MalformedError("DNS label is too short")
-	errLabelTooLong        = berrors.MalformedError("DNS label is too long")
-	errMalformedIDN        = berrors.MalformedError("DNS label contains malformed punycode")
-	errInvalidRLDH         = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
-	errTooManyWildcards    = berrors.MalformedError("DNS name had more than one wildcard")
-	errMalformedWildcard   = berrors.MalformedError("DNS name had a malformed wildcard label")
-	errICANNTLDWildcard    = berrors.MalformedError("DNS name was a wildcard for an ICANN TLD")
+	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
+	errNonPublic            = berrors.MalformedError("Name does not end in a public suffix")
+	errICANNTLD             = berrors.MalformedError("Name is an ICANN TLD")
+	errBlacklisted          = berrors.RejectedIdentifierError("Policy forbids issuing for name")
+	errInvalidDNSCharacter  = berrors.MalformedError("Invalid character in DNS name")
+	errNameTooLong          = berrors.MalformedError("DNS name too long")
+	errIPAddress            = berrors.MalformedError("Issuance for IP addresses not supported")
+	errTooManyLabels        = berrors.MalformedError("DNS name has too many labels")
+	errEmptyName            = berrors.MalformedError("DNS name was empty")
+	errNameEndsInDot        = berrors.MalformedError("DNS name ends in a period")
+	errTooFewLabels         = berrors.MalformedError("DNS name does not have enough labels")
+	errLabelTooShort        = berrors.MalformedError("DNS label is too short")
+	errLabelTooLong         = berrors.MalformedError("DNS label is too long")
+	errMalformedIDN         = berrors.MalformedError("DNS label contains malformed punycode")
+	errInvalidRLDH          = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
+	errTooManyWildcards     = berrors.MalformedError("DNS name had more than one wildcard")
+	errMalformedWildcard    = berrors.MalformedError("DNS name had a malformed wildcard label")
+	errICANNTLDWildcard     = berrors.MalformedError("DNS name was a wildcard for an ICANN TLD")
+	errWildcardNotSupported = berrors.MalformedError("Wildcard names not supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -226,6 +227,10 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	if domain == "" {
 		return errEmptyName
+	}
+
+	if strings.HasPrefix(domain, "*.") {
+		return errWildcardNotSupported
 	}
 
 	for _, ch := range []byte(domain) {
@@ -412,8 +417,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 }
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
-// acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64) ([]core.Challenge, [][]int, error) {
+// acceptable for the given identifier. If the TLSSNIRevalidation feature flag
+// is set, create TLS-SNI-01 challenges for revalidation requests even if
+// TLS-SNI-01 is not among the configured challenges.
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If the identifier is for a DNS wildcard name we only
@@ -434,7 +441,10 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 			challenges = append(challenges, core.HTTPChallenge01())
 		}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) {
+		// Add a TLS-SNI challenge, if either (a) the challenge is enabled, or (b)
+		// the TLSSNIRevalidation feature flag is on and this is a revalidation.
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
+			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 

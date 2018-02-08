@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -162,6 +163,16 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	if err != nil {
 		return core.Registration{}, err
 	}
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	if err != nil {
+		return core.Registration{}, err
+	}
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	if err != nil {
+		return core.Registration{}, err
+	}
+	test5KeyPublic := jose.JSONWebKey{Key: newKeyPriv.Public()}
+
 	err = testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
 	if err != nil {
 		panic(err)
@@ -189,6 +200,11 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	}
 
 	if core.KeyDigestEquals(jwk, test4KeyPublic) {
+		// No key found
+		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, test5KeyPublic) {
 		// No key found
 		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
 	}
@@ -307,8 +323,8 @@ func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial str
 }
 
 // NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
-	return
+func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
+	return authz, nil
 }
 
 // NewRegistration is a mock
@@ -347,6 +363,16 @@ func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration
 // FQDNSetExists is a mock
 func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bool, error) {
 	return false, nil
+}
+
+func (sa *StorageAuthority) PreviousCertificateExists(
+	_ context.Context,
+	_ *sapb.PreviousCertificateExistsRequest,
+) (*sapb.Exists, error) {
+	f := false
+	return &sapb.Exists{
+		Exists: &f,
+	}, nil
 }
 
 func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
@@ -442,6 +468,11 @@ func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.
 	return nil
 }
 
+// SetOrderError is a mock
+func (sa *StorageAuthority) SetOrderError(_ context.Context, order *corepb.Order) error {
+	return nil
+}
+
 // FinalizeOrder is a mock
 func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order) error {
 	return nil
@@ -467,7 +498,7 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		Status:            &status,
 		Authorizations:    []string{"hello"},
 		CertificateSerial: &serial,
-		Error:             []byte("error"),
+		Error:             nil,
 	}
 
 	// Order ID doesn't have a certificate serial yet
@@ -502,7 +533,11 @@ func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrder
 	return nil, nil
 }
 
-func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, _ *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidOrderAuthorizations(_ context.Context, _ *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	return nil, nil
 }
 

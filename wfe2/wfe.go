@@ -26,6 +26,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -76,6 +77,11 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
+	// certificateChains maps AIA issuer URLs to a []byte containing a leading
+	// newline and one or more PEM encoded certificates separated by a newline,
+	// sorted from leaf to root
+	certificateChains map[string][]byte
+
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
@@ -84,12 +90,6 @@ type WebFrontEndImpl struct {
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
-
-	// Cache settings
-	CertCacheDuration           time.Duration
-	CertNoCacheExpirationWindow time.Duration
-	IndexCacheDuration          time.Duration
-	IssuerCacheDuration         time.Duration
 
 	// CORS settings
 	AllowOrigins []string
@@ -106,6 +106,7 @@ func NewWebFrontEndImpl(
 	scope metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
+	certificateChains map[string][]byte,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	nonceService, err := nonce.NewNonceService(scope)
@@ -114,12 +115,13 @@ func NewWebFrontEndImpl(
 	}
 
 	return WebFrontEndImpl{
-		log:          logger,
-		clk:          clk,
-		nonceService: nonceService,
-		keyPolicy:    keyPolicy,
-		stats:        initStats(scope),
-		scope:        scope,
+		log:               logger,
+		clk:               clk,
+		nonceService:      nonceService,
+		keyPolicy:         keyPolicy,
+		certificateChains: certificateChains,
+		stats:             initStats(scope),
+		scope:             scope,
 	}, nil
 }
 
@@ -154,14 +156,15 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-			// We do not propagate errors here, because (1) they should be
-			// transient, and (2) they fail closed.
-			nonce, err := wfe.nonceService.Nonce()
-			if err == nil {
-				response.Header().Set("Replay-Nonce", nonce)
-				logEvent.ResponseNonce = nonce
-			} else {
-				logEvent.AddError("unable to make nonce: %s", err)
+			if request.Method != "GET" || pattern == newNoncePath {
+				// We do not propagate errors here, because (1) they should be
+				// transient, and (2) they fail closed.
+				nonce, err := wfe.nonceService.Nonce()
+				if err == nil {
+					response.Header().Set("Replay-Nonce", nonce)
+				} else {
+					logEvent.AddError("unable to make nonce: %s", err)
+				}
 			}
 
 			logEvent.Endpoint = pattern
@@ -684,8 +687,15 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	}
 	// For Key ID revocations we decide if an account is able to revoke a specific
 	// certificate by checking that the account has valid authorizations for all
-	// of the names in the certificate
+	// of the names in the certificate or was the issuing account
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+		cert, err := wfe.SA.GetCertificate(ctx, core.SerialToString(parsedCertificate.SerialNumber))
+		if err != nil {
+			return probs.ServerInternal("Failed to retrieve certificate")
+		}
+		if cert.RegistrationID == acct.ID {
+			return nil
+		}
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
@@ -1204,15 +1214,63 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set("Content-Type", "application/pem-certificate-chain")
-	response.WriteHeader(http.StatusOK)
-
-	pem := pem.EncodeToMemory(&pem.Block{
+	leafPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: cert.DER,
 	})
-	// TODO(#3291): Serve entire chain instead of just end-entity certificate.
-	if _, err = response.Write(pem); err != nil {
+
+	var responsePEM []byte
+
+	// If the WFE is configured with certificateChains, construct a chain for this
+	// certificate using its AIA Issuer URL.
+	if len(wfe.certificateChains) > 0 {
+		parsedCert, err := x509.ParseCertificate(cert.DER)
+		if err != nil {
+			// If we can't parse one of our own certs there's a serious problem
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"unable to parse Boulder issued certificate with serial %#v",
+					serial),
+			), err)
+			return
+		}
+
+		// NOTE(@cpu): Boulder assumes there will only be **ONE** AIA issuer URL
+		// configured in the CA signing profile. At present this is not enforced by
+		// the CA, but should be. See
+		//  https://github.com/letsencrypt/boulder/issues/3374
+		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
+		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
+			// Prepend the chain with the leaf certificate
+			responsePEM = append(leafPEM, chain...)
+		} else {
+			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
+			// is probably a misconfiguration and we should treat it as an internal
+			// server error.
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"Certificate serial %#v has an unknown AIA Issuer URL %q"+
+						"- no PEM certificate chain associated.",
+					serial,
+					aiaIssuerURL),
+			), nil)
+			return
+		}
+	} else {
+		// Otherwise, with no configured certificateChains just serve the leaf
+		// certificate.
+		responsePEM = leafPEM
+	}
+
+	// NOTE(@cpu): We must explicitly set the Content-Length header here. The Go
+	// HTTP library will only add this header if the body is below a certain size
+	// and with the addition of a PEM encoded certificate chain the body size of
+	// this endpoint will exceed this threshold. Since we know the length we can
+	// reliably set it ourselves and not worry.
+	response.Header().Set("Content-Length", strconv.Itoa(len(responsePEM)))
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(responsePEM); err != nil {
 		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
@@ -1355,11 +1413,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err != nil {
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err == nil {
 		response.Header().Set("Location",
 			wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
+		return
+	} else if !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
 
@@ -1407,7 +1468,7 @@ type orderJSON struct {
 	Authorizations []string              `json:"authorizations"`
 	Finalize       string                `json:"finalize"`
 	Certificate    string                `json:"certificate,omitempty"`
-	Error          string                `json:",omitempty"`
+	Error          *probs.ProblemDetails `json:"error,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1427,6 +1488,16 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Identifiers:    idents,
 		Authorizations: make([]string, len(order.Authorizations)),
 		Finalize:       finalizeURL,
+	}
+	// If there is an order error, prefix its type with the V2 namespace
+	if order.Error != nil {
+		prob, err := bgrpc.PBToProblemDetails(order.Error)
+		if err != nil {
+			wfe.log.AuditErr(fmt.Sprintf("Internal error converting order ID %d "+
+				"proto buf prob to problem details: %q", *order.Id, err))
+		}
+		respObj.Error = prob
+		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
 	}
 	for i, authzID := range order.Authorizations {
 		respObj.Authorizations[i] = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
@@ -1453,10 +1524,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// We only allow specifying Identifiers in a new order request - we ignore the
-	// `notBefore` and `notAfter` fields described in Section 7.4 of acme-08
+	// We only allow specifying Identifiers in a new order request - if the
+	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
+	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers []core.AcmeIdentifier `json:"identifiers"`
+		Identifiers         []core.AcmeIdentifier `json:"identifiers"`
+		NotBefore, NotAfter string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -1468,6 +1541,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if len(newOrderRequest.Identifiers) == 0 {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("NewOrder request did not specify any identifiers"), nil)
+		return
+	}
+	if newOrderRequest.NotBefore != "" || newOrderRequest.NotAfter != "" {
+		wfe.sendError(response, logEvent, probs.Malformed("NotBefore and NotAfter are not supported"), nil)
 		return
 	}
 

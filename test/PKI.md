@@ -7,7 +7,13 @@ The PKI used by WFE is under test/wfe-tls/, with test/wfe-tls/minica.pem serving
 as the root. There are no intermediates. Setting test/wfe-tls/minica.pem as
 a trusted root is sufficient to connect to the WFE over HTTPS. Currently there
 is only one end-entity certificate in this PKI, and that's all we expect to
-need.
+need. To validate HTTPS connections to a test-mode WFE in Python, set the environment
+variable `REQUESTS_CA_BUNDLE`. For Node, set `NODE_EXTRA_CA_CERTS`. These
+variables should be set to `/path/to/boulder/test/wfe-tls/minica.pem` (but only
+in testing environments!). Note that in the Python case, setting this environment
+variable may break HTTPS connections to non-WFE destinations. If causes problems
+for you, you may need to create a combined bundle containing
+`test/wfe-tls/minica.pem` in addition to the other relevant root certificates.
 
 The gRPC PKI is under test/grpc-creds/. Each Boulder component has its own hostname
 (even though right now all those hostnames resolve to 127.0.0.1 in test). For

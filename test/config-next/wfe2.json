@@ -28,13 +28,11 @@
       "serverAddresses": ["sa.boulder:19095"],
       "timeout": "15s"
     },
-    "features": {
-      "AllowAccountDeactivation": true,
-      "AllowKeyRollover": true,
-      "UseAIAIssuerURL": true,
-      "RandomDirectoryEntry": true,
-      "DirectoryMeta": true
-    }
+    "certificateChains": {
+      "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
+    },
+    "features": {}
   },
 
   "syslog": {

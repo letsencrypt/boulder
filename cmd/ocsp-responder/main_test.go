@@ -134,9 +134,9 @@ func TestErrorLog(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, cfocsp.ErrNotFound)
+	test.AssertEquals(t, err.Error(), "Failure!")
 
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Looking up OCSP response")), 1)
 }
 
 func mustRead(path string) []byte {
