@@ -11,7 +11,7 @@
       "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:19095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "grpcCA": {
@@ -130,7 +130,6 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "features": {
-        "GenerateOCSPEarly": true
     }
   },
 
