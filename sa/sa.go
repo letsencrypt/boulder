@@ -1923,7 +1923,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	registrationID int64,
 	names []string,
 	now time.Time,
-	noLegacyAuthzs bool) (map[string]*core.Authorization, error) {
+	requireV2Authzs bool) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, berrors.InternalServerError("no names received")
 	}
@@ -1944,7 +1944,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	// orderToAuthz table, ensuring that all authorization IDs returned correspond
 	// to a V2 order.
 	queryPrefix := fmt.Sprintf(`SELECT %s FROM %s`, authzFields, table)
-	if noLegacyAuthzs {
+	if requireV2Authzs {
 		queryPrefix = queryPrefix + `
 		JOIN orderToAuthz
 			ON ID = authzID`
@@ -2031,7 +2031,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 		*req.RegistrationID,
 		req.Domains,
 		time.Unix(0, *req.Now),
-		*req.NoLegacyAuthzs,
+		*req.RequireV2Authzs,
 	)
 	if err != nil {
 		return nil, err

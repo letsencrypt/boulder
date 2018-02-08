@@ -1660,22 +1660,22 @@ func TestGetAuthorizations(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, paB)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paB.ID)
 
-	noLegacyAuthzs := false
+	requireV2Authzs := false
 
 	now := fc.Now().UnixNano()
 	authz, err := sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: &reg.ID,
-		Domains:        []string{"a", "b"},
-		Now:            &now,
-		NoLegacyAuthzs: &noLegacyAuthzs,
+		RegistrationID:  &reg.ID,
+		Domains:         []string{"a", "b"},
+		Now:             &now,
+		RequireV2Authzs: &requireV2Authzs,
 	})
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
 	test.AssertEquals(t, len(authz.Authz), 2)
 	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: &reg.ID,
-		Domains:        []string{"a", "b", "c"},
-		Now:            &now,
-		NoLegacyAuthzs: &noLegacyAuthzs,
+		RegistrationID:  &reg.ID,
+		Domains:         []string{"a", "b", "c"},
+		Now:             &now,
+		RequireV2Authzs: &requireV2Authzs,
 	})
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
 	test.AssertEquals(t, len(authz.Authz), 2)
