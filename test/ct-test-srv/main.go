@@ -16,7 +16,6 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"os"
 	"sync/atomic"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -129,36 +128,45 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type config struct {
+	Personalities []Personality
+}
+
+type Personality struct {
+	// Port (and optionally IP) to listen on
+	Addr string
+	// Private key for signing SCTs
+	PrivKey string
+	// If present, sleep for the given number of nanos before replying. Each
+	// request uses the next number in the list, eventually cycling through.
+	LatencySchedule []int64
+}
+
 func main() {
-	signingKeyA := "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
-	decodedKeyA, _ := base64.StdEncoding.DecodeString(signingKeyA)
-
-	keyA, err := x509.ParseECPrivateKey(decodedKeyA)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse signing key: %s\n", err)
-		return
-	}
-	signingKeyB := "MHcCAQEEIJSCFDYXt2xCIxv+G8BCzGdUsFIQDWEjxfJDfnn9JB5loAoGCCqGSM49AwEHoUQDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA=="
-	decodedKeyB, _ := base64.StdEncoding.DecodeString(signingKeyB)
-
-	keyB, err := x509.ParseECPrivateKey(decodedKeyB)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse signing key: %s\n", err)
-		return
+	c := config{
+		Personalities: []Personality{
+			{":4500", "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==", nil},
+			{":4501", "MHcCAQEEIJSCFDYXt2xCIxv+G8BCzGdUsFIQDWEjxfJDfnn9JB5loAoGCCqGSM49AwEHoUQDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==", nil},
+		},
 	}
 
-	isA := integrationSrv{key: keyA}
-	isB := integrationSrv{key: keyB}
-	sA := &http.Server{
-		Addr:    "0.0.0.0:4500",
-		Handler: http.HandlerFunc(isA.handler),
+	for _, p := range c.Personalities {
+		keyDER, err := base64.StdEncoding.DecodeString(p.PrivKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+		key, err := x509.ParseECPrivateKey(keyDER)
+		if err != nil {
+			log.Fatal(err)
+		}
+		is := integrationSrv{key: key}
+		srv := &http.Server{
+			Addr:    p.Addr,
+			Handler: http.HandlerFunc(is.handler),
+		}
+		go func() {
+			log.Fatal(srv.ListenAndServe())
+		}()
 	}
-	sB := &http.Server{
-		Addr:    "0.0.0.0:4501",
-		Handler: http.HandlerFunc(isB.handler),
-	}
-	go func() { log.Fatal(sA.ListenAndServe()) }()
-	go func() { log.Fatal(sB.ListenAndServe()) }()
-
 	cmd.CatchSignals(nil, nil)
 }
