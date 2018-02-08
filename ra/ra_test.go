@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -34,6 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
@@ -41,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -270,7 +273,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, nil)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -3313,6 +3316,68 @@ func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
 	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})
 	test.AssertError(t, err, "ra.UpdateAuthorization allowed a update to a authorization")
 	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
+}
+
+type timeoutPub struct {
+}
+
+func (mp *timeoutPub) SubmitToCT(ctx context.Context, der []byte) error {
+	return nil
+}
+func (mp *timeoutPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
+	return nil
+}
+func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func TestCTPolicyMeasurements(t *testing.T) {
+	va, ssa, _, fc, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	pa, err := policy.New(SupportedChallenges)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
+
+	stats := metrics.NewNoopScope()
+
+	ca := &mocks.MockCA{
+		PEM: eeCertPEM,
+	}
+
+	ctp := ctpolicy.New(&timeoutPub{}, [][]cmd.LogDescription{{}}, log)
+	ra := NewRegistrationAuthorityImpl(fc,
+		log,
+		stats,
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp)
+	ra.SA = ssa
+	ra.VA = va
+	ra.CA = ca
+	ra.PA = pa
+	ra.DNSClient = &bdns.MockDNSClient{}
+
+	AuthzFinal.RegistrationID = Registration.ID
+	AuthzFinal, err := ssa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = ssa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	// Inject another final authorization to cover www.not-example.com
+	authzFinalWWW := AuthzFinal
+	authzFinalWWW.Identifier.Value = "www.not-example.com"
+	authzFinalWWW, err = ssa.NewPendingAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = ssa.FinalizeAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err = ra.issueCertificate(ctx, core.CertificateRequest{
+		CSR: ExampleCSR,
+	}, accountID(Registration.ID), 0)
+	test.AssertNotError(t, err, "ra.issueCertificate failed when CTPolicy.GetSCTs timed out")
+	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
 }
 
 var CAkeyPEM = `

@@ -14,6 +14,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -73,6 +74,13 @@ type config struct {
 		WeakKeyFile string
 
 		OrderLifetime cmd.ConfigDuration
+
+		// CTLogGroups contains groupings of CT logs which we want SCTs from.
+		// When we retrieve SCTs we will submit the certificate to each log
+		// in a group and the first SCT returned will be used. This allows
+		// us to comply with Chrome CT policy which requires one SCT from a
+		// Google log and one SCT from any other log included in their policy.
+		CTLogGroups [][]cmd.LogDescription
 
 		Features map[string]bool
 	}
@@ -147,10 +155,15 @@ func main() {
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
 	var pubc core.Publisher
+	var ctp *ctpolicy.CTPolicy
 	if c.RA.PublisherService != nil {
 		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+		if c.RA.CTLogGroups != nil {
+			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
+		}
 	}
 
 	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
@@ -186,6 +199,7 @@ func main() {
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		ctp,
 	)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
