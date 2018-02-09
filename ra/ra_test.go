@@ -2394,6 +2394,110 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
 }
 
+// mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns
+// a TLS-SNI-01 validated wildcard authz.
+type mockSAUnsafeAuthzReuse struct {
+	mocks.StorageAuthority
+}
+
+// GetAuthorizations returns a _bizarre_ authorization for "*.zombo.com" that
+// was validated by TLS-SNI-01. This should never happen in real life since the
+// name is a wildcard. We use this mock to test that we reject this bizarre
+// situation correctly.
+func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	authzs := map[string]*core.Authorization{
+		"*.zombo.com": &core.Authorization{
+			// A static fake ID we can check for in a unit test
+			ID:             "bad-bad-not-good",
+			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.zombo.com"},
+			RegistrationID: *req.RegistrationID,
+			Combinations:   [][]int{{0}, {1}},
+			// Authz is valid
+			Status: "valid",
+			Challenges: []core.Challenge{
+				// TLS-SNI-01 challenge is valid
+				core.Challenge{
+					Type:   core.ChallengeTypeTLSSNI01, // The dreaded TLS-SNI-01! X__X
+					Status: core.StatusValid,
+				},
+				// DNS-01 challenge is pending
+				core.Challenge{
+					Type:   core.ChallengeTypeDNS01,
+					Status: core.StatusPending,
+				},
+			},
+		},
+	}
+	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
+	resp := &sapb.Authorizations{}
+	for k, v := range authzs {
+		authzPB, err := sagrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	}
+	return resp, nil
+}
+
+// AddPendingAuthorizations is a mock that just returns a fake pending authz ID
+// that is != "bad-bad-not-good"
+func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
+	_ context.Context,
+	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	return &sapb.AuthorizationIDs{
+		Ids: []string{
+			"abcdefg",
+		},
+	}, nil
+}
+
+// TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an
+// authorization for a new-order request with a wildcard name works correctly.
+// We want to ensure that we never reuse a non-Wildcard authorization (e.g. one
+// with more than just a DNS-01 challenge) for a wildcard name. See Issue #3420
+// for background - this safety check was previously broken!
+// https://github.com/letsencrypt/boulder/issues/3420
+func TestNewOrderAuthzReuseSafety(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	// Enable wildcard domains
+	_ = features.Set(map[string]bool{"WildcardDomains": true})
+	defer features.Reset()
+
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"*.zombo.com"}
+
+	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// "zombo.com"
+	ra.SA = &mockSAUnsafeAuthzReuse{}
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// Create an order for that request
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// There should be one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// It should *not* be the bad authorization!
+	test.AssertNotEquals(t, order.Authorizations[0], "bad-bad-not-good")
+}
+
 func TestNewOrderWildcard(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
