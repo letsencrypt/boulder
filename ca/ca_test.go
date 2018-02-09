@@ -705,6 +705,52 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
 
+func TestSingleAIAEnforcement(t *testing.T) {
+	pa, err := policy.New(nil)
+	test.AssertNotError(t, err, "Couldn't create PA")
+
+	_, err = NewCertificateAuthorityImpl(
+		ca_config.CAConfig{
+			SerialPrefix: 1,
+			LifespanOCSP: cmd.ConfigDuration{Duration: time.Second},
+			CFSSL: cfsslConfig.Config{
+				Signing: &cfsslConfig.Signing{
+					Profiles: map[string]*cfsslConfig.SigningProfile{
+						rsaProfileName: {
+							IssuerURL: []string{"http://not-example.com/issuer-url", "bad"},
+							Usage:     []string{"digital signature", "key encipherment", "server auth"},
+							OCSP:      "http://not-example.com/ocsp",
+							CRL:       "http://not-example.com/crl",
+							Policies: []cfsslConfig.CertificatePolicy{
+								{
+									ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
+								},
+							},
+							ExpiryString: "8760h",
+							Backdate:     time.Hour,
+							CSRWhitelist: &cfsslConfig.CSRWhitelist{
+								PublicKeyAlgorithm: true,
+								PublicKey:          true,
+								SignatureAlgorithm: true,
+							},
+							ClientProvidesSerialNumbers: true,
+						},
+					},
+				},
+			},
+		},
+		&mockSA{},
+		pa,
+		clock.New(),
+		metrics.NewNoopScope(),
+		nil,
+		goodkey.KeyPolicy{},
+		&blog.Mock{},
+	)
+	test.AssertError(t, err, "NewCertificateAuthorityImpl allowed a profile with multiple issuer_urls")
+	test.AssertEquals(t, err.Error(), "only one issuer_url supported")
+}
+
 func issueCertificateSubTestAllowNoCN(t *testing.T, i *TestCertificateIssuance) {
 	cert := i.cert
 

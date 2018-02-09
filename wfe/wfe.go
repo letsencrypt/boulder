@@ -81,12 +81,6 @@ type WebFrontEndImpl struct {
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
 
-	// Cache settings
-	CertCacheDuration           time.Duration
-	CertNoCacheExpirationWindow time.Duration
-	IndexCacheDuration          time.Duration
-	IssuerCacheDuration         time.Duration
-
 	// CORS settings
 	AllowOrigins []string
 
@@ -166,7 +160,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			nonce, err := wfe.nonceService.Nonce()
 			if err == nil {
 				response.Header().Set("Replay-Nonce", nonce)
-				logEvent.ResponseNonce = nonce
 			} else {
 				logEvent.AddError("unable to make nonce: %s", err)
 			}
@@ -550,7 +543,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	// Check that the request has a known anti-replay nonce
 	nonce := parsedJws.Signatures[0].Header.Nonce
-	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
 		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")

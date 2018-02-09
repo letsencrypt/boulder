@@ -63,10 +63,10 @@ func TestWillingToIssue(t *testing.T) {
 		{`1`, errTooFewLabels},
 		{`*`, errInvalidDNSCharacter},
 		{`**`, errInvalidDNSCharacter},
-		{`*.*`, errInvalidDNSCharacter},
+		{`*.*`, errWildcardNotSupported},
 		{`zombo*com`, errInvalidDNSCharacter},
-		{`*.com`, errInvalidDNSCharacter},
-		{`*.zombo.com`, errInvalidDNSCharacter},
+		{`*.com`, errWildcardNotSupported},
+		{`*.zombo.com`, errWildcardNotSupported},
 		{`..a`, errLabelTooShort},
 		{`a..a`, errLabelTooShort},
 		{`.a..a`, errLabelTooShort},
@@ -313,7 +313,7 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID)
+	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID, false)
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
@@ -353,11 +353,11 @@ func TestChallengesForWhitelist(t *testing.T) {
 	err = pa.SetChallengesWhitelistFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	challenges, _, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID)
+	challenges, _, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID, false)
 	test.AssertNotError(t, err, "ChallengesFor failed")
 	test.Assert(t, len(challenges) == len(enabledChallenges)-1, "Wrong number of challenges returned")
 
-	challenges, _, err = pa.ChallengesFor(core.AcmeIdentifier{}, testRegIDWhitelisted)
+	challenges, _, err = pa.ChallengesFor(core.AcmeIdentifier{}, testRegIDWhitelisted, false)
 	test.AssertNotError(t, err, "ChallengesFor failed")
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 }
@@ -383,7 +383,7 @@ func TestChallengesForWildcard(t *testing.T) {
 		core.ChallengeTypeDNS01:    false,
 	}
 	pa := mustConstructPA(t, enabledChallenges)
-	_, _, err := pa.ChallengesFor(wildcardIdent, testRegID)
+	_, _, err := pa.ChallengesFor(wildcardIdent, testRegID, false)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
@@ -393,7 +393,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
 	pa = mustConstructPA(t, enabledChallenges)
-	challenges, combinations, err := pa.ChallengesFor(wildcardIdent, testRegID)
+	challenges, combinations, err := pa.ChallengesFor(wildcardIdent, testRegID, false)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")
 	test.AssertEquals(t, len(combinations), 1)

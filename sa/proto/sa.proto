@@ -27,6 +27,7 @@ service StorageAuthority {
         rpc GetSCTReceipt(GetSCTReceiptRequest) returns (SignedCertificateTimestamp) {}
         rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
         rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
+        rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
         // Adders
         rpc NewRegistration(core.Registration) returns (core.Registration) {}
         rpc UpdateRegistration(core.Registration) returns (core.Empty) {}
@@ -41,9 +42,11 @@ service StorageAuthority {
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
         rpc SetOrderProcessing(core.Order) returns (core.Empty) {}
+        rpc SetOrderError(core.Order) returns (core.Empty) {}
         rpc FinalizeOrder(core.Order) returns (core.Empty) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
         rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+        rpc GetValidOrderAuthorizations(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
@@ -148,6 +151,11 @@ message FQDNSetExistsRequest {
         repeated string domains = 1;
 }
 
+message PreviousCertificateExistsRequest {
+        optional string domain = 1;
+        optional int64 regID = 2;
+}
+
 message Exists {
         optional bool exists = 1;
 }
@@ -197,6 +205,11 @@ message GetOrderAuthorizationsRequest {
         optional int64 acctID = 2;
 }
 
+message GetValidOrderAuthorizationsRequest {
+        optional int64 id = 1;
+        optional int64 acctID = 2;
+}
+
 message GetOrderForNamesRequest {
         optional int64 acctID = 1;
         repeated string names = 2;
@@ -206,6 +219,7 @@ message GetAuthorizationsRequest {
         optional int64 registrationID = 1;
         repeated string domains = 2;
         optional int64 now = 3; // Unix timestamp (nanoseconds)
+        optional bool requireV2Authzs = 4; // Do not include legacy V1 authzs
 }
 
 message Authorizations {

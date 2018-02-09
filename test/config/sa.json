@@ -3,6 +3,7 @@
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 100000,
+    "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
@@ -24,7 +25,7 @@
       ]
     },
     "features": {
-      "AllowAccountDeactivation": true
+      "EnforceChallengeDisable": true
     }
   },
 

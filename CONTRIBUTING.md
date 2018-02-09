@@ -236,6 +236,24 @@ ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
 
+# Release Process
+
+The current Boulder release process is described in the [boulder release process
+repository](https://github.com/letsencrypt/boulder-release-process). It includes
+[an example](https://github.com/letsencrypt/boulder-release-process#example) git
+history showing a regular release being tagged, a hotfix being tagged from
+a clean master, and a hotfix being tagged from a release branch because master
+was dirty.
+
+Previously we used dedicated
+[`staging`](https://github.com/letsencrypt/boulder/tree/staging) and
+[`release`](https://github.com/letsencrypt/boulder/tree/release) branches. This
+had several downsides and we frequently forgot to merge staging to release once
+code had been shipped to production. We do not use the `staging` and `release`
+branches anymore. Releases tagged from prior to Feb 1st 2017 are also outdated
+artifacts of old process (e.g. the
+[`hotfixes-2017-02-01`](https://github.com/letsencrypt/boulder/releases/tag/hotfixes%2F2017-02-01)
+tag).
 
 # Dependencies
 

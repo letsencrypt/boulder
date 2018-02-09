@@ -268,7 +268,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
@@ -682,7 +682,6 @@ func TestPOST404(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IndexCacheDuration = time.Second * 10
 
 	responseWriter := httptest.NewRecorder()
 
@@ -908,6 +907,7 @@ func TestIssueCertificate(t *testing.T) {
 		nil,
 		noopCAA{},
 		0,
+		nil,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
@@ -1894,7 +1894,6 @@ func TestTermsRedirect(t *testing.T) {
 
 func TestIssuer(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCacheDuration = time.Second * 10
 	wfe.IssuerCert = []byte{0, 0, 1}
 
 	responseWriter := httptest.NewRecorder()
@@ -1911,9 +1910,6 @@ func TestGetCertificate(t *testing.T) {
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
-
-	wfe.CertCacheDuration = time.Second * 10
-	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)

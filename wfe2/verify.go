@@ -159,16 +159,14 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 }
 
 // validNonce checks a JWS' Nonce header to ensure it is one that the
-// nonceService knows about, otherwise a bad nonce problem is returned. The
-// provided logEvent is mutated to set the observed RequestNonce.
+// nonceService knows about, otherwise a bad nonce problem is returned.
 // NOTE: this function assumes the JWS has already been verified with the
 // correct public key.
-func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature, logEvent *web.RequestEvent) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature) *probs.ProblemDetails {
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
 	header := jws.Signatures[0].Header
 	nonce := header.Nonce
-	logEvent.RequestNonce = nonce
 	if len(nonce) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
@@ -451,7 +449,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	logEvent.Payload = string(payload)
 
 	// Check that the JWS contains a correct Nonce header
-	if prob := wfe.validNonce(jws, logEvent); prob != nil {
+	if prob := wfe.validNonce(jws); prob != nil {
 		return nil, prob
 	}
 

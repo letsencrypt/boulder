@@ -80,11 +80,12 @@ message Order {
         optional int64 id = 1;
         optional int64 registrationID = 2;
         optional int64 expires = 3;
-        optional bytes error = 4;
+        optional ProblemDetails error = 4;
         optional string certificateSerial = 5;
         repeated string authorizations = 6;
         optional string status = 7;
         repeated string names = 8;
+        optional bool beganProcessing = 9;
 }
 
 message Empty {}
