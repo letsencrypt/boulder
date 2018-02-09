@@ -157,11 +157,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 	return results, nil
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (
-	core.RegistrationAuthority,
-	core.StorageAuthority,
-	func(),
-) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
 	var tls *tls.Config
 	var err error
 	if c.WFE.TLS.CertFile != nil {
@@ -177,11 +173,7 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	closeConns := func() {
-		raConn.Close()
-		saConn.Close()
-	}
-	return rac, sac, closeConns
+	return rac, sac
 }
 
 func main() {
@@ -210,7 +202,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, certChains, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac, closeConns := setupWFE(c, logger, scope)
+	rac, sac := setupWFE(c, logger, scope)
 	wfe.RA = rac
 	wfe.SA = sac
 
@@ -269,7 +261,6 @@ func main() {
 		if tlsSrv != nil {
 			_ = tlsSrv.Shutdown(ctx)
 		}
-		closeConns()
 		done <- true
 	})
 

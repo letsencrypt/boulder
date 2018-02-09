@@ -197,7 +197,6 @@ func main() {
 		if ocspSrv != nil {
 			ocspSrv.GracefulStop()
 		}
-		conn.Close()
 	})
 
 	select {}

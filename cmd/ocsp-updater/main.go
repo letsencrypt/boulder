@@ -716,7 +716,6 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
-	func(),
 ) {
 	var tls *tls.Config
 	var err error
@@ -740,13 +739,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
-	closeConns := func() {
-		caConn.Close()
-		publisherConn.Close()
-		conn.Close()
-	}
-
-	return cac, pubc, sac, closeConns
+	return cac, pubc, sac
 }
 
 func main() {
@@ -776,7 +769,7 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	cac, pubc, sac, closeConns := setupClients(conf, scope)
+	cac, pubc, sac := setupClients(conf, scope)
 
 	updater, err := newUpdater(
 		scope,
@@ -803,9 +796,7 @@ func main() {
 		}(l)
 	}
 
-	go cmd.CatchSignals(logger, func() {
-		closeConns()
-	})
+	go cmd.CatchSignals(logger, nil)
 
 	// Sleep forever (until signaled)
 	select {}
