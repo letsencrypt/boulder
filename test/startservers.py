@@ -53,7 +53,7 @@ def start(race_detection, fakeclock=None):
     # killed in reverse order.
     progs = [
         'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
-        'ct-test-srv',
+        'ct-test-srv --config test/ct-test-srv/ct-test-srv.json',
         'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
         'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem',
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
