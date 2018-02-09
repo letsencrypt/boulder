@@ -73,7 +73,7 @@ def start(race_detection, fakeclock=None):
         'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
         'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
         'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
-        'ct-test-srv',
+        'ct-test-srv --config test/ct-test-srv/ct-test-srv.json',
         'dns-test-srv',
         'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'
     ]
