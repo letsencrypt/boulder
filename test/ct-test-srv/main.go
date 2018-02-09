@@ -124,8 +124,6 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		// id is a sha256 of a random EC key. Generate your own with:
-		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
 		w.Write(createSignedSCT(leaf, is.key))
 	case "/submissions":
 		if r.Method != "GET" {
@@ -150,10 +148,38 @@ type Personality struct {
 	// Port (and optionally IP) to listen on
 	Addr string
 	// Private key for signing SCTs
+	// Generate your own with:
+	// openssl ecparam -name prime256v1 -genkey -outform der -noout | base64 -w 0
 	PrivKey string
 	// If present, sleep for the given number of seconds before replying. Each
 	// request uses the next number in the list, eventually cycling through.
 	LatencySchedule []float64
+}
+
+func runPersonality(p Personality) {
+	keyDER, err := base64.StdEncoding.DecodeString(p.PrivKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	key, err := x509.ParseECPrivateKey(keyDER)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	is := integrationSrv{
+		key:             key,
+		latencySchedule: p.LatencySchedule,
+	}
+	srv := &http.Server{
+		Addr:    p.Addr,
+		Handler: http.HandlerFunc(is.handler),
+	}
+	log.Printf("ct-test-srv on %s with pubkey %s", p.Addr,
+		base64.StdEncoding.EncodeToString(pubKeyBytes))
+	log.Fatal(srv.ListenAndServe())
 }
 
 func main() {
@@ -170,25 +196,7 @@ func main() {
 	}
 
 	for _, p := range c.Personalities {
-		keyDER, err := base64.StdEncoding.DecodeString(p.PrivKey)
-		if err != nil {
-			log.Fatal(err)
-		}
-		key, err := x509.ParseECPrivateKey(keyDER)
-		if err != nil {
-			log.Fatal(err)
-		}
-		is := integrationSrv{
-			key:             key,
-			latencySchedule: p.LatencySchedule,
-		}
-		srv := &http.Server{
-			Addr:    p.Addr,
-			Handler: http.HandlerFunc(is.handler),
-		}
-		go func() {
-			log.Fatal(srv.ListenAndServe())
-		}()
+		go runPersonality(p)
 	}
 	cmd.CatchSignals(nil, nil)
 }

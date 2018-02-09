@@ -29,6 +29,40 @@
         70,
         0.1
       ]
+    },
+    {
+      "Addr": ":4510",
+      "PrivKey": "MHcCAQEEIBtqLTgjiM9nMaUQkbsE1vQWYXpJP0uLqVLV73U2UzlioAoGCCqGSM49AwEHoUQDQgAEyw1HymhJkuxSIgt3gqW3sVXqMqB3EFsXcMfPFo0vYwjNiRmCJDXKsR0Flp7MAK+wc3X/7Hpc8liUbMhPet7tEA==",
+      "LatencySchedule": [
+        0.7,
+        0.3,
+        2,
+        0.0,
+        0.0,
+        20,
+        0.2,
+        0.3,
+        0.2,
+        70,
+        0.1
+      ]
+    },
+    {
+      "Addr": ":4511",
+      "PrivKey": "MHcCAQEEINwaal89BqkwvQ6r3uOj7R5VEjJi5iSDbAhlYyDhZv/joAoGCCqGSM49AwEHoUQDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+      "LatencySchedule": [
+        0.7,
+        0.3,
+        2,
+        0.0,
+        0.0,
+        20,
+        0.2,
+        0.3,
+        0.2,
+        70,
+        0.1
+      ]
     }
   ]
 }
