@@ -97,6 +97,7 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
+		atomic.AddInt64(&is.submissions, 1)
 
 		if is.latencySchedule != nil {
 			is.Lock()
@@ -126,7 +127,6 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		// id is a sha256 of a random EC key. Generate your own with:
 		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
 		w.Write(createSignedSCT(leaf, is.key))
-		atomic.AddInt64(&is.submissions, 1)
 	case "/submissions":
 		if r.Method != "GET" {
 			http.NotFound(w, r)
