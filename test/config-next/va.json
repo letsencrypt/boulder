@@ -31,11 +31,11 @@
     },
     "remoteVAs": [
       {
-        "serverAddresses": ["va.boulder:19097"],
+        "serverAddresses": ["va.boulder:9097"],
         "timeout": "15s"
       },
       {
-        "serverAddresses": ["va.boulder:19098"],
+        "serverAddresses": ["va.boulder:9098"],
         "timeout": "15s"
       }
     ]
