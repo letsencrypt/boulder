@@ -16,7 +16,6 @@ if default_config_dir == '':
     default_config_dir = 'test/config'
 
 processes = []
-listenProcesses = []
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -49,17 +48,9 @@ def start(race_detection, fakeclock=None):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    for srv in [
-            [":19091", "publisher.boulder:9091"],
-            [":19092", "va.boulder:9092"],
-            [":19093", "ca.boulder:9093"],
-            [":19094", "ra.boulder:9094"],
-            [":19095", "sa.boulder:9095"],
-            [":19096", "ca.boulder:9096"],
-            [":19097", "va.boulder:9097"],
-            [":19098", "va.boulder:9098"]
-    ]:
-        forward(srv[0], srv[1])
+    # Processes are in order of dependency: Each process should be started
+    # before any services that intend to send it RPCs. On shutdown they will be
+    # killed in reverse order.
     progs = [
         'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
         'ct-test-srv',
@@ -127,21 +118,6 @@ def start(race_detection, fakeclock=None):
     print "All servers running. Hit ^C to kill."
     return True
 
-def forward(listen, speak):
-    """Add a TCP forwarder between gRPC client and server to simulate failures."""
-    cmd = """exec listenbuddy -listen %s -speak %s""" % (listen, speak)
-    p = subprocess.Popen(cmd, shell=True)
-    p.cmd = cmd
-    print('started %s with pid %d' % (p.cmd, p.pid))
-    global listenProcesses
-    listenProcesses.append(p)
-
-def bounce_forward():
-    """Kill all forwarded TCP connections."""
-    global listenProcesses
-    for p in listenProcesses:
-        p.send_signal(signal.SIGUSR1)
-
 def check():
     """Return true if all started processes are still alive.
 
@@ -173,6 +149,4 @@ def stop():
         if p.poll() is None:
             p.send_signal(signal.SIGTERM)
             p.wait()
-    for p in processes:
-        p.wait()
     processes = []

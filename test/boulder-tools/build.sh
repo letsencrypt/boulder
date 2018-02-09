@@ -21,7 +21,6 @@ apt-get install -y --no-install-recommends \
 # Install port forwarder, database migration tool, and testing tools.
 export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
 go get \
-  github.com/jsha/listenbuddy \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/lint/golint \
   github.com/golang/mock/mockgen \

@@ -12,7 +12,6 @@ go get \
   github.com/golang/mock/mockgen \
   github.com/golang/protobuf/proto \
   github.com/golang/protobuf/protoc-gen-go \
-  github.com/jsha/listenbuddy \
   github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
