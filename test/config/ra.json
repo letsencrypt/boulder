@@ -18,19 +18,19 @@
       "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
-      "serverAddresses": ["va.boulder:19092"],
+      "serverAddresses": ["va.boulder:9092"],
       "timeout": "20s"
     },
     "caService": {
-      "serverAddresses": ["ca.boulder:19093"],
+      "serverAddresses": ["ca.boulder:9093"],
       "timeout": "15s"
     },
     "publisherService": {
-      "serverAddresses": ["publisher.boulder:19091"],
-      "timeout": "300s"
+      "serverAddresses": ["publisher.boulder:9091"],
+      "timeout": "15s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:19095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "grpc": {

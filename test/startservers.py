@@ -16,7 +16,6 @@ if default_config_dir == '':
     default_config_dir = 'test/config'
 
 processes = []
-listenProcesses = []
 
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
@@ -39,6 +38,26 @@ def run(cmd, race_detection, fakeclock):
     p.cmd = cmd
     return p
 
+def waitport(port, prog):
+    """Wait until a port on localhost is open."""
+    while True:
+        try:
+            time.sleep(0.1)
+            # If one of the servers has died, quit immediately.
+            if not check():
+                return False
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(('localhost', port))
+            s.close()
+            break
+        except socket.error as e:
+            if e.errno == errno.ECONNREFUSED:
+                print "Waiting for debug port %d (%s)" % (port, prog)
+            else:
+                raise
+    print "All servers running. Hit ^C to kill."
+    return True
+
 def start(race_detection, fakeclock=None):
     """Return True if everything builds and starts.
 
@@ -49,97 +68,43 @@ def start(race_detection, fakeclock=None):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
     global processes
-    for srv in [
-            [":19091", "publisher.boulder:9091"],
-            [":19092", "va.boulder:9092"],
-            [":19093", "ca.boulder:9093"],
-            [":19094", "ra.boulder:9094"],
-            [":19095", "sa.boulder:9095"],
-            [":19096", "ca.boulder:9096"],
-            [":19097", "va.boulder:9097"],
-            [":19098", "va.boulder:9098"]
-    ]:
-        forward(srv[0], srv[1])
+    # Processes are in order of dependency: Each process should be started
+    # before any services that intend to send it RPCs. On shutdown they will be
+    # killed in reverse order.
     progs = [
+        [8003, 'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json")],
+        [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
+        [8009, 'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json")],
+        [9380, 'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
+        [8005, 'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
-        'gsb-test-srv -apikey my-voice-is-my-passport',
-        'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json"),
-        'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json"),
-        'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json"),
-        'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json"),
-        'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json"),
-        'boulder-va --config %s' % os.path.join(default_config_dir, "va.json"),
-        'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json"),
-        'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json"),
-        'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json"),
-        'ct-test-srv --config test/ct-test-srv/ct-test-srv.json',
-        'dns-test-srv',
-        'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'
+        [6000, 'gsb-test-srv -apikey my-voice-is-my-passport'],
+        [8055, 'dns-test-srv'],
+        [8004, 'boulder-va --config %s' % os.path.join(default_config_dir, "va.json")],
+        [8001, 'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json")],
+        [8006, 'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
+        [8002, 'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json")],
+        [4431, 'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
+        [4000, 'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
     ]
     if default_config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
         progs.extend([
-            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json"),
-            'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")
+            [8011, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
+            [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     if not install(race_detection):
         return False
-    for prog in progs:
+    for (port, prog) in progs:
         try:
             processes.append(run(prog, race_detection, fakeclock))
+            if not waitport(port, prog):
+                return False
         except Exception as e:
             print(e)
             return False
-        if not check():
-            # Don't keep building stuff if a server has already died.
-            return False
-
-    # Wait until all servers are up before returning to caller. This means
-    # checking each server's debug port until it's available.
-    while True:
-        try:
-            time.sleep(0.3)
-            # If one of the servers has died, quit immediately.
-            if not check():
-                return False
-            ports = range(8000, 8005) + [4000, 4001, 4430, 4431]
-            if default_config_dir.startswith("test/config-next"):
-                # Add the two 'remote' VA debug ports
-                ports.extend([8011, 8012])
-            # Add the wfe v2 debug port
-            ports.extend([8013])
-            for debug_port in ports:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect(('localhost', debug_port))
-                s.close()
-            break
-        except socket.error as e:
-            if e.errno == errno.ECONNREFUSED:
-                print "Waiting for debug port %d" % debug_port
-            else:
-                raise
-
-    # Some servers emit extra text after their debug server is open. Sleep 1
-    # second so the "servers running" message comes last.
-    time.sleep(1)
-    print "All servers running. Hit ^C to kill."
     return True
-
-def forward(listen, speak):
-    """Add a TCP forwarder between gRPC client and server to simulate failures."""
-    cmd = """exec listenbuddy -listen %s -speak %s""" % (listen, speak)
-    p = subprocess.Popen(cmd, shell=True)
-    p.cmd = cmd
-    print('started %s with pid %d' % (p.cmd, p.pid))
-    global listenProcesses
-    listenProcesses.append(p)
-
-def bounce_forward():
-    """Kill all forwarded TCP connections."""
-    global listenProcesses
-    for p in listenProcesses:
-        p.send_signal(signal.SIGUSR1)
 
 def check():
     """Return true if all started processes are still alive.
@@ -168,9 +133,8 @@ def stop():
     # them to nicely die. This reflects the restart process in prod and allows
     # us to exercise the graceful shutdown code paths.
     global processes
-    for p in processes:
+    for p in reversed(processes):
         if p.poll() is None:
             p.send_signal(signal.SIGTERM)
-    for p in processes:
-        p.wait()
+            p.wait()
     processes = []

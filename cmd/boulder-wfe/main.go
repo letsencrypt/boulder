@@ -145,7 +145,9 @@ func main() {
 		}
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
-			cmd.FailOnError(err, "Error starting TLS server")
+			if err != nil && err != http.ErrServerClosed {
+				cmd.FailOnError(err, "Running TLS server")
+			}
 		}()
 	}
 

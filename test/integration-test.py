@@ -493,9 +493,6 @@ def main():
     if args.run_all or args.run_chisel:
         run_chisel()
 
-    # Simulate a disconnection to make sure gRPC reconnects work.
-    startservers.bounce_forward()
-
     if args.run_all or args.run_certbot:
         run_client_tests()
 

@@ -22,11 +22,11 @@
       "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
-      "serverAddresses": ["ra.boulder:19094"],
+      "serverAddresses": ["ra.boulder:9094"],
       "timeout": "20s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:19095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "features": {
