@@ -552,7 +552,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
 				return core.Authorization{}, outErr
 			}
-			if !features.Enabled(features.EnforceChallengeDisable) || ra.authzValidChallengeEnabled(&populatedAuthz) {
+			if ra.authzValidChallengeEnabled(&populatedAuthz) {
 				// The existing authorization must not expire within the next 24 hours for
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
@@ -1445,9 +1445,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
 	// (previous certificate existed) or not. If it is a revalidation, we can
 	// proceed with validation even though the challenge type is currently
-	// disabled, regardless of the EnforceChallengeDisable setting.
-	var previousCertificateExists bool
-	if features.Enabled(features.TLSSNIRevalidation) {
+	// disabled.
+	if !ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) && features.Enabled(features.TLSSNIRevalidation) {
 		existsResp, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
 			Domain: &authz.Identifier.Value,
 			RegID:  &authz.RegistrationID,
@@ -1455,13 +1454,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		if err != nil {
 			return core.Authorization{}, err
 		}
-		previousCertificateExists = *existsResp.Exists
-	}
-
-	if features.Enabled(features.EnforceChallengeDisable) &&
-		!previousCertificateExists &&
-		!ra.PA.ChallengeTypeEnabled(ch.Type, authz.RegistrationID) {
-		return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+		if !*existsResp.Exists {
+			return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+		}
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try

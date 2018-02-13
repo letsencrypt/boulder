@@ -27,8 +27,7 @@
     },
     "features": {
       "WildcardDomains": true,
-      "AllowRenewalFirstRL": true,
-      "EnforceChallengeDisable": true
+      "AllowRenewalFirstRL": true
     }
   },
 
