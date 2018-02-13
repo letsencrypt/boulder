@@ -1427,6 +1427,68 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertEquals(t, *updatedOrder.BeganProcessing, true)
 }
 
+func TestSetOrderError(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a test registration to reference
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	i := int64(1337)
+	order := &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &i,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"because-i-said-so"},
+	}
+
+	// Add a new order in pending status with no certificate serial
+	order, err = sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "NewOrder failed")
+
+	// Add a problem to the order
+	probType := "ABigOne"
+	probDetail := "P R O B L E M"
+	probStatus := int32(500)
+	order.Error = &corepb.ProblemDetails{
+		ProblemType: &probType,
+		Detail:      &probDetail,
+		HttpStatus:  &probStatus,
+	}
+
+	// Set the order error
+	err = sa.SetOrderError(ctx, order)
+	test.AssertNotError(t, err, "SetOrderError failed")
+
+	// Read the order by ID from the DB to check the status was correctly updated
+	// to processing
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "GetOrder failed")
+	// The status should be invalid
+	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusInvalid))
+	// The error should be set as expected
+	test.AssertNotEquals(t, updatedOrder.Error, nil)
+	test.AssertEquals(t, *updatedOrder.Error.ProblemType, probType)
+	test.AssertEquals(t, *updatedOrder.Error.Detail, probDetail)
+	test.AssertEquals(t, *updatedOrder.Error.HttpStatus, probStatus)
+
+	fakeID := int64(1987)
+	order.Id = &fakeID
+	// Try to set a non-existent order's error
+	err = sa.SetOrderError(ctx, order)
+	test.AssertError(t, err, "SetOrderError on a fake order ID didn't error")
+}
+
 func TestFinalizeOrder(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
@@ -1782,33 +1844,67 @@ func TestCountPendingOrders(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
-	// Create another fresh pending authz
-	thirdPendingAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
-	test.AssertNotError(t, err, "Couldn't create third new pending authorization")
-	// And then deactivate it
-	err = sa.DeactivateAuthorization(ctx, thirdPendingAuthz.ID)
-	test.AssertNotError(t, err, "Couldn't deactivate third new pending authorization")
-
-	// Create a deactivated order by referencing the deactivated authz
-	expires = fc.Now().Add(time.Hour).UnixNano()
-	_, err = sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID: &reg.ID,
-		Expires:        &expires,
-		Names:          []string{"example.com"},
-		Authorizations: []string{thirdPendingAuthz.ID},
-	})
-	test.AssertNotError(t, err, "Couldn't create new non-pending order")
-
-	// We still expect there to be a count of one for this reg ID since the order
-	// added above is not pending
-	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
-	test.AssertEquals(t, count, 1)
-
 	// If the clock is advanced by two hours we expect the count to return to
 	// 0 for this reg ID since all of the pending orders we created will have
 	// expired.
 	fc.Add(2 * time.Hour)
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	// Add another pending order with a valid expiry
+	authzExpires = fc.Now().Add(time.Hour)
+	expires = authzExpires.UnixNano()
+	failedOrder, err := sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{pendingAuthz.ID},
+	})
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+	// Count should be 1
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	// Fail the order by setting an error
+	probType := "blackswan"
+	probDetail := "flappyflappy"
+	probStatus := int32(500)
+	failedOrder.Error = &corepb.ProblemDetails{
+		ProblemType: &probType,
+		Detail:      &probDetail,
+		HttpStatus:  &probStatus,
+	}
+	err = sa.SetOrderError(ctx, failedOrder)
+	test.AssertNotError(t, err, "Couldn't fail order by updating error field")
+
+	// The count should now be 0 because the order we just added is now status
+	// invalid, not pending
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
+
+	// Add another pending order with a valid expiry
+	authzExpires = fc.Now().Add(time.Hour)
+	expires = authzExpires.UnixNano()
+	processingOrder, err := sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{pendingAuthz.ID},
+	})
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+	// Count should be 1
+	count, err = sa.CountPendingOrders(ctx, reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	// Set the order to be in processing status
+	err = sa.SetOrderProcessing(ctx, processingOrder)
+
+	// Count should now be 0 because the order we just added is now status
+	// processing, not pending
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 0)

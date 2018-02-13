@@ -988,39 +988,29 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 // CountPendingOrders returns the number of pending, unexpired
 // orders for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
-	var count int
-
 	// Find all of the unexpired order IDs for the given account
-	var orderIDs []int64
-	_, err := ssa.dbMap.Select(&orderIDs,
-		`SELECT ID FROM orders
+	// Since the order status is a calculated field based on the status of each of
+	// the authorizations we can't directly select where status = 'pending'. We
+	// also don't want to have to fetch each full authorization for each unexpired
+	// order to try and determine the status ourselves. Instead we count all
+	// orders that are not "invalid" (having a non-NULL error) or "valid" (having
+	// a populated certificateSerial) or "processing" (having a true
+	// beganProcessing). This overcounts the pending orders by including
+	// deactivated orders but is "Good Enough" and requires no access beyond the
+	// orders table.
+	var count int
+	err := ssa.dbMap.SelectOne(&count,
+		`SELECT COUNT(1) FROM orders
 		WHERE registrationID = :regID AND
+		error IS NULL AND
+		certificateSerial = '' AND
+		beganProcessing != 1 AND
 		expires > :now`,
 		map[string]interface{}{
 			"regID": regID,
 			"now":   ssa.clk.Now(),
 		})
-	if err != nil {
-		return 0, err
-	}
-
-	// Iterate the order IDs, fetching the full order & associated authorizations
-	// for each
-	// TODO(@cpu): This is not performant and we should optimize:
-	//  https://github.com/letsencrypt/boulder/issues/3410
-	for _, orderID := range orderIDs {
-		order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
-		if err != nil {
-			return 0, err
-		}
-
-		// If the order is pending, increment the pending count
-		if *order.Status == string(core.StatusPending) {
-			count++
-		}
-	}
-
-	return count, nil
+	return count, err
 }
 
 // CountInvalidAuthorizations counts invalid authorizations for a user expiring
