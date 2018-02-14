@@ -42,8 +42,7 @@
     },
     "features": {
       "CountCertificatesExact": true,
-      "ReusePendingAuthz": false,
-      "EnforceChallengeDisable": true
+      "ReusePendingAuthz": false
     }
   },
 
