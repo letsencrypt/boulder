@@ -210,7 +210,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
-			"Rev": "c1e7dca180dc5948d8af317f2fe62baba07769c4"
+			"Rev": "88ac7c418f89b164432a00c46ec7b7612d686b57"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_golang/prometheus",
