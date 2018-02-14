@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -50,7 +51,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 			})
 			if err != nil {
 				// Only log the error if it is not a result of canceling subCtx
-				if err != context.Canceled {
+				if !canceled.Is(err) {
 					ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
 				}
 				results <- result{err: err}
@@ -76,7 +77,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 			// back from another log.
 		}
 	}
-	return nil, errors.New("all submissions for group failed")
+	return nil, errors.New("all submissions failed")
 }
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
@@ -85,11 +86,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	for _, g := range ctp.groups {
+	for i, g := range ctp.groups {
 		go func(g []cmd.LogDescription) {
 			sct, err := ctp.race(subCtx, cert, g)
 			// Only one of these will be non-nil
-			results <- result{sct: sct, err: err}
+			if err != nil {
+				results <- result{err: fmt.Errorf("CT log group %d: %s", i, err)}
+			}
+			results <- result{sct: sct}
 		}(g)
 	}
 

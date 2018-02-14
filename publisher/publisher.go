@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -221,8 +222,10 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
-		pub.log.AuditErr(
-			fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+		if !canceled.Is(err) {
+			pub.log.AuditErr(
+				fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+		}
 		return nil, err
 	}
 
