@@ -37,12 +37,13 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
 
+os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
+
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
-    net = acme_client.ClientNetwork(key, verify_ssl=False,
-                                    user_agent="Boulder integration tester")
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
 
     client = acme_client.Client(DIRECTORY, key=key, net=net)
     account = client.register(messages.NewRegistration.from_data(email=email))
