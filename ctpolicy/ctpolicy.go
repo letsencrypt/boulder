@@ -87,14 +87,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for i, g := range ctp.groups {
-		go func(g []cmd.LogDescription) {
+		go func(i int, g []cmd.LogDescription) {
 			sct, err := ctp.race(subCtx, cert, g)
 			// Only one of these will be non-nil
 			if err != nil {
 				results <- result{err: fmt.Errorf("CT log group %d: %s", i, err)}
 			}
 			results <- result{sct: sct}
-		}(g)
+		}(i, g)
 	}
 
 	var ret []core.SCTDER
