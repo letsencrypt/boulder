@@ -44,7 +44,7 @@ func TestGetSCTs(t *testing.T) {
 		groups    [][]cmd.LogDescription
 		ctx       context.Context
 		result    []core.SCTDER
-		errRegexp regexp.Regexp
+		errRegexp *regexp.Regexp
 	}{
 		{
 			name: "basic success case",
@@ -102,8 +102,8 @@ func TestGetSCTs(t *testing.T) {
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
-			} else if tc.err != nil {
-				if !tc.errRegexp.Match(err.Error()) {
+			} else if tc.errRegexp != nil {
+				if !tc.errRegexp.MatchString(err.Error()) {
 					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
 				}
 			}
