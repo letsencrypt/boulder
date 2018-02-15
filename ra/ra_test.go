@@ -674,22 +674,6 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
-
-	// Test that a valid authorization that used a challenge which has been disabled
-	// is not reused
-	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
-	pa, err := policy.New(map[string]bool{
-		core.ChallengeTypeHTTP01:   false,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
-	})
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-	newAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
-	test.Assert(t, finalAuthz.ID != newAuthz.ID, "NewAuthorization reused a valid authz with a disabled challenge type")
 }
 
 func TestReusePendingAuthorization(t *testing.T) {
@@ -1171,8 +1155,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
 	// Create a dummy rate limit config that sets a PendingOrdersPerAccount rate
 	// limit with a very low threshold
@@ -3221,8 +3203,7 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 		core.ChallengeTypeHTTP01: true,
 	}
 	_ = features.Set(map[string]bool{
-		"EnforceChallengeDisable": true,
-		"TLSSNIRevalidation":      true,
+		"TLSSNIRevalidation": true,
 	})
 	pa, err := policy.New(challenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -3294,8 +3275,6 @@ func TestValidChallengeStillGood(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
-	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
-
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
@@ -3309,8 +3288,6 @@ func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
 	pa, err := policy.New(map[string]bool{})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
-
-	_ = features.Set(map[string]bool{"EnforceChallengeDisable": true})
 
 	exp := fc.Now().Add(10 * time.Hour)
 	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})

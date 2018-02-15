@@ -1861,12 +1861,10 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
-			if features.Enabled(features.EnforceChallengeDisable) {
-				// Retrieve challenges for the authz
-				auth.Challenges, err = ssa.getChallenges(auth.ID)
-				if err != nil {
-					return nil, err
-				}
+			// Retrieve challenges for the authz
+			auth.Challenges, err = ssa.getChallenges(auth.ID)
+			if err != nil {
+				return nil, err
 			}
 
 			byName[auth.Identifier.Value] = auth
@@ -1977,12 +1975,10 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
-			if features.Enabled(features.EnforceChallengeDisable) {
-				// Retrieve challenges for the authz
-				auth.Challenges, err = ssa.getChallenges(auth.ID)
-				if err != nil {
-					return nil, err
-				}
+			// Retrieve challenges for the authz
+			auth.Challenges, err = ssa.getChallenges(auth.ID)
+			if err != nil {
+				return nil, err
 			}
 
 			byName[auth.Identifier.Value] = auth

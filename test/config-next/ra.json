@@ -46,8 +46,7 @@
       "TLSSNIRevalidation": true,
       "AllowTLS02Challenges": true,
       "CountCertificatesExact": true,
-      "ReusePendingAuthz": true,
-      "EnforceChallengeDisable": true
+      "ReusePendingAuthz": true
     },
     "CTLogGroups": [
 
