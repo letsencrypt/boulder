@@ -3,6 +3,7 @@ package ctpolicy
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -38,12 +39,12 @@ func TestGetSCTs(t *testing.T) {
 	expired, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
 	testCases := []struct {
-		name   string
-		mock   core.Publisher
-		groups [][]cmd.LogDescription
-		ctx    context.Context
-		result []core.SCTDER
-		err    error
+		name      string
+		mock      core.Publisher
+		groups    [][]cmd.LogDescription
+		ctx       context.Context
+		result    []core.SCTDER
+		errRegexp regexp.Regexp
 	}{
 		{
 			name: "basic success case",
@@ -74,8 +75,8 @@ func TestGetSCTs(t *testing.T) {
 					{URI: "ghi", Key: "jkl"},
 				},
 			},
-			ctx: context.Background(),
-			err: errors.New("all submissions for group failed"),
+			ctx:       context.Background(),
+			errRegexp: regexp.MustCompile("CT log group .: all submissions failed"),
 		},
 		{
 			name: "parent context timeout failure case",
@@ -90,8 +91,8 @@ func TestGetSCTs(t *testing.T) {
 					{URI: "ghi", Key: "jkl"},
 				},
 			},
-			ctx: expired,
-			err: context.DeadlineExceeded,
+			ctx:       expired,
+			errRegexp: regexp.MustCompile("CT log group .: context deadline exceeded"),
 		},
 	}
 
@@ -102,7 +103,9 @@ func TestGetSCTs(t *testing.T) {
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
 			} else if tc.err != nil {
-				test.AssertDeepEquals(t, err, tc.err)
+				if !tc.errRegexp.Match(err.Error()) {
+					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
+				}
 			}
 		})
 	}
