@@ -55,7 +55,6 @@ def waitport(port, prog):
                 print "Waiting for debug port %d (%s)" % (port, prog)
             else:
                 raise
-    print "All servers running. Hit ^C to kill."
     return True
 
 def start(race_detection, fakeclock=None):
@@ -67,11 +66,19 @@ def start(race_detection, fakeclock=None):
     """
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
-    global processes
+    if not install(race_detection):
+        return False
     # Processes are in order of dependency: Each process should be started
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
-    progs = [
+    progs = []
+    if default_config_dir.startswith("test/config-next"):
+        # Run the two 'remote' VAs
+        progs.extend([
+            [8011, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
+            [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
+        ])
+    progs.extend([
         [8003, 'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json")],
         [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
         [8009, 'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json")],
@@ -87,23 +94,17 @@ def start(race_detection, fakeclock=None):
         [8002, 'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json")],
         [4431, 'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
         [4000, 'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
-    ]
-    if default_config_dir.startswith("test/config-next"):
-        # Run the two 'remote' VAs
-        progs.extend([
-            [8011, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
-            [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
-        ])
-    if not install(race_detection):
-        return False
+    ])
     for (port, prog) in progs:
         try:
+            global processes
             processes.append(run(prog, race_detection, fakeclock))
             if not waitport(port, prog):
                 return False
         except Exception as e:
             print(e)
             return False
+    print "All servers running. Hit ^C to kill."
     return True
 
 def check():
