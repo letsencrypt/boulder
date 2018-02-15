@@ -184,7 +184,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
-  REQUESTS_CA_BUNDLE=test/wfe-tls/minica.pem DIRECTORY=http://boulder:4000/directory \
+  DIRECTORY=http://boulder:4000/directory \
     run python2 test/integration-test.py --chisel
   end_context #integration
 fi
@@ -198,7 +198,7 @@ if [[ "$RUN" =~ "acme-v2" ]] ; then
   git clone $CERTBOT_REPO $CERTBOT_DIR
   (cd $CERTBOT_DIR ; git checkout acme-v2-integration; ./tools/venv.sh)
   source $CERTBOT_DIR/venv/bin/activate
-  REQUESTS_CA_BUNDLE=test/wfe-tls/minica.pem DIRECTORY=https://boulder:4431/directory \
+  DIRECTORY=https://boulder:4431/directory \
     run python2 test/integration-test-v2.py
 fi
 

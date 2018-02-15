@@ -40,6 +40,8 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
 PORT = os.getenv('PORT', '5002')
 
+os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
+
 # URLs to control dns-test-srv
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
