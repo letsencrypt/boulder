@@ -230,10 +230,15 @@ go get -u github.com/tools/godep
 godep restore
 # Clear the stored dependencies
 rm -r Godeps/ vendor/
-# Update to the latest version of a dependency. Alternately you can cd to the
-# directory under GOPATH and check out a specific revision. Here's an example
-# using cfssl:
-go get -u github.com/cloudflare/cfssl/...
+# Update to the latest version of a dependency. Note: Our integration tests will
+# verify that they can re-generate Godeps.json from scratch, which means that
+# it's important that you have the same set of tags in your local copy of any
+# repositories as the origin does. That means you can't use `go get -u`, you
+# must cd to the path and use `git remote update`, which fetches tags. Example:
+cd $GOPATH/src/github.com/cloudflare/cfssl
+git remote update
+git checkout master
+git pull origin master
 # Re-vendor the dependencies from scratch
 godep save ./...
 git commit Godeps/ vendor/
