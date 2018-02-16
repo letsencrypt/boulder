@@ -112,23 +112,23 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/any",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/timestamp",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
