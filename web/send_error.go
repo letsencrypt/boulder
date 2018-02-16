@@ -1,9 +1,19 @@
 package web
 
-func (wfe *WebFrontEndImpl) sendError(
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
+)
+
+func sendError(
+	log blog.Logger,
 	namespace string,
 	response http.ResponseWriter,
-	logEvent *web.RequestEvent,
+	logEvent *RequestEvent,
 	prob *probs.ProblemDetails,
 	ierr error,
 ) {
@@ -17,20 +27,17 @@ func (wfe *WebFrontEndImpl) sendError(
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
 		if ierr != nil {
-			wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
+			log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
 		} else {
-			wfe.log.AuditErr(fmt.Sprintf("Internal error - %s", prob.Detail))
+			log.AuditErr(fmt.Sprintf("Internal error - %s", prob.Detail))
 		}
 	}
 
-	// Increment a stat for this problem type
-	wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", prob.Type), 1)
-
-	// Prefix the problem type with the appropriate error namespace and marshal to JSON
-	prob.Type = namespace + prob.Type
-	problemDoc, err := marshalIndent(prob)
+	// Prefix the problem type with the ACME V2 error namespace and marshal to JSON
+	prob.Type = probs.ProblemType(namespace) + prob.Type
+	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
-		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
+		log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
