@@ -423,13 +423,10 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response.WriteHeader(http.StatusNoContent)
 }
 
-// sendError sends an error response represented by the given ProblemDetails,
-// and, if the ProblemDetails.Type is ServerInternalProblem, audit logs the
-// internal ierr. The rendered Problem will have its Type prefixed with the ACME
-// v2 error namespace.
+// sendError wraps web.SendError
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
-	web.sendError(probs.V2ErrorNS, response, logEvent, prob, ierr)
+	web.SendError(wfe.log, probs.V2ErrorNS, response, logEvent, prob, ierr)
 }
 
 func link(url, relation string) string {

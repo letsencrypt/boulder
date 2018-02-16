@@ -571,13 +571,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	return []byte(payload), key, reg, nil
 }
 
-// sendError sends an error response represented by the given ProblemDetails,
-// and, if the ProblemDetails.Type is ServerInternalProblem, audit logs the
-// internal ierr. The rendered Problem will have its Type prefixed with the ACME
-// v1 namespace.
+// sendError wraps web.SendError
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
 	wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", prob.Type), 1)
-	web.sendError(probs.V1ErrorNS, response, logEvent, prob, ierr)
+	web.SendError(wfe.log, probs.V1ErrorNS, response, logEvent, prob, ierr)
 }
 
 func link(url, relation string) string {
