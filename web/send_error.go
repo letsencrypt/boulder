@@ -42,7 +42,6 @@ func SendError(
 		}
 	}
 
-	// Prefix the problem type with the ACME V2 error namespace and marshal to JSON
 	prob.Type = probs.ProblemType(namespace) + prob.Type
 	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
