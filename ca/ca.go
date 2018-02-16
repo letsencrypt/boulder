@@ -277,13 +277,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	// TODO(briansmith): Make the backdate setting mandatory after the
-	// production ca.json has been updated to include it. Until then, manually
-	// default to 1h, which is the backdating duration we currently use.
-	ca.backdate = config.Backdate.Duration
-	if ca.backdate == 0 {
-		ca.backdate = time.Hour
+	if config.Backdate.Duration == 0 {
+		return nil, errors.New("Config must specify a backdate duration.")
 	}
+	ca.backdate = config.Backdate.Duration
 
 	ca.maxNames = config.MaxNames
 
@@ -432,7 +429,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil)
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil, nil)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -454,7 +451,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", &ctPoisonExtension)
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil, &ctPoisonExtension)
 	if err != nil {
 		return nil, err
 	}
@@ -467,16 +464,80 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
+	if !ca.enablePrecertificateFlow {
+		return emptyCert, berrors.InternalServerError("Precertificate flow is disabled")
+	}
+
+	if req.IssueReq == nil || req.IssueReq.RegistrationID == nil {
+		return emptyCert, berrors.InternalServerError("missing fields in IssueCertificateForPrecertificateRequest")
+	}
+
+	// TODO: logging
+
+	if len(req.SCTs) != 0 {
+		return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate does not support SCT embedding yet.")
+	}
+
+	precert, err := x509.ParseCertificate(req.PrecertDER)
+	if err != nil {
+		return emptyCert, berrors.InternalServerError("Precertificate is not a syntactically-valid X.509 certificate.")
+	}
+
+	// Verify that one of our active issuers signed |precert| since Sign()
+	// doesn't check the signature of the precertificate.
+	issuer := ca.issuers[precert.Issuer.CommonName]
+	if issuer == nil {
+		return emptyCert, berrors.InternalServerError("Precertificate's issuer is not an active issuer.")
+	}
+	err = precert.CheckSignatureFrom(issuer.cert)
+	if err != nil {
+		return emptyCert, berrors.InternalServerError("Precertificate's signature verification failed.")
+	}
+
+	validity := validity{
+		NotBefore: precert.NotBefore,
+		NotAfter:  precert.NotAfter,
+	}
+
+	// Verify that the validity period and serial number look like what we would have generated recently.
+	err = ca.checkSerialNumberAndValidity(precert.SerialNumber, validity)
+	if err != nil {
+		return emptyCert, err
+	}
+
+	// A (malicious) caller may call this function multiple times with the same precertificate.
+	// issueCertificateOrPrecertificate() will fail in that case when it tries to store the
+	// duplicate certificate, but not before it signs it. TODO: Reserve the serial number here
+	// by attempting to add it to a persistent table of unique precertificate serial numbers,
+	// or by doing something equivalent to that. (Such a reservation system wouldn't be
+	// perfect because it would fali if/when the storage fails.)
+
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, req.IssueReq, precert.SerialNumber, validity, "cert", req.PrecertDER, nil)
+	if err != nil {
+		return emptyCert, err
+	}
+
+	// OrderID is an optional field only used by the "ACME v2" issuance flow. If
+	// it isn't nil, then populate the `orderID` var with the request's OrderID.
+	// If it is nil, use the default int64 value of 0.
+	var orderID int64
+	if req.OrderID != nil {
+		orderID = *req.OrderID
+	}
+
+	return ca.generateOCSPAndStoreCertificate(ctx, *req.IssueReq.RegistrationID, orderID, precert.SerialNumber, certDER)
 }
+
+const randBits = 136
 
 type validity struct {
 	NotBefore time.Time
 	NotAfter  time.Time
 }
 
+// Keep this symmetric with |checkSerialNumberAndValidity|.
 func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
-	// We want 136 bits of random number, plus an 8-bit instance id prefix.
+	// An 8-bit instance id prefix followed by |randBits| bytes.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
 	serialBytes[0] = byte(ca.prefix)
@@ -498,7 +559,43 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string, addedExtension *signer.Extension) ([]byte, error) {
+// Keep this symmetric with |generateSerialNumberAndValidity|.
+func (ca *CertificateAuthorityImpl) checkSerialNumberAndValidity(serial *big.Int, validity validity) error {
+	// Verify that the serial number has the correct prefix and the correct length.
+
+	// An 8-bit instance id prefix followed by |randBits| bytes.
+	if serial.Sign() <= 0 {
+		return berrors.InternalServerError("Bad serial number in precert.")
+	}
+	serialBytes := serial.Bytes()
+	if len(serialBytes) != randBits/8+1 {
+		return berrors.InternalServerError("Precertificate serial number's length is not correct.")
+	}
+	if serialBytes[0] != byte(ca.prefix) {
+		return berrors.InternalServerError("Precertificate serial number's prefix does not match.")
+	}
+
+	// Verify that |NotBefore| was no more than 2 hours ago and no more than
+	// 1 hour in the future. That is, verify that is is very recent.
+	now := ca.clk.Now()
+	earliestAcceptable := now.Add(-time.Duration(2) * time.Hour).Add(-1 * ca.backdate)
+	if validity.NotBefore.Before(earliestAcceptable) {
+		return berrors.InternalServerError("Precertificate notBefore is too early: %+v - %+v - %+v.")
+	}
+	latestAcceptable := now.Add(time.Duration(1) * time.Hour).Add(-1 * ca.backdate)
+	if validity.NotBefore.After(latestAcceptable) {
+		return berrors.InternalServerError("Precertificate notBefore is too late: %+v - %+v - %+v.", now, latestAcceptable, validity.NotBefore)
+	}
+
+	// Verify that the validity period is the same.
+	if validity.NotAfter != validity.NotBefore.Add(ca.validityPeriod) {
+		return berrors.InternalServerError("Precertificate validity period isn't correct.")
+	}
+
+	return nil
+}
+
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string, precertToMatchDER []byte, addedExtension *signer.Extension) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -551,6 +648,11 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		return nil, err
 	}
 
+	precertToMatchPEM := ""
+	if precertToMatchDER != nil {
+		precertToMatchPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: precertToMatchDER}))
+	}
+
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
@@ -559,10 +661,11 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		Subject: &signer.Subject{
 			CN: csr.Subject.CommonName,
 		},
-		Serial:     serialBigInt,
-		Extensions: extensions,
-		NotBefore:  validity.NotBefore,
-		NotAfter:   validity.NotAfter,
+		Serial:         serialBigInt,
+		Extensions:     extensions,
+		NotBefore:      validity.NotBefore,
+		NotAfter:       validity.NotAfter,
+		PrecertToMatch: precertToMatchPEM,
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
@@ -574,6 +677,14 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
 
+	// Important: When issuing a certificate for a precertificate, Sign() will
+	// fail if it would have returned a certificate with contents that do not match
+	// precertToMatch because we passed it as req.precertToMatch. Because of this,
+	// we'll never log or otherwise leak the contents of the mismatched certificate.
+	// Thus we don't have to worry about the mismatched certs being stored in the
+	// audit log and/or anywhere else. This is done out of an abundance of caution
+	// as a mismatched certificate and precertificate might be considered by some
+	// people to be a misissuance since they do not match.
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {

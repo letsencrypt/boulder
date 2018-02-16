@@ -194,6 +194,65 @@ const (
 	// CTClientConstructionFailed occurs when the construction of a new
 	// github.com/google/certificate-transparency client fails.
 	CTClientConstructionFailed
+	// PrecertParsingFailed occurs when a given precertificate fails to
+	// parse when the signer is verifying that a certificate and a
+	// precertificate match.
+	PrecertParsingFailed
+	// PrecertNotAPrecert occurs when a given precertificate doesn't have the
+	// CT poison extension.
+	PrecertNotAPrecert
+	// CertParsingFailed occurs when the issued certificate fails to parse
+	// during CT-related checks.
+	CertParsingFailed
+	// CertIsNotV3 occurs when the issued certificate is fonud not to be a V3
+	// certificate during CT-related checks.
+	CertIsNotV3
+	// CTMismatchedVersion occurs when the issued certificate's version doesn't
+	// match the precertificate's version.
+	CTMismatchedVersion
+	// CTMismatchedVersion occurs when the issued certificate's serial number
+	// doesn't match the precertificate's serial number.
+	CTMismatchedSerialNumber
+	// CTMismatchedVersion occurs when the issued certificate's issuer doesn't
+	// match the precertificate's issuer.
+	CTMismatchedIssuer
+	// CTMismatchedVersion occurs when the issued certificate's notBefore
+	// doesn't match the precertificate's notBefore.
+	CTMismatchedNotBefore
+	// CTMismatchedVersion occurs when the issued certificate's notAfter
+	// doesn't match the precertificate's notAfter.
+	CTMismatchedNotAfter
+	// CTMismatchedVersion occurs when the issued certificate's subject
+	// doesn't match the precertificate's subject.
+	CTMismatchedSubject
+	// CTMismatchedVersion occurs when the issued certificate's
+	// subjectPublicKeyInfo doesn't match the precertificate's subject.
+	CTMismatchedSubjectPublicKeyInfo
+	// CTMismatchedVersion occurs when the issued certificate has a different
+	// number of extensions (ignoring the CT poison extension and the SCT list
+	// extension) than the precertificate has.
+	CTMismatchedExtensionCount
+	// MultiplePoisonExtensions occurs when the precertificate has multiple
+	// CT poison extensions.
+	MultiplePoisonExtensions
+	// MultipleSCTListExtensions occurs when the issued certificate has multiple
+	// SCT list extensions.
+	MultipleSCTListExtensions
+	// CTMismatchedExtensionID occurs when an issued certificate's extension's
+	// ID doesn't match the corresponding extension's ID in the precertificate.
+	CTMismatchedExtensionID
+	// CTMismatchedExtensionCritical occurs when an issued certificate's
+	// extension's critical field doesn't match the corresponding extension's
+	// critical field in the precertificate.
+	CTMismatchedExtensionCritical
+	// CTMismatchedExtensionValue occurs when an issued certificate's extension's
+	// value doesn't match the corresponding extension's value in the
+	// precertificate.
+	CTMismatchedExtensionValue
+	// CTMismatchedSignatureAlgorithm occurs when an issued certificate's
+	// signature algorithm doesn't match the precertificate's signature
+	// algorithm.
+	CTMismatchedSignatureAlgorithm
 )
 
 // Certificate persistence related errors specified with CertStoreError
@@ -369,6 +428,42 @@ func New(category Category, reason Reason) *Error {
 			msg = "Certificate transparency parsing failed due to unknown error"
 		case PrecertSubmissionFailed:
 			msg = "Certificate transparency precertificate submission failed"
+		case PrecertParsingFailed:
+			msg = "PrecertParsingFailed"
+		case PrecertNotAPrecert:
+			msg = "PrecertNotAPrecert"
+		case CertParsingFailed:
+			msg = "CertParsingFailed"
+		case CertIsNotV3:
+			msg = "CertIsNotV3"
+		case CTMismatchedVersion:
+			msg = "CTMismatchedVersion"
+		case CTMismatchedSerialNumber:
+			msg = "CTMismatchedSerialNumber"
+		case CTMismatchedIssuer:
+			msg = "CTMismatchedIssuer"
+		case CTMismatchedNotBefore:
+			msg = "CTMismatchedNotBefore"
+		case CTMismatchedNotAfter:
+			msg = "CTMismatchedNotAfter"
+		case CTMismatchedSubject:
+			msg = "CTMismatchedSubject"
+		case CTMismatchedSubjectPublicKeyInfo:
+			msg = "CTMismatchedSubjectPublicKeyInfo"
+		case CTMismatchedExtensionCount:
+			msg = "CTMismatchedExtensionCount"
+		case MultiplePoisonExtensions:
+			msg = "MultiplePoisonExtensions"
+		case MultipleSCTListExtensions:
+			msg = "MultipleSCTListExtensions"
+		case CTMismatchedExtensionID:
+			msg = "CTMismatchedExtensionID"
+		case CTMismatchedExtensionCritical:
+			msg = "CTMismatchedExtensionCritical"
+		case CTMismatchedExtensionValue:
+			msg = "CTMismatchedExtensionValue"
+		case CTMismatchedSignatureAlgorithm:
+			msg = "CTMismatchedSignatureAlgorithm"
 		default:
 			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category CTError.", reason))
 		}

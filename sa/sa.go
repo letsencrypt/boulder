@@ -920,9 +920,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		return "", err
 	}
 
-	// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
-	// to be fixed by redesign. Reference issue
-	// https://github.com/letsencrypt/boulder/issues/2265 for more
+	// Note: will fail on duplicate serials.
 	err = tx.Insert(cert)
 	if err != nil {
 		return "", Rollback(tx, err)
