@@ -1779,17 +1779,6 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	}
 	ra.SA = mockSA
 
-	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should fail because the
-	// CountCertificatesExact feature flag isn't enabled and there have been two
-	// certificates issued for subdomains of dedyn.io
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
-	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
-
-	// Enable the CountCertificatesExact feature flag to allow the correct rate
-	// limiting for exact PSL entry domains
-	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
-	defer features.Reset()
-
 	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should succeed because
 	// test3.dedyn.io has no certificates and "dedyn.io" is an exact public suffix
 	// match with no certificates issued for it.
@@ -1851,18 +1840,7 @@ func TestPSLMatchIssuance(t *testing.T) {
 	mockSA := &mockSAOnlyExact{}
 	ra.SA = mockSA
 
-	_ = features.Set(map[string]bool{"CountCertificatesExact": false})
-	defer features.Reset()
-
-	// Without CountCertificatesExact enabled we expect the rate limit check to
-	// fail since it will use the in-exact SA method that the mock always fails
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)
-	test.AssertError(t, err, "exact PSL match certificate per name rate limit used wrong SA RPC")
-
-	// Enable the CountCertificatesExact feature flag
-	_ = features.Set(map[string]bool{"CountCertificatesExact": true})
-
-	// With CountCertificatesExact enabled we expect the limit check to pass when
+	// We expect the limit check to pass when
 	// names only includes exact PSL matches and the RA will use the SA's exact
 	// name lookup which the mock provides
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"dedyn.io"}, certsPerNamePolicy, 99)

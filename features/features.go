@@ -37,7 +37,7 @@ var features = map[FeatureFlag]bool{
 	IPv6First:               false,
 	AllowRenewalFirstRL:     false,
 	WildcardDomains:         false,
-	EnforceChallengeDisable: false,
+	EnforceChallengeDisable: false, // deprecated
 	TLSSNIRevalidation:      false,
 }
 
