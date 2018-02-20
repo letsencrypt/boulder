@@ -129,6 +129,7 @@ type PreCert struct {
 
 // CTExtensions is a representation of the raw bytes of any CtExtension
 // structure (see section 3.2).
+// nolint: golint
 type CTExtensions []byte // tls:"minlen:0,maxlen:65535"`
 
 // MerkleTreeNode represents an internal node in the CT tree.
