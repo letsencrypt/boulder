@@ -45,7 +45,6 @@
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "AllowTLS02Challenges": true,
-      "CountCertificatesExact": true,
       "ReusePendingAuthz": true
     },
     "CTLogGroups": [

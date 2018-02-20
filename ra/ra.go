@@ -1211,22 +1211,18 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	var badNames []string
-	// If the CountCertificatesExact feature is enabled then treat exact public
-	// suffic domains differently by enforcing the limit against only exact
-	// matches to the names, not matches to subdomains as well.
-	if features.Enabled(features.CountCertificatesExact) && len(exactPublicSuffixes) > 0 {
+	// Domains that are exactly equal to a public suffix are treated differently
+	// by enforcing the limit against only exact matches to the names, not
+	// matches to subdomains as well. This allows the owners of such domains to
+	// issue certificates even though issuance from their subdomains may
+	// constantly exceed the rate limit.
+	if len(exactPublicSuffixes) > 0 {
 		psNamesOutOfLimit, err := ra.enforceNameCounts(ctx, exactPublicSuffixes, limit, regID, ra.SA.CountCertificatesByExactNames)
 		if err != nil {
 			return fmt.Errorf("checking certificates per name limit (exact) for %q: %s",
 				names, err)
 		}
 		badNames = append(badNames, psNamesOutOfLimit...)
-	} else {
-		// When the CountCertificatesExact feature is *not* enabled we maintain the
-		// historic behaviour of treating exact public suffix matches the same as
-		// any other domain for rate limiting by combining the exactPublicSuffixes
-		// with the tldNames.
-		tldNames = append(tldNames, exactPublicSuffixes...)
 	}
 
 	// If there are any tldNames, enforce the certificate count rate limit against
