@@ -184,6 +184,7 @@ func newUpdater(
 			config.AkamaiClientToken,
 			config.AkamaiClientSecret,
 			config.AkamaiAccessToken,
+			config.AkamaiNetwork,
 			config.AkamaiPurgeRetries,
 			config.AkamaiPurgeRetryBackoff.Duration,
 			log,
