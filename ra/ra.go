@@ -1211,21 +1211,18 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	var badNames []string
-	// If the CountCertificatesExact feature is enabled then treat exact public
-	// suffic domains differently by enforcing the limit against only exact
-	// matches to the names, not matches to subdomains as well.
-	if features.Enabled(features.CountCertificatesExact) && len(exactPublicSuffixes) > 0 {
+	// Domains that are exactly equal to a public suffix are treated differently
+	// by enforcing the limit against only exact matches to the names, not
+	// matches to subdomains as well. This allows the owners of such domains to
+	// issue certificates even though issuance from their subdomains may
+	// constantly exceed the rate limit.
+	if len(exactPublicSuffixes) > 0 {
 		psNamesOutOfLimit, err := ra.enforceNameCounts(ctx, exactPublicSuffixes, limit, regID, ra.SA.CountCertificatesByExactNames)
 		if err != nil {
-			return err
+			return fmt.Errorf("checking certificates per name limit (exact) for %q: %s",
+				names, err)
 		}
 		badNames = append(badNames, psNamesOutOfLimit...)
-	} else {
-		// When the CountCertificatesExact feature is *not* enabled we maintain the
-		// historic behaviour of treating exact public suffix matches the same as
-		// any other domain for rate limiting by combining the exactPublicSuffixes
-		// with the tldNames.
-		tldNames = append(tldNames, exactPublicSuffixes...)
 	}
 
 	// If there are any tldNames, enforce the certificate count rate limit against
@@ -1233,7 +1230,8 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	if len(tldNames) > 0 {
 		namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID, ra.SA.CountCertificatesByNames)
 		if err != nil {
-			return err
+			return fmt.Errorf("checking certificates per name limit for %q: %s",
+				names, err)
 		}
 		badNames = append(badNames, namesOutOfLimit...)
 	}
@@ -1244,7 +1242,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		// the certificatesPerName limit.
 		exists, err := ra.SA.FQDNSetExists(ctx, names)
 		if err != nil {
-			return err
+			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 		}
 		if exists {
 			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
@@ -1266,7 +1264,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
 	if err != nil {
-		return err
+		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 	names = core.UniqueLowerNames(names)
 	if int(count) >= limit.GetThreshold(strings.Join(names, ","), regID) {

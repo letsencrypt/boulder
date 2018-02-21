@@ -112,23 +112,28 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Comment": "v1.0.0-1-gbbd03ef",
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Comment": "v1.0.0-1-gbbd03ef",
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/any",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Comment": "v1.0.0-1-gbbd03ef",
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Comment": "v1.0.0-1-gbbd03ef",
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/timestamp",
-			"Rev": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317"
+			"Comment": "v1.0.0-1-gbbd03ef",
+			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
@@ -254,23 +259,23 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519",
-			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
-			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
-			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12/internal/rc2",
-			"Rev": "7c6cc321c680f03b9ef0764448e780704f486b51"
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
