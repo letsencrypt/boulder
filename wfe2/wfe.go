@@ -56,7 +56,7 @@ const (
 	newNoncePath      = "/acme/new-nonce"
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
-	finalizeOrderPath = "finalize-order"
+	finalizeOrderPath = "/acme/finalize"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -322,6 +322,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
+	wfe.HandleFunc(m, finalizeOrderPath, wfe.FinalizeOrder, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
