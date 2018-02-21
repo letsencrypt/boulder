@@ -25,6 +25,7 @@ func TestConstructAuthHeader(t *testing.T) {
 		"akab-client-token-xxx-xxxxxxxxxxxxxxxx",
 		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=",
 		"akab-access-token-xxx-xxxxxxxxxxxxxxxx",
+		"production",
 		0,
 		time.Second,
 		nil,
@@ -39,7 +40,7 @@ func TestConstructAuthHeader(t *testing.T) {
 
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("%s%s", cpc.apiEndpoint, purgePath),
+		fmt.Sprintf("%s%s", cpc.apiEndpoint, v2PurgePath),
 		bytes.NewBuffer([]byte{0}),
 	)
 	test.AssertNotError(t, err, "Failed to create request")
@@ -57,9 +58,32 @@ func TestConstructAuthHeader(t *testing.T) {
 
 type akamaiServer struct {
 	responseCode int
+	v3           bool
+}
+
+func (as *akamaiServer) sendResponse(w http.ResponseWriter, resp purgeResponse) {
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		fmt.Printf("Failed to marshal response body: %s\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(as.responseCode)
+	w.Write(respBytes)
 }
 
 func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
+	// Enforce the request path based on the API version we're emulating
+	if (as.v3 == false && r.URL.Path != v2PurgePath) ||
+		(as.v3 == true && !strings.HasPrefix(r.URL.Path, v3PurgePath)) {
+		resp := purgeResponse{
+			HTTPStatus: http.StatusNotFound,
+			Detail:     fmt.Sprintf("Invalid path: %q", r.URL.Path),
+		}
+		as.sendResponse(w, resp)
+		return
+	}
+
 	var req struct {
 		Objects []string
 		Type    string
@@ -71,23 +95,31 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	// Enforce that a V3 request is well formed and does not include the "Type"
+	// and "Action" fields used by the V2 api.
+	if as.v3 == true && (req.Type != "" || req.Action != "") {
+		resp := purgeResponse{
+			HTTPStatus: http.StatusBadRequest,
+			Detail:     fmt.Sprintf("Invalid request body: included V2 Type %q and Action %q\n", req.Type, req.Action),
+		}
+		as.sendResponse(w, resp)
+		return
+	}
+
 	err = json.Unmarshal(body, &req)
 	if err != nil {
 		fmt.Printf("Failed to unmarshal request body: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	fmt.Printf("Request: %#v\n", req)
-	var resp struct {
-		HTTPStatus       int
-		Detail           string
-		EstimatedSeconds int
-		PurgeID          string
+
+	resp := purgeResponse{
+		HTTPStatus:       as.responseCode,
+		Detail:           "?",
+		EstimatedSeconds: 10,
+		PurgeID:          "?",
 	}
-	resp.HTTPStatus = as.responseCode
-	resp.Detail = "?"
-	resp.EstimatedSeconds = 10
-	resp.PurgeID = "?"
 
 	for _, testURL := range req.Objects {
 		if !strings.HasPrefix(testURL, "http://") {
@@ -95,18 +127,12 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		fmt.Printf("Failed to marshal response body: %s\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(as.responseCode)
-	w.Write(respBytes)
+	as.sendResponse(w, resp)
 }
 
-func TestPurge(t *testing.T) {
+// TestV2Purge tests the legacy CCU v2 Akamai API used when the v3Network
+// parameter to NewCachePurgeClient is "".
+func TestV2Purge(t *testing.T) {
 	log := blog.NewMock()
 
 	as := akamaiServer{responseCode: http.StatusCreated}
@@ -120,6 +146,7 @@ func TestPurge(t *testing.T) {
 		"token",
 		"secret",
 		"accessToken",
+		"",
 		3,
 		time.Second,
 		log,
@@ -143,4 +170,97 @@ func TestPurge(t *testing.T) {
 	err = client.Purge([]string{"http:/test.com"})
 	test.AssertError(t, err, "Purge didn't fail with 403 response from malformed URL")
 	test.Assert(t, fc.Since(started) < time.Second, "Purge should've failed out immediately")
+}
+
+// TestV3Purge tests the Akamai CCU v3 purge API by setting the v3Network
+// parameter to "production".
+func TestV3Purge(t *testing.T) {
+	log := blog.NewMock()
+
+	as := akamaiServer{
+		responseCode: http.StatusCreated,
+		v3:           true,
+	}
+	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
+	m.HandleFunc("/", as.akamaiHandler)
+	server.Start()
+
+	// Client is a purge client with a "production" v3Network parameter
+	client, err := NewCachePurgeClient(
+		server.URL,
+		"token",
+		"secret",
+		"accessToken",
+		"production",
+		3,
+		time.Second,
+		log,
+		metrics.NewNoopScope(),
+	)
+	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
+	client.clk = clock.NewFake()
+
+	err = client.Purge([]string{"http://test.com"})
+	test.AssertNotError(t, err, "Purge failed with 201 response")
+
+	started := client.clk.Now()
+	as.responseCode = http.StatusInternalServerError
+	err = client.Purge([]string{"http://test.com"})
+	test.AssertError(t, err, "Purge didn't fail with 400 response")
+	test.Assert(t, client.clk.Since(started) > (time.Second*4), "Retries should've taken at least 4.4 seconds")
+
+	started = client.clk.Now()
+	as.responseCode = http.StatusCreated
+	err = client.Purge([]string{"http:/test.com"})
+	test.AssertError(t, err, "Purge didn't fail with 403 response from malformed URL")
+	test.Assert(t, client.clk.Since(started) < time.Second, "Purge should've failed out immediately")
+}
+
+func TestNewCachePurgeClient(t *testing.T) {
+	log := blog.NewMock()
+	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
+
+	// Creating a new cache purge client with an invalid "network" parameter should error
+	_, err := NewCachePurgeClient(
+		server.URL,
+		"token",
+		"secret",
+		"accessToken",
+		"fake",
+		3,
+		time.Second,
+		log,
+		metrics.NewNoopScope(),
+	)
+	test.AssertError(t, err, "NewCachePurgeClient with invalid network parameter didn't error")
+
+	// Creating a new cache purge client with a valid "network" parameter shouldn't error
+	_, err = NewCachePurgeClient(
+		server.URL,
+		"token",
+		"secret",
+		"accessToken",
+		"staging",
+		3,
+		time.Second,
+		log,
+		metrics.NewNoopScope(),
+	)
+	test.AssertNotError(t, err, "NewCachePurgeClient with valid network parameter errored")
+
+	// Creating a new cache purge client with an invalid server URL parameter should error
+	_, err = NewCachePurgeClient(
+		"h&amp;ttp://whatever",
+		"token",
+		"secret",
+		"accessToken",
+		"staging",
+		3,
+		time.Second,
+		log,
+		metrics.NewNoopScope(),
+	)
+	test.AssertError(t, err, "NewCachePurgeClient with invalid server url parameter didn't error")
 }

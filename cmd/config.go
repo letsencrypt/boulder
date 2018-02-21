@@ -169,10 +169,14 @@ type OCSPUpdaterConfig struct {
 	OldestIssuedSCT              ConfigDuration
 	ParallelGenerateOCSPRequests int
 
-	AkamaiBaseURL           string
-	AkamaiClientToken       string
-	AkamaiClientSecret      string
-	AkamaiAccessToken       string
+	AkamaiBaseURL      string
+	AkamaiClientToken  string
+	AkamaiClientSecret string
+	AkamaiAccessToken  string
+	// When AkamaiV3Network is not provided, the Akamai CCU API v2 is used. When
+	// AkamaiV3Network is set to "staging" or "production" the Akamai CCU API v3
+	// is used.
+	AkamaiV3Network         string
 	AkamaiPurgeRetries      int
 	AkamaiPurgeRetryBackoff ConfigDuration
 

@@ -22,14 +22,19 @@ import (
 )
 
 const (
-	purgePath       = "/ccu/v2/queues/default"
+	v2PurgePath     = "/ccu/v2/queues/default"
+	v3PurgePath     = "/ccu/v3/delete/url/"
 	timestampFormat = "20060102T15:04:05-0700"
 )
 
-type purgeRequest struct {
+type v2PurgeRequest struct {
 	Objects []string `json:"objects"`
 	Type    string   `json:"type"`
 	Action  string   `json:"action"`
+}
+
+type v3PurgeRequest struct {
+	Objects []string `json:"objects"`
 }
 
 type purgeResponse struct {
@@ -40,7 +45,9 @@ type purgeResponse struct {
 }
 
 // CachePurgeClient talks to the Akamai CCU REST API. It is safe to make concurrent
-// purge requests.
+// purge requests. If the v3Network field is "" the legacy CCU v2 API is used.
+// If the v3Network field is either "staging" or "production" then the CCU v3
+// API is used.
 type CachePurgeClient struct {
 	client       *http.Client
 	apiEndpoint  string
@@ -49,6 +56,7 @@ type CachePurgeClient struct {
 	clientToken  string
 	clientSecret string
 	accessToken  string
+	v3Network    string
 	retries      int
 	retryBackoff time.Duration
 	log          blog.Logger
@@ -74,6 +82,7 @@ func NewCachePurgeClient(
 	clientToken,
 	clientSecret,
 	accessToken string,
+	v3Network string,
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger,
@@ -87,6 +96,12 @@ func NewCachePurgeClient(
 	if err != nil {
 		return nil, err
 	}
+	// If there is a network provided, we're using the V3 API and the network
+	// string must be either "production" or "staging".
+	if v3Network != "" && v3Network != "production" && v3Network != "staging" {
+		return nil, fmt.Errorf(
+			"Invalid CCU v3 network: %q. Must be \"staging\" or \"production\"", v3Network)
+	}
 	return &CachePurgeClient{
 		client:       new(http.Client),
 		apiEndpoint:  endpoint,
@@ -95,6 +110,7 @@ func NewCachePurgeClient(
 		clientToken:  clientToken,
 		clientSecret: clientSecret,
 		accessToken:  accessToken,
+		v3Network:    v3Network,
 		retries:      retries,
 		retryBackoff: retryBackoff,
 		log:          log,
@@ -148,10 +164,22 @@ func (cpc *CachePurgeClient) constructAuthHeader(request *http.Request, body []b
 // purge actually sends the individual requests to the Akamai endpoint and checks
 // if they are successful
 func (cpc *CachePurgeClient) purge(urls []string) error {
-	purgeReq := purgeRequest{
-		Objects: urls,
-		Action:  "remove",
-		Type:    "arl",
+	var purgeReq interface{}
+	var endpoint, purgePath string
+	if cpc.v3Network == "" {
+		purgeReq = v2PurgeRequest{
+			Objects: urls,
+			Action:  "remove",
+			Type:    "arl",
+		}
+		purgePath = v2PurgePath
+		endpoint = fmt.Sprintf("%s%s", cpc.apiEndpoint, purgePath)
+	} else {
+		purgeReq = v3PurgeRequest{
+			Objects: urls,
+		}
+		purgePath = v3PurgePath
+		endpoint = fmt.Sprintf("%s%s%s", cpc.apiEndpoint, purgePath, cpc.v3Network)
 	}
 	reqJSON, err := json.Marshal(purgeReq)
 	if err != nil {
@@ -160,7 +188,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("%s%s", cpc.apiEndpoint, purgePath),
+		fmt.Sprintf("%s", endpoint),
 		bytes.NewBuffer(reqJSON),
 	)
 	if err != nil {
