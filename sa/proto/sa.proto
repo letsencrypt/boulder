@@ -45,7 +45,6 @@ service StorageAuthority {
         rpc SetOrderError(core.Order) returns (core.Empty) {}
         rpc FinalizeOrder(core.Order) returns (core.Empty) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
-        rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetValidOrderAuthorizations(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
@@ -198,11 +197,6 @@ message RevokeAuthorizationsByDomainResponse {
 
 message OrderRequest {
         optional int64 id = 1;
-}
-
-message GetOrderAuthorizationsRequest {
-        optional int64 id = 1;
-        optional int64 acctID = 2;
 }
 
 message GetValidOrderAuthorizationsRequest {

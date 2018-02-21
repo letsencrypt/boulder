@@ -1676,12 +1676,12 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return "", err
 	}
 
-	// If GetOrderAuthorizations returned a different number of authorization
+	// If getAllOrderAuthorizations returned a different number of authorization
 	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
 	if len(authzs) != len(order.Authorizations) {
 		return "", berrors.InternalServerError(
-			"GetOrderAuthorizations returned the wrong number of authorizations "+
+			"getAllOrderAuthorizations returned the wrong number of authorizations "+
 				"(%d vs expected %d) for order %d",
 			len(authzs), len(order.Authorizations), *order.Id)
 	}
@@ -1804,24 +1804,6 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		byName[auth.Identifier.Value] = auth
 	}
 	return byName, nil
-}
-
-// GetOrderAuthorizations has been renamed to GetValidOrderAuthorizations. To
-// satisfy deployability requirements we leave the old function in place,
-// redirecting to the new. Once Boulder has been updated in staging and
-// production we can remove this legacy implementation in favour of just
-// GetValidOrderAuthorizations.
-func (ssa *SQLStorageAuthority) GetOrderAuthorizations(
-	ctx context.Context,
-	req *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-
-	// Call the renamed version of this function
-	return ssa.GetValidOrderAuthorizations(
-		ctx,
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     req.Id,
-			AcctID: req.AcctID,
-		})
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
