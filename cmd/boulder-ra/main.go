@@ -173,12 +173,12 @@ func main() {
 			for i, logs := range c.RA.CTLogGroups {
 				groups[i] = cmd.CTGroup{
 					Name: fmt.Sprintf("%d", i),
-					Logs: l,
+					Logs: logs,
 				}
 			}
-			ctp = ctpolicy.New(pubc, groups, logger)
+			ctp = ctpolicy.New(pubc, groups, nil, logger)
 		} else if c.RA.CTLogGroups2 != nil {
-			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, logger)
+			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, logger)
 		}
 	}
 
