@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
+	"github.com/google/certificate-transparency-go/x509"
 	"golang.org/x/net/context/ctxhttp"
 )
 
@@ -250,6 +250,10 @@ func (c *JSONClient) PostAndParseWithRetry(ctx context.Context, path string, req
 	for {
 		httpRsp, body, err := c.PostAndParse(ctx, path, req, rsp)
 		if err != nil {
+			// Don't retry context errors.
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				return nil, nil, err
+			}
 			wait := c.backoff.set(nil)
 			c.logger.Printf("Request failed, backing-off for %s: %s", wait, err)
 		} else {
@@ -275,7 +279,7 @@ func (c *JSONClient) PostAndParseWithRetry(ctx context.Context, path string, req
 				wait := c.backoff.set(backoff)
 				c.logger.Printf("Request failed, backing-off for %s: got HTTP status %s", wait, httpRsp.Status)
 			default:
-				return nil, body, fmt.Errorf("got HTTP Status %q", httpRsp.Status)
+				return httpRsp, body, fmt.Errorf("got HTTP Status %q", httpRsp.Status)
 			}
 		}
 		if err := c.waitForBackoff(ctx); err != nil {
