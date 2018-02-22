@@ -41,7 +41,7 @@ func TestGetSCTs(t *testing.T) {
 	testCases := []struct {
 		name      string
 		mock      core.Publisher
-		groups    [][]cmd.LogDescription
+		groups    []cmd.CTGroup
 		ctx       context.Context
 		result    []core.SCTDER
 		errRegexp *regexp.Regexp
@@ -49,14 +49,20 @@ func TestGetSCTs(t *testing.T) {
 		{
 			name: "basic success case",
 			mock: &mockPub{},
-			groups: [][]cmd.LogDescription{
+			groups: []cmd.CTGroup{
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "a",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "b",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 			},
 			ctx:    context.Background(),
@@ -65,40 +71,52 @@ func TestGetSCTs(t *testing.T) {
 		{
 			name: "basic failure case",
 			mock: &alwaysFail{},
-			groups: [][]cmd.LogDescription{
+			groups: []cmd.CTGroup{
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "a",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "b",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 			},
 			ctx:       context.Background(),
-			errRegexp: regexp.MustCompile("CT log group .: all submissions failed"),
+			errRegexp: regexp.MustCompile("CT log group \".\": all submissions failed"),
 		},
 		{
 			name: "parent context timeout failure case",
 			mock: &alwaysFail{},
-			groups: [][]cmd.LogDescription{
+			groups: []cmd.CTGroup{
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "a",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 				{
-					{URI: "abc", Key: "def"},
-					{URI: "ghi", Key: "jkl"},
+					Name: "b",
+					Logs: []cmd.LogDescription{
+						{URI: "abc", Key: "def"},
+						{URI: "ghi", Key: "jkl"},
+					},
 				},
 			},
 			ctx:       expired,
-			errRegexp: regexp.MustCompile("CT log group .: context deadline exceeded"),
+			errRegexp: regexp.MustCompile("CT log group \".\": context deadline exceeded"),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.groups, blog.NewMock())
+			ctp := New(tc.mock, tc.groups, nil, blog.NewMock())
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
