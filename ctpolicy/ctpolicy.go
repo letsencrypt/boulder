@@ -45,7 +45,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	results := make(chan result, len(group.Logs))
 	var subCtx context.Context
 	var cancel func()
-	if !features.Enabled(features.DontCancelCTSubmissions) {
+	if features.Enabled(features.CancelCTSubmissions) {
 		subCtx, cancel = context.WithCancel(ctx)
 	} else {
 		subCtx, cancel = ctx, func() {}
@@ -94,7 +94,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 	results := make(chan result, len(ctp.groups))
 	var subCtx context.Context
 	var cancel func()
-	if !features.Enabled(features.DontCancelCTSubmissions) {
+	if features.Enabled(features.CancelCTSubmissions) {
 		subCtx, cancel = context.WithCancel(ctx)
 	} else {
 		subCtx, cancel = ctx, func() {}

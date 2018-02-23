@@ -45,7 +45,8 @@
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "AllowTLS02Challenges": true,
-      "ReusePendingAuthz": true
+      "ReusePendingAuthz": true,
+      "CancelCTSubmissions": false
     },
     "CTLogGroups2": [
       {
@@ -73,6 +74,12 @@
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg=="
           }
         ]
+      }
+    ],
+    "InformationalCTLogs": [
+      {
+        "uri": "http://boulder:4512",
+        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg=="
       }
     ]
   },
