@@ -221,8 +221,10 @@ import (
 func loadSystemRoots() (*CertPool, error) {
 	roots := NewCertPool()
 
-	var data C.CFDataRef = nil
-	var untrustedData C.CFDataRef = nil
+	var data C.CFDataRef
+	setNilCFRef(&data)
+	var untrustedData C.CFDataRef
+	setNilCFRef(&untrustedData)
 	err := C.FetchPEMRootsCTX509(&data, &untrustedData)
 	if err == -1 {
 		// TODO: better error message
@@ -232,7 +234,7 @@ func loadSystemRoots() (*CertPool, error) {
 	defer C.CFRelease(C.CFTypeRef(data))
 	buf := C.GoBytes(unsafe.Pointer(C.CFDataGetBytePtr(data)), C.int(C.CFDataGetLength(data)))
 	roots.AppendCertsFromPEM(buf)
-	if untrustedData == nil {
+	if isNilCFRef(untrustedData) {
 		return roots, nil
 	}
 	defer C.CFRelease(C.CFTypeRef(untrustedData))
