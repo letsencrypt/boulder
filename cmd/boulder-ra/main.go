@@ -178,7 +178,7 @@ func main() {
 			}
 			ctp = ctpolicy.New(pubc, groups, nil, logger)
 		} else if c.RA.CTLogGroups2 != nil {
-			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, logger)
+			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger)
 		}
 	}
 
