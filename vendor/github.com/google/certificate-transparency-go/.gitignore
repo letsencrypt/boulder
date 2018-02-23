@@ -5,9 +5,11 @@
 *.tfstate.backup
 *~
 /.idea
+/certcheck
 /chainfix
 /coverage.txt
 /createtree
+/crlcheck
 /ctclient
 /ct_server
 /ct_hammer
