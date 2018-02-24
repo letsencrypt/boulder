@@ -82,6 +82,22 @@ to match how the VA operates in production and staging environments. If you use
 a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow connections
 from the Docker instance to your host on the required ports.
 
+If you intend to use an ACME client in a docker container and want to connect
+to the Boulder instance started by `docker-compose`, you may attach your
+ACME client container to the `boulder_default` network that `docker-compose` creates
+and tell Boulder to use the DNS resolver provided by Docker and not the
+fake one. For that change `dnsResolver` in `test/config/va.json` and
+`test/config/ra.json` to point to `127.0.0.11:53`. Then after
+`docker-compose up` you can use `http://boulder:4000/directory` in your
+clients to connect to Boulder as long as they are attached to
+`boulder_default` network. Alternatively you can change
+`docker-compose.yml` to attach the Boulder container to the docker network
+where your containers run.
+
+If you only connect to the Boulder instance from other Docker containers
+and not from the host or external IP addresses, you may also drop all
+`ports` lines from `docker-compose.yml`. This prevents the Boulder container from being accessible from external network interfaces.
+
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
 to do this is with this command:

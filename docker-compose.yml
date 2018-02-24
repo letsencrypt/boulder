@@ -11,7 +11,6 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - /tmp:/tmp
-        network_mode: bridge
         extra_hosts:
           - le.wtf:127.0.0.1
           - boulder:127.0.0.1
@@ -37,9 +36,9 @@ services:
           - 8055:8055 # dns-test-srv updates
           - 9380:9380 # mail-test-srv
           - 9381:9381 # mail-test-srv
-        links:
-          - bhsm:boulder-hsm
-          - bmysql:boulder-mysql
+        depends_on:
+          - bhsm
+          - bmysql
     bhsm:
         # To minimize the fetching of various layers this should match
         # the FROM image and tag in boulder/Dockerfile
@@ -47,24 +46,28 @@ services:
         environment:
             PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
-        expose:
-          - 5657
-        network_mode: bridge
+        # Allow other containers to use the name `boulder-hsm` to connect
+        networks:
+            default:
+                aliases:
+                  - boulder-hsm
     bmysql:
         image: mariadb:10.1
-        network_mode: bridge
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
+        networks:
+            default:
+                aliases:
+                  - boulder-mysql
     prom:
         image: prom/prometheus:v1.8.2
-        network_mode: bridge
         ports:
           - 9090:9090
         volumes:
-          - $PWD/test/prometheus/:/promconf/
+          - ./test/prometheus/:/promconf/
         command: -config.file /promconf/prometheus.yml
-        links:
+        depends_on:
           - boulder
