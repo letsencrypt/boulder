@@ -221,14 +221,11 @@ func problemIsTimeout(err error) bool {
 }
 
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient) error {
-	emails, err := mail.ParseAddressList(address)
+	email, err := mail.ParseAddress(address)
 	if err != nil {
 		return unparseableEmailError
 	}
-	if len(emails) > 1 {
-		return multipleAddressError
-	}
-	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
+	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
