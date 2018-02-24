@@ -350,7 +350,7 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailError.Error()},
 		{"a@always.invalid", emptyDNSResponseError.Error()},
-		{"a@email.com, b@email.com", multipleAddressError.Error()},
+		{"a@email.com, b@email.com", unparseableEmailError.Error()},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
