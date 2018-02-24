@@ -75,7 +75,14 @@ type config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
-		CTLogGroups [][]cmd.LogDescription
+		// NOTE: CTLogGroups is depreciated in favor of CTLogGroups2.
+		CTLogGroups  [][]cmd.LogDescription
+		CTLogGroups2 []cmd.CTGroup
+		// InformationalCTLogs are a set of CT logs we will always submit to
+		// but won't ever use the SCTs from. This may be because we want to
+		// test them or because they are not yet approved by a browser/root
+		// program but we still want our certs to end up there.
+		InformationalCTLogs []cmd.LogDescription
 
 		Features map[string]bool
 	}
@@ -151,8 +158,21 @@ func main() {
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(raConn))
 
 	var ctp *ctpolicy.CTPolicy
+	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
 	if c.RA.CTLogGroups != nil {
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
+		groups := make([]cmd.CTGroup, len(c.RA.CTLogGroups))
+		for i, logs := range c.RA.CTLogGroups {
+			groups[i] = cmd.CTGroup{
+				Name: fmt.Sprintf("%d", i),
+				Logs: logs,
+			}
+		}
+		ctp = ctpolicy.New(pubc, groups, nil, logger)
+	} else if c.RA.CTLogGroups2 != nil {
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger)
 	}
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics)

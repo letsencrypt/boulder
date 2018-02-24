@@ -298,3 +298,8 @@ type CAADistributedResolverConfig struct {
 	MaxFailures int
 	Proxies     []string
 }
+
+type CTGroup struct {
+	Name string
+	Logs []LogDescription
+}
