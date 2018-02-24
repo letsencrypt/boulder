@@ -110,7 +110,10 @@ type TLSConfig struct {
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
 // returns a *tls.Config suitable for either client or server use.
-func (t TLSConfig) Load() (*tls.Config, error) {
+func (t *TLSConfig) Load() (*tls.Config, error) {
+	if t == nil {
+		return nil, fmt.Errorf("nil TLS section in config")
+	}
 	if t.CertFile == nil {
 		return nil, fmt.Errorf("nil CertFile in TLSConfig")
 	}

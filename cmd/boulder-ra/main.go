@@ -1,19 +1,14 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
-
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -134,41 +129,35 @@ func main() {
 		logger.Info("No challengesWhitelistFile given, not loading")
 	}
 
-	var tls *tls.Config
-	if c.RA.TLS.CertFile != nil {
-		tls, err = c.RA.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.RA.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, clientMetrics)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
 	caaClient := vaPB.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, clientMetrics)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Unable to create CA client")
 	// Build a CA client that is only capable of issuing certificates, not
 	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewCertificateAuthorityClient.
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
-	var pubc core.Publisher
-	var ctp *ctpolicy.CTPolicy
-	if c.RA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(raConn))
 
-		if c.RA.CTLogGroups != nil {
-			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
-		}
+	var ctp *ctpolicy.CTPolicy
+	if c.RA.CTLogGroups != nil {
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
 	}
 
-	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
 	authorizationLifetime := 300 * 24 * time.Hour
@@ -235,19 +224,15 @@ func main() {
 	err = rai.UpdateIssuedCountForever()
 	cmd.FailOnError(err, "Updating total issuance count")
 
-	var grpcSrv *grpc.Server
-	if c.RA.GRPC != nil {
-		serverMetrics := bgrpc.NewServerMetrics(scope)
-		var listener net.Listener
-		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup RA gRPC server")
-		gw := bgrpc.NewRegistrationAuthorityServer(rai)
-		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
-		go func() {
-			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-			cmd.FailOnError(err, "RA gRPC service failed")
-		}()
-	}
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup RA gRPC server")
+	gw := bgrpc.NewRegistrationAuthorityServer(rai)
+	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
+	go func() {
+		err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
+		cmd.FailOnError(err, "RA gRPC service failed")
+	}()
 
 	go cmd.CatchSignals(logger, func() {
 		if grpcSrv != nil {
