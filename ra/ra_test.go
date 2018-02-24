@@ -3301,7 +3301,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		PEM: eeCertPEM,
 	}
 
-	ctp := ctpolicy.New(&timeoutPub{}, [][]cmd.LogDescription{{}}, log)
+	ctp := ctpolicy.New(&timeoutPub{}, []cmd.CTGroup{{}}, nil, log)
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
