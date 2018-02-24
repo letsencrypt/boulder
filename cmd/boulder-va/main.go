@@ -144,16 +144,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to register VA gRPC server")
 	vaPB.RegisterCAAServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register CAA gRPC server")
-	go func() {
-		err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-		cmd.FailOnError(err, "VA gRPC service failed")
-	}()
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
+	cmd.FailOnError(err, "VA gRPC service failed")
 }

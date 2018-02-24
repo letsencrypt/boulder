@@ -229,16 +229,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 	gw := bgrpc.NewRegistrationAuthorityServer(rai)
 	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
-	go func() {
-		err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-		cmd.FailOnError(err, "RA gRPC service failed")
-	}()
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
+	cmd.FailOnError(err, "RA gRPC service failed")
 }

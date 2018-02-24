@@ -80,16 +80,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 	gw := bgrpc.NewStorageAuthorityServer(sai)
 	sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
-	go func() {
-		err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-		cmd.FailOnError(err, "SA gRPC service failed")
-	}()
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
+	cmd.FailOnError(err, "SA gRPC service failed")
 }

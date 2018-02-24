@@ -87,16 +87,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 	gw := bgrpc.NewPublisherServerWrapper(pubi)
 	pubPB.RegisterPublisherServer(grpcSrv, gw)
-	go func() {
-		err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-		cmd.FailOnError(err, "Publisher gRPC service failed")
-	}()
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
+	cmd.FailOnError(err, "Publisher gRPC service failed")
 }

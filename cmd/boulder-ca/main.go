@@ -179,12 +179,8 @@ func main() {
 	}()
 
 	go cmd.CatchSignals(logger, func() {
-		if caSrv != nil {
-			caSrv.GracefulStop()
-		}
-		if ocspSrv != nil {
-			ocspSrv.GracefulStop()
-		}
+		caSrv.GracefulStop()
+		ocspSrv.GracefulStop()
 	})
 
 	select {}
