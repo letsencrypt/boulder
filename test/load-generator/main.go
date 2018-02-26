@@ -44,7 +44,7 @@ func main() {
 
 	configBytes, err := ioutil.ReadFile(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", &configPath, err)
+		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", *configPath, err)
 		os.Exit(1)
 	}
 	var config Config
