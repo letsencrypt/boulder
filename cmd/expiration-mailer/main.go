@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -479,14 +478,11 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	var tls *tls.Config
-	if c.Mailer.TLS.CertFile != nil {
-		tls, err = c.Mailer.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.Mailer.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 

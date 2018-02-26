@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -127,14 +126,11 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	cmd.FailOnError(err, "Failed to set feature flags")
 	logger := cmd.NewLogger(conf.Syslog)
 
-	var tls *tls.Config
-	if conf.TLS.CertFile != nil {
-		tls, err = conf.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := conf.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
-	conn, err := bgrpc.ClientSetup(conf.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 	return logger, sac
