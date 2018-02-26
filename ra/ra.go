@@ -1047,19 +1047,31 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		RegistrationID: &acctIDInt,
 		OrderID:        &orderIDInt,
 	}
-	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
 
-	if ra.ctpolicy != nil {
-		ra.getSCTs(ctx, cert.DER)
-	} else if ra.publisher != nil {
-		go func() {
-			// This context is limited by the gRPC timeout.
-			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
-		}()
+	if features.Enabled(features.EmbedSCTs) {
+		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+		scts, err := ra.getSCTS(ctx, cert.DER)
+		if err != nil {
+			return emptyCert, err
+		}
+		cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+			Precert: precert.DER,
+		})
+		if err != nil {
+			return emptyCert, err
+		}
+	} else {
+		cert, err := ra.CA.IssueCertificate(ctx, issueReq)
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+
+		_, _ = ra.getSCTs(ctx, cert.DER)
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))

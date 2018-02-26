@@ -25,6 +25,8 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"golang.org/x/net/context"
+	"github.com/google/certificate-transparency-go"
+	cttls "github.com/google/certificate-transparency-go/tls"
 
 	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -432,7 +434,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil)
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert")
 	if err != nil {
 		return emptyCert, err
 	}
@@ -454,7 +456,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", &ctPoisonExtension)
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "precert")
 	if err != nil {
 		return nil, err
 	}
@@ -464,10 +466,35 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-
-	return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
+// IssueCertificateForPrecertificate does a thing
+func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (*caPB.Certificate, error) {
+	if !features.Enabled(features.EmbedSCTs) {
+		return nil, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
+	}
+	precert, err := x509.ParseCertificate(req.PrecertDER)
+	if err != nil {
+		return nil, err
+	}
+	var scts []ct.SignedCertificateTimestamp
+	for _, sctBytes := range req.SCTs {
+		var sct ct.SignedCertificateTimestamp
+		_, err = cttls.Unmarshal(sctBytes, &sct)
+		if err != nil {
+			return nil, err
+		}
+		scts = append(scts, sct)
+	}
+	cert, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
+	if err != nil {
+		return nil, err
+	}
+	_, err = ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, cert)
+	if err != nil {
+		return nil, err
+	}
+	return &caPB.Certificate{
+		Cert: cert,
+	}
 }
 
 type validity struct {
@@ -498,7 +525,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string, addedExtension *signer.Extension) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -519,10 +546,6 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 	extensions, err := ca.extensionsFromCSR(csr)
 	if err != nil {
 		return nil, err
-	}
-
-	if addedExtension != nil {
-		extensions = append(extensions, *addedExtension)
 	}
 
 	issuer := ca.defaultIssuer
@@ -563,6 +586,10 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		Extensions: extensions,
 		NotBefore:  validity.NotBefore,
 		NotAfter:   validity.NotAfter,
+	}
+
+	if certType == "precert" {
+		req.ReturnPrecert = true
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
