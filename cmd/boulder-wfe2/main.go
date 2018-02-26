@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"flag"
@@ -158,18 +157,14 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 }
 
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
-	var tls *tls.Config
-	var err error
-	if c.WFE.TLS.CertFile != nil {
-		tls, err = c.WFE.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.WFE.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tls, clientMetrics)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tls, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 

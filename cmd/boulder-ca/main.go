@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"flag"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/pkcs11key"
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/ca/config"
@@ -142,14 +140,11 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	var tls *tls.Config
-	if c.CA.TLS.CertFile != nil {
-		tls, err = c.CA.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.CA.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.CA.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -165,38 +160,27 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
-	var caSrv *grpc.Server
-	if c.CA.GRPCCA != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCCA, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup CA gRPC server")
-		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-		caPB.RegisterCertificateAuthorityServer(s, caWrapper)
-		go func() {
-			err = cmd.FilterShutdownErrors(s.Serve(l))
-			cmd.FailOnError(err, "CA gRPC service failed")
-		}()
-		caSrv = s
-	}
-	var ocspSrv *grpc.Server
-	if c.CA.GRPCOCSPGenerator != nil {
-		s, l, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup CA gRPC server")
-		caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-		caPB.RegisterOCSPGeneratorServer(s, caWrapper)
-		go func() {
-			err = cmd.FilterShutdownErrors(s.Serve(l))
-			cmd.FailOnError(err, "OCSPGenerator gRPC service failed")
-		}()
-		ocspSrv = s
-	}
+
+	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+	caPB.RegisterCertificateAuthorityServer(caSrv, caWrapper)
+	go func() {
+		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
+	}()
+
+	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
+	caPB.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
+	go func() {
+		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
+			"OCSPGenerator gRPC service failed")
+	}()
 
 	go cmd.CatchSignals(logger, func() {
-		if caSrv != nil {
-			caSrv.GracefulStop()
-		}
-		if ocspSrv != nil {
-			ocspSrv.GracefulStop()
-		}
+		caSrv.GracefulStop()
+		ocspSrv.GracefulStop()
 	})
 
 	select {}

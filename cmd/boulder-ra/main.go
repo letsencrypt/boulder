@@ -1,19 +1,14 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
-
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -80,7 +75,14 @@ type config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
-		CTLogGroups [][]cmd.LogDescription
+		// NOTE: CTLogGroups is depreciated in favor of CTLogGroups2.
+		CTLogGroups  [][]cmd.LogDescription
+		CTLogGroups2 []cmd.CTGroup
+		// InformationalCTLogs are a set of CT logs we will always submit to
+		// but won't ever use the SCTs from. This may be because we want to
+		// test them or because they are not yet approved by a browser/root
+		// program but we still want our certs to end up there.
+		InformationalCTLogs []cmd.LogDescription
 
 		Features map[string]bool
 	}
@@ -134,41 +136,48 @@ func main() {
 		logger.Info("No challengesWhitelistFile given, not loading")
 	}
 
-	var tls *tls.Config
-	if c.RA.TLS.CertFile != nil {
-		tls, err = c.RA.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.RA.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tls, clientMetrics)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
 	caaClient := vaPB.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tls, clientMetrics)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Unable to create CA client")
 	// Build a CA client that is only capable of issuing certificates, not
 	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewCertificateAuthorityClient.
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
-	var pubc core.Publisher
-	var ctp *ctpolicy.CTPolicy
-	if c.RA.PublisherService != nil {
-		conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tls, clientMetrics)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(raConn))
 
-		if c.RA.CTLogGroups != nil {
-			ctp = ctpolicy.New(pubc, c.RA.CTLogGroups, logger)
+	var ctp *ctpolicy.CTPolicy
+	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
+	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+	if c.RA.CTLogGroups != nil {
+		groups := make([]cmd.CTGroup, len(c.RA.CTLogGroups))
+		for i, logs := range c.RA.CTLogGroups {
+			groups[i] = cmd.CTGroup{
+				Name: fmt.Sprintf("%d", i),
+				Logs: logs,
+			}
 		}
+		ctp = ctpolicy.New(pubc, groups, nil, logger)
+	} else if c.RA.CTLogGroups2 != nil {
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger)
 	}
 
-	conn, err := bgrpc.ClientSetup(c.RA.SAService, tls, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
 	authorizationLifetime := 300 * 24 * time.Hour
@@ -235,25 +244,14 @@ func main() {
 	err = rai.UpdateIssuedCountForever()
 	cmd.FailOnError(err, "Updating total issuance count")
 
-	var grpcSrv *grpc.Server
-	if c.RA.GRPC != nil {
-		serverMetrics := bgrpc.NewServerMetrics(scope)
-		var listener net.Listener
-		grpcSrv, listener, err = bgrpc.NewServer(c.RA.GRPC, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup RA gRPC server")
-		gw := bgrpc.NewRegistrationAuthorityServer(rai)
-		rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
-		go func() {
-			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-			cmd.FailOnError(err, "RA gRPC service failed")
-		}()
-	}
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup RA gRPC server")
+	gw := bgrpc.NewRegistrationAuthorityServer(rai)
+	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
+	cmd.FailOnError(err, "RA gRPC service failed")
 }

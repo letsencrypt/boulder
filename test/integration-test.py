@@ -405,7 +405,7 @@ def test_renewal_exemption():
 
 def test_certificates_per_name():
     chisel.expect_problem("urn:acme:error:rateLimited",
-        lambda: auth_and_issue(["lim.it"]))
+        lambda: auth_and_issue([random_domain() + ".lim.it"]))
 
 def test_expired_authzs_404():
     if len(old_authzs) == 0:

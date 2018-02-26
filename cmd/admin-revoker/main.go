@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"flag"
@@ -63,15 +62,11 @@ type config struct {
 func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority) {
 	logger := cmd.NewLogger(c.Syslog)
 
-	var tls *tls.Config
-	var err error
-	if c.Revoker.TLS.CertFile != nil {
-		tls, err = c.Revoker.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.Revoker.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
-	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tls, clientMetrics)
+	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
@@ -80,7 +75,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tls, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 

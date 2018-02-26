@@ -8,6 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
@@ -15,17 +16,19 @@ import (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub    core.Publisher
-	groups [][]cmd.LogDescription
-	log    blog.Logger
+	pub           core.Publisher
+	groups        []cmd.CTGroup
+	informational []cmd.LogDescription
+	log           blog.Logger
 }
 
 // New creates a new CTPolicy struct
-func New(pub core.Publisher, groups [][]cmd.LogDescription, log blog.Logger) *CTPolicy {
+func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger) *CTPolicy {
 	return &CTPolicy{
-		pub:    pub,
-		groups: groups,
-		log:    log,
+		pub:           pub,
+		groups:        groups,
+		informational: informational,
+		log:           log,
 	}
 }
 
@@ -38,11 +41,17 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
-func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.LogDescription) (core.SCTDER, error) {
-	results := make(chan result, len(group))
-	subCtx, cancel := context.WithCancel(ctx)
+func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) (core.SCTDER, error) {
+	results := make(chan result, len(group.Logs))
+	var subCtx context.Context
+	var cancel func()
+	if features.Enabled(features.CancelCTSubmissions) {
+		subCtx, cancel = context.WithCancel(ctx)
+	} else {
+		subCtx, cancel = ctx, func() {}
+	}
 	defer cancel()
-	for _, l := range group {
+	for _, l := range group.Logs {
 		go func(l cmd.LogDescription) {
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
 				LogURL:       &l.URI,
@@ -61,15 +70,14 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 		}(l)
 	}
 
-	for i := 0; i < len(group); i++ {
+	for i := 0; i < len(group.Logs); i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case res := <-results:
 			if res.sct != nil {
-				// Return the very first SCT we get back and cancel any other
-				// in progress work.
-				cancel()
+				// Return the very first SCT we get back. Returning triggers
+				// the defer'd context cancellation method.
 				return res.sct, nil
 			}
 			// We will continue waiting for an SCT until we've seen the same number
@@ -84,17 +92,32 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 // the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCTDER, error) {
 	results := make(chan result, len(ctp.groups))
-	subCtx, cancel := context.WithCancel(ctx)
+	var subCtx context.Context
+	var cancel func()
+	if features.Enabled(features.CancelCTSubmissions) {
+		subCtx, cancel = context.WithCancel(ctx)
+	} else {
+		subCtx, cancel = ctx, func() {}
+	}
 	defer cancel()
 	for i, g := range ctp.groups {
-		go func(i int, g []cmd.LogDescription) {
+		go func(i int, g cmd.CTGroup) {
 			sct, err := ctp.race(subCtx, cert, g)
 			// Only one of these will be non-nil
 			if err != nil {
-				results <- result{err: fmt.Errorf("CT log group %d: %s", i, err)}
+				results <- result{err: fmt.Errorf("CT log group %q: %s", g.Name, err)}
 			}
 			results <- result{sct: sct}
 		}(i, g)
+	}
+	for _, log := range ctp.informational {
+		go func(l cmd.LogDescription) {
+			_, _ = ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
+				LogURL:       &l.URI,
+				LogPublicKey: &l.Key,
+				Der:          cert,
+			})
+		}(log)
 	}
 
 	var ret []core.SCTDER
@@ -103,7 +126,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 		// If any one group fails to get a SCT then we fail out immediately
 		// cancel any other in progress work as we can't continue
 		if res.err != nil {
-			cancel()
+			// Returning triggers the defer'd context cancellation method
 			return nil, res.err
 		}
 		ret = append(ret, res.sct)
