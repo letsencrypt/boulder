@@ -229,8 +229,16 @@ type rawRegistration struct {
 	RawKey         []byte   `json:"rawKey"`
 }
 
+type rawAccount struct {
+	FinalizedOrders []string `json:"finalizedOrders"`
+	Certs           []string `json:"certs"`
+	ID              string   `json:"id"`
+	RawKey          []byte   `json:"rawKey"`
+}
+
 type snapshot struct {
 	Registrations []rawRegistration
+	Accounts      []rawAccount
 }
 
 func (s *State) numAccts() int {
@@ -245,9 +253,9 @@ func (s *State) numRegs() int {
 	return len(s.regs)
 }
 
-// Snapshot will save out generated registrations and certs (ignoring authorizations)
+// Snapshot will save out generated registrations and accounts
 func (s *State) Snapshot(filename string) error {
-	fmt.Printf("[+] Saving registrations to %s\n", filename)
+	fmt.Printf("[+] Saving registrations/accounts to %s\n", filename)
 	snap := snapshot{}
 	// assume rMu lock operations aren't happening right now
 	for _, reg := range s.regs {
@@ -261,6 +269,18 @@ func (s *State) Snapshot(filename string) error {
 			RawKey:         k,
 		})
 	}
+	for _, acct := range s.accts {
+		k, err := x509.MarshalECPrivateKey(acct.key)
+		if err != nil {
+			return err
+		}
+		snap.Accounts = append(snap.Accounts, rawAccount{
+			Certs:           acct.certs,
+			FinalizedOrders: acct.finalizedOrders,
+			ID:              acct.id,
+			RawKey:          k,
+		})
+	}
 	cont, err := json.Marshal(snap)
 	if err != nil {
 		return err
@@ -268,9 +288,9 @@ func (s *State) Snapshot(filename string) error {
 	return ioutil.WriteFile(filename, cont, os.ModePerm)
 }
 
-// Restore previously generated registrations and certs
+// Restore previously generated registrations and accounts
 func (s *State) Restore(filename string) error {
-	fmt.Printf("[+] Loading registrations from %s\n", filename)
+	fmt.Printf("[+] Loading registrations/accounts from %s\n", filename)
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -299,6 +319,21 @@ func (s *State) Restore(filename string) error {
 			key:    key,
 			signer: signer,
 			certs:  r.Certs,
+		})
+	}
+	for _, a := range snap.Accounts {
+		key, err := x509.ParseECPrivateKey(a.RawKey)
+		if err != nil {
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		s.accts = append(s.accts, &account{
+			key:             key,
+			id:              a.ID,
+			finalizedOrders: a.FinalizedOrders,
+			certs:           a.Certs,
 		})
 	}
 	return nil
