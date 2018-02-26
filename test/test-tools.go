@@ -67,6 +67,7 @@ func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 
 // AssertDeepEquals uses the reflect.DeepEqual method to measure one and two
 func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
+	t.Helper()
 	if !reflect.DeepEqual(one, two) {
 		fatalf(t, "%s [%+v] !(deep)= [%+v]", caller(), one, two)
 	}
@@ -85,16 +86,21 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 	}
 }
 
-// AssertUnmarshaledEquals unmarshals two JSON strings (one and two) to
+// AssertUnmarshaledEquals unmarshals two JSON strings (got and expected) to
 // a map[string]interface{} and then uses reflect.DeepEqual to check they are
 // the same
-func AssertUnmarshaledEquals(t *testing.T, one, two string) {
-	var oneMap, twoMap map[string]interface{}
-	err := json.Unmarshal([]byte(one), &oneMap)
-	AssertNotError(t, err, "Could not unmarshal 1st argument")
-	err = json.Unmarshal([]byte(two), &twoMap)
-	AssertNotError(t, err, "Could not unmarshal 2nd argument")
-	AssertDeepEquals(t, oneMap, twoMap)
+func AssertUnmarshaledEquals(t *testing.T, got, expected string) {
+	t.Helper()
+	var gotMap, expectedMap map[string]interface{}
+	err := json.Unmarshal([]byte(got), &gotMap)
+	AssertNotError(t, err, "Could not unmarshal 'got'")
+	err = json.Unmarshal([]byte(expected), &expectedMap)
+	AssertNotError(t, err, "Could not unmarshal 'expected'")
+	for k, v := range expectedMap {
+		if !reflect.DeepEqual(v, gotMap[k]) {
+			t.Errorf("Field %q: Expected \"%v\", got \"%v\"", k, v, gotMap[k])
+		}
+	}
 }
 
 // AssertNotEquals uses the equality operator to measure that one and two
