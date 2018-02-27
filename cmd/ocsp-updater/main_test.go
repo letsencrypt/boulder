@@ -673,19 +673,25 @@ func TestLoopTickBackoff(t *testing.T) {
 		tickFunc:             func(context.Context, int) error { return errors.New("baddie") },
 	}
 
+	assertBetween := func(a, b, c int64) {
+		t.Helper()
+		if a < b || a > c {
+			t.Fatalf("%d is not between %d and %d", a, b, c)
+		}
+	}
 	start := l.clk.Now()
 	l.tick()
 	// Expected to sleep for 1m
 	backoff := float64(60000000000)
 	maxJittered := backoff * 1.2
-	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
 
 	start = l.clk.Now()
 	l.tick()
 	// Expected to sleep for 1m30s
 	backoff = 90000000000
 	maxJittered = backoff * 1.2
-	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
 
 	l.failures = 6
 	start = l.clk.Now()
@@ -693,7 +699,7 @@ func TestLoopTickBackoff(t *testing.T) {
 	// Expected to sleep for 11m23.4375s, should be truncated to 10m
 	backoff = 600000000000
 	maxJittered = backoff * 1.2
-	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
 
 	l.tickFunc = func(context.Context, int) error { return nil }
 	start = l.clk.Now()
