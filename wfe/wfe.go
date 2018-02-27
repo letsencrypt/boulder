@@ -956,8 +956,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 		notFound()
 		return
 	}
-	logEvent.Extra["AuthorizationID"] = authorizationID
-	logEvent.Extra["ChallengeID"] = challengeID
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
@@ -984,10 +982,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 
 	logEvent.Extra["ChallengeType"] = challenge.Type
-	logEvent.Extra["AuthorizationRegistrationID"] = authz.RegistrationID
-	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
+	logEvent.Extra["Identifier"] = authz.Identifier
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
-	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	switch request.Method {
 	case "GET", "HEAD":
@@ -1252,11 +1248,8 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
 		return
 	}
-	logEvent.Extra["AuthorizationID"] = authz.ID
-	logEvent.Extra["AuthorizationRegistrationID"] = authz.RegistrationID
-	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
+	logEvent.Extra["Identifier"] = authz.Identifier
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
-	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
