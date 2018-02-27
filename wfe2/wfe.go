@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -780,6 +781,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	if features.Enabled(features.RetryAfter) {
+		response.Header().Set("Retry-After", "3")
+	}
 
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
@@ -1111,6 +1115,9 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if features.Enabled(features.RetryAfter) {
+		response.Header().Set("Retry-After", "3")
+	}
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
