@@ -161,13 +161,12 @@ func newAccount(s *State, ctx *context) error {
 	nStarted := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newAcctPath), bodyBuf, ctx.ns)
 	nFinished := time.Now()
-	nState := "good"
+	nState := "error"
 	defer func() {
 		s.callLatency.Add(
 			fmt.Sprintf("POST %s", newAcctPath), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		nState = "error"
 		return fmt.Errorf("%s, post failed: %s", newAcctPath, err)
 	}
 	defer resp.Body.Close()
@@ -175,7 +174,6 @@ func newAccount(s *State, ctx *context) error {
 	// We expect that the result is a created account
 	if resp.StatusCode != http.StatusCreated {
 		body, err := ioutil.ReadAll(resp.Body)
-		nState = "error"
 		if err != nil {
 			return fmt.Errorf("%s, bad response: %s", newAcctPath, body)
 		}
@@ -191,6 +189,7 @@ func newAccount(s *State, ctx *context) error {
 	ctx.acct.id = locHeader
 
 	// Add the account to the state
+	nState = "good"
 	s.addAccount(ctx.acct)
 	return nil
 }
@@ -458,14 +457,13 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	aStarted := time.Now()
 	resp, err := s.get(url)
 	aFinished := time.Now()
-	aState := "good"
+	aState := "error"
 	// Defer logging the latency and result
 	defer func() {
 		s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState)
 	}()
 	// If there was an error, note the state and return
 	if err != nil {
-		aState = "error"
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
 	}
 
@@ -473,7 +471,6 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		aState = "error"
 		return nil, err
 	}
 
@@ -481,13 +478,13 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	var authz core.Authorization
 	err = json.Unmarshal(body, &authz)
 	if err != nil {
-		aState = "error"
 		return nil, fmt.Errorf("%s response: %s", url, body)
 	}
 	// The Authorization ID is not set in the response so we populate it based on
 	// the URL
 	paths := strings.Split(url, "/")
 	authz.ID = paths[len(paths)-1]
+	aState = "good"
 	return &authz, nil
 }
 
@@ -540,13 +537,12 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	cStarted := time.Now()
 	resp, err := s.post(chalToSolve.URL, requestPayload, ctx.ns)
 	cFinished := time.Now()
-	cState := "good"
+	cState := "error"
 	// Record the final latency and state when finished
 	defer func() {
 		s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState)
 	}()
 	if err != nil {
-		cState = "error"
 		return err
 	}
 
@@ -554,12 +550,10 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	defer resp.Body.Close()
 	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		cState = "error"
 		return err
 	}
 	// The response code is expected to be Status OK
 	if resp.StatusCode != http.StatusOK {
-		cState = "error"
 		return fmt.Errorf("Unexpected HTTP response code: %d", resp.StatusCode)
 	}
 
@@ -567,11 +561,11 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	// a change of state. The polling may sleep and retry a few times if required
 	pollAuthorization(authz, s, ctx)
 	if err != nil {
-		cState = "error"
 		return err
 	}
 
 	// The challenge is completed, the authz is valid
+	cState = "good"
 	return nil
 }
 
@@ -948,45 +942,41 @@ func finalizeOrder(s *State, ctx *context) error {
 	started := time.Now()
 	resp, err := s.post(finalizeURL, requestPayload, ctx.ns)
 	finished := time.Now()
-	state := "good"
+	state := "error"
 	// Track the latency and the result state
 	defer func() {
 		s.callLatency.Add("POST /acme/order/finalize", started, finished, state)
 	}()
 	if err != nil {
-		state = "error"
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		state = "error"
 		return fmt.Errorf("bad response, status %d", resp.StatusCode)
 	}
 	// Read the body to ensure there isn't an error. We don't need the actual
 	// contents.
 	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		state = "error"
 		return err
 	}
 
 	// Poll the order waiting for the certificate to be ready
 	completedOrder, err := pollOrderForCert(order, s, ctx)
 	if err != nil {
-		state = "error"
 		return err
 	}
 
 	// The valid order should have a certificate URL
 	certURL := completedOrder.Certificate
 	if certURL == "" {
-		state = "error"
 		return fmt.Errorf("Order %q was finalized but has no cert URL", order.URL)
 	}
 
 	// Append the certificate URL into the context's list of certificates
 	ctx.certs = append(ctx.certs, certURL)
 	ctx.finalizedOrders = append(ctx.finalizedOrders, order.URL)
+	state = "good"
 	return nil
 }
 
