@@ -162,7 +162,10 @@ func newAccount(s *State, ctx *context) error {
 	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newAcctPath), bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "good"
-	defer func() { s.callLatency.Add(fmt.Sprintf("POST %s", newAcctPath), nStarted, nFinished, nState) }()
+	defer func() {
+		s.callLatency.Add(
+			fmt.Sprintf("POST %s", newAcctPath), nStarted, nFinished, nState)
+	}()
 	if err != nil {
 		nState = "error"
 		return fmt.Errorf("%s, post failed: %s", newAcctPath, err)
@@ -343,7 +346,10 @@ func newOrder(s *State, ctx *context) error {
 	resp, err := s.post(url, bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "good"
-	defer func() { s.callLatency.Add(fmt.Sprintf("POST %s", newOrderPath), nStarted, nFinished, nState) }()
+	defer func() {
+		s.callLatency.Add(
+			fmt.Sprintf("POST %s", newOrderPath), nStarted, nFinished, nState)
+	}()
 	if err != nil {
 		nState = "error"
 		return fmt.Errorf("%s, post failed: %s", newOrderPath, err)
@@ -454,7 +460,9 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	aFinished := time.Now()
 	aState := "good"
 	// Defer logging the latency and result
-	defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
+	defer func() {
+		s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState)
+	}()
 	// If there was an error, note the state and return
 	if err != nil {
 		aState = "error"
@@ -534,7 +542,9 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	cFinished := time.Now()
 	cState := "good"
 	// Record the final latency and state when finished
-	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
+	defer func() {
+		s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState)
+	}()
 	if err != nil {
 		cState = "error"
 		return err
@@ -816,7 +826,9 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 	aFinished := time.Now()
 	aState := "good"
 	// Track the latency and result
-	defer func() { s.callLatency.Add("GET /acme/order/{ID}", aStarted, aFinished, aState) }()
+	defer func() {
+		s.callLatency.Add("GET /acme/order/{ID}", aStarted, aFinished, aState)
+	}()
 	// If there was an error, track that result
 	if err != nil {
 		aState = "error"
@@ -938,7 +950,9 @@ func finalizeOrder(s *State, ctx *context) error {
 	finished := time.Now()
 	state := "good"
 	// Track the latency and the result state
-	defer func() { s.callLatency.Add("POST /acme/order/finalize", started, finished, state) }()
+	defer func() {
+		s.callLatency.Add("POST /acme/order/finalize", started, finished, state)
+	}()
 	if err != nil {
 		state = "error"
 		return err
