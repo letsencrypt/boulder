@@ -1942,9 +1942,11 @@ func TestGetCertificate(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 
-	reqlogs := mockLog.GetAllMatching(`Successful request`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
+	reqlogs := mockLog.GetAllMatching(`INFO: JSON=.*"Code":200.*`)
+	if len(reqlogs) != 1 {
+		t.Errorf("Didn't find info logs with code 200. Instead got:\n%s\n",
+			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+	}
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1957,9 +1959,11 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
-	reqlogs = mockLog.GetAllMatching(`Terminated request`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
+	reqlogs = mockLog.GetAllMatching(`INFO: JSON=.*"Code":404.*`)
+	if len(reqlogs) != 1 {
+		t.Errorf("Didn't find info logs with code 404. Instead got:\n%s\n",
+			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+	}
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
