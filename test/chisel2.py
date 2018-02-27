@@ -50,13 +50,12 @@ def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
-    net = acme_client.ClientNetwork(key, acme_version=2,
-                                    user_agent="Boulder integration tester")
-
-    client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
+    directory = messages.Directory.from_json(net.get(DIRECTORY).json())
+    client = acme_client.ClientV2(directory, net)
     tos = client.directory.meta.terms_of_service
     if tos == ACCEPTABLE_TOS:
-        net.account = client.register(messages.NewRegistration.from_data(email=email,
+        net.account = client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
         raise Exception("Unrecognized terms of service URL %s" % tos)
@@ -84,39 +83,9 @@ def make_csr(domains):
     pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
     return acme_crypto_util.make_csr(pem, domains, False)
 
-def issue(client, authzs, cert_output=None):
-    """Given a list of authzs that are being processed by the server,
-       wait for them to be ready, then request issuance of a cert with a random
-       key for the given domains.
-
-       If cert_output is provided, write the cert as a PEM file to that path."""
-    csr = make_csr([authz.body.identifier.value for authz in authzs])
-
-    cert_resource = None
-    try:
-        cert_resource, _ = client.poll_and_request_issuance(jose.ComparableX509(csr), authzs)
-    except acme_errors.PollError as error:
-        # If we get a PollError, pick the first failed authz and turn it into a more
-        # useful ValidationError that contains details we can look for in tests.
-        for authz in error.updated:
-            updated_authz = json.loads(urllib2.urlopen(authz.uri).read())
-            domain = authz.body.identifier.value,
-            for c in updated_authz['challenges']:
-                if 'error' in c:
-                    err = c['error']
-                    raise ValidationError(domain, err['type'], err['detail'])
-        # If none of the authz's had an error, just re-raise.
-        raise
-    if cert_output is not None:
-        pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM,
-                                              cert_resource.body)
-        with open(cert_output, 'w') as f:
-            f.write(pem)
-    return cert_resource
-
 def http_01_answer(client, chall_body):
     """Return an HTTP01Resource to server in response to the given challenge."""
-    response, validation = chall_body.response_and_validation(client.key)
+    response, validation = chall_body.response_and_validation(client.net.key)
     return standalone.HTTP01RequestHandler.HTTP01Resource(
           chall=chall_body.chall, response=response,
           validation=validation)
@@ -140,7 +109,7 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
         raise Exception("invalid challenge type %s" % chall_type)
 
     try:
-        order = client.poll_order_and_request_issuance(order)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
@@ -151,14 +120,14 @@ def do_dns_challenges(client, authzs):
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
-            c.validation(client.key))
+            c.validation(client.net.key))
         cleanup_hosts.append(name)
         urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
                 "value": value,
             })).read()
-        client.answer_challenge(c, c.response(client.key))
+        client.answer_challenge(c, c.response(client.net.key))
     def cleanup():
         for host in cleanup_hosts:
             urllib2.urlopen(CLEAR_TXT,
@@ -192,7 +161,7 @@ def do_http_challenges(client, authzs):
                 time.sleep(0.1)
 
         for chall_body in challs:
-            client.answer_challenge(chall_body, chall_body.response(client.key))
+            client.answer_challenge(chall_body, chall_body.response(client.net.key))
     except Exception:
         cleanup()
         raise
