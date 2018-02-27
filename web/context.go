@@ -50,6 +50,19 @@ func NewTopHandler(log blog.Logger, wfe wfeHandler) *TopHandler {
 	}
 }
 
+// responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
+// status code for logging.
+type responseWriterWithStatus struct {
+	http.ResponseWriter
+	code int
+}
+
+// WriteHeader stores a status code for generating stats.
+func (r *responseWriterWithStatus) WriteHeader(code int) {
+	r.code = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &RequestEvent{
 		RealIP:    r.Header.Get("X-Real-IP"),
@@ -59,7 +72,11 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer th.logEvent(logEvent)
 
-	th.wfe.ServeHTTP(logEvent, w, r)
+	rwws := &responseWriterWithStatus{w, 0}
+	defer func() {
+		logEvent.Code = rwws.code
+	}()
+	th.wfe.ServeHTTP(logEvent, rwws, r)
 }
 
 func (th *TopHandler) logEvent(logEvent *RequestEvent) {
