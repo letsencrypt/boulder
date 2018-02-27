@@ -344,25 +344,22 @@ func newOrder(s *State, ctx *context) error {
 	nStarted := time.Now()
 	resp, err := s.post(url, bodyBuf, ctx.ns)
 	nFinished := time.Now()
-	nState := "good"
+	nState := "error"
 	defer func() {
 		s.callLatency.Add(
 			fmt.Sprintf("POST %s", newOrderPath), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		nState = "error"
 		return fmt.Errorf("%s, post failed: %s", newOrderPath, err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		nState = "error"
 		return fmt.Errorf("%s, bad response: %s", newOrderPath, body)
 	}
 
 	// We expect that the result is a created order
 	if resp.StatusCode != http.StatusCreated {
-		nState = "error"
 		return fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
 	}
 
@@ -370,7 +367,6 @@ func newOrder(s *State, ctx *context) error {
 	var orderJSON OrderJSON
 	err = json.Unmarshal(body, &orderJSON)
 	if err != nil {
-		nState = "error"
 		return err
 	}
 
@@ -383,6 +379,7 @@ func newOrder(s *State, ctx *context) error {
 
 	// Store the pending order in the context
 	ctx.pendingOrders = append(ctx.pendingOrders, &orderJSON)
+	nState = "good"
 	return nil
 }
 
@@ -818,27 +815,24 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 	aStarted := time.Now()
 	resp, err := s.get(url)
 	aFinished := time.Now()
-	aState := "good"
+	aState := "error"
 	// Track the latency and result
 	defer func() {
 		s.callLatency.Add("GET /acme/order/{ID}", aStarted, aFinished, aState)
 	}()
 	// If there was an error, track that result
 	if err != nil {
-		aState = "error"
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
 	}
 	// Read the response body
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		aState = "error"
 		return nil, fmt.Errorf("%s, bad response: %s", newOrderPath, body)
 	}
 
 	// We expect a HTTP status OK response
 	if resp.StatusCode != http.StatusOK {
-		aState = "error"
 		return nil, fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
 	}
 
@@ -846,12 +840,12 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 	var orderJSON OrderJSON
 	err = json.Unmarshal(body, &orderJSON)
 	if err != nil {
-		aState = "error"
 		return nil, err
 	}
 
 	// Populate the order's URL based on the URL we fetched it from
 	orderJSON.URL = url
+	aState = "good"
 	return &orderJSON, nil
 }
 
