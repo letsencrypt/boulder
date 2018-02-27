@@ -321,7 +321,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
+	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET")
 	wfe.HandleFunc(m, finalizeOrderPath, wfe.FinalizeOrder, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -1552,8 +1552,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 }
 
-// Order is used to retrieve a existing order object
-func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+// GetOrder is used to retrieve a existing order object
+func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	fields := strings.SplitN(request.URL.Path, "/", 2)
 	// If there are less than 2 fields there can't be both an account ID and an
 	// order ID so the path is invalid

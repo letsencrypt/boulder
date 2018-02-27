@@ -2157,7 +2157,7 @@ func TestOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.Order(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: tc.Path}, Method: "GET"})
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: tc.Path}, Method: "GET"})
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 		})
 	}
