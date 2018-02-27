@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"log"
 	"log/syslog"
 	"net"
 	"strings"
@@ -81,12 +82,25 @@ func TestEmitEmpty(t *testing.T) {
 }
 
 func ExampleLogger() {
-	impl := setup(nil)
+	// Write all logs to UDP on a high port so as to not bother the system
+	// which is running the test
+	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	logger, err := New(writer, stdoutLevel, syslogLevel)
+	if err != nil {
+		log.Fatal(err)
+	}
+	impl, ok := logger.(*impl)
+	if !ok {
+		log.Fatalf(fmt.Sprintf("Wrong type returned from New: %T", logger))
+	}
 
 	bw, ok := impl.w.(*bothWriter)
 	if !ok {
-		fmt.Printf("Wrong type of impl's writer: %T\n", impl.w)
-		return
+		log.Fatalf("Wrong type of impl's writer: %T\n", impl.w)
 	}
 	bw.clk = clock.NewFake()
 	impl.AuditErr("Error Audit")
