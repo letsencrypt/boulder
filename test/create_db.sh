@@ -27,7 +27,7 @@ for dbenv in $DBENVS; do
     echo "created empty ${db} database"
   fi
 
-  goose -path=./sa/_db-next/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db/"
+  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db} with ./sa/_db/"
   echo "migrated ${db} database with ./sa/_db/"
 
   if [[ "$BOULDER_CONFIG_DIR" = "test/config-next" ]]; then
