@@ -78,7 +78,7 @@ type OrderJSON struct {
 }
 
 // getAccount takes a randomly selected v2 account from `state.accts` and puts it
-// into `ctx.acct`. The context `nonceSouce` is also populated as convenience.
+// into `ctx.acct`. The context `nonceSource` is also populated as convenience.
 func getAccount(s *State, ctx *context) error {
 	s.rMu.RLock()
 	defer s.rMu.RUnlock()
