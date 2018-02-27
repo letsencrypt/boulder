@@ -1554,10 +1554,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	// Path prefix is stripped, so this should be like "<account ID>/<order ID>"
 	fields := strings.SplitN(request.URL.Path, "/", 2)
-	// If there are less than 2 fields there can't be both an account ID and an
-	// order ID so the path is invalid
-	if len(fields) < 2 {
+	if len(fields) != 2 {
 		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	}
@@ -1611,7 +1610,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// Order URLs are like: /acme/finalize/<account>/<order>/. The prefix is
 	// stripped by the time we get here.
 	fields := strings.SplitN(request.URL.Path, "/", 2)
-	if len(fields) < 2 {
+	if len(fields) != 2 {
 		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	}
