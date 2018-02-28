@@ -21,6 +21,7 @@ service StorageAuthority {
         rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
         rpc CountPendingOrders(RegistrationID) returns (Count) {}
+        rpc CountNewOrders(CountNewOrdersRequest) returns (Count) {}
         // Return a count of authorizations with status "invalid" that belong to
         // a given registration ID and expire in the given time range.
         rpc CountInvalidAuthorizations(CountInvalidAuthorizationsRequest) returns (Count) {}
@@ -134,6 +135,11 @@ message CountInvalidAuthorizationsRequest {
         optional string hostname = 2;
         // Count authorizations that expire in this range.
         optional Range range = 3;
+}
+
+message CountNewOrdersRequest {
+        optional int64 accountID = 1;
+        optional Range range = 2;
 }
 
 message GetSCTReceiptRequest {

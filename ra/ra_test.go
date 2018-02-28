@@ -176,6 +176,7 @@ type dummyRateLimitConfig struct {
 	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	PendingOrdersPerAccountPolicy         ratelimit.RateLimitPolicy
+	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 }
@@ -202,6 +203,10 @@ func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateL
 
 func (r *dummyRateLimitConfig) PendingOrdersPerAccount() ratelimit.RateLimitPolicy {
 	return r.PendingOrdersPerAccountPolicy
+}
+
+func (r *dummyRateLimitConfig) NewOrdersPerAccount() ratelimit.RateLimitPolicy {
+	return r.NewOrdersPerAccountPolicy
 }
 
 func (r *dummyRateLimitConfig) InvalidAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
@@ -1155,76 +1160,50 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.orderLifetime = 5 * 24 * time.Hour
 
-	// Create a dummy rate limit config that sets a PendingOrdersPerAccount rate
-	// limit with a very low threshold
+	rateLimitDuration := 5 * time.Minute
+
+	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
+	// limit with a very low threshold/short window
 	ra.rlPolicies = &dummyRateLimitConfig{
-		PendingOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
+		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 7 * 24 * time.Hour},
+			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
 		},
 	}
-	// Set the RA up to consider an order valid for one hour
-	ra.orderLifetime = time.Hour
 
-	// To start, it should be possible to create a new order
-	_, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
+	orderOne := &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
-		Names:          []string{"example.com"},
-	})
-	test.AssertNotError(t, err, "NewOrder failed")
-
-	// A subsequent new order request should fail
-	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
+		Names:          []string{"first.example.com"},
+	}
+	orderTwo := &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
-		Names:          []string{"zombo.com"},
-	})
-	test.AssertError(t, err, "NewOrder did not get rate limited")
-
-	// Advancing the clock by hour should expire the first pending order and allow creation of another
-	fc.Add(time.Hour)
-	order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
-		Names:          []string{"not-example.com", "www.not-example.com"},
-	})
-	test.AssertNotError(t, err, "NewOrder failed")
-
-	// Finalize the order's authorizations to fake validation and allow
-	// finalization of the order
-	for _, authzId := range order.Authorizations {
-		authz, err := ra.SA.GetAuthorization(ctx, authzId)
-		test.AssertNotError(t, err, "SA.GetAuthorization failed")
-
-		authz.Status = core.StatusValid
-		authz.Challenges[0].Status = core.StatusValid
-		err = ra.SA.FinalizeAuthorization(ctx, authz)
-		test.AssertNotError(t, err, "SA.FinalizeAuthorization failed")
+		Names:          []string{"second.example.com"},
 	}
 
-	// Swallowing errors here because the CSRPEM is hardcoded test data expected
-	// to parse in all instance
-	validCSRBlock, _ := pem.Decode(CSRPEM)
-	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
+	// To start, it should be possible to create a new order
+	_, err := ra.NewOrder(ctx, orderOne)
+	test.AssertNotError(t, err, "NewOrder for orderOne failed")
 
-	// Artificially set the order's status to pending since it didn't come from
-	// a sa.GetOrder call that populates the field.
-	pendingStatus := string(core.StatusPending)
-	order.Status = &pendingStatus
+	// Advance the clock 1s to separate the orders in time
+	fc.Add(time.Second)
 
-	// Finalize the order with a CSR to change it from pending status to valid status
-	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
-		Order: order,
-		Csr:   validCSR.Raw,
-	})
-	test.AssertNotError(t, err, "Unable to finalize test order")
+	// Creating an order immediately after the first with different names
+	// should fail
+	_, err = ra.NewOrder(ctx, orderTwo)
+	test.AssertError(t, err, "NewOrder for orderTwo succeeded, should have been ratelimited")
 
-	// A subsequent new order request should succeed because the previous order is
-	// no longer pending
-	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
-		Names:          []string{"zombo.gov"},
-	})
-	test.AssertNotError(t, err, "NewOrder failed")
+	// Creating the first order again should succeed because of order reuse, no
+	// new pending order is produced.
+	_, err = ra.NewOrder(ctx, orderOne)
+	test.AssertNotError(t, err, "Reuse of orderOne failed")
+
+	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
+	// succeed
+	fc.Add(2 * rateLimitDuration)
+	_, err = ra.NewOrder(ctx, orderTwo)
+	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
 }
 
 func TestAuthzFailedRateLimiting(t *testing.T) {
@@ -2768,6 +2747,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	emptyStr := ""
 	falseBool := false
+	fakeCreated := ra.clk.Now().UnixNano()
 
 	testCases := []struct {
 		Name           string
@@ -2857,6 +2837,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Expires:           &expUnix,
 					CertificateSerial: &emptyStr,
 					BeganProcessing:   &falseBool,
+					Created:           &fakeCreated,
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2873,6 +2854,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Expires:           &expUnix,
 					CertificateSerial: &emptyStr,
 					BeganProcessing:   &falseBool,
+					Created:           &fakeCreated,
 				},
 				Csr: threeDomainCSR,
 			},

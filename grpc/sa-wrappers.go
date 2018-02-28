@@ -271,6 +271,28 @@ func (sac StorageAuthorityClientWrapper) CountPendingOrders(ctx context.Context,
 	return int(*response.Count), nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountNewOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountNewOrders(ctx, &sapb.CountNewOrdersRequest{
+		AccountID: &acctID,
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
 func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sac.inner.CountInvalidAuthorizations(ctx, request)
 }
@@ -825,6 +847,24 @@ func (sas StorageAuthorityServerWrapper) CountPendingOrders(ctx context.Context,
 	}
 
 	count, err := sas.inner.CountPendingOrders(ctx, *request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	castedCount := int64(count)
+	return &sapb.Count{Count: &castedCount}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountNewOrders(ctx context.Context, request *sapb.CountNewOrdersRequest) (*sapb.Count, error) {
+	if request == nil || request.AccountID == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+		return nil, errIncompleteRequest
+	}
+
+	count, err := sas.inner.CountNewOrders(ctx,
+		*request.AccountID,
+		time.Unix(0, *request.Range.Earliest),
+		time.Unix(0, *request.Range.Latest),
+	)
 	if err != nil {
 		return nil, err
 	}

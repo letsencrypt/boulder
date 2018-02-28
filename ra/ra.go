@@ -91,6 +91,7 @@ type RegistrationAuthorityImpl struct {
 	regByIPRangeStats      metrics.Scope
 	pendAuthByRegIDStats   metrics.Scope
 	pendOrdersByRegIDStats metrics.Scope
+	newOrderByRegIDStats   metrics.Scope
 	certsForDomainStats    metrics.Scope
 	totalCertsStats        metrics.Scope
 
@@ -142,6 +143,7 @@ func NewRegistrationAuthorityImpl(
 		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
 		pendOrdersByRegIDStats:       stats.NewScope("RateLimit", "PendingOrdersByRegID"),
+		newOrderByRegIDStats:         stats.NewScope("RateLimit", "NewOrdersByRegID"),
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
@@ -501,6 +503,30 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
+	return nil
+}
+
+// checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
+// rate limit. This rate limit ensures a client can not create more than the
+// specified threshold of new orders within the specified time window.
+func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64) error {
+	limit := ra.rlPolicies.NewOrdersPerAccount()
+	if !limit.Enabled() {
+		return nil
+	}
+	latest := ra.clk.Now()
+	earliest := latest.Add(-limit.Window.Duration)
+	count, err := ra.SA.CountNewOrders(ctx, acctID, earliest, latest)
+	if err != nil {
+		return err
+	}
+	// There is no meaningful override key to use for this rate limit
+	noKey := ""
+	if count >= limit.GetThreshold(noKey, acctID) {
+		ra.newOrderByRegIDStats.Inc("Exceeded", 1)
+		return berrors.RateLimitError("too many new orders recently")
+	}
+	ra.newOrderByRegIDStats.Inc("Pass", 1)
 	return nil
 }
 
@@ -1686,12 +1712,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		Expires:        &expires,
 	}
 
-	// Check that the registration ID in question has rate limit space for another
-	// pending order
-	if err := ra.checkPendingOrderLimit(ctx, *req.RegistrationID); err != nil {
-		return nil, err
-	}
-
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
@@ -1721,6 +1741,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	// Otherwise we were unable to find an order to reuse, continue creating a new
 	// order
+
+	// Check if there is rate limit space for a new order within the current window
+	if err := ra.checkNewOrdersPerAccountLimit(ctx, *order.RegistrationID); err != nil {
+		return nil, err
+	}
 
 	// Check whether there are existing non-expired authorizations for the set of
 	// order names

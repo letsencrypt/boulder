@@ -987,6 +987,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 
 // CountPendingOrders returns the number of pending, unexpired
 // orders for the given registration.
+// **DEPRECATED**
 func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
 	var count int
 
@@ -1020,6 +1021,24 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 		}
 	}
 
+	return count, nil
+}
+
+func (ssa *SQLStorageAuthority) CountNewOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	var count int
+	err := ssa.dbMap.SelectOne(&count,
+		`SELECT count(1) FROM orders
+		WHERE registrationID = :acctID AND
+		created >= :windowLeft AND
+		created < :windowRight`,
+		map[string]interface{}{
+			"acctID":      acctID,
+			"windowLeft":  earliest,
+			"windowRight": latest,
+		})
+	if err != nil {
+		return 0, err
+	}
 	return count, nil
 }
 
@@ -1430,6 +1449,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	order := &orderModel{
 		RegistrationID: *req.RegistrationID,
 		Expires:        time.Unix(0, *req.Expires),
+		Created:        ssa.clk.Now(),
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -1473,6 +1493,9 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	// Update the request with the ID that the order received
 	req.Id = &order.ID
+	// Update the request with the created timestamp from the model
+	createdTS := order.Created.UnixNano()
+	req.Created = &createdTS
 
 	// Update the request with pending status (No need to calculate the status
 	// based on authzs here, we know a brand new order is always pending)

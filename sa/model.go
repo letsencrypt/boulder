@@ -310,6 +310,7 @@ type orderModel struct {
 	ID                int64
 	RegistrationID    int64
 	Expires           time.Time
+	Created           time.Time
 	Error             []byte
 	CertificateSerial string
 	BeganProcessing   bool
@@ -331,6 +332,7 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 		ID:              *order.Id,
 		RegistrationID:  *order.RegistrationID,
 		Expires:         time.Unix(0, *order.Expires),
+		Created:         time.Unix(0, *order.Created),
 		BeganProcessing: *order.BeganProcessing,
 	}
 	if order.CertificateSerial != nil {
@@ -352,10 +354,12 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	expires := om.Expires.UnixNano()
+	created := om.Created.UnixNano()
 	order := &corepb.Order{
 		Id:                &om.ID,
 		RegistrationID:    &om.RegistrationID,
 		Expires:           &expires,
+		Created:           &created,
 		CertificateSerial: &om.CertificateSerial,
 		BeganProcessing:   &om.BeganProcessing,
 	}

@@ -1535,6 +1535,7 @@ func TestOrder(t *testing.T) {
 	pendingStatus := string(core.StatusPending)
 	falseBool := false
 	one := int64(1)
+	nowTS := sa.clk.Now().UnixNano()
 	expectedOrder := &corepb.Order{
 		// The expected order matches the input order
 		RegistrationID: inputOrder.RegistrationID,
@@ -1542,11 +1543,12 @@ func TestOrder(t *testing.T) {
 		Names:          inputOrder.Names,
 		Authorizations: inputOrder.Authorizations,
 		// And should also have an empty serial and the correct status and
-		// processing state, and an ID of 1
+		// processing state, and an ID of 1, and a created timestamp
 		Id:                &one,
 		CertificateSerial: &empty,
 		BeganProcessing:   &falseBool,
 		Status:            &pendingStatus,
+		Created:           &nowTS,
 	}
 
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
@@ -1721,6 +1723,49 @@ func TestAddPendingAuthorizations(t *testing.T) {
 	}
 }
 
+func TestCountNewOrders(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	now := sa.clk.Now()
+	expires := now.Add(24 * time.Hour).UnixNano()
+
+	earliest := now.Add(-time.Hour)
+	latest := now.Add(time.Second)
+
+	// Counting new orders for a reg ID that doesn't exist should return 0
+	count, err := sa.CountNewOrders(ctx, 12345, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
+	test.AssertEquals(t, count, 0)
+
+	// Add one pending order
+	order, err := sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"~ ~ [:: AuThOrIzEd ::] ~ ~ "},
+	})
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+
+	// Counting new orders for the reg ID should now yield 1
+	count, err = sa.CountNewOrders(ctx, reg.ID, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
+	test.AssertEquals(t, count, 1)
+
+	// Moving the count window to after the order was created should return the
+	// count to 0
+	earliest = time.Unix(0, *order.Created).Add(time.Minute)
+	latest = earliest.Add(time.Hour)
+	count, err = sa.CountNewOrders(ctx, reg.ID, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
+	test.AssertEquals(t, count, 0)
+}
+
 func TestCountPendingOrders(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
@@ -1735,7 +1780,7 @@ func TestCountPendingOrders(t *testing.T) {
 
 	// Counting pending orders for a reg ID that doesn't exist should return 0
 	count, err := sa.CountPendingOrders(ctx, 12345)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations for fake reg ID")
+	test.AssertNotError(t, err, "Couldn't count pending orders for fake reg ID")
 	test.AssertEquals(t, count, 0)
 
 	// Add one pending authz
@@ -1759,7 +1804,7 @@ func TestCountPendingOrders(t *testing.T) {
 
 	// We expect there to be a count of one for this reg ID
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// Create another fresh pending authz
@@ -1779,7 +1824,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// We still expect there to be a count of one for this reg ID since the order
 	// added above is expired
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// Create another fresh pending authz
@@ -1802,7 +1847,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// We still expect there to be a count of one for this reg ID since the order
 	// added above is not pending
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// If the clock is advanced by two hours we expect the count to return to
@@ -1810,7 +1855,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// expired.
 	fc.Add(2 * time.Hour)
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 0)
 }
 
