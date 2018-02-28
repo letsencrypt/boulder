@@ -1089,27 +1089,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) {
-	var ctCtx context.Context
-	var cancel func()
-	currentDeadline, ok := ctx.Deadline()
-	if !ok {
-		// Current context doesn't have a deadline, this should
-		// never happen so it's a internal server error... but
-		// we already issued the cert so we can't fail out now.
-		// Just use a background context with a 30s timeout added.
-		ctCtx, cancel = context.WithTimeout(context.Background(), time.Second*30)
-	} else {
-		// NOTE: We want to check how putting the SCT submission/collection
-		// affects calls to IssueCertificate so we take the current context
-		// and allocate 80% of the remaining time to calling CTPolicy.GetSCTs.
-		// This way if we exceed the child context we won't time out the
-		// parent call and can still return the cert to the user.
-		until := time.Until(currentDeadline)
-		ctCtx, cancel = context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
-	}
-	defer cancel()
 	started := ra.clk.Now()
-	_, err := ra.ctpolicy.GetSCTs(ctCtx, cert)
+	_, err := ra.ctpolicy.GetSCTs(ctx, cert)
 	took := ra.clk.Since(started)
 	// The final cert has already been issued so actually return it to the
 	// user even if this fails since we aren't actually doing anything with
