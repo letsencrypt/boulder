@@ -56,7 +56,7 @@ const (
 	newNoncePath      = "/acme/new-nonce"
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
-	finalizeOrderPath = "finalize-order"
+	finalizeOrderPath = "/acme/finalize/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -321,7 +321,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
+	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET")
+	wfe.HandleFunc(m, finalizeOrderPath, wfe.FinalizeOrder, "POST")
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -1442,7 +1443,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 	}
 	finalizeURL := wfe.relativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d/%s", orderPath, *order.RegistrationID, *order.Id, finalizeOrderPath))
+		fmt.Sprintf("%s%d/%d", finalizeOrderPath, *order.RegistrationID, *order.Id))
 	respObj := orderJSON{
 		Status:         core.AcmeStatus(*order.Status),
 		Expires:        time.Unix(0, *order.Expires).UTC(),
@@ -1544,28 +1545,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 }
 
-// Order is used to retrieve a existing order object
-func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	fields := strings.SplitN(request.URL.Path, "/", 3)
-	// If there are less than 2 fields there can't be both an account ID and an
-	// order ID so the path is invalid
-	if len(fields) < 2 {
+// GetOrder is used to retrieve a existing order object
+func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	// Path prefix is stripped, so this should be like "<account ID>/<order ID>"
+	fields := strings.SplitN(request.URL.Path, "/", 2)
+	if len(fields) != 2 {
 		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
-	}
-	// If there are three fields then there must be an account ID and an order ID
-	// and the "finalize" path. This should only occur when the request method is
-	// a POST or the request has an invalid path.
-	if len(fields) == 3 && request.Method != "POST" {
-		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
-		return
-	} else if len(fields) == 3 && request.Method == "POST" {
-		// If it is a POST request verify that the third path element is the
-		// finalizeOrderPath
-		if fields[2] != finalizeOrderPath {
-			wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
-			return
-		}
 	}
 	acctID, err := strconv.ParseInt(fields[0], 10, 64)
 	if err != nil {
@@ -1593,54 +1579,57 @@ func (wfe *WebFrontEndImpl) Order(ctx context.Context, logEvent *web.RequestEven
 		return
 	}
 
-	switch request.Method {
-	case "GET", "HEAD":
-		wfe.getOrder(response, request, order, logEvent)
-		return
-	case "POST":
-		wfe.finalizeOrder(ctx, response, request, order, logEvent)
-		return
-	default:
-		// We use ServerInternal here because this handler was only registered for
-		// GET, HEAD and POST. Anything else making it this far is an internal
-		// error!
-		wfe.sendError(response, logEvent,
-			probs.ServerInternal(fmt.Sprintf(
-				"Unsupported HTTP method %q", request.Method)), nil)
-		return
-	}
-}
-
-func (wfe *WebFrontEndImpl) getOrder(
-	response http.ResponseWriter,
-	request *http.Request,
-	order *corepb.Order,
-	logEvent *web.RequestEvent) {
 	respObj := wfe.orderToOrderJSON(request, order)
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
 	}
 }
 
-// finalizeOrder accepts a POST request to the order endpoint intended to
-// finalize an order by invoking the issuance process to produce a certificate
-// for the order. Most processing of the order details is handled by the RA but
-// we do attempt to throw away requests with invalid CSRs or made by accounts
-// that have not agreed to the terms of service here.
-func (wfe *WebFrontEndImpl) finalizeOrder(
-	ctx context.Context,
-	response http.ResponseWriter,
-	request *http.Request,
-	order *corepb.Order,
-	logEvent *web.RequestEvent) {
+// FinalizeOrder is used to request issuance for a existing order object.
+// Most processing of the order details is handled by the RA but
+// we do attempt to throw away requests with invalid CSRs here.
+func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Validate the POST body signature and get the authenticated account for this
 	// finalize order request
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	// Order URLs are like: /acme/finalize/<account>/<order>/. The prefix is
+	// stripped by the time we get here.
+	fields := strings.SplitN(request.URL.Path, "/", 2)
+	if len(fields) != 2 {
+		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
+		return
+	}
+	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		return
+	}
+	orderID, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
+		return
+	}
+
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			return
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if *order.RegistrationID != acctID {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
@@ -1668,7 +1657,7 @@ func (wfe *WebFrontEndImpl) finalizeOrder(
 
 	// The authenticated finalize message body should be an encoded CSR
 	var rawCSR core.RawCertificateRequest
-	err := json.Unmarshal(body, &rawCSR)
+	err = json.Unmarshal(body, &rawCSR)
 	if err != nil {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("Error unmarshaling finalize order request"), err)
