@@ -1654,6 +1654,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // determine what the overall status of the order should be. In summary:
 //   * If the order has an error, the order is invalid
 //   * If any of the order's authorizations are invalid, the order is invalid.
+//   * If any of the order's authorizations are expired, the order is invalid.
 //   * If any of the order's authorizations are deactivated, the order is deactivated.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
@@ -1688,6 +1689,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 
 	// Keep a count of the authorizations seen
 	invalidAuthzs := 0
+	expiredAuthzs := 0
 	deactivatedAuthzs := 0
 	pendingAuthzs := 0
 	validAuthzs := 0
@@ -1708,10 +1710,17 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 				"Order is in an invalid state. Authz %s has invalid status %q",
 				authz.ID, authz.Status)
 		}
+		if authz.Expires.Before(ssa.clk.Now()) {
+			expiredAuthzs++
+		}
 	}
 
 	// An order is invalid if **any** of its authzs are invalid
 	if invalidAuthzs > 0 {
+		return string(core.StatusInvalid), nil
+	}
+	// An order is invalid if **any** of its authzs are expired
+	if expiredAuthzs > 0 {
 		return string(core.StatusInvalid), nil
 	}
 	// An order is deactivated if **any** of its authzs are deactivated
@@ -1763,7 +1772,6 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 	ctx context.Context,
 	orderID, acctID int64) (map[string]*core.Authorization, error) {
-	now := ssa.clk.Now()
 	var allAuthzs []*core.Authorization
 
 	for _, table := range authorizationTables {
@@ -1774,10 +1782,8 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 		INNER JOIN orderToAuthz
 		ON authz.ID = orderToAuthz.authzID
 		WHERE authz.registrationID = ? AND
-		authz.expires > ? AND
 		orderToAuthz.orderID = ?`, authzFields, table),
 			acctID,
-			now,
 			orderID)
 		if err != nil {
 			return nil, err
