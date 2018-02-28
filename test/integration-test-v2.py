@@ -24,7 +24,7 @@ import startservers
 import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
-from acme.messages import Status, CertificateRequest
+from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 
@@ -39,11 +39,12 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    test_multidomain()
-    test_wildcardmultidomain()
-    test_overlapping_wildcard()
-    test_wildcard_exactblacklist()
-    test_wildcard_authz_reuse()
+    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        test_multidomain()
+        test_wildcardmultidomain()
+        test_overlapping_wildcard()
+        test_wildcard_exactblacklist()
+        test_wildcard_authz_reuse()
     test_order_reuse_failed_authz()
     test_revoke_by_issuer()
     test_revoke_by_authz()
@@ -83,7 +84,7 @@ def test_overlapping_wildcard():
 
     cleanup = do_dns_challenges(client, authzs)
     try:
-        order = client.poll_order_and_request_issuance(order)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
@@ -118,7 +119,7 @@ def test_wildcard_authz_reuse():
     # Complete the order via an HTTP-01 challenge
     cleanup = do_http_challenges(client, order.authorizations)
     try:
-        order = client.poll_order_and_request_issuance(order)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
@@ -150,7 +151,7 @@ def test_order_reuse_failed_authz():
     # Pick the first authz's first challenge, doesn't matter what type it is
     chall_body = order.authorizations[0].body.challenges[0]
     # Answer it, but with nothing set up to solve the challenge request
-    client.answer_challenge(chall_body, chall_body.response(client.key))
+    client.answer_challenge(chall_body, chall_body.response(client.net.key))
 
     # Poll for a fixed amount of time checking for the order to become invalid
     # from the authorization attempt initiated above failing
@@ -182,7 +183,7 @@ def test_order_reuse_failed_authz():
     # We expect the new order can be fulfilled
     cleanup = do_http_challenges(client, order.authorizations)
     try:
-        order = client.poll_order_and_request_issuance(order)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
@@ -201,14 +202,15 @@ def test_order_finalize_early():
     # Create an order for the domain
     order = client.new_order(csr_pem)
 
+    deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
+
     # Finalize the order without doing anything with the authorizations. YOLO
     # We expect this to generate an unauthorized error.
     chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
-        lambda: client.net.post(order.body.finalize, CertificateRequest(csr=order.csr)))
+        lambda: client.finalize_order(order, deadline))
 
     # Poll for a fixed amount of time checking for the order to become invalid
     # from the early finalization attempt initiated above failing
-    deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
     while datetime.datetime.now() < deadline:
         time.sleep(1)
         updatedOrder = requests.get(order.uri).json()
@@ -252,16 +254,16 @@ def test_revoke_by_privkey():
     order = client.new_order(csr_pem)
     cleanup = do_http_challenges(client, order.authorizations)
     try:
-        order = client.poll_order_and_request_issuance(order)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
     # Create a new client with the JWK as the cert private key
     jwk = jose.JWKRSA(key=key)
-    net = acme_client.ClientNetwork(key, acme_version=2,
-                                    user_agent="Boulder integration tester")
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
 
-    new_client = acme_client.Client(os.getenv('DIRECTORY', 'http://localhost:4001/directory'), key=jwk, net=net, acme_version=2)
+    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
+    new_client = acme_client.ClientV2(directory, net)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)

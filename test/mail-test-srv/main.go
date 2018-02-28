@@ -211,7 +211,7 @@ func main() {
 		Certificates: []tls.Certificate{cert},
 	})
 	if err != nil {
-		log.Fatalln("Couldn't bind %q for SMTP", *listenSMTP, err)
+		log.Fatalf("Couldn't bind %q for SMTP: %s", *listenSMTP, err)
 	}
 	defer l.Close()
 
