@@ -1,9 +1,8 @@
 version: '2'
 services:
     boulder:
-        build:
-            context: .
-            dockerfile: Dockerfile
+        # To minimize fetching this should be the same version used below
+        image: letsencrypt/boulder-tools:2018-02-15
         environment:
             FAKE_DNS: 127.0.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
@@ -40,9 +39,10 @@ services:
         links:
           - bhsm:boulder-hsm
           - bmysql:boulder-mysql
+        entrypoint: test/entrypoint.sh
+        working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
-        # To minimize the fetching of various layers this should match
-        # the FROM image and tag in boulder/Dockerfile
+        # To minimize fetching this should be the same version used above
         image: letsencrypt/boulder-tools:2018-02-15
         environment:
             PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
@@ -58,13 +58,3 @@ services:
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
-    prom:
-        image: prom/prometheus:v1.8.2
-        network_mode: bridge
-        ports:
-          - 9090:9090
-        volumes:
-          - $PWD/test/prometheus/:/promconf/
-        command: -config.file /promconf/prometheus.yml
-        links:
-          - boulder
