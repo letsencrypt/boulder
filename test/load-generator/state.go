@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	mrand "math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -36,6 +35,7 @@ type RatePeriod struct {
 	Rate int64
 }
 
+// registration is an ACME v1 registration resource
 type registration struct {
 	key            *ecdsa.PrivateKey
 	signer         jose.Signer
@@ -44,6 +44,31 @@ type registration struct {
 	mu             sync.Mutex
 }
 
+// account is an ACME v2 account resource. It does not have a `jose.Signer`
+// because we need to set the Signer options per-request with the URL being
+// POSTed and must construct it on the fly from the `key`. Accounts are
+// protected by a `sync.Mutex` that must be held for updates (see
+// `account.Update`).
+type account struct {
+	key             *ecdsa.PrivateKey
+	id              string
+	finalizedOrders []string
+	certs           []string
+	mu              sync.Mutex
+}
+
+// update locks an account resource's mutex and sets the `finalizedOrders` and
+// `certs` fields to the provided values.
+func (acct *account) update(finalizedOrders, certs []string) {
+	acct.mu.Lock()
+	defer acct.mu.Unlock()
+
+	acct.finalizedOrders = append(acct.finalizedOrders, finalizedOrders...)
+	acct.certs = append(acct.certs, certs...)
+}
+
+// update locks a registration resource's mutx and sets the `finalizedAuthz` and
+// `certs` fields to the provided values.
 func (r *registration) update(finalizedAuthz, certs []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -53,11 +78,102 @@ func (r *registration) update(finalizedAuthz, certs []string) {
 }
 
 type context struct {
-	reg            *registration
-	pendingAuthz   []*core.Authorization
+	/* ACME V1 Context */
+	// The current V1 registration (may be nil for V2 load generation)
+	reg *registration
+	// Pending authorizations waiting for challenge validation
+	pendingAuthz []*core.Authorization
+	// IDs of finalized authorizations in valid status
 	finalizedAuthz []string
-	certs          []string
-	ns             *nonceSource
+
+	/* ACME V2 Context */
+	// The current V2 account (may be nil for legacy load generation)
+	acct *account
+	// Pending orders waiting for authorization challenge validation
+	pendingOrders []*OrderJSON
+	// Fulfilled orders in a valid status waiting for finalization
+	fulfilledOrders []string
+	// Finalized orders that have certificates
+	finalizedOrders []string
+
+	/* Shared Context */
+	// A list of URLs for issued certificates
+	certs []string
+	// The nonce source for JWS signature nonce headers
+	ns *nonceSource
+}
+
+// signEmbeddedV2Request signs the provided request data using the context's
+// account's private key. The provided URL is set as a protected header per ACME
+// v2 JWS standards. The resulting JWS contains an **embedded** JWK - this makes
+// this function primarily applicable to new account requests where no key ID is
+// known.
+func (c *context) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
+	// Create a signing key for the account's private key
+	signingKey := jose.SigningKey{
+		Key:       c.acct.key,
+		Algorithm: jose.ES256,
+	}
+	// Create a signer, setting the URL protected header
+	signer, err := jose.NewSigner(signingKey, &jose.SignerOptions{
+		NonceSource: c.ns,
+		EmbedJWK:    true,
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Sign the data with the signer
+	signed, err := signer.Sign(data)
+	if err != nil {
+		return nil, err
+	}
+	return signed, nil
+}
+
+// signKeyIDV2Request signs the provided request data using the context's
+// account's private key. The provided URL is set as a protected header per ACME
+// v2 JWS standards. The resulting JWS contains a Key ID header that is
+// populated using the context's account's ID. This is the default JWS signing
+// style for ACME v2 requests and should be used everywhere but where the key ID
+// is unknown (e.g. new-account requests where an account doesn't exist yet).
+func (c *context) signKeyIDV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
+	// Create a JWK with the account's private key and key ID
+	jwk := &jose.JSONWebKey{
+		Key:       c.acct.key,
+		Algorithm: "ECDSA",
+		KeyID:     c.acct.id,
+	}
+
+	// Create a signing key with the JWK
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.ES256,
+	}
+
+	// Ensure the signer's nonce source and URL header will be set
+	opts := &jose.SignerOptions{
+		NonceSource: c.ns,
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	}
+
+	// Construct the signer with the configured options
+	signer, err := jose.NewSigner(signerKey, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sign the data with the signer
+	signed, err := signer.Sign(data)
+	if err != nil {
+		return nil, err
+	}
+	return signed, nil
 }
 
 type RateDelta struct {
@@ -88,8 +204,12 @@ type State struct {
 
 	operations []func(*State, *context) error
 
-	rMu  sync.RWMutex
+	rMu sync.RWMutex
+
+	// regs holds V1 registration objects
 	regs []*registration
+	// accts holds V2 account objects
+	accts []*account
 
 	challSrv    *challSrv
 	callLatency latencyWriter
@@ -109,8 +229,22 @@ type rawRegistration struct {
 	RawKey         []byte   `json:"rawKey"`
 }
 
+type rawAccount struct {
+	FinalizedOrders []string `json:"finalizedOrders"`
+	Certs           []string `json:"certs"`
+	ID              string   `json:"id"`
+	RawKey          []byte   `json:"rawKey"`
+}
+
 type snapshot struct {
 	Registrations []rawRegistration
+	Accounts      []rawAccount
+}
+
+func (s *State) numAccts() int {
+	s.rMu.RLock()
+	defer s.rMu.RUnlock()
+	return len(s.accts)
 }
 
 func (s *State) numRegs() int {
@@ -119,9 +253,9 @@ func (s *State) numRegs() int {
 	return len(s.regs)
 }
 
-// Snapshot will save out generated registrations and certs (ignoring authorizations)
+// Snapshot will save out generated registrations and accounts
 func (s *State) Snapshot(filename string) error {
-	fmt.Printf("[+] Saving registrations to %s\n", filename)
+	fmt.Printf("[+] Saving registrations/accounts to %s\n", filename)
 	snap := snapshot{}
 	// assume rMu lock operations aren't happening right now
 	for _, reg := range s.regs {
@@ -135,6 +269,18 @@ func (s *State) Snapshot(filename string) error {
 			RawKey:         k,
 		})
 	}
+	for _, acct := range s.accts {
+		k, err := x509.MarshalECPrivateKey(acct.key)
+		if err != nil {
+			return err
+		}
+		snap.Accounts = append(snap.Accounts, rawAccount{
+			Certs:           acct.certs,
+			FinalizedOrders: acct.finalizedOrders,
+			ID:              acct.id,
+			RawKey:          k,
+		})
+	}
 	cont, err := json.Marshal(snap)
 	if err != nil {
 		return err
@@ -142,9 +288,9 @@ func (s *State) Snapshot(filename string) error {
 	return ioutil.WriteFile(filename, cont, os.ModePerm)
 }
 
-// Restore previously generated registrations and certs
+// Restore previously generated registrations and accounts
 func (s *State) Restore(filename string) error {
-	fmt.Printf("[+] Loading registrations from %s\n", filename)
+	fmt.Printf("[+] Loading registrations/accounts from %s\n", filename)
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -173,6 +319,21 @@ func (s *State) Restore(filename string) error {
 			key:    key,
 			signer: signer,
 			certs:  r.Certs,
+		})
+	}
+	for _, a := range snap.Accounts {
+		key, err := x509.ParseECPrivateKey(a.RawKey)
+		if err != nil {
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		s.accts = append(s.accts, &account{
+			key:             key,
+			id:              a.ID,
+			finalizedOrders: a.FinalizedOrders,
+			certs:           a.Certs,
 		})
 	}
 	return nil
@@ -381,9 +542,11 @@ func (s *State) get(path string) (*http.Response, error) {
 }
 
 // Nonce utils, these methods are used to generate/store/retrieve the nonces
-// required for JWS
+// required for JWS in V1 ACME requests
 
-func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, signer jose.Signer) ([]byte, error) {
+// signWithNonce signs the provided message with the provided signer, returning
+// the raw JWS bytes or an error. signWithNonce is not compatible with ACME v2
+func (s *State) signWithNonce(payload []byte, signer jose.Signer) ([]byte, error) {
 	jws, err := signer.Sign(payload)
 	if err != nil {
 		return nil, err
@@ -438,22 +601,20 @@ func (ns *nonceSource) addNonce(nonce string) {
 	ns.noncePool = append(ns.noncePool, nonce)
 }
 
+// addAccount adds the provided account to the state's list of accts
+func (s *State) addAccount(acct *account) {
+	s.rMu.Lock()
+	defer s.rMu.Unlock()
+
+	s.accts = append(s.accts, acct)
+}
+
+// addRegistration adds the provided registration to the state's list of regs
 func (s *State) addRegistration(reg *registration) {
 	s.rMu.Lock()
 	defer s.rMu.Unlock()
 
 	s.regs = append(s.regs, reg)
-}
-
-func getRegistration(s *State, ctx *context) error {
-	s.rMu.RLock()
-	defer s.rMu.RUnlock()
-
-	if len(s.regs) == 0 {
-		return errors.New("no registrations to return")
-	}
-	ctx.reg = s.regs[mrand.Intn(len(s.regs))]
-	return nil
 }
 
 func (s *State) sendCall() {
@@ -468,7 +629,13 @@ func (s *State) sendCall() {
 			break
 		}
 	}
+	// If the context's V1 registration
 	if ctx.reg != nil {
 		ctx.reg.update(ctx.finalizedAuthz, ctx.certs)
+	}
+	// If the context's V2 account isn't nil, update it based on the context's
+	// finalizedOrders and certs.
+	if ctx.acct != nil {
+		ctx.acct.update(ctx.finalizedOrders, ctx.certs)
 	}
 }
