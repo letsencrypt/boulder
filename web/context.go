@@ -81,17 +81,12 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	var msg string
-	if len(logEvent.Errors) != 0 {
-		msg = "Terminated request"
-	} else {
-		msg = "Successful request"
-	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.log.AuditErr(fmt.Sprintf("failed to marshal logEvent - %s - %#v", msg, err))
 		return
 	}
-	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
+	th.log.Info(fmt.Sprintf("JSON=%s", jsonEvent))
 }
 
 // Comma-separated list of HTTP clients involved in making this
