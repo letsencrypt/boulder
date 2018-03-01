@@ -1499,7 +1499,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// Dispatch to the VA for service
 
 	vaCtx := context.Background()
-	go func() {
+	go func(authz core.Authorization) {
 		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
@@ -1531,7 +1531,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 				"Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
 				err, authz.RegistrationID, authz.ID))
 		}
-	}()
+	}(authz)
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
 	return authz, nil
 }
