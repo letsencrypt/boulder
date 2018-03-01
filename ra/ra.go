@@ -449,26 +449,6 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkPendingOrderLimit(ctx context.Context, regID int64) error {
-	limit := ra.rlPolicies.PendingOrdersPerAccount()
-	if limit.Enabled() {
-		count, err := ra.SA.CountPendingOrders(ctx, regID)
-		if err != nil {
-			return err
-		}
-		// Most rate limits have a key for overrides, but like the pending
-		// authorization limit there is no meaningful key here. Only registration ID
-		// overrides make sense.
-		noKey := ""
-		if count >= limit.GetThreshold(noKey, regID) {
-			ra.pendOrdersByRegIDStats.Inc("Exceeded", 1)
-			return berrors.RateLimitError("too many currently pending orders")
-		}
-		ra.pendOrdersByRegIDStats.Inc("Pass", 1)
-	}
-	return nil
-}
-
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
 	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
