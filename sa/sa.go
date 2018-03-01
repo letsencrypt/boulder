@@ -1024,7 +1024,7 @@ func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID in
 	return count, nil
 }
 
-func (ssa *SQLStorageAuthority) CountNewOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
 	var count int
 	err := ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM orders

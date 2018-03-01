@@ -516,7 +516,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	}
 	latest := ra.clk.Now()
 	earliest := latest.Add(-limit.Window.Duration)
-	count, err := ra.SA.CountNewOrders(ctx, acctID, earliest, latest)
+	count, err := ra.SA.CountOrders(ctx, acctID, earliest, latest)
 	if err != nil {
 		return err
 	}

@@ -1723,7 +1723,7 @@ func TestAddPendingAuthorizations(t *testing.T) {
 	}
 }
 
-func TestCountNewOrders(t *testing.T) {
+func TestCountOrders(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
 	}
@@ -1739,7 +1739,7 @@ func TestCountNewOrders(t *testing.T) {
 	latest := now.Add(time.Second)
 
 	// Counting new orders for a reg ID that doesn't exist should return 0
-	count, err := sa.CountNewOrders(ctx, 12345, earliest, latest)
+	count, err := sa.CountOrders(ctx, 12345, earliest, latest)
 	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
 	test.AssertEquals(t, count, 0)
 
@@ -1753,7 +1753,7 @@ func TestCountNewOrders(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new pending order")
 
 	// Counting new orders for the reg ID should now yield 1
-	count, err = sa.CountNewOrders(ctx, reg.ID, earliest, latest)
+	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
 	test.AssertEquals(t, count, 1)
 
@@ -1761,7 +1761,7 @@ func TestCountNewOrders(t *testing.T) {
 	// count to 0
 	earliest = time.Unix(0, *order.Created).Add(time.Minute)
 	latest = earliest.Add(time.Hour)
-	count, err = sa.CountNewOrders(ctx, reg.ID, earliest, latest)
+	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
 	test.AssertEquals(t, count, 0)
 }
