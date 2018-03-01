@@ -185,7 +185,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    run python2 test/integration-test.py --chisel
+    run python2 test/integration-test.py --chisel --load
   end_context #integration
 fi
 

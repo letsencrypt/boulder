@@ -1,0 +1,21 @@
+{
+    "plan": {
+        "actions": [
+            "newAccount",
+            "newOrder",
+            "fulfillOrder",
+            "finalizeOrder"
+        ],
+        "rate": 5,
+        "runtime": "15s",
+        "rateDelta": "5/1m"
+    },
+    "apiBase": "http://boulder:4001",
+    "domainBase": "com",
+    "httpOneAddr": "localhost:5002",
+    "regKeySize": 2048,
+    "certKeySize": 2048,
+    "regEmail": "loadtesting@letsencrypt.org",
+    "maxRegs": 20,
+    "dontSaveState": true
+}

@@ -15,6 +15,7 @@ import datetime
 import time
 import base64
 import os
+import json
 
 import OpenSSL
 import josepy as jose
@@ -50,6 +51,8 @@ def main():
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
+
+    test_loadgeneration()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -267,6 +270,26 @@ def test_revoke_by_privkey():
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
+
+def test_loadgeneration():
+    # Run the load generator
+    latency_data_file = "/tmp/v2-integration-test-latency.json"
+    subprocess.check_output(
+        "./bin/load-generator \
+            -config test/load-generator/config/v2-integration-test-config.json\
+            -results %s" % latency_data_file,
+        shell=True,
+        stderr=subprocess.STDOUT)
+
+    # Read the latency data it produced
+    with open(latency_data_file) as f:
+        data_lines = f.readlines()
+
+    # Check that none of the datapoints were a failure
+    for line in data_lines:
+        datapoint = json.loads(line)
+        if datapoint['type'] != 'good':
+            raise Exception("Load generator had a failed request: %s", line)
 
 if __name__ == "__main__":
     try:

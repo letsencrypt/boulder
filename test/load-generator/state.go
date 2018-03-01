@@ -475,7 +475,7 @@ func (s *State) addRespCode(code int) {
 	}
 }
 
-type codes []*respCode
+type codes []respCode
 
 func (c codes) Len() int {
 	return len(c)
@@ -493,7 +493,9 @@ func (s *State) respCodeString() string {
 	s.cMu.Lock()
 	list := codes{}
 	for _, v := range s.respCodes {
-		list = append(list, v)
+		// Dereference the respCode for the codes list so we don't data race once we
+		// free the lock.
+		list = append(list, *v)
 	}
 	s.cMu.Unlock()
 	sort.Sort(list)

@@ -1,0 +1,20 @@
+{
+    "plan": {
+        "actions": [
+            "newRegistration",
+            "newAuthorization",
+            "solveHTTPOne",
+            "newCertificate"
+        ],
+        "rate": 5,
+        "runtime": "15s",
+        "rateDelta": "5/1m"
+    },
+    "apiBase": "http://boulder:4000",
+    "domainBase": "com",
+    "httpOneAddr": "localhost:5002",
+    "tlsOneAddr": "localhost:5001",
+    "regKeySize": 2048,
+    "certKeySize": 2048,
+    "regEmail": "loadtesting@letsencrypt.org"
+}
