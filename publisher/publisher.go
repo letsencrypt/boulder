@@ -266,7 +266,12 @@ func (pub *Impl) singleLogSubmit(
 	sct, err := ctLog.client.AddChain(ctx, chain)
 	took := time.Since(start).Seconds()
 	if err != nil {
-		if !canceled.Is(err) {
+		if canceled.Is(err) {
+			pub.metrics.submissionLatency.With(prometheus.Labels{
+				"log":    ctLog.uri,
+				"status": "canceled",
+			}).Observe(took)
+		} else {
 			pub.metrics.submissionLatency.With(prometheus.Labels{
 				"log":    ctLog.uri,
 				"status": "error",
