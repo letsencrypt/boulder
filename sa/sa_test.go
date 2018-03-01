@@ -2048,6 +2048,7 @@ func TestStatusForOrder(t *testing.T) {
 	ctx := context.Background()
 	expires := fc.Now().Add(time.Hour)
 	expiresNano := expires.UnixNano()
+	alreadyExpired := expires.Add(-2 * time.Hour)
 
 	// Create a registration to work with
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -2062,8 +2063,19 @@ func TestStatusForOrder(t *testing.T) {
 	pendingAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 
+	// Create an expired authz
+	newExpiredAuthz := core.Authorization{
+		RegistrationID: newAuthz.RegistrationID,
+		Expires:        &alreadyExpired,
+		Status:         newAuthz.Status,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "expired.your.order.is.up"},
+	}
+	expiredAuthz, err := sa.NewPendingAuthorization(ctx, newExpiredAuthz)
+	test.AssertNotError(t, err, "Couldn't create new expired pending authorization")
+
 	// Create an invalid authz
 	invalidAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	invalidAuthz.Status = core.StatusInvalid
 	invalidAuthz.Identifier.Value = "invalid.your.order.is.up"
 	err = sa.FinalizeAuthorization(ctx, invalidAuthz)
@@ -2071,6 +2083,7 @@ func TestStatusForOrder(t *testing.T) {
 
 	// Create a deactivate authz
 	deactivatedAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	deactivatedAuthz.Status = core.StatusDeactivated
 	deactivatedAuthz.Identifier.Value = "deactivated.your.order.is.up"
 	err = sa.FinalizeAuthorization(ctx, deactivatedAuthz)
@@ -2095,6 +2108,12 @@ func TestStatusForOrder(t *testing.T) {
 			Name:             "Order with an invalid authz",
 			OrderNames:       []string{"pending.your.order.is.up", "invalid.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			AuthorizationIDs: []string{pendingAuthz.ID, invalidAuthz.ID, deactivatedAuthz.ID, validAuthz.ID},
+			ExpectedStatus:   string(core.StatusInvalid),
+		},
+		{
+			Name:             "Order with an expired authz",
+			OrderNames:       []string{"pending.your.order.is.up", "expired.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
+			AuthorizationIDs: []string{pendingAuthz.ID, expiredAuthz.ID, deactivatedAuthz.ID, validAuthz.ID},
 			ExpectedStatus:   string(core.StatusInvalid),
 		},
 		{
