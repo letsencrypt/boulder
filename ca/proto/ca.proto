@@ -27,11 +27,11 @@ message IssueCertificateRequest {
 }
 
 message IssuePrecertificateResponse {
-  optional bytes precert = 1;
+  optional bytes DER = 1;
 }
 
 message IssueCertificateForPrecertificateRequest {
-  optional bytes precertDER = 1;
+  optional bytes DER = 1;
   repeated bytes SCTs = 2;
   optional int64 registrationID = 3;
   optional int64 orderID = 4;

@@ -82,7 +82,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group []cmd.Lo
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
 // the set of SCTs to the caller.
-func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCTDER, error) {
+func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([][]byte, error) {
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -97,7 +97,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 		}(i, g)
 	}
 
-	var ret []core.SCTDER
+	var ret [][]byte
 	for i := 0; i < len(ctp.groups); i++ {
 		res := <-results
 		// If any one group fails to get a SCT then we fail out immediately

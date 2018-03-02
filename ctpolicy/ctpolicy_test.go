@@ -43,7 +43,7 @@ func TestGetSCTs(t *testing.T) {
 		mock      core.Publisher
 		groups    [][]cmd.LogDescription
 		ctx       context.Context
-		result    []core.SCTDER
+		result    [][]byte
 		errRegexp *regexp.Regexp
 	}{
 		{
@@ -60,7 +60,7 @@ func TestGetSCTs(t *testing.T) {
 				},
 			},
 			ctx:    context.Background(),
-			result: []core.SCTDER{[]byte{0}, []byte{0}},
+			result: [][]byte{[]byte{0}, []byte{0}},
 		},
 		{
 			name: "basic failure case",

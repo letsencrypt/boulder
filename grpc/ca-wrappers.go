@@ -48,7 +48,14 @@ func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Con
 	if cac.inner == nil {
 		return nil, errors.New("this CA client does not support issuing precertificates")
 	}
-	return cac.inner.IssuePrecertificate(ctx, issueReq)
+	resp, err := cac.inner.IssuePrecertificate(ctx, issueReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.DER == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
 }
 
 func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {

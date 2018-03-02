@@ -361,15 +361,14 @@ func TestIssueCertificate(t *testing.T) {
 					}
 
 					test.AssertNotError(t, err, "Failed to issue precertificate")
-					certDER = response.Precert.Der
+					certDER = response.DER
 					precertDER = certDER
 				} else {
 					coreCert := core.Certificate{}
 					if mode.issueCertificateForPrecertificate {
 						coreCert, err = ca.IssueCertificateForPrecertificate(ctx,
 							&caPB.IssueCertificateForPrecertificateRequest{
-								IssueReq:   issueReq,
-								PrecertDER: precertDER,
+								DER: precertDER,
 							})
 
 						if true { // TODO(briansmith): !mode.enablePrecertificateFlow

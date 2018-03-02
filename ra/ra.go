@@ -1048,24 +1048,28 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		OrderID:        &orderIDInt,
 	}
 
+	var cert core.Certificate
 	if features.Enabled(features.EmbedSCTs) {
 		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 		if err != nil {
 			logEvent.Error = err.Error()
 			return emptyCert, err
 		}
-		scts, err := ra.getSCTS(ctx, cert.DER)
+		scts, err := ra.getSCTs(ctx, precert.DER)
 		if err != nil {
 			return emptyCert, err
 		}
-		cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
-			Precert: precert.DER,
+		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+			DER:            precert.DER,
+			SCTs:           scts,
+			RegistrationID: &acctIDInt,
+			OrderID:        &orderIDInt,
 		})
 		if err != nil {
 			return emptyCert, err
 		}
 	} else {
-		cert, err := ra.CA.IssueCertificate(ctx, issueReq)
+		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
 		if err != nil {
 			logEvent.Error = err.Error()
 			return emptyCert, err
@@ -1103,7 +1107,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	return cert, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) ([][]byte, error) {
 	var ctCtx context.Context
 	var cancel func()
 	currentDeadline, ok := ctx.Deadline()
@@ -1124,21 +1128,22 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) {
 	}
 	defer cancel()
 	started := ra.clk.Now()
-	_, err := ra.ctpolicy.GetSCTs(ctCtx, cert)
+	scts, err := ra.ctpolicy.GetSCTs(ctCtx, cert)
 	took := ra.clk.Since(started)
 	// The final cert has already been issued so actually return it to the
 	// user even if this fails since we aren't actually doing anything with
 	// the SCTs yet.
-	state := "failure"
 	if err != nil {
+		state := "failure"
 		if err == context.DeadlineExceeded {
 			state = "deadlineExceeded"
 		}
 		ra.log.Warning(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
-	} else if err == nil {
-		state = "success"
+		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
+		return nil, err
 	}
-	ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
+	ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Observe(took.Seconds())
+	return scts, nil
 }
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
