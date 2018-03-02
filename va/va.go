@@ -553,46 +553,6 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 	return validationRecords, probs.Unauthorized(errText)
 }
 
-func (va *ValidationAuthorityImpl) validateTLSSNI02WithZNames(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, sanAName, sanBName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	certs, validationRecords, problem := va.tryGetTLSSNICerts(ctx, identifier, challenge, sanAName)
-	if problem != nil {
-		return validationRecords, problem
-	}
-
-	leafCert := certs[0]
-	if len(leafCert.DNSNames) != 2 {
-		names := strings.Join(certNames(leafCert), ", ")
-		msg := fmt.Sprintf("%s challenge certificate doesn't include exactly 2 DNSName entries. Received %d certificate(s), first certificate had names %q", challenge.Type, len(certs), names)
-		return validationRecords, probs.Malformed(msg)
-	}
-
-	var validSanAName, validSanBName bool
-	for _, name := range leafCert.DNSNames {
-		// Note: ConstantTimeCompare is not strictly necessary here, but can't hurt.
-		if subtle.ConstantTimeCompare([]byte(name), []byte(sanAName)) == 1 {
-			validSanAName = true
-		}
-
-		if subtle.ConstantTimeCompare([]byte(name), []byte(sanBName)) == 1 {
-			validSanBName = true
-		}
-	}
-
-	if validSanAName && validSanBName {
-		return validationRecords, nil
-	}
-
-	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-	names := certNames(leafCert)
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Requested %s from %s. Received %d certificate(s), "+
-			"first certificate had names %q",
-		challenge.Type, sanAName, hostPort, len(certs), strings.Join(names, ", "))
-	va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
-	return validationRecords, probs.Unauthorized(errText)
-}
-
 func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: singleDialTimeout}, "tcp", hostPort, &tls.Config{
@@ -659,28 +619,6 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
 	return va.validateTLSSNI01WithZName(ctx, identifier, challenge, ZName)
-}
-
-func (va *ValidationAuthorityImpl) validateTLSSNI02(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-02 was not DNS: %s", identifier))
-		return nil, probs.Malformed("Identifier type for TLS-SNI-02 was not DNS")
-	}
-
-	const tlsSNITokenID = "token"
-	const tlsSNIKaID = "ka"
-
-	// Compute the digest for the SAN b that will appear in the certificate
-	ha := sha256.Sum256([]byte(challenge.Token))
-	za := hex.EncodeToString(ha[:])
-	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, core.TLSSNISuffix)
-
-	// Compute the digest for the SAN B that will appear in the certificate
-	hb := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	zb := hex.EncodeToString(hb[:])
-	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, core.TLSSNISuffix)
-
-	return va.validateTLSSNI02WithZNames(ctx, identifier, challenge, sanAName, sanBName)
 }
 
 // badTLSHeader contains the string 'HTTP /' which is returned when
@@ -827,8 +765,6 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateHTTP01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSSNI01:
 		return va.validateTLSSNI01(ctx, identifier, challenge)
-	case core.ChallengeTypeTLSSNI02:
-		return va.validateTLSSNI02(ctx, identifier, challenge)
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	}
