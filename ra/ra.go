@@ -1487,6 +1487,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	vaCtx := context.Background()
 	go func(authz core.Authorization) {
+		// We will mutate challenges later in this goroutine to change status and
+		// add error, but we also return a copy of authz immediately. To avoid a
+		// data race, make a copy of the challenges slice here for mutation.
+		challenges := make([]core.Challenge, len(authz.Challenges))
+		copy(challenges, authz.Challenges)
+		authz.Challenges = challenges
+
 		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
