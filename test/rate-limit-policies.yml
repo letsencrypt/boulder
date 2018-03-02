@@ -37,8 +37,8 @@ invalidAuthorizationsPerAccount:
   window: 5m
   threshold: 3
 newOrdersPerAccount:
-  window: 5m
-  threshold: 3
+  window: 3h
+  threshold: 1500
 certificatesPerFQDNSet:
   window: 24h
   threshold: 5
