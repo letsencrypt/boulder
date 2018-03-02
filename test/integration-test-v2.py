@@ -1,19 +1,14 @@
 #!/usr/bin/env python2.7
 """
 Integration test for ACMEv2 as implemented by boulder-wfe2.
-
-Currently (December 2017) this depends on the acme-v2-integration branch of
-Certbot, while we wait on landing some of our changes in master.
 """
 import atexit
 import random
-import shutil
 import subprocess
 import tempfile
 import requests
 import datetime
 import time
-import base64
 import os
 import json
 
@@ -25,9 +20,8 @@ import startservers
 import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
-from acme.messages import Status, CertificateRequest, Directory
+from acme.messages import Status
 from acme import crypto_util as acme_crypto_util
-from acme import client as acme_client
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -262,12 +256,6 @@ def test_revoke_by_privkey():
         cleanup()
 
     # Create a new client with the JWK as the cert private key
-    jwk = jose.JWKRSA(key=key)
-    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
-    new_client = acme_client.ClientV2(directory, net)
-
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
 

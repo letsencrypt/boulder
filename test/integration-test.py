@@ -261,16 +261,6 @@ def test_expiration_mailer():
     if mailcount != 2:
         raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
 
-def test_revoke_by_account():
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    client = chisel.make_client()
-    cert, _ = auth_and_issue([random_domain()], client=client)
-    client.revoke(cert.body)
-
-    ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    return 0
-
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not."""
     auth_and_issue(["good-caa-reserved.com"])
@@ -519,7 +509,6 @@ def run_chisel():
     test_caa()
     test_admin_revoker_cert()
     test_admin_revoker_authz()
-    test_revoke_by_account()
     test_certificates_per_name()
     test_ocsp()
     test_single_ocsp()
