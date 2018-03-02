@@ -448,6 +448,11 @@ func (sa *StorageAuthority) CountPendingOrders(_ context.Context, _ int64) (int,
 	return 0, nil
 }
 
+// CountOrders is a mock
+func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
+	return 0, nil
+}
+
 // DeactivateAuthorization is a mock
 func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
 	return nil

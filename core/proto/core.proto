@@ -86,6 +86,7 @@ message Order {
         optional string status = 7;
         repeated string names = 8;
         optional bool beganProcessing = 9;
+        optional int64 created = 10;
 }
 
 message Empty {}
