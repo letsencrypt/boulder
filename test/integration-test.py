@@ -3,16 +3,12 @@ import argparse
 import atexit
 import base64
 import datetime
-import errno
 import json
 import os
 import random
 import re
-import requests
-import shutil
 import subprocess
 import signal
-import sys
 import tempfile
 import time
 import urllib2
@@ -190,7 +186,7 @@ def test_gsb_lookups():
     # The GSB test server tracks hits with a trailing / on the URL
     hits = hits_map.get(hostname + "/", 0)
     if hits != 1:
-        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
+        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, hostname, hits))
 
 def test_ocsp():
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -264,15 +260,6 @@ def test_expiration_mailer():
     mailcount = int(resp.read())
     if mailcount != 2:
         raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
-
-def test_revoke_by_account():
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    client = chisel.make_client()
-    cert, _ = auth_and_issue([random_domain()], client=client)
-    client.revoke(cert.body)
-
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    return 0
 
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not."""
@@ -471,10 +458,12 @@ def main():
                         help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
+    parser.add_argument('--load', dest="run_loadtest", action="store_true",
+                        help="run load-generator")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False)
+    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False, run_loadtest=False)
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
@@ -495,6 +484,9 @@ def main():
 
     if args.run_all or args.run_certbot:
         run_client_tests()
+
+    if args.run_all or args.run_loadtest:
+        run_loadtest()
 
     if args.custom:
         run(args.custom)
@@ -525,6 +517,23 @@ def run_chisel():
     test_expired_authzs_404()
     test_account_update()
     test_stats()
+
+def run_loadtest():
+    # Run the load generator
+    latency_data_file = "/tmp/integration-test-latency.json"
+    run("./bin/load-generator \
+            -config test/load-generator/config/integration-test-config.json\
+            -results %s" % latency_data_file)
+
+    # Read the latency data it produced
+    with open(latency_data_file) as f:
+        data_lines = f.readlines()
+
+    # Check that none of the datapoints were a failure
+    for line in data_lines:
+        datapoint = json.loads(line)
+        if datapoint['type'] != 'good':
+            raise Exception("Load generator had a failed request: %s", line)
 
 if __name__ == "__main__":
     try:

@@ -1,20 +1,16 @@
 #!/usr/bin/env python2.7
 """
 Integration test for ACMEv2 as implemented by boulder-wfe2.
-
-Currently (December 2017) this depends on the acme-v2-integration branch of
-Certbot, while we wait on landing some of our changes in master.
 """
 import atexit
 import random
-import shutil
 import subprocess
 import tempfile
 import requests
 import datetime
 import time
-import base64
 import os
+import json
 
 import OpenSSL
 import josepy as jose
@@ -24,9 +20,8 @@ import startservers
 import chisel2
 from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
-from acme.messages import Status, CertificateRequest, Directory
+from acme.messages import Status
 from acme import crypto_util as acme_crypto_util
-from acme import client as acme_client
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -50,6 +45,8 @@ def main():
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
+
+    test_loadgeneration()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -259,14 +256,28 @@ def test_revoke_by_privkey():
         cleanup()
 
     # Create a new client with the JWK as the cert private key
-    jwk = jose.JWKRSA(key=key)
-    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
-    new_client = acme_client.ClientV2(directory, net)
-
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
+
+def test_loadgeneration():
+    # Run the load generator
+    latency_data_file = "/tmp/v2-integration-test-latency.json"
+    subprocess.check_output(
+        "./bin/load-generator \
+            -config test/load-generator/config/v2-integration-test-config.json\
+            -results %s" % latency_data_file,
+        shell=True,
+        stderr=subprocess.STDOUT)
+
+    # Read the latency data it produced
+    with open(latency_data_file) as f:
+        data_lines = f.readlines()
+
+    # Check that none of the datapoints were a failure
+    for line in data_lines:
+        datapoint = json.loads(line)
+        if datapoint['type'] != 'good':
+            raise Exception("Load generator had a failed request: %s", line)
 
 if __name__ == "__main__":
     try:

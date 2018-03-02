@@ -38,7 +38,7 @@ invalidAuthorizationsPerAccount:
   threshold: 3
 pendingOrdersPerAccount:
   window: 168h # 1 week
-  threshold: 3
+  threshold: 100
 certificatesPerFQDNSet:
   window: 24h
   threshold: 5
