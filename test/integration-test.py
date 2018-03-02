@@ -3,16 +3,12 @@ import argparse
 import atexit
 import base64
 import datetime
-import errno
 import json
 import os
 import random
 import re
-import requests
-import shutil
 import subprocess
 import signal
-import sys
 import tempfile
 import time
 import urllib2
@@ -190,7 +186,7 @@ def test_gsb_lookups():
     # The GSB test server tracks hits with a trailing / on the URL
     hits = hits_map.get(hostname + "/", 0)
     if hits != 1:
-        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
+        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, hostname, hits))
 
 def test_ocsp():
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -271,6 +267,7 @@ def test_revoke_by_account():
     cert, _ = auth_and_issue([random_domain()], client=client)
     client.revoke(cert.body)
 
+    ee_ocsp_url = "http://localhost:4002"
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     return 0
 
@@ -522,6 +519,7 @@ def run_chisel():
     test_caa()
     test_admin_revoker_cert()
     test_admin_revoker_authz()
+    test_revoke_by_account()
     test_certificates_per_name()
     test_ocsp()
     test_single_ocsp()
