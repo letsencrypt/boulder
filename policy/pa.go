@@ -210,7 +210,6 @@ var (
 //  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
 //    In particular:
 //    * MUST NOT contain underscores
-//  * MUST NOT contain IDN labels (xn--)
 //  * MUST NOT match the syntax of an IP address
 //  * MUST end in a public suffix
 //  * MUST have at least one label in addition to the public suffix
