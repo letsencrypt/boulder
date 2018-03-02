@@ -447,10 +447,6 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 			challenges = append(challenges, core.TLSSNIChallenge01())
 		}
 
-		if features.Enabled(features.AllowTLS02Challenges) && pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI02, regID) {
-			challenges = append(challenges, core.TLSSNIChallenge02())
-		}
-
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
 			challenges = append(challenges, core.DNSChallenge01())
 		}

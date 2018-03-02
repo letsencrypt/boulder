@@ -44,7 +44,6 @@
     "features": {
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
-      "AllowTLS02Challenges": true,
       "ReusePendingAuthz": true,
       "CancelCTSubmissions": false
     },
