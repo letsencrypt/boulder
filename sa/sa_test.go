@@ -1535,6 +1535,7 @@ func TestOrder(t *testing.T) {
 	pendingStatus := string(core.StatusPending)
 	falseBool := false
 	one := int64(1)
+	nowTS := sa.clk.Now().UnixNano()
 	expectedOrder := &corepb.Order{
 		// The expected order matches the input order
 		RegistrationID: inputOrder.RegistrationID,
@@ -1542,11 +1543,12 @@ func TestOrder(t *testing.T) {
 		Names:          inputOrder.Names,
 		Authorizations: inputOrder.Authorizations,
 		// And should also have an empty serial and the correct status and
-		// processing state, and an ID of 1
+		// processing state, and an ID of 1, and a created timestamp
 		Id:                &one,
 		CertificateSerial: &empty,
 		BeganProcessing:   &falseBool,
 		Status:            &pendingStatus,
+		Created:           &nowTS,
 	}
 
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
@@ -1721,6 +1723,49 @@ func TestAddPendingAuthorizations(t *testing.T) {
 	}
 }
 
+func TestCountOrders(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	now := sa.clk.Now()
+	expires := now.Add(24 * time.Hour).UnixNano()
+
+	earliest := now.Add(-time.Hour)
+	latest := now.Add(time.Second)
+
+	// Counting new orders for a reg ID that doesn't exist should return 0
+	count, err := sa.CountOrders(ctx, 12345, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
+	test.AssertEquals(t, count, 0)
+
+	// Add one pending order
+	order, err := sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Names:          []string{"example.com"},
+		Authorizations: []string{"~ ~ [:: AuThOrIzEd ::] ~ ~ "},
+	})
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+
+	// Counting new orders for the reg ID should now yield 1
+	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
+	test.AssertEquals(t, count, 1)
+
+	// Moving the count window to after the order was created should return the
+	// count to 0
+	earliest = time.Unix(0, *order.Created).Add(time.Minute)
+	latest = earliest.Add(time.Hour)
+	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
+	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
+	test.AssertEquals(t, count, 0)
+}
+
 func TestCountPendingOrders(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return
@@ -1735,7 +1780,7 @@ func TestCountPendingOrders(t *testing.T) {
 
 	// Counting pending orders for a reg ID that doesn't exist should return 0
 	count, err := sa.CountPendingOrders(ctx, 12345)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations for fake reg ID")
+	test.AssertNotError(t, err, "Couldn't count pending orders for fake reg ID")
 	test.AssertEquals(t, count, 0)
 
 	// Add one pending authz
@@ -1759,7 +1804,7 @@ func TestCountPendingOrders(t *testing.T) {
 
 	// We expect there to be a count of one for this reg ID
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// Create another fresh pending authz
@@ -1779,7 +1824,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// We still expect there to be a count of one for this reg ID since the order
 	// added above is expired
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// Create another fresh pending authz
@@ -1802,7 +1847,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// We still expect there to be a count of one for this reg ID since the order
 	// added above is not pending
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 1)
 
 	// If the clock is advanced by two hours we expect the count to return to
@@ -1810,7 +1855,7 @@ func TestCountPendingOrders(t *testing.T) {
 	// expired.
 	fc.Add(2 * time.Hour)
 	count, err = sa.CountPendingOrders(ctx, reg.ID)
-	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertNotError(t, err, "Couldn't count pending orders")
 	test.AssertEquals(t, count, 0)
 }
 
@@ -2048,6 +2093,7 @@ func TestStatusForOrder(t *testing.T) {
 	ctx := context.Background()
 	expires := fc.Now().Add(time.Hour)
 	expiresNano := expires.UnixNano()
+	alreadyExpired := expires.Add(-2 * time.Hour)
 
 	// Create a registration to work with
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -2062,8 +2108,19 @@ func TestStatusForOrder(t *testing.T) {
 	pendingAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 
+	// Create an expired authz
+	newExpiredAuthz := core.Authorization{
+		RegistrationID: newAuthz.RegistrationID,
+		Expires:        &alreadyExpired,
+		Status:         newAuthz.Status,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "expired.your.order.is.up"},
+	}
+	expiredAuthz, err := sa.NewPendingAuthorization(ctx, newExpiredAuthz)
+	test.AssertNotError(t, err, "Couldn't create new expired pending authorization")
+
 	// Create an invalid authz
 	invalidAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	invalidAuthz.Status = core.StatusInvalid
 	invalidAuthz.Identifier.Value = "invalid.your.order.is.up"
 	err = sa.FinalizeAuthorization(ctx, invalidAuthz)
@@ -2071,6 +2128,7 @@ func TestStatusForOrder(t *testing.T) {
 
 	// Create a deactivate authz
 	deactivatedAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	deactivatedAuthz.Status = core.StatusDeactivated
 	deactivatedAuthz.Identifier.Value = "deactivated.your.order.is.up"
 	err = sa.FinalizeAuthorization(ctx, deactivatedAuthz)
@@ -2095,6 +2153,12 @@ func TestStatusForOrder(t *testing.T) {
 			Name:             "Order with an invalid authz",
 			OrderNames:       []string{"pending.your.order.is.up", "invalid.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			AuthorizationIDs: []string{pendingAuthz.ID, invalidAuthz.ID, deactivatedAuthz.ID, validAuthz.ID},
+			ExpectedStatus:   string(core.StatusInvalid),
+		},
+		{
+			Name:             "Order with an expired authz",
+			OrderNames:       []string{"pending.your.order.is.up", "expired.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
+			AuthorizationIDs: []string{pendingAuthz.ID, expiredAuthz.ID, deactivatedAuthz.ID, validAuthz.ID},
 			ExpectedStatus:   string(core.StatusInvalid),
 		},
 		{

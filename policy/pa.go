@@ -210,7 +210,6 @@ var (
 //  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
 //    In particular:
 //    * MUST NOT contain underscores
-//  * MUST NOT contain IDN labels (xn--)
 //  * MUST NOT match the syntax of an IP address
 //  * MUST end in a public suffix
 //  * MUST have at least one label in addition to the public suffix
@@ -446,10 +445,6 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
 			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
 			challenges = append(challenges, core.TLSSNIChallenge01())
-		}
-
-		if features.Enabled(features.AllowTLS02Challenges) && pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI02, regID) {
-			challenges = append(challenges, core.TLSSNIChallenge02())
 		}
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {

@@ -18,11 +18,6 @@ func TLSSNIChallenge01() Challenge {
 	return newChallenge(ChallengeTypeTLSSNI01)
 }
 
-// TLSSNIChallenge02 constructs a random tls-sni-02 challenge
-func TLSSNIChallenge02() Challenge {
-	return newChallenge(ChallengeTypeTLSSNI02)
-}
-
 // DNSChallenge01 constructs a random dns-01 challenge
 func DNSChallenge01() Challenge {
 	return newChallenge(ChallengeTypeDNS01)

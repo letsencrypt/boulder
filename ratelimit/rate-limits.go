@@ -20,6 +20,7 @@ type Limits interface {
 	InvalidAuthorizationsPerAccount() RateLimitPolicy
 	CertificatesPerFQDNSet() RateLimitPolicy
 	PendingOrdersPerAccount() RateLimitPolicy
+	NewOrdersPerAccount() RateLimitPolicy
 	LoadPolicies(contents []byte) error
 }
 
@@ -104,6 +105,15 @@ func (r *limitsImpl) PendingOrdersPerAccount() RateLimitPolicy {
 	return r.rlPolicy.PendingOrdersPerAccount
 }
 
+func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+	return r.rlPolicy.NewOrdersPerAccount
+}
+
 // LoadPolicies loads various rate limiting policies from a byte array of
 // YAML configuration (typically read from disk by a reloader)
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
@@ -154,8 +164,11 @@ type rateLimitConfig struct {
 	// is too long for the variable name.
 	InvalidAuthorizationsPerAccount RateLimitPolicy `yaml:"invalidAuthorizationsPerAccount"`
 	// Number of pending orders that can exist per account. Overrides by key are
-	// not applied, but overrides by registration are.
+	// not applied, but overrides by registration are. **DEPRECATED**
 	PendingOrdersPerAccount RateLimitPolicy `yaml:"pendingOrdersPerAccount"`
+	// Number of new orders that can be created per account within the given
+	// window. Overrides by key are not applied, but overrides by registration are.
+	NewOrdersPerAccount RateLimitPolicy `yaml:"newOrdersPerAccount"`
 	// Number of certificates that can be extant containing a specific set
 	// of DNS names.
 	CertificatesPerFQDNSet RateLimitPolicy `yaml:"certificatesPerFQDNSet"`

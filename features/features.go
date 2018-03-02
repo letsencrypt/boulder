@@ -12,7 +12,6 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	UseAIAIssuerURL
-	AllowTLS02Challenges
 	// For new-authz requests, if there is no valid authz, but there is a pending
 	// authz, return that instead of creating a new one.
 	ReusePendingAuthz
@@ -32,7 +31,6 @@ const (
 var features = map[FeatureFlag]bool{
 	unused:                  false,
 	UseAIAIssuerURL:         false,
-	AllowTLS02Challenges:    false,
 	ReusePendingAuthz:       false,
 	CountCertificatesExact:  false,
 	IPv6First:               false,
