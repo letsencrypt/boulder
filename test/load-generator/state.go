@@ -475,7 +475,7 @@ func (s *State) addRespCode(code int) {
 	}
 }
 
-// codes is a conveience type for holding copies of the state object's
+// codes is a convenience type for holding copies of the state object's
 // `respCodes` field of `map[int]*respCode`. Unlike the state object the
 // respCodes are copied by value and not held as pointers. The codes type allows
 // sorting the response codes for output.
@@ -497,8 +497,6 @@ func (s *State) respCodeString() string {
 	s.cMu.Lock()
 	list := codes{}
 	for _, v := range s.respCodes {
-		// Copy the respCode from the state object for the codes list so we don't
-		// data race once we free the lock.
 		list = append(list, *v)
 	}
 	s.cMu.Unlock()
