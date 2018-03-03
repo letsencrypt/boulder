@@ -216,19 +216,6 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 	return nil // NOP - unrequired behaviour for this mock
 }
 
-type publisher struct{}
-
-func (*publisher) SubmitToCT(_ context.Context, der []byte) error {
-	return nil
-}
-
-func (*publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
-	return nil
-}
-func (*publisher) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
-	return nil, nil
-}
-
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -283,7 +270,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		Status:    core.StatusValid,
 	})
 
-	ctp := ctpolicy.New(&publisher{}, nil, log)
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, log)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
