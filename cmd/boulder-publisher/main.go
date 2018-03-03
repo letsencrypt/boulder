@@ -1,12 +1,10 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"os"
 
 	ct "github.com/google/certificate-transparency-go"
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -69,14 +67,11 @@ func main() {
 		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
 	}
 
-	var tls *tls.Config
-	if c.Publisher.TLS.CertFile != nil {
-		tls, err = c.Publisher.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-	}
+	tlsConfig, err := c.Publisher.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -87,25 +82,14 @@ func main() {
 		scope,
 		sac)
 
-	var grpcSrv *grpc.Server
-	if c.Publisher.GRPC != nil {
-		serverMetrics := bgrpc.NewServerMetrics(scope)
-		s, l, err := bgrpc.NewServer(c.Publisher.GRPC, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
-		gw := bgrpc.NewPublisherServerWrapper(pubi)
-		pubPB.RegisterPublisherServer(s, gw)
-		go func() {
-			err = cmd.FilterShutdownErrors(s.Serve(l))
-			cmd.FailOnError(err, "Publisher gRPC service failed")
-		}()
-		grpcSrv = s
-	}
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
+	gw := bgrpc.NewPublisherServerWrapper(pubi)
+	pubPB.RegisterPublisherServer(grpcSrv, gw)
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
+	cmd.FailOnError(err, "Publisher gRPC service failed")
 }

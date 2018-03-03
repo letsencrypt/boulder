@@ -91,6 +91,7 @@ type RegistrationAuthorityImpl struct {
 	regByIPRangeStats      metrics.Scope
 	pendAuthByRegIDStats   metrics.Scope
 	pendOrdersByRegIDStats metrics.Scope
+	newOrderByRegIDStats   metrics.Scope
 	certsForDomainStats    metrics.Scope
 	totalCertsStats        metrics.Scope
 
@@ -142,6 +143,7 @@ func NewRegistrationAuthorityImpl(
 		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
 		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
 		pendOrdersByRegIDStats:       stats.NewScope("RateLimit", "PendingOrdersByRegID"),
+		newOrderByRegIDStats:         stats.NewScope("RateLimit", "NewOrdersByRegID"),
 		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		totalCertsStats:              stats.NewScope("RateLimit", "TotalCertificates"),
 		publisher:                    pubc,
@@ -221,14 +223,11 @@ func problemIsTimeout(err error) bool {
 }
 
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient) error {
-	emails, err := mail.ParseAddressList(address)
+	email, err := mail.ParseAddress(address)
 	if err != nil {
 		return unparseableEmailError
 	}
-	if len(emails) > 1 {
-		return multipleAddressError
-	}
-	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
+	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
@@ -450,26 +449,6 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkPendingOrderLimit(ctx context.Context, regID int64) error {
-	limit := ra.rlPolicies.PendingOrdersPerAccount()
-	if limit.Enabled() {
-		count, err := ra.SA.CountPendingOrders(ctx, regID)
-		if err != nil {
-			return err
-		}
-		// Most rate limits have a key for overrides, but like the pending
-		// authorization limit there is no meaningful key here. Only registration ID
-		// overrides make sense.
-		noKey := ""
-		if count >= limit.GetThreshold(noKey, regID) {
-			ra.pendOrdersByRegIDStats.Inc("Exceeded", 1)
-			return berrors.RateLimitError("too many currently pending orders")
-		}
-		ra.pendOrdersByRegIDStats.Inc("Pass", 1)
-	}
-	return nil
-}
-
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
 	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
@@ -504,6 +483,30 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
+	return nil
+}
+
+// checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
+// rate limit. This rate limit ensures a client can not create more than the
+// specified threshold of new orders within the specified time window.
+func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64) error {
+	limit := ra.rlPolicies.NewOrdersPerAccount()
+	if !limit.Enabled() {
+		return nil
+	}
+	latest := ra.clk.Now()
+	earliest := latest.Add(-limit.Window.Duration)
+	count, err := ra.SA.CountOrders(ctx, acctID, earliest, latest)
+	if err != nil {
+		return err
+	}
+	// There is no meaningful override key to use for this rate limit
+	noKey := ""
+	if count >= limit.GetThreshold(noKey, acctID) {
+		ra.newOrderByRegIDStats.Inc("Exceeded", 1)
+		return berrors.RateLimitError("too many new orders recently")
+	}
+	ra.newOrderByRegIDStats.Inc("Pass", 1)
 	return nil
 }
 
@@ -1108,27 +1111,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) ([][]byte, error) {
-	var ctCtx context.Context
-	var cancel func()
-	currentDeadline, ok := ctx.Deadline()
-	if !ok {
-		// Current context doesn't have a deadline, this should
-		// never happen so it's a internal server error... but
-		// we already issued the cert so we can't fail out now.
-		// Just use a background context with a 30s timeout added.
-		ctCtx, cancel = context.WithTimeout(context.Background(), time.Second*30)
-	} else {
-		// NOTE: We want to check how putting the SCT submission/collection
-		// affects calls to IssueCertificate so we take the current context
-		// and allocate 80% of the remaining time to calling CTPolicy.GetSCTs.
-		// This way if we exceed the child context we won't time out the
-		// parent call and can still return the cert to the user.
-		until := time.Until(currentDeadline)
-		ctCtx, cancel = context.WithTimeout(ctx, time.Duration(float64(until)*0.8))
-	}
-	defer cancel()
 	started := ra.clk.Now()
-	scts, err := ra.ctpolicy.GetSCTs(ctCtx, cert)
+	scts, err := ra.ctpolicy.GetSCTs(ctx, cert)
 	took := ra.clk.Since(started)
 	// The final cert has already been issued so actually return it to the
 	// user even if this fails since we aren't actually doing anything with
@@ -1519,7 +1503,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// Dispatch to the VA for service
 
 	vaCtx := context.Background()
-	go func() {
+	go func(authz core.Authorization) {
 		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
@@ -1551,7 +1535,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 				"Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
 				err, authz.RegistrationID, authz.ID))
 		}
-	}()
+	}(authz)
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
 	return authz, nil
 }
@@ -1706,12 +1690,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		Expires:        &expires,
 	}
 
-	// Check that the registration ID in question has rate limit space for another
-	// pending order
-	if err := ra.checkPendingOrderLimit(ctx, *req.RegistrationID); err != nil {
-		return nil, err
-	}
-
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
@@ -1741,6 +1719,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	// Otherwise we were unable to find an order to reuse, continue creating a new
 	// order
+
+	// Check if there is rate limit space for a new order within the current window
+	if err := ra.checkNewOrdersPerAccountLimit(ctx, *order.RegistrationID); err != nil {
+		return nil, err
+	}
 
 	// Check whether there are existing non-expired authorizations for the set of
 	// order names

@@ -12,7 +12,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -70,7 +69,6 @@ const (
 const (
 	ChallengeTypeHTTP01   = "http-01"
 	ChallengeTypeTLSSNI01 = "tls-sni-01"
-	ChallengeTypeTLSSNI02 = "tls-sni-02"
 	ChallengeTypeDNS01    = "dns-01"
 )
 
@@ -83,8 +81,6 @@ func ValidChallenge(name string) bool {
 		fallthrough
 	case ChallengeTypeDNS01:
 		return true
-	case ChallengeTypeTLSSNI02:
-		return features.Enabled(features.AllowTLS02Challenges)
 
 	default:
 		return false
@@ -283,8 +279,6 @@ func (ch Challenge) RecordsSane() bool {
 			}
 		}
 	case ChallengeTypeTLSSNI01:
-		fallthrough
-	case ChallengeTypeTLSSNI02:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}

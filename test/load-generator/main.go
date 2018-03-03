@@ -21,18 +21,17 @@ type Config struct {
 		RateDelta string   // requests / s^2
 		Runtime   string   // how long to run for
 	}
-	ExternalState string   // path to file to load/save registrations etc to/from
-	DontSaveState bool     // don't save changes to external state
-	APIBase       string   // ACME API address to send requests to
-	DomainBase    string   // base domain name to create authorizations for
-	ChallTypes    []string // which challenges to complete, empty means use all
-	HTTPOneAddr   string   // address to listen for http-01 validation requests on
-	TLSOneAddr    string   // address to listen for tls-sni-01 validation requests on
-	RealIP        string   // value of the Real-IP header to use when bypassing CDN
-	CertKeySize   int      // size of the key to use when creating CSRs
-	RegEmail      string   // email to use in registrations
-	Results       string   // path to save metrics to
-	MaxRegs       int      // maximum number of registrations to create
+	ExternalState string // path to file to load/save registrations etc to/from
+	DontSaveState bool   // don't save changes to external state
+	APIBase       string // ACME API address to send requests to
+	DomainBase    string // base domain name to create authorizations for
+	HTTPOneAddr   string // address to listen for http-01 validation requests on
+	TLSOneAddr    string // address to listen for tls-sni-01 validation requests on
+	RealIP        string // value of the Real-IP header to use when bypassing CDN
+	CertKeySize   int    // size of the key to use when creating CSRs
+	RegEmail      string // email to use in registrations
+	Results       string // path to save metrics to
+	MaxRegs       int    // maximum number of registrations to create
 }
 
 func main() {
@@ -45,7 +44,7 @@ func main() {
 
 	configBytes, err := ioutil.ReadFile(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", &configPath, err)
+		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", *configPath, err)
 		os.Exit(1)
 	}
 	var config Config

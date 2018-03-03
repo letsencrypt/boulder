@@ -407,16 +407,17 @@ func registrationValid(reg *corepb.Registration) bool {
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID and the BeganProcessing fields
-// are not nil.
+// from `newOrderValid` it ensures the order ID, the BeganProcessing fields
+// and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && order.BeganProcessing != nil && newOrderValid(order)
+	return order.Id != nil && order.BeganProcessing != nil && order.Created != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
 // `order.Id` because the order has not been assigned an ID yet when it is being
 // created initially. It allows `order.BeganProcessing` to be nil because
-// `sa.NewOrder` explicitly sets it to the default value. It also allows
+// `sa.NewOrder` explicitly sets it to the default value. It allows
+// `order.Created` to be nil because the SA populates this. It also allows
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {

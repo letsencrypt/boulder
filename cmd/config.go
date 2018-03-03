@@ -110,7 +110,10 @@ type TLSConfig struct {
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
 // returns a *tls.Config suitable for either client or server use.
-func (t TLSConfig) Load() (*tls.Config, error) {
+func (t *TLSConfig) Load() (*tls.Config, error) {
+	if t == nil {
+		return nil, fmt.Errorf("nil TLS section in config")
+	}
 	if t.CertFile == nil {
 		return nil, fmt.Errorf("nil CertFile in TLSConfig")
 	}
@@ -169,10 +172,14 @@ type OCSPUpdaterConfig struct {
 	OldestIssuedSCT              ConfigDuration
 	ParallelGenerateOCSPRequests int
 
-	AkamaiBaseURL           string
-	AkamaiClientToken       string
-	AkamaiClientSecret      string
-	AkamaiAccessToken       string
+	AkamaiBaseURL      string
+	AkamaiClientToken  string
+	AkamaiClientSecret string
+	AkamaiAccessToken  string
+	// When AkamaiV3Network is not provided, the Akamai CCU API v2 is used. When
+	// AkamaiV3Network is set to "staging" or "production" the Akamai CCU API v3
+	// is used.
+	AkamaiV3Network         string
 	AkamaiPurgeRetries      int
 	AkamaiPurgeRetryBackoff ConfigDuration
 
@@ -290,4 +297,9 @@ type CAADistributedResolverConfig struct {
 	Timeout     ConfigDuration
 	MaxFailures int
 	Proxies     []string
+}
+
+type CTGroup struct {
+	Name string
+	Logs []LogDescription
 }

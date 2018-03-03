@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/square/go-jose.v2"
 )
@@ -31,9 +30,6 @@ func TestChallenges(t *testing.T) {
 	tlssni01 := TLSSNIChallenge01()
 	test.AssertNotError(t, tlssni01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
-	tlssni02 := TLSSNIChallenge02()
-	test.AssertNotError(t, tlssni02.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
-
 	dns01 := DNSChallenge01()
 	test.AssertNotError(t, dns01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
@@ -41,13 +37,6 @@ func TestChallenges(t *testing.T) {
 	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeDNS01), "Refused valid challenge")
 	test.Assert(t, !ValidChallenge("nonsense-71"), "Accepted invalid challenge")
-
-	test.Assert(t, !ValidChallenge(ChallengeTypeTLSSNI02), "Accepted invalid challenge")
-
-	_ = features.Set(map[string]bool{"AllowTLS02Challenges": true})
-	defer features.Reset()
-
-	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI02), "Refused valid challenge")
 }
 
 // objects.go

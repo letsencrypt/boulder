@@ -22,11 +22,11 @@
         2,
         0.0,
         0.0,
-        20,
+        2,
         0.2,
         0.3,
         0.2,
-        70,
+        5,
         0.1
       ]
     },
@@ -39,11 +39,11 @@
         2,
         0.0,
         0.0,
-        20,
+        2,
         0.2,
         0.3,
         0.2,
-        70,
+        7,
         0.1
       ]
     },
@@ -51,17 +51,14 @@
       "Addr": ":4511",
       "PrivKey": "MHcCAQEEINwaal89BqkwvQ6r3uOj7R5VEjJi5iSDbAhlYyDhZv/joAoGCCqGSM49AwEHoUQDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
       "LatencySchedule": [
-        0.7,
-        0.3,
-        2,
-        0.0,
-        0.0,
-        20,
-        0.2,
-        0.3,
-        0.2,
-        70,
-        0.1
+        100
+      ]
+    },
+    {
+      "Addr": ":4512",
+      "PrivKey": "MHcCAQEEINwaal89BqkwvQ6r3uOj7R5VEjJi5iSDbAhlYyDhZv/joAoGCCqGSM49AwEHoUQDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+      "LatencySchedule": [
+        100
       ]
     }
   ]

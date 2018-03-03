@@ -449,6 +449,11 @@ func (sa *StorageAuthority) CountPendingOrders(_ context.Context, _ int64) (int,
 	return 0, nil
 }
 
+// CountOrders is a mock
+func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
+	return 0, nil
+}
+
 // DeactivateAuthorization is a mock
 func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
 	return nil
@@ -531,10 +536,6 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 }
 
 func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	return nil, nil
-}
-
-func (sa *StorageAuthority) GetOrderAuthorizations(_ context.Context, _ *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
 	return nil, nil
 }
 

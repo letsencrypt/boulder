@@ -271,6 +271,28 @@ func (sac StorageAuthorityClientWrapper) CountPendingOrders(ctx context.Context,
 	return int(*response.Count), nil
 }
 
+func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	earliestNano := earliest.UnixNano()
+	latestNano := latest.UnixNano()
+
+	response, err := sac.inner.CountOrders(ctx, &sapb.CountOrdersRequest{
+		AccountID: &acctID,
+		Range: &sapb.Range{
+			Earliest: &earliestNano,
+			Latest:   &latestNano,
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if response == nil || response.Count == nil {
+		return 0, errIncompleteResponse
+	}
+
+	return int(*response.Count), nil
+}
+
 func (sac StorageAuthorityClientWrapper) CountInvalidAuthorizations(ctx context.Context, request *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	return sac.inner.CountInvalidAuthorizations(ctx, request)
 }
@@ -549,18 +571,6 @@ func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 	return resp, nil
 }
 
-func (sas StorageAuthorityClientWrapper) GetOrderAuthorizations(
-	ctx context.Context,
-	request *sapb.GetOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	// Call the wrapper function for the renamed version of this RPC
-	return sas.GetValidOrderAuthorizations(
-		ctx,
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     request.Id,
-			AcctID: request.AcctID,
-		})
-}
-
 func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations(
 	ctx context.Context,
 	request *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
@@ -837,6 +847,24 @@ func (sas StorageAuthorityServerWrapper) CountPendingOrders(ctx context.Context,
 	}
 
 	count, err := sas.inner.CountPendingOrders(ctx, *request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	castedCount := int64(count)
+	return &sapb.Count{Count: &castedCount}, nil
+}
+
+func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, request *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	if request == nil || request.AccountID == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+		return nil, errIncompleteRequest
+	}
+
+	count, err := sas.inner.CountOrders(ctx,
+		*request.AccountID,
+		time.Unix(0, *request.Range.Earliest),
+		time.Unix(0, *request.Range.Latest),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1140,19 +1168,6 @@ func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 		return nil, errIncompleteRequest
 	}
 	return sas.inner.GetOrderForNames(ctx, request)
-}
-
-func (sas StorageAuthorityServerWrapper) GetOrderAuthorizations(
-	ctx context.Context,
-	request *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-
-	// Call the wrapper for the renamed version of this RPC
-	return sas.GetValidOrderAuthorizations(
-		ctx,
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     request.Id,
-			AcctID: request.AcctID,
-		})
 }
 
 func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations(

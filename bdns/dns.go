@@ -75,7 +75,7 @@ var (
 		},
 		// 198.51.100.0/24
 		{
-			IP:   []byte{192, 51, 100, 0},
+			IP:   []byte{198, 51, 100, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// 203.0.113.0/24
@@ -254,6 +254,10 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	// metrics about the percentage of responses that are secured with
 	// DNSSEC.
 	m.AuthenticatedData = true
+	// Tell the resolver that we're willing to receive responses up to 4096 bytes.
+	// This happens sometimes when there are a very large number of CAA records
+	// present.
+	m.SetEdns0(4096, false)
 
 	if len(dnsClient.servers) < 1 {
 		return nil, fmt.Errorf("Not configured with at least one DNS Server")

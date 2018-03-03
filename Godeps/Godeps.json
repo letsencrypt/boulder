@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.9",
-	"GodepVersion": "v79",
+	"GoVersion": "go1.10",
+	"GodepVersion": "v80",
 	"Packages": [
 		"./..."
 	],
@@ -137,35 +137,35 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client/configpb",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/tls",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
-			"Rev": "66517eb70cb8776dff42ac12deb23850efdf622b"
+			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
@@ -256,6 +256,14 @@
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
 			"Comment": "v0.3.2-30-g7881288",
 			"Rev": "7881288a8a3d24d7ae2add26fea4111e8a189516"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/cryptobyte",
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/cryptobyte/asn1",
+			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519",

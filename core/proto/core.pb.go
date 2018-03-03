@@ -414,6 +414,7 @@ type Order struct {
 	Status            *string         `protobuf:"bytes,7,opt,name=status" json:"status,omitempty"`
 	Names             []string        `protobuf:"bytes,8,rep,name=names" json:"names,omitempty"`
 	BeganProcessing   *bool           `protobuf:"varint,9,opt,name=beganProcessing" json:"beganProcessing,omitempty"`
+	Created           *int64          `protobuf:"varint,10,opt,name=created" json:"created,omitempty"`
 	XXX_unrecognized  []byte          `json:"-"`
 }
 
@@ -483,6 +484,13 @@ func (m *Order) GetBeganProcessing() bool {
 		return *m.BeganProcessing
 	}
 	return false
+}
+
+func (m *Order) GetCreated() int64 {
+	if m != nil && m.Created != nil {
+		return *m.Created
+	}
+	return 0
 }
 
 type Empty struct {

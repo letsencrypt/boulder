@@ -205,7 +205,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
-	chain := append([]ct.ASN1Cert{ct.ASN1Cert{req.Der}}, pub.issuerBundle...)
+	chain := append([]ct.ASN1Cert{ct.ASN1Cert{Data: req.Der}}, pub.issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
@@ -266,9 +266,13 @@ func (pub *Impl) singleLogSubmit(
 	sct, err := ctLog.client.AddChain(ctx, chain)
 	took := time.Since(start).Seconds()
 	if err != nil {
+		status := "error"
+		if canceled.Is(err) {
+			status = "canceled"
+		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{
 			"log":    ctLog.uri,
-			"status": "error",
+			"status": status,
 		}).Observe(took)
 		return nil, err
 	}

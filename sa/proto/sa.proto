@@ -21,6 +21,7 @@ service StorageAuthority {
         rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
         rpc CountPendingOrders(RegistrationID) returns (Count) {}
+        rpc CountOrders(CountOrdersRequest) returns (Count) {}
         // Return a count of authorizations with status "invalid" that belong to
         // a given registration ID and expire in the given time range.
         rpc CountInvalidAuthorizations(CountInvalidAuthorizationsRequest) returns (Count) {}
@@ -45,7 +46,6 @@ service StorageAuthority {
         rpc SetOrderError(core.Order) returns (core.Empty) {}
         rpc FinalizeOrder(core.Order) returns (core.Empty) {}
         rpc GetOrder(OrderRequest) returns (core.Order) {}
-        rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetValidOrderAuthorizations(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
@@ -137,6 +137,11 @@ message CountInvalidAuthorizationsRequest {
         optional Range range = 3;
 }
 
+message CountOrdersRequest {
+        optional int64 accountID = 1;
+        optional Range range = 2;
+}
+
 message GetSCTReceiptRequest {
         optional string serial = 1;
         optional string logID = 2;
@@ -198,11 +203,6 @@ message RevokeAuthorizationsByDomainResponse {
 
 message OrderRequest {
         optional int64 id = 1;
-}
-
-message GetOrderAuthorizationsRequest {
-        optional int64 id = 1;
-        optional int64 acctID = 2;
 }
 
 message GetValidOrderAuthorizationsRequest {

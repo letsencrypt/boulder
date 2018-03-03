@@ -2,10 +2,7 @@ package main
 
 import (
 	"flag"
-	"net"
 	"os"
-
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -76,27 +73,16 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	var grpcSrv *grpc.Server
-	if c.SA.GRPC != nil {
-		tls, err := c.SA.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
-		var listener net.Listener
-		serverMetrics := bgrpc.NewServerMetrics(scope)
-		grpcSrv, listener, err = bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics)
-		cmd.FailOnError(err, "Unable to setup SA gRPC server")
-		gw := bgrpc.NewStorageAuthorityServer(sai)
-		sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
-		go func() {
-			err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-			cmd.FailOnError(err, "SA gRPC service failed")
-		}()
-	}
+	tls, err := c.SA.TLS.Load()
+	cmd.FailOnError(err, "TLS config")
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics)
+	cmd.FailOnError(err, "Unable to setup SA gRPC server")
+	gw := bgrpc.NewStorageAuthorityServer(sai)
+	sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
 
-	go cmd.CatchSignals(logger, func() {
-		if grpcSrv != nil {
-			grpcSrv.GracefulStop()
-		}
-	})
+	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
-	select {}
+	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
+	cmd.FailOnError(err, "SA gRPC service failed")
 }

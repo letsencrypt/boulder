@@ -50,6 +50,19 @@ func NewTopHandler(log blog.Logger, wfe wfeHandler) *TopHandler {
 	}
 }
 
+// responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
+// status code for logging.
+type responseWriterWithStatus struct {
+	http.ResponseWriter
+	code int
+}
+
+// WriteHeader stores a status code for generating stats.
+func (r *responseWriterWithStatus) WriteHeader(code int) {
+	r.code = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &RequestEvent{
 		RealIP:    r.Header.Get("X-Real-IP"),
@@ -59,22 +72,21 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer th.logEvent(logEvent)
 
-	th.wfe.ServeHTTP(logEvent, w, r)
+	rwws := &responseWriterWithStatus{w, 0}
+	defer func() {
+		logEvent.Code = rwws.code
+	}()
+	th.wfe.ServeHTTP(logEvent, rwws, r)
 }
 
 func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	var msg string
-	if len(logEvent.Errors) != 0 {
-		msg = "Terminated request"
-	} else {
-		msg = "Successful request"
-	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.log.AuditErr(fmt.Sprintf("failed to marshal logEvent - %s - %#v", msg, err))
 		return
 	}
-	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
+	th.log.Info(fmt.Sprintf("JSON=%s", jsonEvent))
 }
 
 // Comma-separated list of HTTP clients involved in making this

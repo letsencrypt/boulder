@@ -20,13 +20,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/pem"
 	"flag"
 	"fmt"
 	"log"
 
 	"github.com/google/certificate-transparency-go/tls"
+	"github.com/google/certificate-transparency-go/x509"
 )
 
 var allowVerificationWithNonCompliantKeys = flag.Bool("allow_verification_with_non_compliant_keys", false,

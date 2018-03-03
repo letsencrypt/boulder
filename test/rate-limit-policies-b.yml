@@ -34,9 +34,9 @@ registrationsPerIPRange:
 pendingAuthorizationsPerAccount:
   window: 168h # 1 week, should match pending authorization lifetime.
   threshold: 999
-pendingOrdersPerAccount:
-  window: 168h # 1 week
-  threshold: 999
+newOrdersPerAccount:
+  window: 3h
+  threshold: 9999
 certificatesPerFQDNSet:
   window: 24h
   threshold: 99999
