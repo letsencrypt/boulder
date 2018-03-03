@@ -12,82 +12,82 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb/dbconf",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb/sql",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers/derhelpers",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp/config",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer/local",
-			"Comment": "1.3.1-8-g74f2ddc2",
+			"Comment": "1.3.1-8-g74f2ddc",
 			"Rev": "74f2ddc212e277519d83f942a8efd3bb9e243f16"
 		},
 		{
