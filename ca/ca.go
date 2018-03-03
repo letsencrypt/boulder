@@ -137,7 +137,7 @@ type Issuer struct {
 // issuer, including the cfssl signer and OCSP signer objects.
 type internalIssuer struct {
 	cert       *x509.Certificate
-	eeSigner   signer.Signer
+	eeSigner   *local.Signer
 	ocspSigner ocsp.Signer
 }
 
