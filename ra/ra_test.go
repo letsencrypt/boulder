@@ -950,17 +950,18 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
 
-	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authz, dbAuthz)
-
 	// Verify that the VA got the authz, and it's the same as the others
 	assertAuthzEqual(t, authz, vaAuthz)
 
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
+	test.Assert(t, dbAuthz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
