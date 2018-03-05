@@ -281,16 +281,6 @@ def test_loadgeneration():
         shell=True,
         stderr=subprocess.STDOUT)
 
-    # Read the latency data it produced
-    with open(latency_data_file) as f:
-        data_lines = f.readlines()
-
-    # Check that none of the datapoints were a failure
-    for line in data_lines:
-        datapoint = json.loads(line)
-        if datapoint['type'] != 'good':
-            raise Exception("Load generator had a failed request: %s", line)
-
 if __name__ == "__main__":
     try:
         main()
