@@ -109,7 +109,7 @@ func TestLoadPolicies(t *testing.T) {
 
 	// Test that the PendingAuthorizationsPerAccount section parsed correctly
 	pendingAuthsPerAcct := policy.PendingAuthorizationsPerAccount()
-	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 3)
+	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 20)
 	test.AssertEquals(t, len(pendingAuthsPerAcct.Overrides), 0)
 	test.AssertEquals(t, len(pendingAuthsPerAcct.RegistrationOverrides), 0)
 
