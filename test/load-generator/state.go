@@ -340,7 +340,15 @@ func (s *State) Restore(filename string) error {
 }
 
 // New returns a pointer to a new State struct or an error
-func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs int, latencyPath string, userEmail string, operations []string) (*State, error) {
+func New(
+	apiBase string,
+	keySize int,
+	domainBase string,
+	realIP string,
+	maxRegs, maxNamesPerCert int,
+	latencyPath string,
+	userEmail string,
+	operations []string) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -365,16 +373,17 @@ func New(apiBase string, keySize int, domainBase string, realIP string, maxRegs 
 		return nil, err
 	}
 	s := &State{
-		client:      client,
-		apiBase:     apiBase,
-		certKey:     certKey,
-		domainBase:  domainBase,
-		callLatency: latencyFile,
-		wg:          new(sync.WaitGroup),
-		realIP:      realIP,
-		maxRegs:     maxRegs,
-		email:       userEmail,
-		respCodes:   make(map[int]*respCode),
+		client:          client,
+		apiBase:         apiBase,
+		certKey:         certKey,
+		domainBase:      domainBase,
+		callLatency:     latencyFile,
+		wg:              new(sync.WaitGroup),
+		realIP:          realIP,
+		maxRegs:         maxRegs,
+		maxNamesPerCert: maxNamesPerCert,
+		email:           userEmail,
+		respCodes:       make(map[int]*respCode),
 	}
 
 	// convert operations strings to methods
