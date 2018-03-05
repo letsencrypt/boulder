@@ -17,6 +17,7 @@
     "certKeySize": 2048,
     "regEmail": "loadtesting@letsencrypt.org",
     "maxRegs": 20,
+    "maxNamesPerCert": 20,
     "dontSaveState": true,
     "results": "v2-example-latency.json"
 }
