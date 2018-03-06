@@ -32,19 +32,19 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 	if req == nil || req.Domain == nil {
 		return nil, bgrpc.ErrMissingParameters
 	}
-	status, err := va.isSafeDomain(ctx, *req.Domain)
-	if err != nil {
-		return nil, err
-	}
+	status := va.isSafeDomain(ctx, *req.Domain)
 	return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 }
 
-func (va *ValidationAuthorityImpl) isSafeDomain(ctx context.Context, domain string) (bool, error) {
+// isSafeDomain returns true if the VA considers the given domain safe. If the
+// backend errors, we consider the domain safe, so this function never returns
+// error.
+func (va *ValidationAuthorityImpl) isSafeDomain(ctx context.Context, domain string) bool {
 	stats := va.stats.NewScope("IsSafeDomain")
 	stats.Inc("IsSafeDomain.Requests", 1)
 	if va.safeBrowsing == nil {
 		stats.Inc("IsSafeDomain.Skips", 1)
-		return true, nil
+		return true
 	}
 
 	list, err := va.safeBrowsing.IsListed(ctx, domain)
@@ -54,13 +54,13 @@ func (va *ValidationAuthorityImpl) isSafeDomain(ctx context.Context, domain stri
 		// question to be treated as safe to avoid coupling the availability of the
 		// VA to the GSB API. This is acceptable for Let's Encrypt because we do not
 		// have a hard commitment to GSB filtering in our CP/CPS.
-		return true, nil
+		return true
 	}
 	stats.Inc("IsSafeDomain.Successes", 1)
 	if list == "" {
 		stats.Inc("IsSafeDomain.Status.Good", 1)
-		return true, nil
+		return true
 	}
 	stats.Inc("IsSafeDomain.Status.Bad", 1)
-	return false, nil
+	return false
 }

@@ -738,9 +738,18 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
 	// we can dispatch `checkCAA` with the provided `identifier` instead of
 	// `baseIdentifier`
-	ch := make(chan *probs.ProblemDetails, 1)
+	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
 		ch <- va.checkCAA(ctx, identifier)
+	}()
+	go func() {
+		if features.VAChecksGSB && !va.isSafeDomain(ctx, baseIdentifier.Value) {
+			ch <- probs.Unauthorized(fmt.Sprintf(
+				"%q was considered an unsafe domain by a third-party API",
+				baseIdentifier.Value))
+		} else {
+			ch <- nil
+		}
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -749,9 +758,11 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 		return validationRecords, err
 	}
 
-	caaProblem := <-ch
-	if caaProblem != nil {
-		return validationRecords, caaProblem
+	for i := 0; i < len(ch); i++ {
+		extraProblem := <-ch
+		if extraProblem != nil {
+			return validationRecords, extraProblem
+		}
 	}
 	return validationRecords, nil
 }

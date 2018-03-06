@@ -25,6 +25,7 @@ const (
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	CancelCTSubmissions
+	VAChecksGSB
 )
 
 // List of features and their default value, protected by fMu
@@ -39,6 +40,7 @@ var features = map[FeatureFlag]bool{
 	EnforceChallengeDisable: false, // deprecated
 	TLSSNIRevalidation:      false,
 	CancelCTSubmissions:     true,
+	VAChecksGSB:             false,
 }
 
 var fMu = new(sync.RWMutex)
