@@ -337,6 +337,9 @@ func TestCAAFailure(t *testing.T) {
 	va.dnsClient = caaMockDNS{}
 
 	_, prob := va.validateChallengeAndCAA(ctx, dnsi("reserved.com"), chall)
+	if prob == nil {
+		t.Fatalf("Got validation success when we expected a CAA rejection.")
+	}
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 
