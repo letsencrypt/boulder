@@ -41,7 +41,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Contex
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	return pbToCert(res), nil
+	return pbToCert(res)
 }
 
 func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
@@ -66,7 +66,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(c
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	return pbToCert(res), nil
+	return pbToCert(res)
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
@@ -105,10 +105,23 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Conte
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	return cas.inner.IssuePrecertificate(ctx, request)
+	if request == nil || request.Csr == nil || request.OrderID == nil || request.RegistrationID == nil {
+		return nil, errIncompleteRequest
+	}
+	resp, err := cas.inner.IssuePrecertificate(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if resp.DER == nil {
+		return nil, errIncompleteRequest
+	}
+	return resp, nil
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	if req == nil || req.DER == nil || req.OrderID == nil || req.RegistrationID == nil || req.SCTs == nil {
+		return nil, errIncompleteRequest
+	}
 	cert, err := cas.inner.IssueCertificateForPrecertificate(ctx, req)
 	if err != nil {
 		return nil, err

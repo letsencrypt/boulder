@@ -101,6 +101,25 @@ type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 }
 
+type certificateType int
+
+const (
+	precertificate = certificateType(1)
+	certificate    = certificateType(2)
+)
+
+func (ct certificateType) String() string {
+	switch ct {
+	case precertificate:
+		return "precertificate"
+	case certificate:
+		return "certificate"
+	default:
+		// Or just panic?
+		return "unknown"
+	}
+}
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -434,7 +453,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert")
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, certificate)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -456,7 +475,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "precert")
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, precertificate)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +484,11 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-// IssueCertificateForPrecertificate does a thing
+// IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
+// and uses the signer to create and sign a certificate from them. The poison extension is removed
+// and a SCT list extension is inserted in its place. Except for this and the signature the certificate
+// exactly matches the precertificate. After the certificate is signed a OCSP response is generated
+// and the response and certificate are stored in the database.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	if !features.Enabled(features.EmbedSCTs) {
@@ -519,7 +542,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType certificateType) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -582,7 +605,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		NotAfter:   validity.NotAfter,
 	}
 
-	if certType == "precert" {
+	if certType == precertificate {
 		req.ReturnPrecert = true
 	}
 
@@ -602,7 +625,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return nil, err
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": certType}).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": certType.String()}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
