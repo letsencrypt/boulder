@@ -743,7 +743,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 		ch <- va.checkCAA(ctx, identifier)
 	}()
 	go func() {
-		if features.VAChecksGSB && !va.isSafeDomain(ctx, baseIdentifier.Value) {
+		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
 			ch <- probs.Unauthorized(fmt.Sprintf(
 				"%q was considered an unsafe domain by a third-party API",
 				baseIdentifier.Value))

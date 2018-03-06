@@ -1824,7 +1824,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		Expires:        &expires,
 	}
 
-	if identifier.Type == core.IdentifierDNS && !features.VAChecksGSB {
+	if identifier.Type == core.IdentifierDNS && !features.Enabled(features.VAChecksGSB) {
 		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := berrors.InternalServerError("unable to determine if domain was safe")
