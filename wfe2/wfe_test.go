@@ -2487,6 +2487,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			{
 				ID:   12345,
 				Type: "dns",
+				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
 		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
@@ -2510,4 +2511,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/12345")
 	test.AssertEquals(t, chal.URI, "")
+	// We also expect the ProvidedKeyAuthorization is not echoed back in the
+	// challenge
+	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 }

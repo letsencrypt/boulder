@@ -1401,7 +1401,11 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 }
 
 // UpdateAuthorization updates an authorization with new values.
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, base core.Authorization, challengeIndex int, response core.Challenge) (core.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
+	ctx context.Context,
+	base core.Authorization,
+	challengeIndex int,
+	response core.Challenge) (core.Authorization, error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
 		return core.Authorization{}, berrors.MalformedError("expired authorization")
@@ -1413,16 +1417,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	}
 
 	ch := &authz.Challenges[challengeIndex]
-
-	if response.Type != "" && ch.Type != response.Type {
-		// TODO(riking): Check the rate on this, uncomment error return if negligible
-		ra.stats.Inc("StartChallengeWrongType", 1)
-		// return authz, berrors.MalformedError(
-		// 	"invalid challenge update: provided type was %s but actual type is %s",
-		// 	response.Type,
-		// 	ch.Type,
-		// )
-	}
 
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
 	// (previous certificate existed) or not. If it is a revalidation, we can
@@ -1457,18 +1451,30 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return core.Authorization{}, berrors.InternalServerError(err.Error())
 	}
 
-	// Recompute the key authorization field provided by the client and
-	// check it against the value provided
+	// Compute the key authorization field based on the registration key
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return core.Authorization{}, berrors.InternalServerError("could not compute expected key authorization value")
 	}
-	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
+
+	// NOTE(@cpu): Historically challenge update required the client to send
+	// a JSON POST body that included a computed KeyAuthorization. The RA would
+	// check this provided authorization against its own computation of the key
+	// authorization and err if they did not match. New ACME specification does
+	// not require this - the client does not need to send the key authorization.
+	// To support this for ACMEv2 we only enforce the provided key authorization
+	// matches expected if the update included it.
+	if response.ProvidedKeyAuthorization != "" && expectedKeyAuthorization != response.ProvidedKeyAuthorization {
 		return core.Authorization{}, berrors.MalformedError("provided key authorization was incorrect")
 	}
 
-	// Copy information over that the client is allowed to supply
-	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
+	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
+	// expected vs actual without needing the registration key. Historically this
+	// was done with the value from the challenge response and so the field name
+	// is called "ProvidedKeyAuthorization", in reality this is just
+	// "ComputedKeyAuthorization".
+	// TODO(@cpu): Rename ProvidedKeyAuthorization to ComputedKeyAuthorization
+	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	// Double check before sending to VA
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
