@@ -847,6 +847,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	challenge.URI = ""
 	challenge.ID = 0
 
+	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
+	challenge.ProvidedKeyAuthorization = ""
+
 	// Historically the Type field of a problem was always prefixed with a static
 	// error namespace. To support the V2 API and migrating to the correct IETF
 	// namespace we now prefix the Type with the correct namespace at runtime when
@@ -921,14 +924,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Account when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require an account update.
-	if currAcct.Agreement == "" {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Account must agree to subscriber agreement before any further actions"), nil)
-		return
-	}
 
 	// Check that the account ID matching the key used matches
 	// the account ID on the authz object
@@ -941,14 +936,21 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	var challengeUpdate core.Challenge
+	// NOTE(@cpu): Historically a challenge update needed to include
+	// a KeyAuthorization field. This is no longer the case, since both sides can
+	// calculate the key authorization as needed. We unmarshal here only to check
+	// that the POST body is valid JSON. Any data/fields included are ignored to
+	// be kind to ACMEv2 implementations that still send a key authorization.
+	var challengeUpdate struct{}
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
 	}
 
-	// Ask the RA to update this authorization
-	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
+	// Ask the RA to update this authorization. Send an empty `core.Challenge{}`
+	// as the challenge update because we do not care about the KeyAuthorization
+	// (if any) sent in the challengeUpdate.
+	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 		return

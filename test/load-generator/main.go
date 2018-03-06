@@ -21,21 +21,22 @@ type Config struct {
 		RateDelta string   // requests / s^2
 		Runtime   string   // how long to run for
 	}
-	ExternalState string // path to file to load/save registrations etc to/from
-	DontSaveState bool   // don't save changes to external state
-	APIBase       string // ACME API address to send requests to
-	DomainBase    string // base domain name to create authorizations for
-	HTTPOneAddr   string // address to listen for http-01 validation requests on
-	TLSOneAddr    string // address to listen for tls-sni-01 validation requests on
-	RealIP        string // value of the Real-IP header to use when bypassing CDN
-	CertKeySize   int    // size of the key to use when creating CSRs
-	RegEmail      string // email to use in registrations
-	Results       string // path to save metrics to
-	MaxRegs       int    // maximum number of registrations to create
+	ExternalState   string // path to file to load/save registrations etc to/from
+	DontSaveState   bool   // don't save changes to external state
+	APIBase         string // ACME API address to send requests to
+	DomainBase      string // base domain name to create authorizations for
+	HTTPOneAddr     string // address to listen for http-01 validation requests on
+	TLSOneAddr      string // address to listen for tls-sni-01 validation requests on
+	RealIP          string // value of the Real-IP header to use when bypassing CDN
+	CertKeySize     int    // size of the key to use when creating CSRs
+	RegEmail        string // email to use in registrations
+	Results         string // path to save metrics to
+	MaxRegs         int    // maximum number of registrations to create
+	MaxNamesPerCert int    // maximum number of names on one certificate/order
 }
 
 func main() {
-	configPath := flag.String("config", "", "Path to configuration file for WFE load-generator")
+	configPath := flag.String("config", "", "Path to configuration file for load-generator")
 	resultsPath := flag.String("results", "", "Path to latency results file")
 	rateArg := flag.Int("rate", 0, "")
 	runtimeArg := flag.String("runtime", "", "")
@@ -44,13 +45,13 @@ func main() {
 
 	configBytes, err := ioutil.ReadFile(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read wfe config file %q: %s\n", *configPath, err)
+		fmt.Fprintf(os.Stderr, "Failed to read load-generator config file %q: %s\n", *configPath, err)
 		os.Exit(1)
 	}
 	var config Config
 	err = json.Unmarshal(configBytes, &config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse wfe config file: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to parse load-generator config file: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -73,11 +74,12 @@ func main() {
 		config.DomainBase,
 		config.RealIP,
 		config.MaxRegs,
+		config.MaxNamesPerCert,
 		config.Results,
 		config.RegEmail,
 		config.Plan.Actions,
 	)
-	cmd.FailOnError(err, "Failed to create WFE generator")
+	cmd.FailOnError(err, "Failed to create load generator")
 
 	if config.ExternalState != "" {
 		err = s.Restore(config.ExternalState)
@@ -106,7 +108,7 @@ func main() {
 		Rate:    config.Plan.Rate,
 		Delta:   delta,
 	})
-	cmd.FailOnError(err, "Failed to run WFE load generator")
+	cmd.FailOnError(err, "Failed to run load generator")
 
 	if config.ExternalState != "" && !config.DontSaveState {
 		err = s.Snapshot(config.ExternalState)
