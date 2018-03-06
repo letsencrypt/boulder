@@ -941,7 +941,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// calculate the key authorization as needed. We unmarshal here only to check
 	// that the POST body is valid JSON. Any data/fields included are ignored to
 	// be kind to ACMEv2 implementations that still send a key authorization.
-	var challengeUpdate interface{}
+	var challengeUpdate struct{}
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 		return
