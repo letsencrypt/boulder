@@ -1418,6 +1418,16 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 
 	ch := &authz.Challenges[challengeIndex]
 
+	if response.Type != "" && ch.Type != response.Type {
+		// TODO(riking): Check the rate on this, uncomment error return if negligible
+		ra.stats.Inc("StartChallengeWrongType", 1)
+		// return authz, berrors.MalformedError(
+		// 	"invalid challenge update: provided type was %s but actual type is %s",
+		// 	response.Type,
+		// 	ch.Type,
+		// )
+	}
+
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
 	// (previous certificate existed) or not. If it is a revalidation, we can
 	// proceed with validation even though the challenge type is currently
@@ -1472,8 +1482,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 	// expected vs actual without needing the registration key. Historically this
 	// was done with the value from the challenge response and so the field name
 	// is called "ProvidedKeyAuthorization", in reality this is just
-	// "ComputedKeyAuthorization".
-	// TODO(@cpu): Rename ProvidedKeyAuthorization to ComputedKeyAuthorization
+	// "KeyAuthorization".
+	// TODO(@cpu): Rename ProvidedKeyAuthorization to KeyAuthorization
 	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	// Double check before sending to VA
