@@ -586,9 +586,8 @@ type Order struct {
 	Status            AcmeStatus
 }
 
-// SCTDER is a convenience type that helps differentiate what the
-// underlying byte slice contains
-type SCTDER []byte
+// SCTDER is a convenience type
+type SCTDERs [][]byte
 
 // CertDER is a convenience type that helps differentiate what the
 // underlying byte slice contains

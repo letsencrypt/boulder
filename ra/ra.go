@@ -1060,6 +1060,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		}
 		scts, err := ra.getSCTs(ctx, precert.DER)
 		if err != nil {
+			logEvent.Error = err.Error()
 			return emptyCert, err
 		}
 		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
@@ -1069,6 +1070,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 			OrderID:        &orderIDInt,
 		})
 		if err != nil {
+			logEvent.Error = err.Error()
 			return emptyCert, err
 		}
 	} else {
@@ -1110,7 +1112,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	return cert, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) ([][]byte, error) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) (core.SCTDERs, error) {
 	started := ra.clk.Now()
 	scts, err := ra.ctpolicy.GetSCTs(ctx, cert)
 	took := ra.clk.Since(started)
