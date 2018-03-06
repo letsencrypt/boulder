@@ -985,45 +985,6 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 	return
 }
 
-// CountPendingOrders returns the number of pending, unexpired
-// orders for the given registration.
-// **DEPRECATED**
-func (ssa *SQLStorageAuthority) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
-	var count int
-
-	// Find all of the unexpired order IDs for the given account
-	var orderIDs []int64
-	_, err := ssa.dbMap.Select(&orderIDs,
-		`SELECT ID FROM orders
-		WHERE registrationID = :regID AND
-		expires > :now`,
-		map[string]interface{}{
-			"regID": regID,
-			"now":   ssa.clk.Now(),
-		})
-	if err != nil {
-		return 0, err
-	}
-
-	// Iterate the order IDs, fetching the full order & associated authorizations
-	// for each
-	// TODO(@cpu): This is not performant and we should optimize:
-	//  https://github.com/letsencrypt/boulder/issues/3410
-	for _, orderID := range orderIDs {
-		order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
-		if err != nil {
-			return 0, err
-		}
-
-		// If the order is pending, increment the pending count
-		if *order.Status == string(core.StatusPending) {
-			count++
-		}
-	}
-
-	return count, nil
-}
-
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
 	var count int
 	err := ssa.dbMap.SelectOne(&count,
