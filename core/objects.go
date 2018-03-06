@@ -239,8 +239,8 @@ type Challenge struct {
 	// the RA prior to passing the challenge to the VA. For legacy reasons this
 	// field is called "ProvidedKeyAuthorization" because it was initially set by
 	// the content of the challenge update POST from the client. It is no longer
-	// set that way and should be renamed to "ExpectedKeyAuthorization".
-	// TODO(@cpu): Rename `ProvidedKeyAuthorization` to `ExpectedKeyAuthorization`.
+	// set that way and should be renamed to "KeyAuthorization".
+	// TODO(@cpu): Rename `ProvidedKeyAuthorization` to `KeyAuthorization`.
 	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
