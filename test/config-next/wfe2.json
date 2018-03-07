@@ -32,9 +32,7 @@
       "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
-    "features": {
-      "EnforceV2ContentType": true
-    }
+    "features": {}
   },
 
   "syslog": {
