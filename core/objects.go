@@ -233,14 +233,14 @@ type Challenge struct {
 	URL string `json:"url,omitempty"`
 
 	// Used by http-01, tls-sni-01, and dns-01 challenges
-	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
+	Token string `json:"token,omitempty"`
 
-	// The KeyAuthorization provided by the client to start validation of
-	// the challenge. Set during
-	//
-	//   POST /acme/authz/:authzid/:challid
-	//
-	// Used by http-01, tls-sni-01, and dns-01 challenges
+	// The expected KeyAuthorization for validation of the challenge. Populated by
+	// the RA prior to passing the challenge to the VA. For legacy reasons this
+	// field is called "ProvidedKeyAuthorization" because it was initially set by
+	// the content of the challenge update POST from the client. It is no longer
+	// set that way and should be renamed to "KeyAuthorization".
+	// TODO(@cpu): Rename `ProvidedKeyAuthorization` to `KeyAuthorization`.
 	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
