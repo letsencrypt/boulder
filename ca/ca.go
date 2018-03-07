@@ -101,24 +101,12 @@ type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 }
 
-type certificateType int
+type certificateType string
 
 const (
-	precertificate = certificateType(1)
-	certificate    = certificateType(2)
+	precertificate = certificateType("precertificate")
+	certificate    = certificateType("certificate")
 )
-
-func (ct certificateType) String() string {
-	switch ct {
-	case precertificate:
-		return "precertificate"
-	case certificate:
-		return "certificate"
-	default:
-		// Or just panic?
-		return "unknown"
-	}
-}
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
@@ -625,7 +613,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return nil, err
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": certType.String()}).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType)}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
