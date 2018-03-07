@@ -439,6 +439,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			features.Set(map[string]bool{
 				"EnforceV2ContentType": tc.EnforceContentType,
 			})
+			defer features.Reset()
 			prob := wfe.validPOSTRequest(input)
 			test.Assert(t, prob != nil, "No error returned for invalid POST")
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
