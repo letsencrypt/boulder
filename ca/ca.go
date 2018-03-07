@@ -454,10 +454,6 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, berrors.InternalServerError("Precertificate flow is disabled")
 	}
 
-	if issueReq.RegistrationID == nil {
-		return nil, berrors.InternalServerError("RegistrationID is nil")
-	}
-
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
@@ -495,11 +491,20 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		}
 		scts = append(scts, sct)
 	}
-	cert, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
+	certPEM, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
 	if err != nil {
 		return emptyCert, err
 	}
-	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, cert)
+	serialHex := core.SerialToString(precert.SerialNumber)
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = berrors.InternalServerError("invalid certificate value returned")
+		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
+		return emptyCert, err
+	}
+	certDER := block.Bytes
+	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
 type validity struct {

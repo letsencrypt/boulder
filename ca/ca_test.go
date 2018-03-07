@@ -14,7 +14,11 @@ import (
 
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
+	"github.com/cloudflare/cfssl/signer"
+	"github.com/google/certificate-transparency-go"
+	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/net/context"
 
@@ -23,12 +27,12 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -886,4 +890,69 @@ func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.
 
 func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
 	return test.CountCounterVec("purpose", signatureType, signatureCount)
+}
+
+func TestIssueCertificateForPrecertificate(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger)
+	test.AssertNotError(t, err, "Failed to create CA")
+	ca.enablePrecertificateFlow = true
+	_ = features.Set(map[string]bool{"EmbedSCTs": true})
+	defer features.Reset()
+
+	orderID := int64(0)
+	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID, OrderID: &orderID}
+	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue precert")
+	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	test.AssertNotError(t, err, "Failed to parse precert")
+
+	// Check for poison extension
+	poisoned := false
+	for _, ext := range parsedPrecert.Extensions {
+		if ext.Id.Equal(signer.CTPoisonOID) && ext.Critical {
+			poisoned = true
+		}
+	}
+	test.Assert(t, poisoned, "returned precert not poisoned")
+
+	sct := ct.SignedCertificateTimestamp{
+		SCTVersion: 0,
+		Timestamp:  2020,
+		Signature: ct.DigitallySigned{
+			Signature: []byte{0},
+		},
+	}
+	sctBytes, err := cttls.Marshal(sct)
+	test.AssertNotError(t, err, "Failed to marshal SCT")
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+		DER:            precert.DER,
+		SCTs:           [][]byte{sctBytes},
+		RegistrationID: &arbitraryRegID,
+		OrderID:        new(int64),
+	})
+	test.AssertNotError(t, err, "Failed to issue cert from precert")
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	test.AssertNotError(t, err, "Failed to parse cert")
+
+	// Check for SCT list extension
+	list := false
+	for _, ext := range parsedCert.Extensions {
+		if ext.Id.Equal(signer.SCTListOID) && !ext.Critical {
+			list = true
+			sctList, err := helpers.DeserializeSCTList(ext.Value)
+			test.AssertNotError(t, err, "Failed to deserialize SCT list")
+			test.Assert(t, len(*sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(*sctList)))
+		}
+	}
+	test.Assert(t, list, "returned cert doesn't contain SCT list")
 }
