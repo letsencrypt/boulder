@@ -104,8 +104,8 @@ type certificateStorage interface {
 type certificateType string
 
 const (
-	precertificate = certificateType("precertificate")
-	certificate    = certificateType("certificate")
+	precertType = certificateType("precertificate")
+	certType    = certificateType("certificate")
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -441,7 +441,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, certificate)
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, certType)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -459,7 +459,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, precertificate)
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, precertType)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +504,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return emptyCert, err
 	}
 	certDER := block.Bytes
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
+		hex.EncodeToString(certDER)))
 	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
@@ -598,7 +601,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		NotAfter:   validity.NotAfter,
 	}
 
-	if certType == precertificate {
+	if certType == precertType {
 		req.ReturnPrecert = true
 	}
 
