@@ -436,7 +436,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Header: tc.Headers,
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			features.Set(map[string]bool{
+			_ = features.Set(map[string]bool{
 				"EnforceV2ContentType": tc.EnforceContentType,
 			})
 			defer features.Reset()
