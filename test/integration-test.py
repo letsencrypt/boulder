@@ -12,6 +12,7 @@ import requests
 import shutil
 import subprocess
 import signal
+import struct
 import sys
 import tempfile
 import time
@@ -24,6 +25,9 @@ from chisel import auth_and_issue
 
 import requests
 import OpenSSL
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 class ProcInfo:
     """
@@ -460,6 +464,33 @@ def test_stats():
     expect_stat(8002, '\ngrpc_client_handling_seconds_count{grpc_method="UpdatePendingAuthorization",grpc_service="sa.StorageAuthority",grpc_type="unary"} ')
     expect_stat(8001, "\ngo_goroutines ")
 
+def test_sct_embedding():
+    certr, authzs = auth_and_issue([random_domain()])
+    certBytes = urllib2.urlopen(certr.uri).read()
+    cert = x509.load_der_x509_certificate(certBytes, default_backend())
+
+    # make sure there is no poison extension
+    try:
+        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
+        raise Exception("certificate contains CT poison extension")
+    except x509.ExtensionNotFound:
+        # do nothing
+        print("no poison extension")
+
+    # make sure there is a SCT list extension
+    try:
+        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
+    except x509.ExtensionNotFound:
+        raise Exception("certificate doesn't contain SCT list extension")
+    if len(sctList.value) != 2:
+        raise Exception("SCT list contains wrong number of SCTs")
+    for sct in sctList.value:
+        print("Sct is", sct.log_id, sct.entry_type)
+        if sct.version != x509.certificate_transparency.Version.v1:
+            raise Exception("SCT contains wrong version")
+        if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
+            raise Exception("SCT contains wrong entry type")
+
 exit_status = 1
 tempdir = tempfile.mkdtemp()
 
@@ -530,6 +561,8 @@ def run_chisel():
     test_expired_authzs_404()
     test_account_update()
     test_stats()
+    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        test_sct_embedding()
 
 def run_loadtest():
     # Run the load generator

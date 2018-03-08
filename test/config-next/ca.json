@@ -42,6 +42,7 @@
     "doNotForceCN": true,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "enablePrecertificateFlow": true,
     "cfssl": {
       "signing": {
         "profiles": {
