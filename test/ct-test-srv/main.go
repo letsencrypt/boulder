@@ -26,23 +26,34 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
+func createSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []byte {
 	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	pkHash := sha256.Sum256(rawKey)
 	sct := ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
 		LogID:      ct.LogID{KeyID: pkHash},
-		Timestamp:  1337,
+		Timestamp:  uint64(time.Now().Unix()),
 	}
-	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
-		Leaf: ct.MerkleTreeLeaf{
-			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: &ct.TimestampedEntry{
-				X509Entry: &ct.ASN1Cert{Data: leaf},
-				EntryType: ct.X509LogEntryType,
-			},
-		},
-	})
+
+	chain := make([]ct.ASN1Cert, len(req))
+	for i, str := range req {
+		b, err := base64.StdEncoding.DecodeString(str)
+		if err != nil {
+			panic("cannot decode chain")
+		}
+		chain[i] = ct.ASN1Cert{Data: b}
+	}
+
+	etype := ct.X509LogEntryType
+	if precert {
+		etype = ct.PrecertLogEntryType
+	}
+	leaf, err := ct.MerkleTreeLeafFromRawChain(chain, etype, sct.Timestamp)
+	if err != nil {
+		panic("failed to create leaf")
+	}
+
+	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{Leaf: *leaf})
 	hashed := sha256.Sum256(serialized)
 	var ecdsaSig struct {
 		R, S *big.Int
@@ -67,7 +78,7 @@ func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
 	}
 	jsonSCTObj.SCTVersion = ct.V1
 	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(pkHash[:])
-	jsonSCTObj.Timestamp = 1337
+	jsonSCTObj.Timestamp = sct.Timestamp
 	jsonSCTObj.Signature, _ = ds.Base64String()
 
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
@@ -88,6 +99,8 @@ type integrationSrv struct {
 
 func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
+	case "/ct/v1/add-pre-chain":
+		fallthrough
 	case "/ct/v1/add-chain":
 		if r.Method != "POST" {
 			http.NotFound(w, r)
@@ -117,14 +130,13 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		leaf, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
-		if err != nil {
-			w.WriteHeader(400)
-			return
+		precert := false
+		if r.URL.Path == "/ct/v1/add-pre-chain" {
+			precert = true
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write(createSignedSCT(leaf, is.key))
+		w.Write(createSignedSCT(addChainReq.Chain, is.key, precert))
 	case "/submissions":
 		if r.Method != "GET" {
 			http.NotFound(w, r)

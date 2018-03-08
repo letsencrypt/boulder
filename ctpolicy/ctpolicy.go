@@ -51,12 +51,14 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 		subCtx, cancel = ctx, func() {}
 	}
 	defer cancel()
+	isPrecert := features.Enabled(features.EmbedSCTs)
 	for _, l := range group.Logs {
 		go func(l cmd.LogDescription) {
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
+				Precert:      &isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of canceling subCtx
