@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
@@ -10,10 +11,11 @@ import (
 	"sync"
 	"time"
 
-	ct "github.com/google/certificate-transparency-go"
+	"github.com/google/certificate-transparency-go"
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	"github.com/google/certificate-transparency-go/tls"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
@@ -216,9 +218,15 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
+	isPrecert := false
+	if req.Precert != nil && *req.Precert {
+		isPrecert = true
+	}
+
 	sct, err := pub.singleLogSubmit(
 		ctx,
 		chain,
+		isPrecert,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
@@ -259,11 +267,18 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
+	isPrecert bool,
 	serial string,
-	ctLog *Log) (*ct.SignedCertificateTimestamp, error) {
+	ctLog *Log,
+) (*ct.SignedCertificateTimestamp, error) {
+	var submissionMethod func(context.Context, []ct.ASN1Cert) (*ct.SignedCertificateTimestamp, error)
+	submissionMethod = ctLog.client.AddChain
+	if isPrecert {
+		submissionMethod = ctLog.client.AddPreChain
+	}
 
 	start := time.Now()
-	sct, err := ctLog.client.AddChain(ctx, chain)
+	sct, err := submissionMethod(ctx, chain)
 	took := time.Since(start).Seconds()
 	if err != nil {
 		status := "error"
@@ -281,15 +296,30 @@ func (pub *Impl) singleLogSubmit(
 		"status": "success",
 	}).Observe(took)
 
-	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
-		Leaf: ct.MerkleTreeLeaf{
-			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: &ct.TimestampedEntry{
-				X509Entry: &chain[0],
-				EntryType: ct.X509LogEntryType,
+	input := ct.LogEntry{Leaf: ct.MerkleTreeLeaf{LeafType: ct.TimestampedEntryLeafType}}
+	if isPrecert {
+		tbsCert, err := ctx509.BuildPrecertTBS(chain[0].Data, nil)
+		if err != nil {
+			return nil, err
+		}
+		issuer, err := x509.ParseCertificate(chain[1].Data)
+		if err != nil {
+			return nil, err
+		}
+		input.Leaf.TimestampedEntry = &ct.TimestampedEntry{
+			PrecertEntry: &ct.PreCert{
+				IssuerKeyHash:  sha256.Sum256(issuer.RawSubjectPublicKeyInfo),
+				TBSCertificate: tbsCert,
 			},
-		},
-	})
+			EntryType: ct.PrecertLogEntryType,
+		}
+	} else {
+		input.Leaf.TimestampedEntry = &ct.TimestampedEntry{
+			X509Entry: &chain[0],
+			EntryType: ct.X509LogEntryType,
+		}
+	}
+	err = ctLog.verifier.VerifySCTSignature(*sct, input)
 	if err != nil {
 		return nil, err
 	}
