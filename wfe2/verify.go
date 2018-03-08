@@ -374,7 +374,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
-	prefix := wfe.relativeEndpoint(request, acctPath)
+	prefix := web.RelativeEndpoint(request, acctPath)
 	accountIDStr := strings.TrimPrefix(accountURL, prefix)
 	// Convert the account ID string to an int64 for use with the SA's
 	// GetRegistration RPC
