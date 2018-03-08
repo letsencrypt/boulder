@@ -717,11 +717,11 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		invalidRecord, andMore, challengeSubdomain))
 }
 
-// validateChallengeAndCAA performs a challenge validation and CAA validation
-// for the provided identifier and a corresponding challenge. If the validation
-// or CAA lookup fail a problem is returned along with the validation records
-// created during the validation attempt.
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
+// validateChallengeAndIdentifier performs a challenge validation and, in parallel,
+// checks CAA and GSB for the identifier. If any of those steps fails, it
+// returns a ProblemDetails plus the validation records created during the
+// validation attempt.
+func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
 	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -859,7 +859,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndCAA(
+	records, prob := va.validateChallengeAndIdentifier(
 		ctx,
 		core.AcmeIdentifier{Type: "dns", Value: domain},
 		challenge)
