@@ -758,7 +758,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 		return validationRecords, err
 	}
 
-	for i := 0; i < len(ch); i++ {
+	for i := 0; i < cap(ch); i++ {
 		extraProblem := <-ch
 		if extraProblem != nil {
 			return validationRecords, extraProblem
