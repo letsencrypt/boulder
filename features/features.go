@@ -20,6 +20,8 @@ const (
 	AllowRenewalFirstRL
 	// Allow issuance of wildcard domains for ACMEv2
 	WildcardDomains
+	// Ensure the JSON status of a challenge is the same as its authorization
+	ForceConsistentStatus
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
@@ -36,6 +38,7 @@ var features = map[FeatureFlag]bool{
 	IPv6First:               false,
 	AllowRenewalFirstRL:     false,
 	WildcardDomains:         false,
+	ForceConsistentStatus:   false,
 	EnforceChallengeDisable: false, // deprecated
 	TLSSNIRevalidation:      false,
 	CancelCTSubmissions:     true,

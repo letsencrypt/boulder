@@ -1010,6 +1010,10 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
 		challenge.Error.Type = probs.V1ErrorNS + challenge.Error.Type
 	}
+
+	if features.Enabled(features.ForceConsistentStatus) {
+		challenge.Status = authz.Status
+	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
