@@ -157,19 +157,21 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
 
 	mux := http.NewServeMux()
-	// Register each of the available pprof handlers. These are all registered on
+	// Register the available pprof handlers. These are all registered on
 	// DefaultServeMux just by importing pprof, but since we eschew
 	// DefaultServeMux, we need to explicitly register them on our own mux.
-	reg := func(name string) {
-		mux.Handle("/debug/pprof/"+name, pprof.Handler(name))
-	}
-	reg("block")
-	reg("goroutine")
-	reg("heap")
-	reg("mutex")
-	reg("profile")
-	reg("threadcreate")
-	reg("trace")
+	mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+	mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	// These handlers are defined in runtime/pprof instead of net/http/pprof, and
+	// have to be accessed through net/http/pprof's Handler func.
+	mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
+	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+	mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
 	mux.Handle("/debug/vars", expvar.Handler())
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: promLogger{logger},

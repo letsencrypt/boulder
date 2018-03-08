@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -364,12 +365,13 @@ func TestValidPOSTRequest(t *testing.T) {
 	dummyContentLength := []string{"pretty long, idk, maybe a nibble or two?"}
 
 	testCases := []struct {
-		Name          string
-		Headers       map[string][]string
-		Body          *string
-		HTTPStatus    int
-		ProblemDetail string
-		ErrorStatType string
+		Name               string
+		Headers            map[string][]string
+		Body               *string
+		HTTPStatus         int
+		ProblemDetail      string
+		ErrorStatType      string
+		EnforceContentType bool
 	}{
 		// POST requests without a Content-Length should produce a problem
 		{
@@ -400,6 +402,31 @@ func TestValidPOSTRequest(t *testing.T) {
 			ProblemDetail: "No body on POST",
 			ErrorStatType: "NoPOSTBody",
 		},
+		{
+			Name: "POST without a Content-Type header",
+			Headers: map[string][]string{
+				"Content-Length": dummyContentLength,
+			},
+			HTTPStatus: http.StatusUnsupportedMediaType,
+			ProblemDetail: fmt.Sprintf(
+				"No Content-Type header on POST. Content-Type must be %q",
+				expectedJWSContentType),
+			ErrorStatType:      "NoContentType",
+			EnforceContentType: true,
+		},
+		{
+			Name: "POST with an invalid Content-Type header",
+			Headers: map[string][]string{
+				"Content-Length": dummyContentLength,
+				"Content-Type":   []string{"fresh.and.rare"},
+			},
+			HTTPStatus: http.StatusUnsupportedMediaType,
+			ProblemDetail: fmt.Sprintf(
+				"Invalid Content-Type header on POST. Content-Type must be %q",
+				expectedJWSContentType),
+			ErrorStatType:      "WrongContentType",
+			EnforceContentType: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -409,6 +436,10 @@ func TestValidPOSTRequest(t *testing.T) {
 			Header: tc.Headers,
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			_ = features.Set(map[string]bool{
+				"EnforceV2ContentType": tc.EnforceContentType,
+			})
+			defer features.Reset()
 			prob := wfe.validPOSTRequest(input)
 			test.Assert(t, prob != nil, "No error returned for invalid POST")
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)

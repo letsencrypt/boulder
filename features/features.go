@@ -26,6 +26,9 @@ const (
 	TLSSNIRevalidation
 	CancelCTSubmissions
 	VAChecksGSB
+	// Return errors to ACMEv2 clients that do not send the correct JWS
+	// Content-Type header
+	EnforceV2ContentType
 )
 
 // List of features and their default value, protected by fMu
@@ -41,6 +44,7 @@ var features = map[FeatureFlag]bool{
 	TLSSNIRevalidation:      false,
 	CancelCTSubmissions:     true,
 	VAChecksGSB:             false,
+	EnforceV2ContentType:    false,
 }
 
 var fMu = new(sync.RWMutex)
