@@ -20,11 +20,17 @@ const (
 	AllowRenewalFirstRL
 	// Allow issuance of wildcard domains for ACMEv2
 	WildcardDomains
+	// Copy authz status to challenge status
+	ForceConsistentStatus
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	CancelCTSubmissions
+	VAChecksGSB
+	// Return errors to ACMEv2 clients that do not send the correct JWS
+	// Content-Type header
+	EnforceV2ContentType
 )
 
 // List of features and their default value, protected by fMu
@@ -39,6 +45,9 @@ var features = map[FeatureFlag]bool{
 	EnforceChallengeDisable: false, // deprecated
 	TLSSNIRevalidation:      false,
 	CancelCTSubmissions:     true,
+	VAChecksGSB:             false,
+	EnforceV2ContentType:    false,
+	ForceConsistentStatus:   false,
 }
 
 var fMu = new(sync.RWMutex)
