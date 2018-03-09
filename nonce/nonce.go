@@ -129,7 +129,7 @@ func (ns *NonceService) minUsed() int64 {
 	}
 	latency := time.Since(s)
 	ns.stats.TimingDuration("LinearScan.Latency", latency)
-	ns.stats.Inc("LinearScan.Cumulative.Ns", int64(latency/time.Nanosecond))
+	ns.stats.Inc("LinearScan.Cumulative.Ns", int64(latency))
 	return min
 }
 
