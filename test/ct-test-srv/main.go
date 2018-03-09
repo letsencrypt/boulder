@@ -5,85 +5,21 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/big"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	ct "github.com/google/certificate-transparency-go"
-	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/publisher"
 )
-
-func createSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []byte {
-	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	pkHash := sha256.Sum256(rawKey)
-	sct := ct.SignedCertificateTimestamp{
-		SCTVersion: ct.V1,
-		LogID:      ct.LogID{KeyID: pkHash},
-		Timestamp:  uint64(time.Now().Unix()),
-	}
-
-	chain := make([]ct.ASN1Cert, len(req))
-	for i, str := range req {
-		b, err := base64.StdEncoding.DecodeString(str)
-		if err != nil {
-			panic("cannot decode chain")
-		}
-		chain[i] = ct.ASN1Cert{Data: b}
-	}
-
-	etype := ct.X509LogEntryType
-	if precert {
-		etype = ct.PrecertLogEntryType
-	}
-	leaf, err := ct.MerkleTreeLeafFromRawChain(chain, etype, sct.Timestamp)
-	if err != nil {
-		panic("failed to create leaf")
-	}
-
-	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{Leaf: *leaf})
-	hashed := sha256.Sum256(serialized)
-	var ecdsaSig struct {
-		R, S *big.Int
-	}
-	ecdsaSig.R, ecdsaSig.S, _ = ecdsa.Sign(rand.Reader, k, hashed[:])
-	sig, _ := asn1.Marshal(ecdsaSig)
-
-	ds := ct.DigitallySigned{
-		Algorithm: ctTLS.SignatureAndHashAlgorithm{
-			Hash:      ctTLS.SHA256,
-			Signature: ctTLS.ECDSA,
-		},
-		Signature: sig,
-	}
-
-	var jsonSCTObj struct {
-		SCTVersion ct.Version `json:"sct_version"`
-		ID         string     `json:"id"`
-		Timestamp  uint64     `json:"timestamp"`
-		Extensions string     `json:"extensions"`
-		Signature  string     `json:"signature"`
-	}
-	jsonSCTObj.SCTVersion = ct.V1
-	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(pkHash[:])
-	jsonSCTObj.Timestamp = sct.Timestamp
-	jsonSCTObj.Signature, _ = ds.Base64String()
-
-	jsonSCT, _ := json.Marshal(jsonSCTObj)
-	return jsonSCT
-}
 
 type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
@@ -136,7 +72,7 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write(createSignedSCT(addChainReq.Chain, is.key, precert))
+		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert))
 	case "/submissions":
 		if r.Method != "GET" {
 			http.NotFound(w, r)
