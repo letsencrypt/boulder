@@ -74,8 +74,10 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if maxNames > 0 && len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
+	names := make(map[string]bool, len(csr.DNSNames))
 	badNames := []string{}
 	for _, name := range csr.DNSNames {
+		names[name] = true
 		ident := core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
 			Value: name,
@@ -94,6 +96,25 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	}
 	if len(badNames) > 0 {
 		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+	}
+	if err := wildcardOverlap(names); err != nil {
+		return err
+	}
+	return nil
+}
+
+// matchesWildcard takes a map of domain names and returns an error if any of
+// them is a non-wildcard FQDN that overlaps with a wildcard domain in the map.
+func wildcardOverlap(dnsNames map[string]bool) error {
+	for name := range dnsNames {
+		if name[0] == '*' {
+			continue
+		}
+		labels := strings.Split(name, ".")
+		labels[0] = "*"
+		if dnsNames[strings.Join(labels, ".")] {
+			return fmt.Errorf("Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
+		}
 	}
 	return nil
 }

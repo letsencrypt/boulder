@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -198,5 +199,31 @@ func TestNormalizeCSR(t *testing.T) {
 		normalizeCSR(c.csr, c.forceCN)
 		test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
 		test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
+	}
+}
+
+func TestWildcardOverlap(t *testing.T) {
+	err := wildcardOverlap(map[string]bool{
+		"*.example.com": true,
+		"*.example.net": true,
+	})
+	if err != nil {
+		fmt.Errorf("Got error %q, expected none", err)
+	}
+	err = wildcardOverlap(map[string]bool{
+		"*.example.com":   true,
+		"*.example.net":   true,
+		"www.example.com": true,
+	})
+	if err == nil {
+		fmt.Errorf("Got no error, expected one")
+	}
+	err = wildcardOverlap(map[string]bool{
+		"*.foo.example.com": true,
+		"*.example.net":     true,
+		"www.example.com":   true,
+	})
+	if err == nil {
+		fmt.Errorf("Got error %q, expected none", err)
 	}
 }
