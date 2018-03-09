@@ -227,38 +227,6 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint string) string {
-	var result string
-	proto := "http"
-	host := request.Host
-
-	// If the request was received via TLS, use `https://` for the protocol
-	if request.TLS != nil {
-		proto = "https"
-	}
-
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
-	// to override our own guess.
-	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
-		proto = specifiedProto
-	}
-
-	// Default to "localhost" when no request.Host is provided. Otherwise requests
-	// with an empty `Host` produce results like `http:///acme/new-authz`
-	if request.Host == "" {
-		host = "localhost"
-	}
-
-	if wfe.BaseURL != "" {
-		result = fmt.Sprintf("%s%s", wfe.BaseURL, endpoint)
-	} else {
-		resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
-		result = resultUrl.String()
-	}
-
-	return result
-}
-
 const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]interface{}) ([]byte, error) {
@@ -266,10 +234,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	// relative-ized result
 	relativeDir := make(map[string]interface{}, len(directory))
 
-	// Copy each entry of the provided directory into the new relative map. If
-	// `wfe.BaseURL` != "", use the old behaviour and prefix each endpoint with
-	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
-	// & host.
+	// Copy each entry of the provided directory into the new relative map,
+	// prefixing it with the request protocol and host.
 	for k, v := range directory {
 		if v == randomDirKeyExplanationLink {
 			relativeDir[k] = v
@@ -278,7 +244,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		switch v := v.(type) {
 		case string:
 			// Only relative-ize top level string values, e.g. not the "meta" element
-			relativeDir[k] = wfe.relativeEndpoint(request, v)
+			relativeDir[k] = web.RelativeEndpoint(request, v)
 		default:
 			// If it isn't a string, put it into the results unmodified
 			relativeDir[k] = v
@@ -593,7 +559,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 	}
 
 	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
-		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
+		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 		return
@@ -634,10 +600,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID))
+	regURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID))
 
 	response.Header().Add("Location", regURL)
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
+	response.Header().Add("Link", link(web.RelativeEndpoint(request, newAuthzPath), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -684,11 +650,11 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	logEvent.Extra["AuthzID"] = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	response.Header().Add("Location", authzURL)
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
+	response.Header().Add("Link", link(web.RelativeEndpoint(request, newCertPath), "next"))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, authz)
 	if err != nil {
@@ -910,7 +876,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 		return
 	}
 	serial := parsedCertificate.SerialNumber
-	certURL := wfe.relativeEndpoint(request, certPath+core.SerialToString(serial))
+	certURL := web.RelativeEndpoint(request, certPath+core.SerialToString(serial))
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
@@ -920,7 +886,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 			return
 		}
 	} else {
-		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
 		response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	}
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -998,7 +964,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 // the client by filling in its URI field and clearing its ID field.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URI to be relative to the HTTP request Host
-	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
 	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 
@@ -1037,7 +1003,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1101,7 +1067,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challenge := updatedAuthorization.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
-	authzURL := wfe.relativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1192,7 +1158,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 		return
 	}
 
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newAuthzPath), "next"))
+	response.Header().Add("Link", link(web.RelativeEndpoint(request, newAuthzPath), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -1272,7 +1238,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
-	response.Header().Add("Link", link(wfe.relativeEndpoint(request, newCertPath), "next"))
+	response.Header().Add("Link", link(web.RelativeEndpoint(request, newCertPath), "next"))
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
@@ -1322,7 +1288,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 	} else {
-		relativeIssuerPath := wfe.relativeEndpoint(request, issuerPath)
+		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
 		response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	}
 	response.WriteHeader(http.StatusOK)
@@ -1445,7 +1411,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
+	if web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
 		wfe.sendError(response, logEvent, probs.Malformed("Incorrect account URL provided in payload"), nil)
 		return
 	}

@@ -717,11 +717,11 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		invalidRecord, andMore, challengeSubdomain))
 }
 
-// validateChallengeAndCAA performs a challenge validation and CAA validation
-// for the provided identifier and a corresponding challenge. If the validation
-// or CAA lookup fail a problem is returned along with the validation records
-// created during the validation attempt.
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
+// validateChallengeAndIdentifier performs a challenge validation and, in parallel,
+// checks CAA and GSB for the identifier. If any of those steps fails, it
+// returns a ProblemDetails plus the validation records created during the
+// validation attempt.
+func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
 	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -738,9 +738,18 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
 	// we can dispatch `checkCAA` with the provided `identifier` instead of
 	// `baseIdentifier`
-	ch := make(chan *probs.ProblemDetails, 1)
+	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
 		ch <- va.checkCAA(ctx, identifier)
+	}()
+	go func() {
+		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
+			ch <- probs.Unauthorized(fmt.Sprintf(
+				"%q was considered an unsafe domain by a third-party API",
+				baseIdentifier.Value))
+		} else {
+			ch <- nil
+		}
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -749,9 +758,11 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(
 		return validationRecords, err
 	}
 
-	caaProblem := <-ch
-	if caaProblem != nil {
-		return validationRecords, caaProblem
+	for i := 0; i < cap(ch); i++ {
+		extraProblem := <-ch
+		if extraProblem != nil {
+			return validationRecords, extraProblem
+		}
 	}
 	return validationRecords, nil
 }
@@ -848,7 +859,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndCAA(
+	records, prob := va.validateChallengeAndIdentifier(
 		ctx,
 		core.AcmeIdentifier{Type: "dns", Value: domain},
 		challenge)

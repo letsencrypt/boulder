@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -451,14 +450,8 @@ func replaceRandomKey(b []byte) []byte {
 }
 
 func assertJSONEquals(t *testing.T, got, expected string) {
-	var gotMap, expectedMap map[string]interface{}
-	err := json.Unmarshal([]byte(got), &gotMap)
-	test.AssertNotError(t, err, "failed to parse received JSON")
-	err = json.Unmarshal([]byte(expected), &expectedMap)
-	test.AssertNotError(t, err, "failed to parse expected JSON")
-	if !reflect.DeepEqual(gotMap, expectedMap) {
-		t.Fatalf("JSON response differed from expected:\n Got: %s, Expected: %s", got, expected)
-	}
+	t.Helper()
+	test.AssertUnmarshaledEquals(t, got, expected)
 }
 
 func TestHandleFunc(t *testing.T) {
@@ -708,12 +701,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestDirectory(t *testing.T) {
-	// Note: using `wfe.BaseURL` to test the non-relative /directory behaviour
-	// This tests to ensure the `Host` in the following `http.Request` is not
-	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
-	// and expecting `localhost` in the JSON result.
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
@@ -722,7 +710,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -734,7 +722,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -750,7 +738,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 		Header: headers,
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
@@ -760,7 +748,6 @@ func TestDirectory(t *testing.T) {
 
 func TestRandomDirectoryKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/directory")

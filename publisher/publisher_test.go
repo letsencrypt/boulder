@@ -4,8 +4,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
@@ -23,7 +23,6 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
-	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
@@ -31,6 +30,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -134,61 +134,12 @@ func getPort(srvURL string) (int, error) {
 	return int(port), nil
 }
 
-func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) string {
-	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	pkHash := sha256.Sum256(rawKey)
-	sct := ct.SignedCertificateTimestamp{
-		SCTVersion: ct.V1,
-		LogID:      ct.LogID{KeyID: pkHash},
-		Timestamp:  1337,
-	}
-	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
-		Leaf: ct.MerkleTreeLeaf{
-			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: &ct.TimestampedEntry{
-				X509Entry: &ct.ASN1Cert{Data: leaf},
-				EntryType: ct.X509LogEntryType,
-			},
-		},
-	})
-	hashed := sha256.Sum256(serialized)
-	var ecdsaSig struct {
-		R, S *big.Int
-	}
-	ecdsaSig.R, ecdsaSig.S, _ = ecdsa.Sign(rand.Reader, k, hashed[:])
-	sig, _ := asn1.Marshal(ecdsaSig)
-
-	ds := ct.DigitallySigned{
-		Algorithm: ctTLS.SignatureAndHashAlgorithm{
-			Hash:      ctTLS.SHA256,
-			Signature: ctTLS.ECDSA,
-		},
-		Signature: sig,
-	}
-
-	var jsonSCTObj struct {
-		SCTVersion ct.Version `json:"sct_version"`
-		ID         string     `json:"id"`
-		Timestamp  uint64     `json:"timestamp"`
-		Extensions string     `json:"extensions"`
-		Signature  string     `json:"signature"`
-	}
-	jsonSCTObj.SCTVersion = ct.V1
-	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(pkHash[:])
-	jsonSCTObj.Timestamp = 1337
-	jsonSCTObj.Signature, _ = ds.Base64String()
-
-	jsonSCT, _ := json.Marshal(jsonSCTObj)
-	return string(jsonSCT)
-}
-
 type testLogSrv struct {
 	*httptest.Server
 	submissions int64
 }
 
-func logSrv(leaf []byte, k *ecdsa.PrivateKey) *testLogSrv {
-	sct := createSignedSCT(leaf, k)
+func logSrv(k *ecdsa.PrivateKey) *testLogSrv {
 	testLog := &testLogSrv{}
 	m := http.NewServeMux()
 	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
@@ -198,11 +149,13 @@ func logSrv(leaf []byte, k *ecdsa.PrivateKey) *testLogSrv {
 		if err != nil {
 			return
 		}
-		// Submissions should always contain at least one cert
-		if len(jsonReq.Chain) >= 1 {
-			fmt.Fprint(w, sct)
-			atomic.AddInt64(&testLog.submissions, 1)
+		precert := false
+		if r.URL.Path == "/ct/v1/add-pre-chain" {
+			precert = true
 		}
+		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert)
+		fmt.Fprint(w, string(sct))
+		atomic.AddInt64(&testLog.submissions, 1)
 	})
 
 	testLog.Server = httptest.NewUnstartedServer(m)
@@ -221,14 +174,20 @@ func errorLogSrv() *httptest.Server {
 	return server
 }
 
-func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) *httptest.Server {
+func retryableLogSrv(k *ecdsa.PrivateKey, retries int, after *int) *httptest.Server {
 	hits := 0
-	sct := createSignedSCT(leaf, k)
 	m := http.NewServeMux()
 	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		if hits >= retries {
+			decoder := json.NewDecoder(r.Body)
+			var jsonReq ctSubmissionRequest
+			err := decoder.Decode(&jsonReq)
+			if err != nil {
+				return
+			}
+			sct := CreateTestingSignedSCT(jsonReq.Chain, k, false)
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, sct)
+			fmt.Fprint(w, string(sct))
 		} else {
 			hits++
 			if after != nil {
@@ -286,19 +245,19 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	uri := fmt.Sprintf("http://localhost:%d/ct", port)
+	uri := fmt.Sprintf("http://localhost:%d", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), log)
 	test.AssertNotError(t, err, "Couldn't create log")
-	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d/ct", port))
+	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 
 func TestBasicSuccessful(t *testing.T) {
 	pub, leaf, k := setup(t)
 
-	server := logSrv(leaf.Raw, k)
+	server := logSrv(k)
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
@@ -319,12 +278,37 @@ func TestBasicSuccessful(t *testing.T) {
 	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+
+	// Precert
+	trueBool := true
+	rootTmpl := x509.Certificate{
+		SerialNumber:          big.NewInt(0),
+		Subject:               pkix.Name{CommonName: "root"},
+		BasicConstraintsValid: true,
+		IsCA: true,
+	}
+	rootBytes, err := x509.CreateCertificate(rand.Reader, &rootTmpl, &rootTmpl, k.Public(), k)
+	test.AssertNotError(t, err, "Failed to create test root")
+	pub.issuerBundle = []ct.ASN1Cert{ct.ASN1Cert{Data: rootBytes}}
+	root, err := x509.ParseCertificate(rootBytes)
+	test.AssertNotError(t, err, "Failed to parse test root")
+	precertTmpl := x509.Certificate{
+		SerialNumber: big.NewInt(0),
+		ExtraExtensions: []pkix.Extension{
+			{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}, Critical: true, Value: []byte{0x05, 0x00}},
+		},
+	}
+	precert, err := x509.CreateCertificate(rand.Reader, &precertTmpl, root, k.Public(), k)
+	test.AssertNotError(t, err, "Failed to create test leaf")
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
+	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
 
 func TestGoodRetry(t *testing.T) {
 	pub, leaf, k := setup(t)
 
-	server := retryableLogSrv(leaf.Raw, k, 1, nil)
+	server := retryableLogSrv(k, 1, nil)
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
@@ -360,7 +344,7 @@ func TestRetryAfter(t *testing.T) {
 	pub, leaf, k := setup(t)
 
 	retryAfter := 2
-	server := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
+	server := retryableLogSrv(k, 2, &retryAfter)
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
@@ -378,7 +362,7 @@ func TestRetryAfterContext(t *testing.T) {
 	pub, leaf, k := setup(t)
 
 	retryAfter := 2
-	server := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
+	server := retryableLogSrv(k, 2, &retryAfter)
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
@@ -397,9 +381,9 @@ func TestRetryAfterContext(t *testing.T) {
 func TestMultiLog(t *testing.T) {
 	pub, leaf, k := setup(t)
 
-	srvA := logSrv(leaf.Raw, k)
+	srvA := logSrv(k)
 	defer srvA.Close()
-	srvB := logSrv(leaf.Raw, k)
+	srvB := logSrv(k)
 	defer srvB.Close()
 	portA, err := getPort(srvA.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
@@ -483,13 +467,13 @@ func TestSubmitToCTParallel(t *testing.T) {
 
 	// Create a server that will timeout on submission
 	retryAfter := 2
-	srvA := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
+	srvA := retryableLogSrv(k, 2, &retryAfter)
 	defer srvA.Close()
 
 	// Create a server that will instantly accept a submission
 	k2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
-	srvB := logSrv(leaf.Raw, k2)
+	srvB := logSrv(k2)
 	defer srvB.Close()
 
 	portA, err := getPort(srvA.URL)

@@ -27,6 +27,7 @@
       "ServerURL": "http://boulder:6000"
     },
     "features": {
+      "VAChecksGSB": true,
       "IPv6First": true
     },
     "remoteVAs": [
