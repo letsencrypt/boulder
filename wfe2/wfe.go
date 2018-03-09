@@ -833,7 +833,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
 	}
 
-	if features.Enabled(features.ForceConsistentStatus) {
+	// If the authz has been marked invalid, consider all challenges on that authz
+	// to be invalid as well.
+	if features.Enabled(features.ForceConsistentStatus) && authz.Status == core.StatusInvalid {
 		challenge.Status = authz.Status
 	}
 }
