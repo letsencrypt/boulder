@@ -960,19 +960,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 type accountID int64
 type orderID int64
 
-// issueCertificate handles the common aspects of certificate issuance used by
-// both the "classic" NewCertificate endpoint (for ACME v1) and the
-// FinalizeOrder endpoint (for ACME v2).
+// issueCertificate sets up a log event structure and captures any errors
+// encountered during issuance, then calls issueCertificateInner.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
 	req core.CertificateRequest,
 	acctID accountID,
 	oID orderID) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-
-	// Assume the worst
-	logEventResult := "error"
-
 	// Construct the log event
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
@@ -980,12 +974,28 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		Requester:   int64(acctID),
 		RequestTime: ra.clk.Now(),
 	}
+	var result string
+	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, &logEvent)
+	if err != nil {
+		logEvent.Error = err.Error()
+		result = "error"
+	} else {
+		result = "successful"
+	}
+	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+	return cert, err
+}
 
-	// No matter what, log the request
-	defer func() {
-		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
-	}()
-
+// issueCertificateInner handles the common aspects of certificate issuance used by
+// both the "classic" NewCertificate endpoint (for ACME v1) and the
+// FinalizeOrder endpoint (for ACME v2).
+func (ra *RegistrationAuthorityImpl) issueCertificateInner(
+	ctx context.Context,
+	req core.CertificateRequest,
+	acctID accountID,
+	oID orderID,
+	logEvent *certificateRequestEvent) (core.Certificate, error) {
+	emptyCert := core.Certificate{}
 	if acctID <= 0 {
 		return emptyCert, berrors.MalformedError("invalid account ID: %d", acctID)
 	}
@@ -998,7 +1008,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	account, err := ra.SA.GetRegistration(ctx, int64(acctID))
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1011,8 +1020,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	copy(names, csr.DNSNames)
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
-		err = berrors.MalformedError("certificate public key must be different than account key")
-		return emptyCert, err
+		return emptyCert, berrors.MalformedError("certificate public key must be different than account key")
 	}
 
 	// Check rate limits before checking authorizations. If someone is unable to
@@ -1020,7 +1028,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	// necessary authorizations, only to later fail the rate limit check.
 	err = ra.checkLimits(ctx, names, account.ID)
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1035,7 +1042,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1052,7 +1058,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	}
 	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1069,14 +1074,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
-		err = berrors.InternalServerError("failed to parse certificate: %s", err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCert, berrors.InternalServerError("failed to parse certificate: %s", err.Error())
 	}
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1086,8 +1088,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
 	logEvent.ResponseTime = now
-
-	logEventResult = "successful"
 
 	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("NewCertificates", 1)
@@ -1840,7 +1840,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		Expires:        &expires,
 	}
 
-	if identifier.Type == core.IdentifierDNS {
+	if identifier.Type == core.IdentifierDNS && !features.Enabled(features.VAChecksGSB) {
 		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := berrors.InternalServerError("unable to determine if domain was safe")
