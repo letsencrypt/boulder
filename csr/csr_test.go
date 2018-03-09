@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -208,7 +207,7 @@ func TestWildcardOverlap(t *testing.T) {
 		"*.example.net": true,
 	})
 	if err != nil {
-		fmt.Errorf("Got error %q, expected none", err)
+		t.Errorf("Got error %q, expected none", err)
 	}
 	err = wildcardOverlap(map[string]bool{
 		"*.example.com":   true,
@@ -216,7 +215,7 @@ func TestWildcardOverlap(t *testing.T) {
 		"www.example.com": true,
 	})
 	if err == nil {
-		fmt.Errorf("Got no error, expected one")
+		t.Errorf("Got no error, expected one")
 	}
 	err = wildcardOverlap(map[string]bool{
 		"*.foo.example.com": true,
@@ -224,6 +223,6 @@ func TestWildcardOverlap(t *testing.T) {
 		"www.example.com":   true,
 	})
 	if err == nil {
-		fmt.Errorf("Got error %q, expected none", err)
+		t.Errorf("Got error %q, expected none", err)
 	}
 }
