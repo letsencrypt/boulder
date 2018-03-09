@@ -3345,6 +3345,32 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
 }
 
+func TestWildcardOverlap(t *testing.T) {
+	err := wildcardOverlap([]string{
+		"*.example.com",
+		"*.example.net",
+	})
+	if err != nil {
+		t.Errorf("Got error %q, expected none", err)
+	}
+	err = wildcardOverlap([]string{
+		"*.example.com",
+		"*.example.net",
+		"www.example.com",
+	})
+	if err == nil {
+		t.Errorf("Got no error, expected one")
+	}
+	err = wildcardOverlap([]string{
+		"*.foo.example.com",
+		"*.example.net",
+		"www.example.com",
+	})
+	if err != nil {
+		t.Errorf("Got error %q, expected none", err)
+	}
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b

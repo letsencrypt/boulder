@@ -200,29 +200,3 @@ func TestNormalizeCSR(t *testing.T) {
 		test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
 	}
 }
-
-func TestWildcardOverlap(t *testing.T) {
-	err := wildcardOverlap(map[string]bool{
-		"*.example.com": true,
-		"*.example.net": true,
-	})
-	if err != nil {
-		t.Errorf("Got error %q, expected none", err)
-	}
-	err = wildcardOverlap(map[string]bool{
-		"*.example.com":   true,
-		"*.example.net":   true,
-		"www.example.com": true,
-	})
-	if err == nil {
-		t.Errorf("Got no error, expected one")
-	}
-	err = wildcardOverlap(map[string]bool{
-		"*.foo.example.com": true,
-		"*.example.net":     true,
-		"www.example.com":   true,
-	})
-	if err != nil {
-		t.Errorf("Got error %q, expected none", err)
-	}
-}

@@ -80,3 +80,42 @@ func TestRejectTooEarly(t *testing.T) {
 	test.Assert(t, ns.Valid(n1), "Rejected a valid nonce")
 	test.Assert(t, !ns.Valid(n0), "Accepted a nonce that we should have forgotten")
 }
+
+func BenchmarkGeneration(b *testing.B) {
+	ns, err := NewNonceService(metrics.NewNoopScope())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := ns.Nonce()
+			if err != nil {
+				b.Error(err)
+			}
+		}
+	})
+}
+
+func BenchmarkValidation(b *testing.B) {
+	b.Log("HELLO")
+	ns, err := NewNonceService(metrics.NewNoopScope())
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 65536; i++ {
+		_, err := ns.Nonce()
+		if err != nil {
+			b.Error(err)
+		}
+	}
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			nonce, err := ns.Nonce()
+			if err != nil {
+				b.Error(err)
+			}
+			_ = ns.Valid(nonce)
+		}
+	})
+}
