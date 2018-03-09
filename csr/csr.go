@@ -74,10 +74,8 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if maxNames > 0 && len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
-	names := make(map[string]bool, len(csr.DNSNames))
 	badNames := []string{}
 	for _, name := range csr.DNSNames {
-		names[name] = true
 		ident := core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
 			Value: name,
