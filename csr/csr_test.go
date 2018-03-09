@@ -222,7 +222,7 @@ func TestWildcardOverlap(t *testing.T) {
 		"*.example.net":     true,
 		"www.example.com":   true,
 	})
-	if err == nil {
+	if err != nil {
 		t.Errorf("Got error %q, expected none", err)
 	}
 }
