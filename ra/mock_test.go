@@ -70,12 +70,6 @@ func (sa *mockInvalidAuthorizationsAuthority) CountPendingAuthorizations(ctx con
 	}, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) CountPendingOrders(ctx context.Context, in *sapb.RegistrationID, opts ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{
-		Count: new(int64),
-	}, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) CountOrders(ctx context.Context, in *sapb.CountOrdersRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{
 		Count: new(int64),

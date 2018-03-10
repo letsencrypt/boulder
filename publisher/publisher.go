@@ -1,10 +1,15 @@
 package publisher
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,7 +20,7 @@ import (
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	"github.com/google/certificate-transparency-go/tls"
-	ctx509 "github.com/google/certificate-transparency-go/x509"
+	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
@@ -219,8 +224,8 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	}
 
 	isPrecert := false
-	if req.Precert != nil && *req.Precert {
-		isPrecert = true
+	if req.Precert != nil {
+		isPrecert = *req.Precert
 	}
 
 	sct, err := pub.singleLogSubmit(
@@ -296,37 +301,29 @@ func (pub *Impl) singleLogSubmit(
 		"status": "success",
 	}).Observe(took)
 
-	input := ct.LogEntry{Leaf: ct.MerkleTreeLeaf{LeafType: ct.TimestampedEntryLeafType}}
+	// Generate log entry so we can verify the signature in the returned SCT
+	eType := ct.X509LogEntryType
 	if isPrecert {
-		tbsCert, err := ctx509.BuildPrecertTBS(chain[0].Data, nil)
-		if err != nil {
-			return nil, err
-		}
-		issuer, err := x509.ParseCertificate(chain[1].Data)
-		if err != nil {
-			return nil, err
-		}
-		input.Leaf.TimestampedEntry = &ct.TimestampedEntry{
-			PrecertEntry: &ct.PreCert{
-				IssuerKeyHash:  sha256.Sum256(issuer.RawSubjectPublicKeyInfo),
-				TBSCertificate: tbsCert,
-			},
-			EntryType: ct.PrecertLogEntryType,
-		}
-	} else {
-		input.Leaf.TimestampedEntry = &ct.TimestampedEntry{
-			X509Entry: &chain[0],
-			EntryType: ct.X509LogEntryType,
-		}
+		eType = ct.PrecertLogEntryType
 	}
-	err = ctLog.verifier.VerifySCTSignature(*sct, input)
+	// Note: The timestamp on the merkle tree leaf is not actually used in
+	// the SCT signature validation so it is left as 0 here
+	leaf, err := ct.MerkleTreeLeafFromRawChain(chain, eType, 0)
+	if err != nil {
+		return nil, err
+	}
+	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{Leaf: *leaf})
 	if err != nil {
 		return nil, err
 	}
 
-	err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
-	if err != nil {
-		return nil, err
+	// Only store the SCT if it was for a certificate, we have no need for
+	// the precert once it is embedded in a certificate
+	if !isPrecert {
+		err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
+		if err != nil {
+			return nil, err
+		}
 	}
 	return sct, nil
 }
@@ -340,4 +337,68 @@ func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) core.Signe
 		Extensions:        sct.Extensions,
 		Signature:         sct.Signature.Signature,
 	}
+}
+
+// CreateTestingSignedSCT is used by both the publisher tests and ct-test-serv, which is
+// why it is exported. It creates a signed SCT based on the provided chain.
+func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []byte {
+	chain := make([]ct.ASN1Cert, len(req))
+	for i, str := range req {
+		b, err := base64.StdEncoding.DecodeString(str)
+		if err != nil {
+			panic("cannot decode chain")
+		}
+		chain[i] = ct.ASN1Cert{Data: b}
+	}
+
+	// Generate the internal leaf entry for the SCT
+	etype := ct.X509LogEntryType
+	if precert {
+		etype = ct.PrecertLogEntryType
+	}
+	leaf, err := ct.MerkleTreeLeafFromRawChain(chain, etype, 0)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create leaf: %s", err))
+	}
+
+	// Sign the SCT
+	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	logID := sha256.Sum256(rawKey)
+	timestamp := uint64(time.Now().Unix())
+	serialized, _ := ct.SerializeSCTSignatureInput(ct.SignedCertificateTimestamp{
+		SCTVersion: ct.V1,
+		LogID:      ct.LogID{KeyID: logID},
+		Timestamp:  timestamp,
+	}, ct.LogEntry{Leaf: *leaf})
+	hashed := sha256.Sum256(serialized)
+	var ecdsaSig struct {
+		R, S *big.Int
+	}
+	ecdsaSig.R, ecdsaSig.S, _ = ecdsa.Sign(rand.Reader, k, hashed[:])
+	sig, _ := asn1.Marshal(ecdsaSig)
+
+	// The ct.SignedCertificateTimestamp object doesn't have the needed
+	// `json` tags to properly marshal so we need to transform in into
+	// a struct that does before we can send it off
+	var jsonSCTObj struct {
+		SCTVersion ct.Version `json:"sct_version"`
+		ID         string     `json:"id"`
+		Timestamp  uint64     `json:"timestamp"`
+		Extensions string     `json:"extensions"`
+		Signature  string     `json:"signature"`
+	}
+	jsonSCTObj.SCTVersion = ct.V1
+	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(logID[:])
+	jsonSCTObj.Timestamp = timestamp
+	ds := ct.DigitallySigned{
+		Algorithm: cttls.SignatureAndHashAlgorithm{
+			Hash:      cttls.SHA256,
+			Signature: cttls.ECDSA,
+		},
+		Signature: sig,
+	}
+	jsonSCTObj.Signature, _ = ds.Base64String()
+
+	jsonSCT, _ := json.Marshal(jsonSCTObj)
+	return jsonSCT
 }

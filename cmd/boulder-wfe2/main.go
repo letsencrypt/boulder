@@ -26,7 +26,6 @@ import (
 type config struct {
 	WFE struct {
 		cmd.ServiceConfig
-		BaseURL          string
 		ListenAddress    string
 		TLSListenAddress string
 
@@ -60,7 +59,6 @@ type config struct {
 	Syslog cmd.SyslogConfig
 
 	Common struct {
-		BaseURL    string
 		IssuerCert string
 	}
 }
@@ -216,9 +214,6 @@ func main() {
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
 	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
-
-	// Set up paths
-	wfe.BaseURL = c.Common.BaseURL
 
 	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 	handler := wfe.Handler()

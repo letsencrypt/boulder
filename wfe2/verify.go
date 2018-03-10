@@ -19,9 +19,13 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/web"
 )
+
+// POST requests with a JWS body must have the following Content-Type header
+const expectedJWSContentType = "application/jose+json"
 
 var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
 
@@ -140,6 +144,23 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 	if _, present := request.Header["Content-Length"]; !present {
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "ContentLengthRequired"}).Inc()
 		return probs.ContentLengthRequired()
+	}
+
+	if features.Enabled(features.EnforceV2ContentType) {
+		// Per 6.2 ALL POSTs should have the correct JWS Content-Type for flattened
+		// JSON serialization.
+		if _, present := request.Header["Content-Type"]; !present {
+			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoContentType"}).Inc()
+			return probs.InvalidContentType(fmt.Sprintf(
+				"No Content-Type header on POST. "+
+					"Content-Type must be %q", expectedJWSContentType))
+		}
+		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "WrongContentType"}).Inc()
+			return probs.InvalidContentType(fmt.Sprintf(
+				"Invalid Content-Type header on POST. "+
+					"Content-Type must be %q", expectedJWSContentType))
+		}
 	}
 
 	// Per 6.4.1 "Replay-Nonce" clients should not send a Replay-Nonce header in
@@ -374,7 +395,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
-	prefix := wfe.relativeEndpoint(request, acctPath)
+	prefix := web.RelativeEndpoint(request, acctPath)
 	accountIDStr := strings.TrimPrefix(accountURL, prefix)
 	// Convert the account ID string to an int64 for use with the SA's
 	// GetRegistration RPC
