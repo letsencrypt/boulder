@@ -976,6 +976,12 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
 		challenge.Error.Type = probs.V1ErrorNS + challenge.Error.Type
 	}
+
+	// If the authz has been marked invalid, consider all challenges on that authz
+	// to be invalid as well.
+	if features.Enabled(features.ForceConsistentStatus) && authz.Status == core.StatusInvalid {
+		challenge.Status = authz.Status
+	}
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for

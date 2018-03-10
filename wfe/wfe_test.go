@@ -2408,3 +2408,22 @@ func TestKeyRollover(t *testing.T) {
 		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
 	}
 }
+
+func TestPrepChallengeForDisplay(t *testing.T) {
+	_ = features.Set(map[string]bool{"ForceConsistentStatus": true})
+	req := &http.Request{
+		Host: "example.com",
+	}
+	chall := &core.Challenge{
+		Status: core.AcmeStatus("pending"),
+	}
+	authz := core.Authorization{
+		Status: core.AcmeStatus("invalid"),
+	}
+
+	wfe, _ := setupWFE(t)
+	wfe.prepChallengeForDisplay(req, authz, chall)
+	if chall.Status != "invalid" {
+		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
+	}
+}
