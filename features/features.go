@@ -20,6 +20,8 @@ const (
 	AllowRenewalFirstRL
 	// Allow issuance of wildcard domains for ACMEv2
 	WildcardDomains
+	// Copy authz status to challenge status
+	ForceConsistentStatus
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
@@ -47,6 +49,7 @@ var features = map[FeatureFlag]bool{
 	CancelCTSubmissions:     true,
 	VAChecksGSB:             false,
 	EnforceV2ContentType:    false,
+	ForceConsistentStatus:   false,
 }
 
 var fMu = new(sync.RWMutex)
