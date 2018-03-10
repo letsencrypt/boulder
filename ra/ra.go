@@ -1708,6 +1708,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 	}
 
+	if err := wildcardOverlap(order.Names); err != nil {
+		return nil, err
+	}
+
 	// See if there is an existing, pending, unexpired order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
@@ -1909,4 +1913,24 @@ func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Auth
 		}
 	}
 	return false
+}
+
+// wildcardOverlap takes a slice of domain names and returns an error if any of
+// them is a non-wildcard FQDN that overlaps with a wildcard domain in the map.
+func wildcardOverlap(dnsNames []string) error {
+	nameMap := make(map[string]bool, len(dnsNames))
+	for _, v := range dnsNames {
+		nameMap[v] = true
+	}
+	for name := range nameMap {
+		if name[0] == '*' {
+			continue
+		}
+		labels := strings.Split(name, ".")
+		labels[0] = "*"
+		if nameMap[strings.Join(labels, ".")] {
+			return fmt.Errorf("Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
+		}
+	}
+	return nil
 }
