@@ -949,7 +949,10 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	for _, ext := range parsedCert.Extensions {
 		if ext.Id.Equal(signer.SCTListOID) && !ext.Critical {
 			list = true
-			sctList, err := helpers.DeserializeSCTList(ext.Value)
+			var rawValue []byte
+			_, err = asn1.Unmarshal(ext.Value, &rawValue)
+			test.AssertNotError(t, err, "Failed to unmarshal extension value")
+			sctList, err := helpers.DeserializeSCTList(rawValue)
 			test.AssertNotError(t, err, "Failed to deserialize SCT list")
 			test.Assert(t, len(*sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(*sctList)))
 		}
