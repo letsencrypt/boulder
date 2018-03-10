@@ -151,16 +151,6 @@ func newUpdater(
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
-		// The missing SCT loop doesn't need to know about failureBackoffFactor or
-		// failureBackoffMax as it doesn't make any calls to the CA
-		{
-			clk:       clk,
-			stats:     stats.NewScope("MissingSCTReceipts"),
-			batchSize: config.MissingSCTBatchSize,
-			tickDur:   config.MissingSCTWindow.Duration,
-			tickFunc:  updater.missingReceiptsTick,
-			name:      "MissingSCTReceipts",
-		},
 	}
 	if config.RevokedCertificateBatchSize != 0 &&
 		config.RevokedCertificateWindow.Duration != 0 {
@@ -173,6 +163,18 @@ func newUpdater(
 			name:                 "RevokedCertificates",
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
+		})
+	}
+	if !features.Enabled(features.EmbedSCTs) {
+		// The missing SCT loop doesn't need to know about failureBackoffFactor or
+		// failureBackoffMax as it doesn't make any calls to the CA
+		updater.loops = append(updater.loops, &looper{
+			clk:       clk,
+			stats:     stats.NewScope("MissingSCTReceipts"),
+			batchSize: config.MissingSCTBatchSize,
+			tickDur:   config.MissingSCTWindow.Duration,
+			tickFunc:  updater.missingReceiptsTick,
+			name:      "MissingSCTReceipts",
 		})
 	}
 
