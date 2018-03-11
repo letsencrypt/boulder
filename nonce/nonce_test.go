@@ -64,10 +64,18 @@ func TestRejectTooLate(t *testing.T) {
 func TestRejectTooEarly(t *testing.T) {
 	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
-	ns.maxUsed = 2
 
 	n0, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
+
+	for i := 0; i < ns.maxUsed; i++ {
+		n, err := ns.Nonce()
+		test.AssertNotError(t, err, "Could not create nonce")
+		if !ns.Valid(n) {
+			t.Errorf("generated invalid nonce")
+		}
+	}
+
 	n1, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 	n2, err := ns.Nonce()
