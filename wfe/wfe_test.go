@@ -24,6 +24,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -880,6 +881,7 @@ func TestIssueCertificate(t *testing.T) {
 	// authorized, etc.
 	stats := metrics.NewNoopScope()
 
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, wfe.log)
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
@@ -894,7 +896,7 @@ func TestIssueCertificate(t *testing.T) {
 		nil,
 		noopCAA{},
 		0,
-		nil,
+		ctp,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{

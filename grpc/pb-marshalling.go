@@ -428,10 +428,6 @@ func authorizationValid(authz *corepb.Authorization) bool {
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }
 
-func certificateValid(cert *corepb.Certificate) bool {
-	return !(cert.RegistrationID == nil || cert.Serial == nil || cert.Digest == nil || cert.Der == nil || cert.Issued == nil || cert.Expires == nil)
-}
-
 func sctToPB(sct core.SignedCertificateTimestamp) *sapb.SignedCertificateTimestamp {
 	id := int64(sct.ID)
 	version := int64(sct.SCTVersion)
@@ -475,7 +471,10 @@ func certToPB(cert core.Certificate) *corepb.Certificate {
 	}
 }
 
-func pbToCert(pb *corepb.Certificate) core.Certificate {
+func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
+	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
+		return core.Certificate{}, errIncompleteResponse
+	}
 	return core.Certificate{
 		RegistrationID: *pb.RegistrationID,
 		Serial:         *pb.Serial,
@@ -483,5 +482,5 @@ func pbToCert(pb *corepb.Certificate) core.Certificate {
 		DER:            pb.Der,
 		Issued:         time.Unix(0, *pb.Issued),
 		Expires:        time.Unix(0, *pb.Expires),
-	}
+	}, nil
 }

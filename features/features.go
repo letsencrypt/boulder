@@ -26,6 +26,7 @@ const (
 	EnforceChallengeDisable
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
+	EmbedSCTs
 	CancelCTSubmissions
 	VAChecksGSB
 	// Return errors to ACMEv2 clients that do not send the correct JWS
@@ -44,6 +45,7 @@ var features = map[FeatureFlag]bool{
 	WildcardDomains:         false,
 	EnforceChallengeDisable: false, // deprecated
 	TLSSNIRevalidation:      false,
+	EmbedSCTs:               false,
 	CancelCTSubmissions:     true,
 	VAChecksGSB:             false,
 	EnforceV2ContentType:    false,

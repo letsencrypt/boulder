@@ -108,11 +108,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 		return core.Certificate{}, err
 	}
 
-	if response == nil || !certificateValid(response) {
-		return core.Certificate{}, errIncompleteResponse
-	}
-
-	return pbToCert(response), nil
+	return pbToCert(response)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {

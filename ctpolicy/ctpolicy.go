@@ -33,7 +33,7 @@ func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescri
 }
 
 type result struct {
-	sct core.SCTDER
+	sct []byte
 	err error
 }
 
@@ -41,7 +41,7 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
-func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) (core.SCTDER, error) {
+func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	var subCtx context.Context
 	var cancel func()
@@ -51,12 +51,14 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 		subCtx, cancel = ctx, func() {}
 	}
 	defer cancel()
+	isPrecert := features.Enabled(features.EmbedSCTs)
 	for _, l := range group.Logs {
 		go func(l cmd.LogDescription) {
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
+				Precert:      &isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of canceling subCtx
@@ -90,7 +92,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
 // the set of SCTs to the caller.
-func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCTDER, error) {
+func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDERs, error) {
 	results := make(chan result, len(ctp.groups))
 	var subCtx context.Context
 	var cancel func()
@@ -120,7 +122,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) ([]core.SCT
 		}(log)
 	}
 
-	var ret []core.SCTDER
+	var ret core.SCTDERs
 	for i := 0; i < len(ctp.groups); i++ {
 		res := <-results
 		// If any one group fails to get a SCT then we fail out immediately
