@@ -64,10 +64,18 @@ func TestRejectTooLate(t *testing.T) {
 func TestRejectTooEarly(t *testing.T) {
 	ns, err := NewNonceService(metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Could not create nonce service")
-	ns.maxUsed = 2
 
 	n0, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
+
+	for i := 0; i < ns.maxUsed; i++ {
+		n, err := ns.Nonce()
+		test.AssertNotError(t, err, "Could not create nonce")
+		if !ns.Valid(n) {
+			t.Errorf("generated invalid nonce")
+		}
+	}
+
 	n1, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 	n2, err := ns.Nonce()
@@ -79,4 +87,34 @@ func TestRejectTooEarly(t *testing.T) {
 	test.Assert(t, ns.Valid(n2), "Rejected a valid nonce")
 	test.Assert(t, ns.Valid(n1), "Rejected a valid nonce")
 	test.Assert(t, !ns.Valid(n0), "Accepted a nonce that we should have forgotten")
+}
+
+func BenchmarkNonces(b *testing.B) {
+	ns, err := NewNonceService(metrics.NewNoopScope())
+	if err != nil {
+		b.Fatal("creating nonce service", err)
+	}
+
+	for i := 0; i < ns.maxUsed; i++ {
+		n, err := ns.Nonce()
+		if err != nil {
+			b.Fatal("noncing", err)
+		}
+		if !ns.Valid(n) {
+			b.Fatal("generated invalid nonce")
+		}
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			n, err := ns.Nonce()
+			if err != nil {
+				b.Fatal("noncing", err)
+			}
+			if !ns.Valid(n) {
+				b.Fatal("generated invalid nonce")
+			}
+		}
+	})
 }
