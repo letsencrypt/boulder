@@ -294,7 +294,7 @@ def test_sct_embedding():
         raise Exception("certificate contains CT poison extension")
     except x509.ExtensionNotFound:
         # do nothing
-        print("no poison extension")
+        pass
 
     # make sure there is a SCT list extension
     try:
@@ -304,7 +304,6 @@ def test_sct_embedding():
     if len(sctList.value) != 2:
         raise Exception("SCT list contains wrong number of SCTs")
     for sct in sctList.value:
-        print("Sct is", sct.log_id, sct.entry_type)
         if sct.version != x509.certificate_transparency.Version.v1:
             raise Exception("SCT contains wrong version")
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
