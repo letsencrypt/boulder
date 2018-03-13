@@ -1,11 +1,16 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.10",
-	"GodepVersion": "v80",
+	"GodepVersion": "v79",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
+		{
+			"ImportPath": "github.com/asaskevich/govalidator",
+			"Comment": "v8-18-g4b3d68f",
+			"Rev": "4b3d68f87f176641ffc147420296013aff66ea32"
+		},
 		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "3ac7bf7a47d159a033b107610db8a1b6575507a4"
@@ -256,6 +261,34 @@
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
 			"Comment": "v0.3.2-30-g7881288",
 			"Rev": "7881288a8a3d24d7ae2add26fea4111e8a189516"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/json",
+			"Rev": "c09594263fe80af5fa0f6bc5be276aa25dd77578"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509",
+			"Rev": "c09594263fe80af5fa0f6bc5be276aa25dd77578"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509/ct",
+			"Rev": "c09594263fe80af5fa0f6bc5be276aa25dd77578"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509/pkix",
+			"Rev": "c09594263fe80af5fa0f6bc5be276aa25dd77578"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint",
+			"Rev": "13cf4d349e95ba2f7bb454cf94cbd164e10e5d17"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint/lints",
+			"Rev": "13cf4d349e95ba2f7bb454cf94cbd164e10e5d17"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint/util",
+			"Rev": "13cf4d349e95ba2f7bb454cf94cbd164e10e5d17"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cryptobyte",

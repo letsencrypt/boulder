@@ -16,6 +16,9 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	z509 "github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zlint"
+	"github.com/zmap/zlint/lints"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -186,6 +189,23 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
+	}
+
+	zlintParsed, err := z509.ParseCertificate(cert.DER)
+	if err != nil {
+		problems = append(problems, fmt.Sprintf("Zling couldn't parse stored certificate: %s", err))
+		return problems
+	}
+	zlintResultSet := zlint.LintCertificate(zlintParsed)
+	for k, v := range zlintResultSet.Results {
+		if v.Status == lints.Pass || v.Status == lints.NA || v.Status == lints.NE {
+			continue
+		}
+
+		if k == "n_subject_common_name_included" {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("%s: %s", k, v.Status))
 	}
 
 	// Parse certificate
@@ -371,5 +391,7 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
-
+	if checker.issuedReport.BadCerts > 0 {
+		os.Exit(1)
+	}
 }
