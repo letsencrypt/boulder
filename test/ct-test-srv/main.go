@@ -62,7 +62,9 @@ func lint(der []byte) error {
 	errs = checks.Certificate.Check(d)
 	if errs != nil {
 		for _, err := range errs.List() {
-			return err
+			if err.Error() != "commonName field is deprecated" {
+				return err
+			}
 		}
 	}
 	return nil
