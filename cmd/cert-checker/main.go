@@ -24,6 +24,12 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
+
+	lintasn1 "github.com/globalsign/certlint/asn1"
+	"github.com/globalsign/certlint/certdata"
+	"github.com/globalsign/certlint/checks"
+	_ "github.com/globalsign/certlint/checks/certificate/all"
+	_ "github.com/globalsign/certlint/checks/extensions/all"
 )
 
 const (
@@ -97,6 +103,7 @@ type certChecker struct {
 	issuedReport report
 	checkPeriod  time.Duration
 	stats        metrics.Scope
+	linter       *lintasn1.Linter
 }
 
 func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
@@ -107,6 +114,7 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period
 		rMu:         new(sync.Mutex),
 		clock:       clk,
 		checkPeriod: period,
+		linter:      new(lintasn1.Linter),
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
 
@@ -186,6 +194,26 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
+	}
+
+	// Run linter
+	errs := c.linter.CheckStruct(cert.DER)
+	if errs != nil {
+		for _, err := range errs.List() {
+			problems = append(problems, err.Error())
+		}
+	}
+	d, err := certdata.Load(cert.DER)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	errs = checks.Certificate.Check(d)
+	if errs != nil {
+		for _, err := range errs.List() {
+			if err.Error() != "commonName field is deprecated" {
+				problems = append(problems, err.Error())
+			}
+		}
 	}
 
 	// Parse certificate
