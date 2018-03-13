@@ -24,6 +24,12 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/letsencrypt/boulder/cmd"
+
+	lintasn1 "github.com/globalsign/certlint/asn1"
+	"github.com/globalsign/certlint/certdata"
+	"github.com/globalsign/certlint/checks"
+	_ "github.com/globalsign/certlint/checks/certificate/all"
+	_ "github.com/globalsign/certlint/checks/extensions/all"
 )
 
 func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
@@ -86,6 +92,35 @@ type integrationSrv struct {
 	latencyItem     int
 }
 
+// linting isn't normally the role of a CT log, but since we are submitting to
+// the CT test server anyhow, it happens to be a handy place to add linting.
+// If lint fails, Boulder will not be able to get a quorum of SCTs in the test
+// environment, and will fail, triggering an integration test failure.
+func lint(der []byte) error {
+	_, err := x509.ParseCertificate(der)
+	if err != nil {
+		return err
+	}
+	al := new(lintasn1.Linter)
+	errs := al.CheckStruct(der)
+	if errs != nil {
+		for _, err := range errs.List() {
+			return err
+		}
+	}
+	d, err := certdata.Load(der)
+	if err != nil {
+		return err
+	}
+	errs = checks.Certificate.Check(d)
+	if errs != nil {
+		for _, err := range errs.List() {
+			return err
+		}
+	}
+	return nil
+}
+
 func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/ct/v1/add-chain":
@@ -113,12 +148,20 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		if len(addChainReq.Chain) == 0 {
+			log.Println("no chain")
 			w.WriteHeader(400)
 			return
 		}
 
 		leaf, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
 		if err != nil {
+			log.Println("Error decoding leaf: %s", err)
+			w.WriteHeader(400)
+			return
+		}
+
+		if err = lint(leaf); err != nil {
+			log.Println("lint:", err)
 			w.WriteHeader(400)
 			return
 		}
