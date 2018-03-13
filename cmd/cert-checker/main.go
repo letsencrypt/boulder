@@ -103,7 +103,6 @@ type certChecker struct {
 	issuedReport report
 	checkPeriod  time.Duration
 	stats        metrics.Scope
-	linter       *lintasn1.Linter
 }
 
 func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
@@ -114,7 +113,6 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period
 		rMu:         new(sync.Mutex),
 		clock:       clk,
 		checkPeriod: period,
-		linter:      new(lintasn1.Linter),
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
 
@@ -197,7 +195,8 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	}
 
 	// Run linter
-	errs := c.linter.CheckStruct(cert.DER)
+	linter := new(lintasn1.Linter)
+	errs := linter.CheckStruct(cert.DER)
 	if errs != nil {
 		for _, err := range errs.List() {
 			problems = append(problems, err.Error())
