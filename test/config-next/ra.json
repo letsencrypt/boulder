@@ -45,7 +45,9 @@
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "ReusePendingAuthz": true,
-      "CancelCTSubmissions": false
+      "CancelCTSubmissions": false,
+      "EmbedSCTs": true,
+      "VAChecksGSB": true
     },
     "CTLogGroups2": [
       {

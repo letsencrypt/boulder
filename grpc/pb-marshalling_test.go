@@ -330,7 +330,7 @@ func TestCert(t *testing.T) {
 	}
 
 	certPB := certToPB(cert)
-	outCert := pbToCert(certPB)
+	outCert, _ := pbToCert(certPB)
 
 	test.AssertDeepEquals(t, cert, outCert)
 }

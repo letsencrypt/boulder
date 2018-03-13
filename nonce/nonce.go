@@ -1,6 +1,20 @@
+// Package nonce implements a service for generating and redeeming nonces.
+// To generate a nonce, it encrypts a monotonically increasing counter (latest)
+// using an authenticated cipher. To redeem a nonce, it checks that the nonce
+// decrypts to a valid integer between the earliest and latest counter values,
+// and that it's not on the cross-off list. To avoid a constantly growing cross-off
+// list, the nonce service periodically retires the oldest counter values by
+// finding the lowest counter value in the cross-off list, deleting it, and setting
+// "earliest" to its value. To make this efficient, the cross-off list is represented
+// two ways: Once as a map, for quick lookup of a given value, and once as a heap,
+// to quickly find the lowest value.
+// The MaxUsed value determines how long a generated nonce can be used before it
+// is forgotten. To calculate that period, divide the MaxUsed value by average
+// redemption rate (valid POSTs per second).
 package nonce
 
 import (
+	"container/heap"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -26,9 +40,28 @@ type NonceService struct {
 	latest   int64
 	earliest int64
 	used     map[int64]bool
+	usedHeap *int64Heap
 	gcm      cipher.AEAD
 	maxUsed  int
 	stats    metrics.Scope
+}
+
+type int64Heap []int64
+
+func (h int64Heap) Len() int           { return len(h) }
+func (h int64Heap) Less(i, j int) bool { return h[i] < h[j] }
+func (h int64Heap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *int64Heap) Push(x interface{}) {
+	*h = append(*h, x.(int64))
+}
+
+func (h *int64Heap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 // NewNonceService constructs a NonceService with defaults
@@ -52,6 +85,7 @@ func NewNonceService(scope metrics.Scope) (*NonceService, error) {
 		earliest: 0,
 		latest:   0,
 		used:     make(map[int64]bool, MaxUsed),
+		usedHeap: &int64Heap{},
 		gcm:      gcm,
 		maxUsed:  MaxUsed,
 		stats:    scope,
@@ -117,20 +151,6 @@ func (ns *NonceService) Nonce() (string, error) {
 	return ns.encrypt(latest)
 }
 
-// minUsed returns the lowest key in the used map. Requires that a lock be held
-// by caller.
-func (ns *NonceService) minUsed() int64 {
-	s := time.Now()
-	min := ns.latest
-	for t := range ns.used {
-		if t < min {
-			min = t
-		}
-	}
-	ns.stats.TimingDuration("LinearScan.Latency", time.Since(s))
-	return min
-}
-
 // Valid determines whether the provided Nonce string is valid, returning
 // true if so.
 func (ns *NonceService) Valid(nonce string) bool {
@@ -158,9 +178,11 @@ func (ns *NonceService) Valid(nonce string) bool {
 	}
 
 	ns.used[c] = true
+	heap.Push(ns.usedHeap, c)
 	if len(ns.used) > ns.maxUsed {
-		ns.stats.Inc("LinearScan.Full", 1)
-		ns.earliest = ns.minUsed()
+		s := time.Now()
+		ns.earliest = heap.Pop(ns.usedHeap).(int64)
+		ns.stats.TimingDuration("Heap.Latency", time.Since(s))
 		delete(ns.used, ns.earliest)
 	}
 

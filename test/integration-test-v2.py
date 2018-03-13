@@ -19,6 +19,9 @@ import os
 import OpenSSL
 import josepy as jose
 
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+
 import startservers
 
 import chisel2
@@ -45,11 +48,14 @@ def main():
         test_overlapping_wildcard()
         test_wildcard_exactblacklist()
         test_wildcard_authz_reuse()
+        test_sct_embedding()
     test_order_reuse_failed_authz()
     test_revoke_by_issuer()
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
+
+    test_loadgeneration()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -267,6 +273,42 @@ def test_revoke_by_privkey():
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     client.revoke(jose.ComparableX509(cert), 0)
+
+def test_loadgeneration():
+    # Run the load generator
+    latency_data_file = "/tmp/v2-integration-test-latency.json"
+    subprocess.check_output(
+        "./bin/load-generator \
+            -config test/load-generator/config/v2-integration-test-config.json\
+            -results %s" % latency_data_file,
+        shell=True,
+        stderr=subprocess.STDOUT)
+
+def test_sct_embedding():
+    order = auth_and_issue([random_domain()])
+    cert = x509.load_pem_x509_certificate(str(order.fullchain_pem), default_backend())
+
+    # make sure there is no poison extension
+    try:
+        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
+        raise Exception("certificate contains CT poison extension")
+    except x509.ExtensionNotFound:
+        # do nothing
+        pass
+
+    # make sure there is a SCT list extension
+    try:
+        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
+    except x509.ExtensionNotFound:
+        raise Exception("certificate doesn't contain SCT list extension")
+    if len(sctList.value) != 2:
+        raise Exception("SCT list contains wrong number of SCTs")
+    for sct in sctList.value:
+        if sct.version != x509.certificate_transparency.Version.v1:
+            raise Exception("SCT contains wrong version")
+        if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
+            raise Exception("SCT contains wrong entry type")
+
 
 if __name__ == "__main__":
     try:

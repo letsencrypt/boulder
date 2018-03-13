@@ -313,19 +313,24 @@ func randDomain(base string) string {
 // newOrder creates a new pending order object for a random set of domains using
 // the context's account.
 func newOrder(s *State, ctx *context) error {
-	// generate a random(-ish) domain name,  will cause some multiples but not enough to make rate limits annoying!
-	randomDomain := randDomain(s.domainBase)
+	// Pick a random number of names within the constraints of the maxNamesPerCert
+	// parameter
+	orderSize := 1 + mrand.Intn(s.maxNamesPerCert-1)
+	// Generate that many random domain names. There may be some duplicates, we
+	// don't care. The ACME server will collapse those down for us, how handy!
+	dnsNames := []core.AcmeIdentifier{}
+	for i := 0; i <= orderSize; i++ {
+		dnsNames = append(dnsNames, core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: randDomain(s.domainBase),
+		})
+	}
 
 	// create the new order request object
 	initOrder := struct {
 		Identifiers []core.AcmeIdentifier
 	}{
-		Identifiers: []core.AcmeIdentifier{
-			{
-				Type:  core.IdentifierDNS,
-				Value: randomDomain,
-			},
-		},
+		Identifiers: dnsNames,
 	}
 	initOrderStr, err := json.Marshal(&initOrder)
 	if err != nil {

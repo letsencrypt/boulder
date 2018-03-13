@@ -108,11 +108,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 		return core.Certificate{}, err
 	}
 
-	if response == nil || !certificateValid(response) {
-		return core.Certificate{}, errIncompleteResponse
-	}
-
-	return pbToCert(response), nil
+	return pbToCert(response)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
@@ -247,19 +243,6 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context
 
 func (sac StorageAuthorityClientWrapper) CountPendingAuthorizations(ctx context.Context, regID int64) (int, error) {
 	response, err := sac.inner.CountPendingAuthorizations(ctx, &sapb.RegistrationID{Id: &regID})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil || response.Count == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return int(*response.Count), nil
-}
-
-func (sac StorageAuthorityClientWrapper) CountPendingOrders(ctx context.Context, regID int64) (int, error) {
-	response, err := sac.inner.CountPendingOrders(ctx, &sapb.RegistrationID{Id: &regID})
 	if err != nil {
 		return 0, err
 	}
@@ -833,20 +816,6 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations(ctx context.
 	}
 
 	count, err := sas.inner.CountPendingAuthorizations(ctx, *request.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	castedCount := int64(count)
-	return &sapb.Count{Count: &castedCount}, nil
-}
-
-func (sas StorageAuthorityServerWrapper) CountPendingOrders(ctx context.Context, request *sapb.RegistrationID) (*sapb.Count, error) {
-	if request == nil || request.Id == nil {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountPendingOrders(ctx, *request.Id)
 	if err != nil {
 		return nil, err
 	}

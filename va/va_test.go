@@ -682,6 +682,44 @@ func TestValidateHTTP(t *testing.T) {
 	test.Assert(t, prob == nil, "validation failed")
 }
 
+func TestGSBAtValidation(t *testing.T) {
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	va, _ := setup(hs, 0)
+
+	_ = features.Set(map[string]bool{"VAChecksGSB": true})
+	defer features.Reset()
+
+	ctrl := gomock.NewController(t)
+	sbc := NewMockSafeBrowsing(ctrl)
+	sbc.EXPECT().IsListed(gomock.Any(), "good.com").Return("", nil)
+	sbc.EXPECT().IsListed(gomock.Any(), "bad.com").Return("bad", nil)
+	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", fmt.Errorf("welp"))
+	va.safeBrowsing = sbc
+
+	_, prob := va.validateChallengeAndIdentifier(ctx, dnsi("bad.com"), chall)
+	if prob == nil {
+		t.Fatalf("Expected rejection for bad.com, got success")
+	}
+	if !strings.Contains(prob.Error(), "unsafe domain") {
+		t.Errorf("Got error %q, expected an unsafe domain error.", prob.Error())
+	}
+
+	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("errorful.com"), chall)
+	if prob != nil {
+		t.Fatalf("Expected success for errorful.com, got error")
+	}
+
+	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("good.com"), chall)
+	if prob != nil {
+		t.Fatalf("Expected success for good.com, got %s", prob)
+	}
+}
+
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
@@ -905,7 +943,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
 	chal2 := core.DNSChallenge01()
-	chal2.ProvidedKeyAuthorization = ""
+	chal2.ProvidedKeyAuthorization = "a"
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),

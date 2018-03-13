@@ -17,6 +17,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -443,11 +444,6 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 	return 0, nil
 }
 
-// CountPendingOrders is a mock
-func (sa *StorageAuthority) CountPendingOrders(_ context.Context, _ int64) (int, error) {
-	return 0, nil
-}
-
 // CountOrders is a mock
 func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
 	return 0, nil
@@ -570,6 +566,11 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 // SubmitToSingleCT is a mock
 func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
 	return nil
+}
+
+// SubmitToSingleCTWithResult is a mock
+func (*Publisher) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+	return nil, nil
 }
 
 // Mailer is a mock

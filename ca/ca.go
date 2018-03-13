@@ -22,6 +22,8 @@ import (
 	"github.com/cloudflare/cfssl/ocsp"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
+	"github.com/google/certificate-transparency-go"
+	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"golang.org/x/net/context"
@@ -29,9 +31,9 @@ import (
 	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
-	corePB "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -99,6 +101,13 @@ type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
 }
 
+type certificateType string
+
+const (
+	precertType = certificateType("precertificate")
+	certType    = certificateType("certificate")
+)
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -135,7 +144,7 @@ type Issuer struct {
 // issuer, including the cfssl signer and OCSP signer objects.
 type internalIssuer struct {
 	cert       *x509.Certificate
-	eeSigner   signer.Signer
+	eeSigner   *local.Signer
 	ocspSigner ocsp.Signer
 }
 
@@ -432,7 +441,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		return emptyCert, err
 	}
 
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", nil)
+	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, certType)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -445,29 +454,60 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, berrors.InternalServerError("Precertificate flow is disabled")
 	}
 
-	if issueReq.RegistrationID == nil {
-		return nil, berrors.InternalServerError("RegistrationID is nil")
-	}
-
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, "cert", &ctPoisonExtension)
+	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, precertType)
 	if err != nil {
 		return nil, err
 	}
 	return &caPB.IssuePrecertificateResponse{
-		Precert:           &corePB.Precertificate{Der: precertDER},
-		SctFetchingConfig: &corePB.SCTFetchingConfig{},
+		DER: precertDER,
 	}, nil
 }
 
+// IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
+// and uses the signer to create and sign a certificate from them. The poison extension is removed
+// and a SCT list extension is inserted in its place. Except for this and the signature the certificate
+// exactly matches the precertificate. After the certificate is signed a OCSP response is generated
+// and the response and certificate are stored in the database.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
-
-	return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
+	if !features.Enabled(features.EmbedSCTs) {
+		return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
+	}
+	precert, err := x509.ParseCertificate(req.DER)
+	if err != nil {
+		return emptyCert, err
+	}
+	var scts []ct.SignedCertificateTimestamp
+	for _, sctBytes := range req.SCTs {
+		var sct ct.SignedCertificateTimestamp
+		_, err = cttls.Unmarshal(sctBytes, &sct)
+		if err != nil {
+			return emptyCert, err
+		}
+		scts = append(scts, sct)
+	}
+	certPEM, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
+	if err != nil {
+		return emptyCert, err
+	}
+	serialHex := core.SerialToString(precert.SerialNumber)
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = berrors.InternalServerError("invalid certificate value returned")
+		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
+		return emptyCert, err
+	}
+	certDER := block.Bytes
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
+		hex.EncodeToString(certDER)))
+	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
 type validity struct {
@@ -498,7 +538,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType string, addedExtension *signer.Extension) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType certificateType) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -519,10 +559,6 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 	extensions, err := ca.extensionsFromCSR(csr)
 	if err != nil {
 		return nil, err
-	}
-
-	if addedExtension != nil {
-		extensions = append(extensions, *addedExtension)
 	}
 
 	issuer := ca.defaultIssuer
@@ -565,6 +601,10 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		NotAfter:   validity.NotAfter,
 	}
 
+	if certType == precertType {
+		req.ReturnPrecert = true
+	}
+
 	serialHex := core.SerialToString(serialBigInt)
 
 	if !ca.forceCNFromSAN {
@@ -581,7 +621,7 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return nil, err
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": certType}).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType)}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")

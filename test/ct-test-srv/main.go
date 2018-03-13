@@ -5,25 +5,20 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/big"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	ct "github.com/google/certificate-transparency-go"
-	ctTLS "github.com/google/certificate-transparency-go/tls"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/publisher"
 
 	lintasn1 "github.com/globalsign/certlint/asn1"
 	"github.com/globalsign/certlint/certdata"
@@ -31,54 +26,6 @@ import (
 	_ "github.com/globalsign/certlint/checks/certificate/all"
 	_ "github.com/globalsign/certlint/checks/extensions/all"
 )
-
-func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
-	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	pkHash := sha256.Sum256(rawKey)
-	sct := ct.SignedCertificateTimestamp{
-		SCTVersion: ct.V1,
-		LogID:      ct.LogID{KeyID: pkHash},
-		Timestamp:  1337,
-	}
-	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
-		Leaf: ct.MerkleTreeLeaf{
-			LeafType: ct.TimestampedEntryLeafType,
-			TimestampedEntry: &ct.TimestampedEntry{
-				X509Entry: &ct.ASN1Cert{Data: leaf},
-				EntryType: ct.X509LogEntryType,
-			},
-		},
-	})
-	hashed := sha256.Sum256(serialized)
-	var ecdsaSig struct {
-		R, S *big.Int
-	}
-	ecdsaSig.R, ecdsaSig.S, _ = ecdsa.Sign(rand.Reader, k, hashed[:])
-	sig, _ := asn1.Marshal(ecdsaSig)
-
-	ds := ct.DigitallySigned{
-		Algorithm: ctTLS.SignatureAndHashAlgorithm{
-			Hash:      ctTLS.SHA256,
-			Signature: ctTLS.ECDSA,
-		},
-		Signature: sig,
-	}
-
-	var jsonSCTObj struct {
-		SCTVersion ct.Version `json:"sct_version"`
-		ID         string     `json:"id"`
-		Timestamp  uint64     `json:"timestamp"`
-		Extensions string     `json:"extensions"`
-		Signature  string     `json:"signature"`
-	}
-	jsonSCTObj.SCTVersion = ct.V1
-	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(pkHash[:])
-	jsonSCTObj.Timestamp = 1337
-	jsonSCTObj.Signature, _ = ds.Base64String()
-
-	jsonSCT, _ := json.Marshal(jsonSCTObj)
-	return jsonSCT
-}
 
 type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
@@ -123,6 +70,8 @@ func lint(der []byte) error {
 
 func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
+	case "/ct/v1/add-pre-chain":
+		fallthrough
 	case "/ct/v1/add-chain":
 		if r.Method != "POST" {
 			http.NotFound(w, r)
@@ -166,8 +115,13 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		precert := false
+		if r.URL.Path == "/ct/v1/add-pre-chain" {
+			precert = true
+		}
+
 		w.WriteHeader(http.StatusOK)
-		w.Write(createSignedSCT(leaf, is.key))
+		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert))
 	case "/submissions":
 		if r.Method != "GET" {
 			http.NotFound(w, r)

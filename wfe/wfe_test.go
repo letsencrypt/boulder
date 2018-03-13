@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -451,14 +451,8 @@ func replaceRandomKey(b []byte) []byte {
 }
 
 func assertJSONEquals(t *testing.T, got, expected string) {
-	var gotMap, expectedMap map[string]interface{}
-	err := json.Unmarshal([]byte(got), &gotMap)
-	test.AssertNotError(t, err, "failed to parse received JSON")
-	err = json.Unmarshal([]byte(expected), &expectedMap)
-	test.AssertNotError(t, err, "failed to parse expected JSON")
-	if !reflect.DeepEqual(gotMap, expectedMap) {
-		t.Fatalf("JSON response differed from expected:\n Got: %s, Expected: %s", got, expected)
-	}
+	t.Helper()
+	test.AssertUnmarshaledEquals(t, got, expected)
 }
 
 func TestHandleFunc(t *testing.T) {
@@ -708,12 +702,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestDirectory(t *testing.T) {
-	// Note: using `wfe.BaseURL` to test the non-relative /directory behaviour
-	// This tests to ensure the `Host` in the following `http.Request` is not
-	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
-	// and expecting `localhost` in the JSON result.
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
 
 	responseWriter := httptest.NewRecorder()
@@ -722,7 +711,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -734,7 +723,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -750,7 +739,7 @@ func TestDirectory(t *testing.T) {
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 		Header: headers,
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
@@ -760,7 +749,6 @@ func TestDirectory(t *testing.T) {
 
 func TestRandomDirectoryKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/directory")
@@ -893,6 +881,7 @@ func TestIssueCertificate(t *testing.T) {
 	// authorized, etc.
 	stats := metrics.NewNoopScope()
 
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, wfe.log)
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
@@ -907,7 +896,7 @@ func TestIssueCertificate(t *testing.T) {
 		nil,
 		noopCAA{},
 		0,
-		nil,
+		ctp,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
@@ -2419,5 +2408,24 @@ func TestKeyRollover(t *testing.T) {
 		responseWriter.Body.Reset()
 		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
 		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
+	}
+}
+
+func TestPrepChallengeForDisplay(t *testing.T) {
+	_ = features.Set(map[string]bool{"ForceConsistentStatus": true})
+	req := &http.Request{
+		Host: "example.com",
+	}
+	chall := &core.Challenge{
+		Status: core.AcmeStatus("pending"),
+	}
+	authz := core.Authorization{
+		Status: core.AcmeStatus("invalid"),
+	}
+
+	wfe, _ := setupWFE(t)
+	wfe.prepChallengeForDisplay(req, authz, chall)
+	if chall.Status != "invalid" {
+		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
 }

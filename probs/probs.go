@@ -169,6 +169,16 @@ func ContentLengthRequired() *ProblemDetails {
 	}
 }
 
+// InvalidContentType returns a ProblemDetails suitable for a missing
+// ContentType header, or an incorrect ContentType header
+func InvalidContentType(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusUnsupportedMediaType,
+	}
+}
+
 // InvalidEmail returns a ProblemDetails representing an invalid email address
 // error
 func InvalidEmail(detail string) *ProblemDetails {

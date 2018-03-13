@@ -14,6 +14,11 @@ fi
 # to the format we use in production, MIXED.
 mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 
+# MariaDB sets the default @@max_connections value to 100. The SA alone is
+# configured to use up to 100 connections. We increase the max connections here
+# to give headroom for other components (ocsp-updater for example).
+mysql $dbconn -e "SET GLOBAL max_connections = 500;"
+
 for dbenv in $DBENVS; do
   db="boulder_sa_${dbenv}"
 

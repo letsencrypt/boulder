@@ -27,14 +27,14 @@ message IssueCertificateRequest {
 }
 
 message IssuePrecertificateResponse {
-  optional core.Precertificate precert = 1;
-  optional core.SCTFetchingConfig sctFetchingConfig = 2;
+  optional bytes DER = 1;
 }
 
 message IssueCertificateForPrecertificateRequest {
-  optional IssueCertificateRequest issueReq = 1;
-  optional bytes precertDER = 2;
-  repeated bytes SCTs = 3;
+  optional bytes DER = 1;
+  repeated bytes SCTs = 2;
+  optional int64 registrationID = 3;
+  optional int64 orderID = 4;
 }
 
 message GenerateOCSPRequest {

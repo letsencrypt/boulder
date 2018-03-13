@@ -960,19 +960,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 type accountID int64
 type orderID int64
 
-// issueCertificate handles the common aspects of certificate issuance used by
-// both the "classic" NewCertificate endpoint (for ACME v1) and the
-// FinalizeOrder endpoint (for ACME v2).
+// issueCertificate sets up a log event structure and captures any errors
+// encountered during issuance, then calls issueCertificateInner.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
 	req core.CertificateRequest,
 	acctID accountID,
 	oID orderID) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-
-	// Assume the worst
-	logEventResult := "error"
-
 	// Construct the log event
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
@@ -980,12 +974,28 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		Requester:   int64(acctID),
 		RequestTime: ra.clk.Now(),
 	}
+	var result string
+	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, &logEvent)
+	if err != nil {
+		logEvent.Error = err.Error()
+		result = "error"
+	} else {
+		result = "successful"
+	}
+	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+	return cert, err
+}
 
-	// No matter what, log the request
-	defer func() {
-		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
-	}()
-
+// issueCertificateInner handles the common aspects of certificate issuance used by
+// both the "classic" NewCertificate endpoint (for ACME v1) and the
+// FinalizeOrder endpoint (for ACME v2).
+func (ra *RegistrationAuthorityImpl) issueCertificateInner(
+	ctx context.Context,
+	req core.CertificateRequest,
+	acctID accountID,
+	oID orderID,
+	logEvent *certificateRequestEvent) (core.Certificate, error) {
+	emptyCert := core.Certificate{}
 	if acctID <= 0 {
 		return emptyCert, berrors.MalformedError("invalid account ID: %d", acctID)
 	}
@@ -998,7 +1008,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 
 	account, err := ra.SA.GetRegistration(ctx, int64(acctID))
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1011,8 +1020,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	copy(names, csr.DNSNames)
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
-		err = berrors.MalformedError("certificate public key must be different than account key")
-		return emptyCert, err
+		return emptyCert, berrors.MalformedError("certificate public key must be different than account key")
 	}
 
 	// Check rate limits before checking authorizations. If someone is unable to
@@ -1020,7 +1028,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	// necessary authorizations, only to later fail the rate limit check.
 	err = ra.checkLimits(ctx, names, account.ID)
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1035,7 +1042,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1050,33 +1056,48 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		RegistrationID: &acctIDInt,
 		OrderID:        &orderIDInt,
 	}
-	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
 
-	if ra.ctpolicy != nil {
-		ra.getSCTs(ctx, cert.DER)
-	} else if ra.publisher != nil {
-		go func() {
-			// This context is limited by the gRPC timeout.
-			_ = ra.publisher.SubmitToCT(context.Background(), cert.DER)
-		}()
+	var cert core.Certificate
+	if features.Enabled(features.EmbedSCTs) {
+		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+		scts, err := ra.getSCTs(ctx, precert.DER)
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+			DER:            precert.DER,
+			SCTs:           scts,
+			RegistrationID: &acctIDInt,
+			OrderID:        &orderIDInt,
+		})
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+	} else {
+		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+
+		_, _ = ra.getSCTs(ctx, cert.DER)
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
-		err = berrors.InternalServerError("failed to parse certificate: %s", err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCert, berrors.InternalServerError("failed to parse certificate: %s", err.Error())
 	}
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
-		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -1087,30 +1108,29 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	logEvent.NotAfter = parsedCertificate.NotAfter
 	logEvent.ResponseTime = now
 
-	logEventResult = "successful"
-
 	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("NewCertificates", 1)
 	return cert, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) (core.SCTDERs, error) {
 	started := ra.clk.Now()
-	_, err := ra.ctpolicy.GetSCTs(ctx, cert)
+	scts, err := ra.ctpolicy.GetSCTs(ctx, cert)
 	took := ra.clk.Since(started)
 	// The final cert has already been issued so actually return it to the
 	// user even if this fails since we aren't actually doing anything with
 	// the SCTs yet.
-	state := "failure"
 	if err != nil {
+		state := "failure"
 		if err == context.DeadlineExceeded {
 			state = "deadlineExceeded"
 		}
 		ra.log.Warning(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
-	} else if err == nil {
-		state = "success"
+		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
+		return nil, err
 	}
-	ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
+	ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Observe(took.Seconds())
+	return scts, nil
 }
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
@@ -1401,7 +1421,11 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 }
 
 // UpdateAuthorization updates an authorization with new values.
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, base core.Authorization, challengeIndex int, response core.Challenge) (core.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
+	ctx context.Context,
+	base core.Authorization,
+	challengeIndex int,
+	response core.Challenge) (core.Authorization, error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
 		return core.Authorization{}, berrors.MalformedError("expired authorization")
@@ -1457,18 +1481,30 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return core.Authorization{}, berrors.InternalServerError(err.Error())
 	}
 
-	// Recompute the key authorization field provided by the client and
-	// check it against the value provided
+	// Compute the key authorization field based on the registration key
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return core.Authorization{}, berrors.InternalServerError("could not compute expected key authorization value")
 	}
-	if expectedKeyAuthorization != response.ProvidedKeyAuthorization {
+
+	// NOTE(@cpu): Historically challenge update required the client to send
+	// a JSON POST body that included a computed KeyAuthorization. The RA would
+	// check this provided authorization against its own computation of the key
+	// authorization and err if they did not match. New ACME specification does
+	// not require this - the client does not need to send the key authorization.
+	// To support this for ACMEv2 we only enforce the provided key authorization
+	// matches expected if the update included it.
+	if response.ProvidedKeyAuthorization != "" && expectedKeyAuthorization != response.ProvidedKeyAuthorization {
 		return core.Authorization{}, berrors.MalformedError("provided key authorization was incorrect")
 	}
 
-	// Copy information over that the client is allowed to supply
-	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
+	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
+	// expected vs actual without needing the registration key. Historically this
+	// was done with the value from the challenge response and so the field name
+	// is called "ProvidedKeyAuthorization", in reality this is just
+	// "KeyAuthorization".
+	// TODO(@cpu): Rename ProvidedKeyAuthorization to KeyAuthorization
+	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	// Double check before sending to VA
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
@@ -1487,6 +1523,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	vaCtx := context.Background()
 	go func(authz core.Authorization) {
+		// We will mutate challenges later in this goroutine to change status and
+		// add error, but we also return a copy of authz immediately. To avoid a
+		// data race, make a copy of the challenges slice here for mutation.
+		challenges := make([]core.Challenge, len(authz.Challenges))
+		copy(challenges, authz.Challenges)
+		authz.Challenges = challenges
+
 		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
@@ -1685,6 +1728,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 	}
 
+	if err := wildcardOverlap(order.Names); err != nil {
+		return nil, err
+	}
+
 	// See if there is an existing, pending, unexpired order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
@@ -1817,7 +1864,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		Expires:        &expires,
 	}
 
-	if identifier.Type == core.IdentifierDNS {
+	if identifier.Type == core.IdentifierDNS && !features.Enabled(features.VAChecksGSB) {
 		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := berrors.InternalServerError("unable to determine if domain was safe")
@@ -1886,4 +1933,24 @@ func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Auth
 		}
 	}
 	return false
+}
+
+// wildcardOverlap takes a slice of domain names and returns an error if any of
+// them is a non-wildcard FQDN that overlaps with a wildcard domain in the map.
+func wildcardOverlap(dnsNames []string) error {
+	nameMap := make(map[string]bool, len(dnsNames))
+	for _, v := range dnsNames {
+		nameMap[v] = true
+	}
+	for name := range nameMap {
+		if name[0] == '*' {
+			continue
+		}
+		labels := strings.Split(name, ".")
+		labels[0] = "*"
+		if nameMap[strings.Join(labels, ".")] {
+			return fmt.Errorf("Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
+		}
+	}
+	return nil
 }

@@ -42,6 +42,7 @@
     "doNotForceCN": true,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "enablePrecertificateFlow": true,
     "cfssl": {
       "signing": {
         "profiles": {
@@ -131,7 +132,8 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "features": {
-        "WildcardDomains": true
+        "WildcardDomains": true,
+        "EmbedSCTs": true
     }
   },
 

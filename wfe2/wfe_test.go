@@ -676,13 +676,7 @@ func (fr fakeRand) Read(p []byte) (int, error) {
 }
 
 func TestDirectory(t *testing.T) {
-	// Note: `TestDirectory` sets the `wfe.BaseURL` specifically to test the
-	// that it overrides the relative /directory behaviour.
-	// This ensures the `Host` value of `127.0.0.1` in the following
-	// `http.Request` is not used in the response URLs that are tested against
-	// `http://localhost:4300`
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 	mux := wfe.Handler()
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
@@ -706,7 +700,7 @@ func TestDirectory(t *testing.T) {
 	req := &http.Request{
 		Method: "GET",
 		URL:    url,
-		Host:   "127.0.0.1:4300",
+		Host:   "localhost:4300",
 	}
 	// Serve the /directory response for this request into a recorder
 	responseWriter := httptest.NewRecorder()
@@ -2487,6 +2481,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			{
 				ID:   12345,
 				Type: "dns",
+				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
 		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
@@ -2510,4 +2505,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/12345")
 	test.AssertEquals(t, chal.URI, "")
+	// We also expect the ProvidedKeyAuthorization is not echoed back in the
+	// challenge
+	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 }
