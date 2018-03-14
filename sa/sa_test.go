@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"os"
 	"reflect"
 	"sync"
 	"testing"
