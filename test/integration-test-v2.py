@@ -54,7 +54,7 @@ def main():
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
-    test_overlap_wildcard()
+    test_bad_overlap_wildcard()
 
     test_loadgeneration()
 
