@@ -1728,8 +1728,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 	}
 
-	if err := wildcardOverlap(order.Names); err != nil {
-		return nil, err
+	if features.Enabled(features.EnforceOverlappingWildcards) {
+		if err := wildcardOverlap(order.Names); err != nil {
+			return nil, err
+		}
 	}
 
 	// See if there is an existing, pending, unexpired order that can be reused
