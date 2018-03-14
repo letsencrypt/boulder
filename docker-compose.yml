@@ -6,7 +6,7 @@ services:
         environment:
             FAKE_DNS: 127.0.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
-            BOULDER_CONFIG_DIR: test/config
+            BOULDER_CONFIG_DIR: test/config-next
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - /tmp:/tmp
