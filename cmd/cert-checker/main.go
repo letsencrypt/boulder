@@ -209,6 +209,13 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	errs = checks.Certificate.Check(d)
 	if errs != nil {
 		for _, err := range errs.List() {
+			// commonName has been deprecated for years, but common practice is still
+			// to include it for compatibility reasons. For instance, Chrome on macOS
+			// until very recently would error on an empty Subject (which is what we
+			// would have if we omitted CommonName). There have been proposals at
+			// CA/Browser Forum for an alternate contentless field whose purpose would
+			// just be to make Subject non-empty, but so far they have not been
+			// successful.
 			if err.Error() != "commonName field is deprecated" {
 				problems = append(problems, err.Error())
 			}
