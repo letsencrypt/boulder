@@ -43,12 +43,13 @@ def main():
         raise Exception("startservers failed")
 
     if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        test_multidomain()
-        test_wildcardmultidomain()
-        test_overlapping_wildcard()
-        test_wildcard_exactblacklist()
-        test_wildcard_authz_reuse()
         test_sct_embedding()
+
+    test_multidomain()
+    test_wildcardmultidomain()
+    test_overlapping_wildcard()
+    test_wildcard_exactblacklist()
+    test_wildcard_authz_reuse()
     test_order_reuse_failed_authz()
     test_revoke_by_issuer()
     test_revoke_by_authz()
