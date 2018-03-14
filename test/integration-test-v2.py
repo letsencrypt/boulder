@@ -15,12 +15,14 @@ import datetime
 import time
 import base64
 import os
+import json
 
 import OpenSSL
 import josepy as jose
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 import startservers
 
@@ -30,6 +32,7 @@ from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
+from acme import messages
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
@@ -54,6 +57,7 @@ def main():
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
+    test_only_return_existing_reg()
 
     test_loadgeneration()
 
@@ -309,6 +313,41 @@ def test_sct_embedding():
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
 
+def test_only_return_existing_reg():
+    key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
+    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
+    client = acme_client.ClientV2(directory, net)
+    email = "test@example.com"
+    net.account = client.new_account(messages.NewRegistration.from_data(email=email,
+            terms_of_service_agreed=True))
+    
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
+    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
+    client = acme_client.ClientV2(directory, net)
+    class extendedAcct(dict):
+        def json_dumps(self, indent=None):
+            return json.dumps(self)
+    acct = extendedAcct({"termsOfServiceAgreed": True,
+    "contact": [email],
+    "onlyReturnExisting": True})
+    resp = client._post(client.directory['newAccount'], acct)
+    if resp.status_code != 200 or len(resp.content) != 0:
+        raise Exception("incorrect response returned for onlyReturnExisting")
+
+
+    other_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+    other_net = acme_client.ClientNetwork(other_key, user_agent="Boulder integration tester")
+    other_client = acme_client.ClientV2(directory, other_net)
+    newAcct = extendedAcct({"termsOfServiceAgreed": True,
+    "contact": [email],
+    "onlyReturnExisting": True})
+    try:
+        other_client._post(other_client.directory['newAccount'], newAcct)
+        raise Exception("no error returned when no expected account exists")
+    except messages.Error:
+        # This is what we want
+        pass
 
 if __name__ == "__main__":
     try:
