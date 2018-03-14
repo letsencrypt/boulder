@@ -3349,6 +3349,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 func TestWildcardOverlap(t *testing.T) {
 	_ = features.Set(map[string]bool{"EnforceOverlappingWildcards": true})
+	defer features.Reset()
 	err := wildcardOverlap([]string{
 		"*.example.com",
 		"*.example.net",
