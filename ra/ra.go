@@ -1949,7 +1949,8 @@ func wildcardOverlap(dnsNames []string) error {
 		labels := strings.Split(name, ".")
 		labels[0] = "*"
 		if nameMap[strings.Join(labels, ".")] {
-			return fmt.Errorf("Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
+			return berrors.MalformedError(
+				"Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
 		}
 	}
 	return nil

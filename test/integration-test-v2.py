@@ -54,6 +54,7 @@ def main():
     test_revoke_by_authz()
     test_revoke_by_privkey()
     test_order_finalize_early()
+    test_overlap_wildcard()
 
     test_loadgeneration()
 
@@ -139,6 +140,10 @@ def test_wildcard_authz_reuse():
         if authz.body.status != Status("pending"):
             raise Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" %
                     ((domains), str(authz.body.status)))
+
+def test_overlap_wildcard():
+    chisel2.expect_problem("urn:acme:error:malformed",
+        lambda: auth_and_issue(["*.example.com", "www.example.com"]))
 
 def test_order_reuse_failed_authz():
     """
