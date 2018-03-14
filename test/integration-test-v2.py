@@ -313,18 +313,20 @@ def test_sct_embedding():
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
 
-def test_only_return_existing_reg():
-    key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+def uninitialized_client(key=None):
+    if key is None:
+        key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
     net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
     directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
-    client = acme_client.ClientV2(directory, net)
+    return acme_client.ClientV2(directory, net)
+
+def test_only_return_existing_reg():
+    client = uninitialized_client()
     email = "test@example.com"
-    net.account = client.new_account(messages.NewRegistration.from_data(email=email,
+    client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     
-    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
-    client = acme_client.ClientV2(directory, net)
+    client = uninitialized_client(key=client.net.key)
     class extendedAcct(dict):
         def json_dumps(self, indent=None):
             return json.dumps(self)
@@ -335,19 +337,16 @@ def test_only_return_existing_reg():
     if resp.status_code != 200 or len(resp.content) != 0:
         raise Exception("incorrect response returned for onlyReturnExisting")
 
-
-    other_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
-    other_net = acme_client.ClientNetwork(other_key, user_agent="Boulder integration tester")
-    other_client = acme_client.ClientV2(directory, other_net)
+    other_client = uninitialized_client()
     newAcct = extendedAcct({"termsOfServiceAgreed": True,
     "contact": [email],
     "onlyReturnExisting": True})
     try:
         other_client._post(other_client.directory['newAccount'], newAcct)
         raise Exception("no error returned when no expected account exists")
-    except messages.Error:
-        # This is what we want
-        pass
+    except messages.Error as err:
+        if err.typ != "urn:ietf:params:acme:error:accountDoesNotExist":
+            raise Exception("Unexpected error returned")
 
 if __name__ == "__main__":
     try:
