@@ -47,6 +47,7 @@
       "ReusePendingAuthz": true,
       "CancelCTSubmissions": false,
       "EmbedSCTs": true,
+      "EnforceOverlappingWildcards": true,
       "VAChecksGSB": true
     },
     "CTLogGroups2": [
