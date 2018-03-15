@@ -1892,7 +1892,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	status string,
 	registrationID int64,
 	names []string,
-	expiryCutoff time.Time,
+	now time.Time,
 	requireV2Authzs bool) (map[string]*core.Authorization, error) {
 	if len(names) == 0 {
 		return nil, berrors.InternalServerError("no names received")
@@ -1929,7 +1929,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 		status = ? AND
 		identifier IN (%s)`,
 			queryPrefix, strings.Join(qmarks, ",")),
-		append([]interface{}{registrationID, expiryCutoff, status}, params...)...)
+		append([]interface{}{registrationID, now, status}, params...)...)
 	if err != nil {
 		return nil, err
 	}
