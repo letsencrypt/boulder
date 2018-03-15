@@ -24,6 +24,12 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
+
+	lintasn1 "github.com/globalsign/certlint/asn1"
+	"github.com/globalsign/certlint/certdata"
+	"github.com/globalsign/certlint/checks"
+	_ "github.com/globalsign/certlint/checks/certificate/all"
+	_ "github.com/globalsign/certlint/checks/extensions/all"
 )
 
 const (
@@ -188,6 +194,34 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
 
+	// Run linter
+	linter := new(lintasn1.Linter)
+	errs := linter.CheckStruct(cert.DER)
+	if errs != nil {
+		for _, err := range errs.List() {
+			problems = append(problems, err.Error())
+		}
+	}
+	d, err := certdata.Load(cert.DER)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	errs = checks.Certificate.Check(d)
+	if errs != nil {
+		for _, err := range errs.List() {
+			// commonName has been deprecated for years, but common practice is still
+			// to include it for compatibility reasons. For instance, Chrome on macOS
+			// until very recently would error on an empty Subject (which is what we
+			// would have if we omitted CommonName). There have been proposals at
+			// CA/Browser Forum for an alternate contentless field whose purpose would
+			// just be to make Subject non-empty, but so far they have not been
+			// successful.
+			if err.Error() != "commonName field is deprecated" {
+				problems = append(problems, err.Error())
+			}
+		}
+	}
+
 	// Parse certificate
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
@@ -347,7 +381,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err = checker.getCerts(config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(config.CertChecker.UnexpiredOnly)
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 

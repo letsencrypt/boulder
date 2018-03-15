@@ -91,6 +91,162 @@
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
+			"ImportPath": "github.com/globalsign/certlint/asn1",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/certdata",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/aiaissuers",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/all",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/basicconstraints",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extensions",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extkeyusage",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/internal",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/issuerdn",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/keyusage",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey/goodkey",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publicsuffix",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/revocation",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/serialnumber",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/signaturealgorithm",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subject",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subjectaltname",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/validity",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/version",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/certificate/wildcard",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/adobetimestamp",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/all",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authorityinfoaccess",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authoritykeyid",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/basicconstraints",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/crldistributionpoints",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ct",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/extkeyusage",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/keyusage",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/nameconstraints",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspnocheck",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/pdfrevocation",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/policyidentifiers",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/smimecapabilities",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectaltname",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectkeyid",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/errors",
+			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+		},
+		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
 			"Comment": "v1.3-28-g3955978",
 			"Rev": "3955978caca48c1658a4bb7a9c6a0f084e326af3"
@@ -311,6 +467,10 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/lex/httplex",
+			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
+		},
+		{
+			"ImportPath": "golang.org/x/net/publicsuffix",
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
 		},
 		{

@@ -88,7 +88,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	_ = features.Set(map[string]bool{"WildcardDomains": true})
 	defer features.Reset()
 
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
@@ -106,6 +106,9 @@ func TestCheckWildcardCert(t *testing.T) {
 		SerialNumber:          serial,
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		OCSPServer:            []string{"http://example.com/ocsp"},
+		IssuingCertificateURL: []string{"http://example.com/cert"},
 	}
 	wildcardCertDer, err := x509.CreateCertificate(rand.Reader, &wildcardCert, &wildcardCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "Couldn't create certificate")
@@ -132,7 +135,7 @@ func TestCheckCert(t *testing.T) {
 		saCleanup()
 	}()
 
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 
@@ -141,19 +144,20 @@ func TestCheckCert(t *testing.T) {
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
 	goodExpiry := issued.Add(expectedValidityPeriod)
 	serial := big.NewInt(1337)
-	// Problems
-	//   Expiry period is too long
-	//   Basic Constraints aren't set
-	//   Wrong key usage (none)
+	longName := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com"
 	rawCert := x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com",
+			CommonName: longName,
 		},
 		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
-		DNSNames:              []string{"example-a.com", "foodnotbombs.mil", "*.foodnotbombs.mil"},
+		DNSNames:              []string{longName, "example-a.com", "foodnotbombs.mil", "*.foodnotbombs.mil"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		OCSPServer:            []string{"http://example.com/ocsp"},
+		IssuingCertificateURL: []string{"http://example.com/cert"},
 	}
 	brokenCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "Couldn't create certificate")
@@ -181,6 +185,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has incorrect key usage extensions":                                                 1,
 		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
+		"commonName exeeding max lenght of 64":                                                           1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]
@@ -192,7 +197,6 @@ func TestCheckCert(t *testing.T) {
 	for k := range problemsMap {
 		t.Errorf("Expected problem but didn't find it: '%s'.", k)
 	}
-	test.AssertEquals(t, len(problems), 9)
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
