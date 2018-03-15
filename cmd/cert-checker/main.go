@@ -381,7 +381,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err = checker.getCerts(config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(config.CertChecker.UnexpiredOnly)
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
