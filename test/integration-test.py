@@ -490,6 +490,9 @@ def test_sct_embedding():
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
 
+def test_cert_checker():
+    run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)
+
 exit_status = 1
 tempdir = tempfile.mkdtemp()
 

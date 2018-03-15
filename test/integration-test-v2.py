@@ -61,6 +61,7 @@ def main():
     test_bad_overlap_wildcard()
 
     test_loadgeneration()
+    test_cert_checker()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -352,6 +353,13 @@ def test_only_return_existing_reg():
     except messages.Error as err:
         if err.typ != "urn:ietf:params:acme:error:accountDoesNotExist":
             raise Exception("Unexpected error returned")
+
+def run(cmd, **kwargs):
+    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
+
+def test_cert_checker():
+    run("./bin/cert-checker -config %s/cert-checker.json" %
+        os.environ.get('BOULDER_CONFIG_DIR', 'test/config'))
 
 if __name__ == "__main__":
     try:
