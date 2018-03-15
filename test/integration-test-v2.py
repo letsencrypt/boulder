@@ -319,40 +319,33 @@ def test_sct_embedding():
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
 
-def uninitialized_client(key=None):
-    if key is None:
-        key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
-    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
-    return acme_client.ClientV2(directory, net)
-
 def test_only_return_existing_reg():
-    client = uninitialized_client()
+    client = chisel2.uninitialized_client()
     email = "test@example.com"
     client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     
-    client = uninitialized_client(key=client.net.key)
+    client = chisel2.uninitialized_client(key=client.net.key)
     class extendedAcct(dict):
         def json_dumps(self, indent=None):
             return json.dumps(self)
-    acct = extendedAcct({"termsOfServiceAgreed": True,
-    "contact": [email],
-    "onlyReturnExisting": True})
-    resp = client._post(client.directory['newAccount'], acct)
+    acct = extendedAcct({
+        "termsOfServiceAgreed": True,
+        "contact": [email],
+        "onlyReturnExisting": True
+    })
+    resp = client.net.post(client.directory['newAccount'], acct, acme_version=2)
     if resp.status_code != 200 or len(resp.content) != 0:
         raise Exception("incorrect response returned for onlyReturnExisting")
 
-    other_client = uninitialized_client()
-    newAcct = extendedAcct({"termsOfServiceAgreed": True,
-    "contact": [email],
-    "onlyReturnExisting": True})
-    try:
-        other_client._post(other_client.directory['newAccount'], newAcct)
-        raise Exception("no error returned when no expected account exists")
-    except messages.Error as err:
-        if err.typ != "urn:ietf:params:acme:error:accountDoesNotExist":
-            raise Exception("Unexpected error returned")
+    other_client = chisel2.uninitialized_client()
+    newAcct = extendedAcct({
+        "termsOfServiceAgreed": True,
+        "contact": [email],
+        "onlyReturnExisting": True
+    })
+    chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
+        lambda: other_client.net.post(other_client.directory['newAccount'], newAcct, acme_version=2))
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
