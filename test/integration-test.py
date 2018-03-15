@@ -180,11 +180,6 @@ def test_gsb_lookups():
     """Attempt issuances for a GSB-blocked domain, and expect it to fail. Also
        check the gsb-test-srv's count of received queries to ensure it got a
        request."""
-    # TODO(jsha): Once gsbv4 is enabled in both config and config-next, remove
-    # this early return.
-    if not default_config_dir.startswith("test/config-next"):
-        return
-
     hostname = "honest.achmeds.discount.hosting.com"
     chisel.expect_problem("urn:acme:error:unauthorized",
         lambda: auth_and_issue([hostname]))
@@ -544,8 +539,6 @@ def main():
     exit_status = 0
 
 def run_chisel():
-    # TODO(https://github.com/letsencrypt/boulder/issues/2521): Add TLS-SNI test.
-
     test_issuer()
     test_expired_authz_purger()
     test_ct_submission()
