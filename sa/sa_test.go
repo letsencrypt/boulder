@@ -1647,40 +1647,104 @@ func TestGetAuthorizations(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	exp := fc.Now().AddDate(0, 0, 1)
-	pa := core.Authorization{RegistrationID: reg.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "a"}, Status: core.StatusPending, Expires: &exp, Combinations: [][]int{[]int{0, 1}}}
 
+	identA := "aaa"
+	identB := "bbb"
+	idents := []string{identA, identB}
+
+	// Create an authorization template for a pending authorization with a dummy identifier
+	pa := core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Combinations:   [][]int{[]int{0, 1}},
+	}
+
+	// Add the template to create pending authorization A
 	paA, err := sa.NewPendingAuthorization(ctx, pa)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paA.ID != "", "ID shouldn't be blank")
 
-	pa.Identifier.Value = "b"
+	// Twiddle the template to have a different identifier
+	pa.Identifier.Value = identB
+	// Add the template to create pending authorization B
 	paB, err := sa.NewPendingAuthorization(ctx, pa)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paB.ID != "", "ID shouldn't be blank")
 
+	// Set pending authorization A's status to valid, and then finalize it
 	paB.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, paB)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paB.ID)
 
+	// Don't require V2 authorizations because the above pending authorizations
+	// aren't associated with orders, and therefore are seen as legacy V1
+	// authorizations.
 	requireV2Authzs := false
-
 	now := fc.Now().UnixNano()
+	// Get authorizations for the names used above.
 	authz, err := sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
-		Domains:         []string{"a", "b"},
+		Domains:         idents,
 		Now:             &now,
 		RequireV2Authzs: &requireV2Authzs,
 	})
+	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	// We should get back two authorizations
 	test.AssertEquals(t, len(authz.Authz), 2)
+
+	// Get authorizations for the names used above, and one name that doesn't exist
 	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
-		Domains:         []string{"a", "b", "c"},
+		Domains:         append(idents, "ccc"),
 		Now:             &now,
 		RequireV2Authzs: &requireV2Authzs,
 	})
+	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	// It should return two authorizations
 	test.AssertEquals(t, len(authz.Authz), 2)
+
+	// Get authorizations for the names used above, but this time enforce that no
+	// V2 authorizations are returned.
+	requireV2Authzs = true
+	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID:  &reg.ID,
+		Domains:         idents,
+		Now:             &now,
+		RequireV2Authzs: &requireV2Authzs,
+	})
+	// It should not fail
+	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	// It should return no authorizations
+	test.AssertEquals(t, len(authz.Authz), 0)
+
+	// Create a new pending order that references one of the pending authorizations
+	orderExpiry := exp.Unix()
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &orderExpiry,
+		Names:          []string{identA},
+		Authorizations: []string{paA.ID},
+	})
+	// It should not fail
+	test.AssertNotError(t, err, "Couldn't create new pending order")
+
+	// Calling get authorizations for the names used above with requireV2Authzs true should now find an authz
+	requireV2Authzs = true
+	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID:  &reg.ID,
+		Domains:         idents,
+		Now:             &now,
+		RequireV2Authzs: &requireV2Authzs,
+	})
+	// It should not fail
+	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
+	// It should find the one authz we associated with an order above
+	test.AssertEquals(t, len(authz.Authz), 1)
+	test.AssertEquals(t, *authz.Authz[0].Authz.Id, paA.ID)
 }
 
 func TestAddPendingAuthorizations(t *testing.T) {
