@@ -1,79 +1,39 @@
 #!/usr/bin/env python2.7
 """
-Integration test for ACMEv2 as implemented by boulder-wfe2.
-
-Currently (December 2017) this depends on the acme-v2-integration branch of
-Certbot, while we wait on landing some of our changes in master.
+Integration test cases for ACMEv2 as implemented by boulder-wfe2.
 """
-import atexit
 import random
-import shutil
 import subprocess
-import tempfile
 import requests
 import datetime
 import time
-import base64
 import os
 
 import OpenSSL
-import josepy as jose
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
-import startservers
-
 import chisel2
-from chisel2 import auth_and_issue, make_client, make_csr, do_dns_challenges, do_http_challenges
 
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 
-exit_status = 1
-tempdir = tempfile.mkdtemp()
+import josepy
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
     return "rand.%x.xyz" % random.randrange(2**32)
 
-def main():
-    if not startservers.start(race_detection=True):
-        raise Exception("startservers failed")
-
-    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        test_sct_embedding()
-
-    test_multidomain()
-    test_wildcardmultidomain()
-    test_overlapping_wildcard()
-    test_wildcard_exactblacklist()
-    test_wildcard_authz_reuse()
-    test_order_reuse_failed_authz()
-    test_revoke_by_issuer()
-    test_revoke_by_authz()
-    test_revoke_by_privkey()
-    test_order_finalize_early()
-    test_bad_overlap_wildcard()
-
-    test_loadgeneration()
-    test_cert_checker()
-
-    if not startservers.check():
-        raise Exception("startservers.check failed")
-
-    global exit_status
-    exit_status = 0
-
 def test_multidomain():
-    auth_and_issue([random_domain(), random_domain()])
+    chisel2.auth_and_issue([random_domain(), random_domain()])
 
 def test_wildcardmultidomain():
     """
     Test issuance for a random domain and a random wildcard domain using DNS-01.
     """
-    auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
+    chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
 
 def test_overlapping_wildcard():
     """
@@ -82,8 +42,8 @@ def test_overlapping_wildcard():
     """
     domain = random_domain()
     domains = [ domain, "*."+domain ]
-    client = make_client(None)
-    csr_pem = make_csr(domains)
+    client = chisel2.make_client(None)
+    csr_pem = chisel2.make_csr(domains)
     order = client.new_order(csr_pem)
     authzs = order.authorizations
 
@@ -91,7 +51,7 @@ def test_overlapping_wildcard():
         raise Exception("order for %s had %d authorizations, expected 2" %
                 (domains, len(authzs)))
 
-    cleanup = do_dns_challenges(client, authzs)
+    cleanup = chisel2.do_dns_challenges(client, authzs)
     try:
         order = client.poll_and_finalize(order)
     finally:
@@ -108,7 +68,7 @@ def test_wildcard_exactblacklist():
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
     chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
-        lambda: auth_and_issue([domain], chall_type="dns-01"))
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
 
 def test_wildcard_authz_reuse():
     """
@@ -117,16 +77,16 @@ def test_wildcard_authz_reuse():
     """
 
     # Create one client to reuse across multiple issuances
-    client = make_client(None)
+    client = chisel2.make_client(None)
 
     # Pick a random domain to issue for
     domains = [ random_domain() ]
-    csr_pem = make_csr(domains)
+    csr_pem = chisel2.make_csr(domains)
 
     # Submit an order for the name
     order = client.new_order(csr_pem)
     # Complete the order via an HTTP-01 challenge
-    cleanup = do_http_challenges(client, order.authorizations)
+    cleanup = chisel2.do_http_challenges(client, order.authorizations)
     try:
         order = client.poll_and_finalize(order)
     finally:
@@ -134,7 +94,7 @@ def test_wildcard_authz_reuse():
 
     # Now try to issue a wildcard for the random domain
     domains[0] = "*." + domains[0]
-    csr_pem = make_csr(domains)
+    csr_pem = chisel2.make_csr(domains)
     order = client.new_order(csr_pem)
 
     # We expect all of the returned authorizations to be pending status
@@ -144,8 +104,10 @@ def test_wildcard_authz_reuse():
                     ((domains), str(authz.body.status)))
 
 def test_bad_overlap_wildcard():
+    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        return
     chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
-        lambda: auth_and_issue(["*.example.com", "www.example.com"]))
+        lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
 
 def test_order_reuse_failed_authz():
     """
@@ -154,9 +116,9 @@ def test_order_reuse_failed_authz():
     doesn't reuse a failed authorizaton in the new order.
     """
 
-    client = make_client(None)
+    client = chisel2.make_client(None)
     domains = [ random_domain() ]
-    csr_pem = make_csr(domains)
+    csr_pem = chisel2.make_csr(domains)
 
     order = client.new_order(csr_pem)
     firstOrderURI = order.uri
@@ -194,7 +156,7 @@ def test_order_reuse_failed_authz():
                     ((domains), str(authz.body.status)))
 
     # We expect the new order can be fulfilled
-    cleanup = do_http_challenges(client, order.authorizations)
+    cleanup = chisel2.do_http_challenges(client, order.authorizations)
     try:
         order = client.poll_and_finalize(order)
     finally:
@@ -206,11 +168,11 @@ def test_order_finalize_early():
     order having an error set and the status being invalid.
     """
     # Create a client
-    client = make_client(None)
+    client = chisel2.make_client(None)
 
     # Create a random domain and a csr
     domains = [ random_domain() ]
-    csr_pem = make_csr(domains)
+    csr_pem = chisel2.make_csr(domains)
 
     # Create an order for the domain
     order = client.new_order(csr_pem)
@@ -240,59 +202,51 @@ def test_order_finalize_early():
         raise Exception("order %s has incorrect error field type: \"%s\"" % (order.uri, updatedOrder['error']['type']))
 
 def test_revoke_by_issuer():
-    client = make_client(None)
-    order = auth_and_issue([random_domain()], client=client)
+    client = chisel2.make_client(None)
+    order = chisel2.auth_and_issue([random_domain()], client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(jose.ComparableX509(cert), 0)
+    client.revoke(josepy.ComparableX509(cert), 0)
 
 def test_revoke_by_authz():
     domains = [random_domain()]
-    order = auth_and_issue(domains)
+    order = chisel2.auth_and_issue(domains)
 
     # create a new client and re-authz
-    client = make_client(None)
-    auth_and_issue(domains, client=client)
+    client = chisel2.make_client(None)
+    chisel2.auth_and_issue(domains, client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(jose.ComparableX509(cert), 0)
+    client.revoke(josepy.ComparableX509(cert), 0)
 
 def test_revoke_by_privkey():
-    client = make_client(None)
+    client = chisel2.make_client(None)
     domains = [random_domain()]
     key = OpenSSL.crypto.PKey()
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
     key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
-    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
+    csr_pem = chisel2.make_csr(domains)
     order = client.new_order(csr_pem)
-    cleanup = do_http_challenges(client, order.authorizations)
+    cleanup = chisel2.do_http_challenges(client, order.authorizations)
     try:
         order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
     # Create a new client with the JWK as the cert private key
-    jwk = jose.JWKRSA(key=key)
+    jwk = josepy.JWKRSA(key=key)
     net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
 
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY).json())
+    directory = Directory.from_json(net.get(chisel2.DIRECTORY_V2).json())
     new_client = acme_client.ClientV2(directory, net)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(jose.ComparableX509(cert), 0)
-
-def test_loadgeneration():
-    # Run the load generator
-    latency_data_file = "/tmp/v2-integration-test-latency.json"
-    subprocess.check_output(
-        "./bin/load-generator \
-            -config test/load-generator/config/v2-integration-test-config.json\
-            -results %s" % latency_data_file,
-        shell=True,
-        stderr=subprocess.STDOUT)
+    client.revoke(josepy.ComparableX509(cert), 0)
 
 def test_sct_embedding():
-    order = auth_and_issue([random_domain()])
+    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        return
+    order = chisel2.auth_and_issue([random_domain()])
     cert = x509.load_pem_x509_certificate(str(order.fullchain_pem), default_backend())
 
     # make sure there is no poison extension
@@ -318,22 +272,3 @@ def test_sct_embedding():
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
-
-def test_cert_checker():
-    run("./bin/cert-checker -config %s/cert-checker.json" %
-        os.environ.get('BOULDER_CONFIG_DIR', 'test/config'))
-
-if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.CalledProcessError as e:
-        raise Exception("%s. Output:\n%s" % (e, e.output))
-
-@atexit.register
-def stop():
-    import shutil
-    shutil.rmtree(tempdir)
-    if exit_status == 0:
-        print("\n\nSUCCESS")
-    else:
-        print("\n\nFAILURE")
