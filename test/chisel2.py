@@ -46,16 +46,19 @@ os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
 
-def make_client(email=None):
-    """Build an acme.Client and register a new account with a random key."""
-    key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
-
+def uninitialized_client(key=None):
+    if key is None:
+        key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
     net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
     directory = messages.Directory.from_json(net.get(DIRECTORY_V2).json())
-    client = acme_client.ClientV2(directory, net)
+    return acme_client.ClientV2(directory, net)
+
+def make_client(email=None):
+    """Build an acme.Client and register a new account with a random key."""
+    client = uninitialized_client()
     tos = client.directory.meta.terms_of_service
     if tos == ACCEPTABLE_TOS:
-        net.account = client.new_account(messages.NewRegistration.from_data(email=email,
+        client.net.account = client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
         raise Exception("Unrecognized terms of service URL %s" % tos)

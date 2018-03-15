@@ -8,17 +8,20 @@ import requests
 import datetime
 import time
 import os
+import json
 
 import OpenSSL
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 import chisel2
 
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
+from acme import messages
 
 import josepy
 
@@ -269,6 +272,34 @@ def test_sct_embedding():
             raise Exception("SCT contains wrong version")
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
+
+def test_only_return_existing_reg():
+    client = chisel2.uninitialized_client()
+    email = "test@example.com"
+    client.new_account(messages.NewRegistration.from_data(email=email,
+            terms_of_service_agreed=True))
+    
+    client = chisel2.uninitialized_client(key=client.net.key)
+    class extendedAcct(dict):
+        def json_dumps(self, indent=None):
+            return json.dumps(self)
+    acct = extendedAcct({
+        "termsOfServiceAgreed": True,
+        "contact": [email],
+        "onlyReturnExisting": True
+    })
+    resp = client.net.post(client.directory['newAccount'], acct, acme_version=2)
+    if resp.status_code != 200 or len(resp.content) != 0:
+        raise Exception("incorrect response returned for onlyReturnExisting")
+
+    other_client = chisel2.uninitialized_client()
+    newAcct = extendedAcct({
+        "termsOfServiceAgreed": True,
+        "contact": [email],
+        "onlyReturnExisting": True
+    })
+    chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
+        lambda: other_client.net.post(other_client.directory['newAccount'], newAcct, acme_version=2))
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
