@@ -265,11 +265,15 @@ def test_expiration_mailer():
         raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
 
 def test_revoke_by_account():
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
     client = chisel.make_client()
     cert, _ = auth_and_issue([random_domain()], client=client)
-    client.revoke(cert.body)
+    client.revoke(cert.body, 0)
 
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
+    ee_ocsp_url = "http://localhost:4002"
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     return 0
 
@@ -460,6 +464,8 @@ def test_stats():
     expect_stat(8001, "\ngo_goroutines ")
 
 def test_sct_embedding():
+    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        return
     certr, authzs = auth_and_issue([random_domain()])
     certBytes = urllib2.urlopen(certr.uri).read()
     cert = x509.load_der_x509_certificate(certBytes, default_backend())
@@ -498,10 +504,13 @@ def main():
                         help="run integration tests using chisel")
     parser.add_argument('--load', dest="run_loadtest", action="store_true",
                         help="run load-generator")
+    parser.add_argument('--filter', dest="test_case_filter", action="store",
+                        help="Regex filter for test cases")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False, run_loadtest=False)
+    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False,
+        run_loadtest=False, test_case_filter="")
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
@@ -518,7 +527,7 @@ def main():
         raise Exception("startservers failed")
 
     if args.run_all or args.run_chisel:
-        run_chisel()
+        run_chisel(args.test_case_filter)
 
     if args.run_all or args.run_certbot:
         run_client_tests()
@@ -535,26 +544,11 @@ def main():
     global exit_status
     exit_status = 0
 
-def run_chisel():
-    test_issuer()
-    test_expired_authz_purger()
-    test_ct_submission()
-    test_gsb_lookups()
-    test_multidomain()
-    test_expiration_mailer()
-    test_caa()
-    test_admin_revoker_cert()
-    test_admin_revoker_authz()
-    test_certificates_per_name()
-    test_ocsp()
-    test_single_ocsp()
-    test_dns_challenge()
-    test_renewal_exemption()
-    test_expired_authzs_404()
-    test_account_update()
-    test_stats()
-    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        test_sct_embedding()
+def run_chisel(test_case_filter):
+    print test_case_filter
+    for key, value in globals().items():
+      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
+        value()
 
 def run_loadtest():
     # Run the load generator
