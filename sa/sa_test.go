@@ -1642,6 +1642,10 @@ func TestGetAuthorizationNoRows(t *testing.T) {
 }
 
 func TestGetAuthorizations(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
