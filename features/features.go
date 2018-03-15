@@ -32,24 +32,27 @@ const (
 	// Return errors to ACMEv2 clients that do not send the correct JWS
 	// Content-Type header
 	EnforceV2ContentType
+	// Reject new-orders that contain a hostname redundant with a wildcard.
+	EnforceOverlappingWildcards
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                  false,
-	UseAIAIssuerURL:         false,
-	ReusePendingAuthz:       false,
-	CountCertificatesExact:  false,
-	IPv6First:               false,
-	AllowRenewalFirstRL:     false,
-	WildcardDomains:         false,
-	EnforceChallengeDisable: false, // deprecated
-	TLSSNIRevalidation:      false,
-	EmbedSCTs:               false,
-	CancelCTSubmissions:     true,
-	VAChecksGSB:             false,
-	EnforceV2ContentType:    false,
-	ForceConsistentStatus:   false,
+	unused:                      false,
+	UseAIAIssuerURL:             false,
+	ReusePendingAuthz:           false,
+	CountCertificatesExact:      false,
+	IPv6First:                   false,
+	AllowRenewalFirstRL:         false,
+	WildcardDomains:             false,
+	EnforceChallengeDisable:     false, // deprecated
+	TLSSNIRevalidation:          false,
+	EmbedSCTs:                   false,
+	CancelCTSubmissions:         true,
+	VAChecksGSB:                 false,
+	EnforceV2ContentType:        false,
+	ForceConsistentStatus:       false,
+	EnforceOverlappingWildcards: false,
 }
 
 var fMu = new(sync.RWMutex)

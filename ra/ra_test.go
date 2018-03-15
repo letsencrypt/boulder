@@ -3348,6 +3348,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 }
 
 func TestWildcardOverlap(t *testing.T) {
+	_ = features.Set(map[string]bool{"EnforceOverlappingWildcards": true})
+	defer features.Reset()
 	err := wildcardOverlap([]string{
 		"*.example.com",
 		"*.example.net",
@@ -3362,6 +3364,13 @@ func TestWildcardOverlap(t *testing.T) {
 	})
 	if err == nil {
 		t.Errorf("Got no error, expected one")
+	}
+	berr, ok := err.(*berrors.BoulderError)
+	if !ok {
+		t.Errorf("Error was wrong type: %T", err)
+	}
+	if berr.Type != berrors.Malformed {
+		t.Errorf("Error was wrong BoulderError type: %d", berr.Type)
 	}
 	err = wildcardOverlap([]string{
 		"*.foo.example.com",

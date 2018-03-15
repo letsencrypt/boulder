@@ -1293,6 +1293,14 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 		// For an OPTIONS request: allow all methods handled at this URL.
 		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
 	}
+	// NOTE(@cpu): "Content-Type" is considered a 'simple header' that doesn't
+	// need to be explicitly allowed in 'access-control-allow-headers', but only
+	// when the value is one of: `application/x-www-form-urlencoded`,
+	// `multipart/form-data`, or `text/plain`. Since `application/jose+json` is
+	// not one of these values we must be explicit in saying that `Content-Type`
+	// is an allowed header. See MDN for more details:
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
+	response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
