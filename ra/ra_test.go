@@ -2636,6 +2636,114 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
 }
 
+// mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
+// to test orders expiry calculations
+type mockSANearExpiredAuthz struct {
+	mocks.StorageAuthority
+	expiry time.Time
+}
+
+// GetAuthorizations is a mock that always returns a valid authorization for
+// "zombo.com" very near to expiry
+func (sa *mockSANearExpiredAuthz) GetAuthorizations(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	authzs := map[string]*core.Authorization{
+		"zombo.com": &core.Authorization{
+			// A static fake ID we can check for in a unit test
+			ID:             "near-expired-authz",
+			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			RegistrationID: *req.RegistrationID,
+			Expires:        &sa.expiry,
+			Status:         "valid",
+			Challenges: []core.Challenge{
+				core.Challenge{
+					Type:   core.ChallengeTypeHTTP01,
+					Status: core.StatusValid,
+				},
+			},
+			Combinations: [][]int{{0}, {1}},
+		},
+	}
+	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
+	resp := &sapb.Authorizations{}
+	for k, v := range authzs {
+		authzPB, err := sagrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	}
+	return resp, nil
+}
+
+// AddPendingAuthorizations is a mock that just returns a fake pending authz ID
+// that is != "near-expired-authz"
+func (sa *mockSANearExpiredAuthz) AddPendingAuthorizations(
+	_ context.Context,
+	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	return &sapb.AuthorizationIDs{
+		Ids: []string{
+			"abcdefg",
+		},
+	}, nil
+}
+
+func TestNewOrderExpiry(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com"}
+
+	// Set the order lifetime to 48 hours.
+	ra.orderLifetime = 48 * time.Hour
+
+	// Use an expiry that is sooner than the configured order expiry but greater
+	// than 24 hours away.
+	fakeAuthzExpires := clk.Now().Add(35 * time.Hour)
+
+	// Use a mock SA that always returns a soon-to-be-expired valid authz for
+	// "zombo.com".
+	ra.SA = &mockSANearExpiredAuthz{expiry: fakeAuthzExpires}
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// Create an order for that request
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an order for regA failed")
+	// There should be one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// It should be the fake near-expired-authz authz
+	test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	// The order's expiry should be the fake authz's expiry since it is sooner
+	// than the order's own expiry.
+	test.AssertEquals(t, *order.Expires, fakeAuthzExpires.UnixNano())
+
+	// Set the order lifetime to be lower than the fakeAuthzLifetime
+	ra.orderLifetime = 12 * time.Hour
+	expectedOrderExpiry := clk.Now().Add(ra.orderLifetime).UnixNano()
+	// Create the order again
+	order, err = ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an order for regA failed")
+	// There should be one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// It should be the fake near-expired-authz authz
+	test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	// The order's expiry should be the order's own expiry since it is sooner than
+	// the fake authz's expiry.
+	test.AssertEquals(t, *order.Expires, expectedOrderExpiry)
+}
+
 func TestFinalizeOrder(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

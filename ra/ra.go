@@ -1709,11 +1709,9 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
-	expires := ra.clk.Now().Add(ra.orderLifetime).UnixNano()
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
-		Expires:        &expires,
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
@@ -1757,15 +1755,21 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// Check whether there are existing non-expired authorizations for the set of
-	// order names
-	now := ra.clk.Now().UnixNano()
+	// An order's lifetime is effectively bound by the shortest remaining lifetime
+	// of its associated authorizations. For that reason it would be Uncool if
+	// `sa.GetAuthorizations` returned an authorization that was very close to
+	// expiry. The resulting pending order that references it would itself end up
+	// expiring very soon.
+	// To prevent this we only return authorizations that are at least 1 day away
+	// from expiring.
+	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
+
 	// We do not want any legacy V1 API authorizations not associated with an
 	// order to be returned from the SA so we set requireV2Authzs to true
 	requireV2Authzs := true
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID:  order.RegistrationID,
-		Now:             &now,
+		Now:             &authzExpiryCutoff,
 		Domains:         order.Names,
 		RequireV2Authzs: &requireV2Authzs,
 	})
@@ -1806,6 +1810,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			continue
 		}
 
+		// Delete the authz from the nameToExistingAuthz map since we are not reusing it.
+		delete(nameToExistingAuthz, name)
 		// If we reached this point then the existing authz was not acceptable for
 		// reuse and we need to mark the name as requiring a new pending authz
 		missingAuthzNames = append(missingAuthzNames, name)
@@ -1837,14 +1843,47 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		newAuthzs = append(newAuthzs, pb)
 	}
 
+	// Start with the order's own expiry as the minExpiry. We only care
+	// about authz expiries that are sooner than the order's expiry
+	minExpiry := ra.clk.Now().Add(ra.orderLifetime)
+
+	// Check the reused authorizations to see if any have an expiry before the
+	// minExpiry (the order's lifetime)
+	for _, authz := range nameToExistingAuthz {
+		// An authz without an expiry is an unexpected internal server event
+		if authz.Expires == nil {
+			return nil, berrors.InternalServerError(
+				"SA.GetAuthorizations returned an authz (%d) with nil expiry",
+				*authz.Id)
+		}
+		// If the reused authorization expires before the minExpiry, it's expiry
+		// is the new minExpiry.
+		authzExpiry := time.Unix(0, *authz.Expires)
+		if authzExpiry.Before(minExpiry) {
+			minExpiry = authzExpiry
+		}
+	}
+
+	// If new authorizations are needed, call AddPendingAuthorizations. Also check
+	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
 		authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
 		if err != nil {
 			return nil, err
 		}
 		order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
+
+		// If the newly created pending authz's have an expiry closer than the
+		// minExpiry the minExpiry is the pending authz expiry.
+		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+		if newPendingAuthzExpires.Before(minExpiry) {
+			minExpiry = newPendingAuthzExpires
+		}
 	}
 
+	// Set the order's expiry to the minimum expiry
+	minExpiryTS := minExpiry.UnixNano()
+	order.Expires = &minExpiryTS
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
 	if err != nil {
 		return nil, err

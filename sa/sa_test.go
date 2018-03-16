@@ -1488,7 +1488,6 @@ func TestOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Add one pending authz
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthz := core.Authorization{
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
@@ -1499,7 +1498,8 @@ func TestOrder(t *testing.T) {
 	authz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 
-	expires := time.Now().Truncate(time.Second).UnixNano()
+	// Set the order to expire in two hours
+	expires := fc.Now().Add(2 * time.Hour).UnixNano()
 	empty := ""
 
 	inputOrder := &corepb.Order{
@@ -1509,31 +1509,37 @@ func TestOrder(t *testing.T) {
 		Authorizations: []string{authz.ID},
 	}
 
+	// Create the order
 	order, err := sa.NewOrder(context.Background(), inputOrder)
 	test.AssertNotError(t, err, "sa.NewOrder failed")
-	test.AssertEquals(t, *order.Id, int64(1))
 
 	pendingStatus := string(core.StatusPending)
 	falseBool := false
 	one := int64(1)
 	nowTS := sa.clk.Now().UnixNano()
+	// The Order from GetOrder should match the following expected order
 	expectedOrder := &corepb.Order{
-		// The expected order matches the input order
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrder
 		RegistrationID: inputOrder.RegistrationID,
-		Expires:        inputOrder.Expires,
-		Names:          inputOrder.Names,
 		Authorizations: inputOrder.Authorizations,
-		// And should also have an empty serial and the correct status and
-		// processing state, and an ID of 1, and a created timestamp
-		Id:                &one,
+		Names:          inputOrder.Names,
+		Expires:        inputOrder.Expires,
+		// The ID should have been set to 1 by the SA
+		Id: &one,
+		// The status should be pending
+		Status: &pendingStatus,
+		// The serial should be empty since this is a pending order
 		CertificateSerial: &empty,
-		BeganProcessing:   &falseBool,
-		Status:            &pendingStatus,
-		Created:           &nowTS,
+		// We should not be processing it
+		BeganProcessing: &falseBool,
+		// The created timestamp should have been set to the current time
+		Created: &nowTS,
 	}
 
+	// Fetch the order by its ID and make sure it matches the expected
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "sa.Order failed")
+	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
@@ -1623,11 +1629,13 @@ func TestGetAuthorizations(t *testing.T) {
 	defer cleanup()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	exp := fc.Now().AddDate(0, 0, 1)
+	exp := fc.Now().AddDate(0, 0, 10)
 
 	identA := "aaa"
 	identB := "bbb"
-	idents := []string{identA, identB}
+	identC := "ccc"
+	identD := "ddd"
+	idents := []string{identA, identB, identC}
 
 	// Create an authorization template for a pending authorization with a dummy identifier
 	pa := core.Authorization{
@@ -1655,33 +1663,48 @@ func TestGetAuthorizations(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, paB)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paB.ID)
 
+	// Adjust the template to have an expiry in 1 hour from now.
+	nearbyExpires := fc.Now().Add(time.Hour)
+	pa.Expires = &nearbyExpires
+	pa.Identifier.Value = identC
+	// Add the template to create pending authorization C
+	paC, err := sa.NewPendingAuthorization(ctx, pa)
+	// There should be no error
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, paC.ID != "", "ID shouldn't be blank")
+
 	// Don't require V2 authorizations because the above pending authorizations
 	// aren't associated with orders, and therefore are seen as legacy V1
 	// authorizations.
 	requireV2Authzs := false
-	now := fc.Now().UnixNano()
+
+	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrder`. This
+	// should exclude pending authorization C based on its nearbyExpires expiry
+	// value.
+	expiryCutoff := fc.Now().AddDate(0, 0, 1).UnixNano()
 	// Get authorizations for the names used above.
 	authz, err := sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
 		Domains:         idents,
-		Now:             &now,
+		Now:             &expiryCutoff,
 		RequireV2Authzs: &requireV2Authzs,
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
-	// We should get back two authorizations
+	// We should get back two authorizations since one of the three authorizations
+	// created above expires too soon.
 	test.AssertEquals(t, len(authz.Authz), 2)
 
 	// Get authorizations for the names used above, and one name that doesn't exist
 	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
-		Domains:         append(idents, "ccc"),
-		Now:             &now,
+		Domains:         append(idents, identD),
+		Now:             &expiryCutoff,
 		RequireV2Authzs: &requireV2Authzs,
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations failed")
-	// It should return two authorizations
+	// It should still return only two authorizations
 	test.AssertEquals(t, len(authz.Authz), 2)
 
 	// Get authorizations for the names used above, but this time enforce that no
@@ -1690,7 +1713,7 @@ func TestGetAuthorizations(t *testing.T) {
 	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
 		Domains:         idents,
-		Now:             &now,
+		Now:             &expiryCutoff,
 		RequireV2Authzs: &requireV2Authzs,
 	})
 	// It should not fail
@@ -1714,7 +1737,7 @@ func TestGetAuthorizations(t *testing.T) {
 	authz, err = sa.GetAuthorizations(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID:  &reg.ID,
 		Domains:         idents,
-		Now:             &now,
+		Now:             &expiryCutoff,
 		RequireV2Authzs: &requireV2Authzs,
 	})
 	// It should not fail
