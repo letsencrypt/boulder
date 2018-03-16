@@ -112,12 +112,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			results <- result{sct: sct}
 		}(i, g)
 	}
+	isPrecert := features.Enabled(features.EmbedSCTs)
 	for _, log := range ctp.informational {
 		go func(l cmd.LogDescription) {
 			_, _ = ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
+				Precert:      &isPrecert,
 			})
 		}(log)
 	}
