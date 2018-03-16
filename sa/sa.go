@@ -1963,7 +1963,9 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 func (ssa *SQLStorageAuthority) getPendingAuthorizations(
 	ctx context.Context,
 	registrationID int64,
-	names []string, now time.Time) (map[string]*core.Authorization, error) {
+	names []string,
+	now time.Time,
+	requireV2Authzs bool) (map[string]*core.Authorization, error) {
 	return ssa.getAuthorizations(
 		ctx,
 		pendingAuthorizationTable,
@@ -1971,7 +1973,7 @@ func (ssa *SQLStorageAuthority) getPendingAuthorizations(
 		registrationID,
 		names,
 		now,
-		false)
+		requireV2Authzs)
 }
 
 func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
@@ -2015,7 +2017,12 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 			remainingNames = append(remainingNames, name)
 		}
 	}
-	pendingAuthz, err := ssa.getPendingAuthorizations(ctx, *req.RegistrationID, remainingNames, time.Unix(0, *req.Now))
+	pendingAuthz, err := ssa.getPendingAuthorizations(
+		ctx,
+		*req.RegistrationID,
+		remainingNames,
+		time.Unix(0, *req.Now),
+		*req.RequireV2Authzs)
 	if err != nil {
 		return nil, err
 	}
