@@ -1624,8 +1624,8 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	}
 	order.Names = reversedNames
 
-	// Update the order based on associated authorizations. This will set both the
-	// order status and expiry based on the associated authz state.
+	// Update the order based on associated authorizations. This will set the
+	// order status based on the associated authz state.
 	err = ssa.updateOrderWithAuthzs(ctx, order)
 	if err != nil {
 		return nil, err
