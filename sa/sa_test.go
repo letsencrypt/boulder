@@ -1488,7 +1488,6 @@ func TestOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Add one pending authz that expires in an hour
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthz := core.Authorization{
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
@@ -1518,14 +1517,14 @@ func TestOrder(t *testing.T) {
 	falseBool := false
 	one := int64(1)
 	nowTS := sa.clk.Now().UnixNano()
-	authzExpiresTS := authzExpires.UnixNano()
 	// The Order from GetOrder should match the following expected order
 	expectedOrder := &corepb.Order{
-		// The registration ID, authorizations and names should match the input to
-		// NewOrder
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrder
 		RegistrationID: inputOrder.RegistrationID,
 		Authorizations: inputOrder.Authorizations,
 		Names:          inputOrder.Names,
+		Expires:        inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
 		Id: &one,
 		// The status should be pending
@@ -1534,53 +1533,12 @@ func TestOrder(t *testing.T) {
 		CertificateSerial: &empty,
 		// We should not be processing it
 		BeganProcessing: &falseBool,
-		// The expiry should be the **authorization** expiry, because it is smaller
-		// than the order expiry
-		Expires: &authzExpiresTS,
 		// The created timestamp should have been set to the current time
 		Created: &nowTS,
 	}
 
 	// Fetch the order by its ID and make sure it matches the expected
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "sa.GetOrder failed")
-	test.AssertDeepEquals(t, storedOrder, expectedOrder)
-
-	// Add another pending authz that expires in two days
-	authzExpires = fc.Now().AddDate(0, 0, 2)
-	newAuthz = core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "another.example.com"},
-		RegistrationID: reg.ID,
-		Status:         core.StatusPending,
-		Expires:        &authzExpires,
-	}
-	authz, err = sa.NewPendingAuthorization(ctx, newAuthz)
-	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-
-	// Update the input order to use the above authorization
-	inputOrder.Names = []string{"another.example.com"}
-	inputOrder.Authorizations = []string{authz.ID}
-	// And to expire two hours in the future
-	expires = fc.Now().Add(2 * time.Hour).UnixNano()
-	inputOrder.Expires = &expires
-
-	// Create another order
-	order, err = sa.NewOrder(context.Background(), inputOrder)
-	test.AssertNotError(t, err, "sa.NewOrder failed")
-
-	// The resulting order is expected to have the same names/authorizations as
-	// the inputOrder
-	expectedOrder.Names = inputOrder.Names
-	expectedOrder.Authorizations = inputOrder.Authorizations
-	// The ID should be 2, since this is the second order created
-	two := int64(2)
-	expectedOrder.Id = &two
-	// The expiry should be the **order's** expiry now that the associated
-	// authorization expires further in the future than the order's own expiry.
-	expectedOrder.Expires = inputOrder.Expires
-
-	// Fetch the order by its ID and make sure it matches the expected
-	storedOrder, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }

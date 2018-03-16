@@ -1635,10 +1635,10 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 }
 
 // updateOrderWithAuthzs fethces an order's associated authorizations in order
-// to update the order based on their state. The order's status is updated using
-// `ssa.statusForOrder` and the order's expiry is updated using `ssa.expiryForOrder`.
+// to update the order based on their state. Once found, the associated
+// authorizations are given to `ssa.statusForOrder` to update the order with
+// a Status
 func (ssa *SQLStorageAuthority) updateOrderWithAuthzs(ctx context.Context, order *corepb.Order) error {
-
 	// Get the full Authorization objects for the order
 	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
 	// If there was an error getting the authorizations, return it immediately
@@ -1661,12 +1661,6 @@ func (ssa *SQLStorageAuthority) updateOrderWithAuthzs(ctx context.Context, order
 		return err
 	}
 	order.Status = &calculatedStatus
-
-	calculatedExpiry, err := ssa.expiryForOrder(order, authzs)
-	if err != nil {
-		return err
-	}
-	order.Expires = calculatedExpiry
 	return nil
 }
 
@@ -1819,50 +1813,6 @@ func (ssa *SQLStorageAuthority) statusForOrder(
 	return "", berrors.InternalServerError(
 		"Order %d is in an invalid state. No state known for this order's "+
 			"authorizations", *order.Id)
-}
-
-// expiryForOrder will examine an order and its associated authorizations
-// returning a UnixNano timestamp. The returned timestamp is the order's saved
-// expiry if that expiry is sooner than the expiry of any of the authorizations.
-// Otherwise the returned timestamp is the soonest of all of the associated
-// authorization's expiries. An error is returned if any of the order or any of
-// the authorizations are missing an expiry.
-func (ssa *SQLStorageAuthority) expiryForOrder(
-	order *corepb.Order,
-	authzs map[string]*core.Authorization) (*int64, error) {
-
-	// An order without an expiry is an unexpected internal server error event.
-	if order.Expires == nil {
-		return nil, berrors.InternalServerError(
-			"Order %d has a nil expiry", *order.Id)
-	}
-
-	// Start by assuming the order's overall expiry is the soonest.
-	minExpiry := time.Unix(0, *order.Expires)
-	fmt.Printf("Order MinExpiry: %s\n", minExpiry)
-
-	// Check each associated authorization's expiry
-	for _, authz := range authzs {
-		// An authz without an expiry is an unexpected internal server event
-		if authz.Expires == nil {
-			return nil, berrors.InternalServerError(
-				"Order %d has an associated authz %d with nil expiry",
-				*order.Id, authz.ID)
-		}
-		fmt.Printf("Authz expiry: %s\n", authz.Expires)
-
-		// If the authorization expires before the minExpiry, it's expiry is the new
-		// minExpiry.
-		if authz.Expires.Before(minExpiry) {
-			fmt.Printf("Authz wins\n")
-			minExpiry = *authz.Expires
-		}
-	}
-
-	// Return the minimum expiry as a unix nano timestamp pointer
-	fmt.Printf("MinExpiry is officially %s\n", minExpiry)
-	ts := minExpiry.UnixNano()
-	return &ts, nil
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
