@@ -1778,8 +1778,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Collect up the authorizations we found into a map keyed by the domains the
-	// authorizations correspond to. At the same time, make a note of the closest
-	// authorization expiry date
+	// authorizations correspond to
 	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(order.Names))
 	for _, v := range existingAuthz.Authz {
 		nameToExistingAuthz[*v.Domain] = v.Authz
