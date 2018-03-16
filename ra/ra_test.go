@@ -2695,10 +2695,6 @@ func (sa *mockSANearExpiredAuthz) AddPendingAuthorizations(
 // TestNewOrderOldAuthzReuse tests that NewOrder will not reuse an authorization
 // that is close to expired (where close to expired is considered <24hr away)
 func TestNewOrderOldAuthzReuse(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
-	}
-
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
