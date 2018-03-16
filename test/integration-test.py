@@ -560,12 +560,9 @@ def run_loadtest():
             -results %s" % latency_data_file)
 
     latency_data_file = "%s/v2-integration-test-latency.json" % tempdir
-    subprocess.check_output(
-        "./bin/load-generator \
+    run("./bin/load-generator \
             -config test/load-generator/config/v2-integration-test-config.json\
-            -results %s" % latency_data_file,
-        shell=True,
-        stderr=subprocess.STDOUT)
+            -results %s" % latency_data_file)
 
 def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)
