@@ -1629,7 +1629,6 @@ func TestGetAuthorizations(t *testing.T) {
 	defer cleanup()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	// Set the base expiry to be 10 days from now
 	exp := fc.Now().AddDate(0, 0, 10)
 
 	identA := "aaa"
