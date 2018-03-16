@@ -1757,15 +1757,21 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// Check whether there are existing non-expired authorizations for the set of
-	// order names
-	now := ra.clk.Now().UnixNano()
+	// An order's lifetime is effectively bound by the shortest remaining lifetime
+	// of its associated authorizations. For that reason it would be Uncool if
+	// `sa.GetAuthorizations` returned an authorization that was very close to
+	// expiry. The resulting pending order that references it would itself end up
+	// expiring very soon.
+	// To prevent this we only return authorizations that are at least 1 day away
+	// from expiring.
+	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
+
 	// We do not want any legacy V1 API authorizations not associated with an
 	// order to be returned from the SA so we set requireV2Authzs to true
 	requireV2Authzs := true
 	existingAuthz, err := ra.SA.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
 		RegistrationID:  order.RegistrationID,
-		Now:             &now,
+		Now:             &authzExpiryCutoff,
 		Domains:         order.Names,
 		RequireV2Authzs: &requireV2Authzs,
 	})

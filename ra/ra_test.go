@@ -2664,6 +2664,96 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
 }
 
+// mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
+// to test that orders don't reuse soon to expire authzs
+type mockSANearExpiredAuthz struct {
+	mocks.StorageAuthority
+	clk clock.FakeClock
+}
+
+// GetAuthorizations is a mock that always returns a valid authorization for
+// "zombo.com" very near to expiry
+func (sa *mockSANearExpiredAuthz) GetAuthorizations(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	nearExpires := sa.clk.Now().Add(12 * time.Hour)
+	authzs := map[string]*core.Authorization{
+		"zombo.com": &core.Authorization{
+			// A static fake ID we can check for in a unit test
+			ID:             "near-expired-authz",
+			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			RegistrationID: *req.RegistrationID,
+			Expires:        &nearExpires,
+			Status:         "valid",
+			Challenges: []core.Challenge{
+				core.Challenge{
+					Type:   core.ChallengeTypeHTTP01,
+					Status: core.StatusValid,
+				},
+			},
+			Combinations: [][]int{{0}, {1}},
+		},
+	}
+	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
+	resp := &sapb.Authorizations{}
+	for k, v := range authzs {
+		authzPB, err := sagrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	}
+	return resp, nil
+}
+
+// AddPendingAuthorizations is a mock that just returns a fake pending authz ID
+// that is != "soon-to-be-expired"
+func (sa *mockSANearExpiredAuthz) AddPendingAuthorizations(
+	_ context.Context,
+	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	return &sapb.AuthorizationIDs{
+		Ids: []string{
+			"abcdefg",
+		},
+	}, nil
+}
+
+// TestNewOrderOldAuthzReuse tests that NewOrder will not reuse an authorization
+// that is close to expired (where close to expired is considered <24hr away)
+func TestNewOrderOldAuthzReuse(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		return
+	}
+
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com"}
+
+	// Use a mock SA that always returns a soon-to-be-expired valid authz for "zombo.com"
+	// "zombo.com"
+	ra.SA = &mockSANearExpiredAuthz{clk: clk}
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// Create an order for that request
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// There should be one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// It should *not* be the soon-to-be-expired authorization!
+	test.AssertNotEquals(t, order.Authorizations[0], "soon-to-be-expired")
+}
+
 func TestFinalizeOrder(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		return

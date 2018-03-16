@@ -1624,18 +1624,101 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	}
 	order.Names = reversedNames
 
-	// Calculate the status for the order
-	status, err := ssa.statusForOrder(ctx, order)
+	// Update the order based on associated authorizations. This will set both the
+	// order status and expiry based on the associated authz state.
+	err = ssa.updateOrderWithAuthzs(ctx, order)
 	if err != nil {
 		return nil, err
 	}
-	order.Status = &status
 
 	return order, nil
 }
 
-// statusForOrder examines the status of a provided order's authorizations to
-// determine what the overall status of the order should be. In summary:
+// updateOrderWithAuthzs fethces an order's associated authorizations in order
+// to update the order based on their state. The order's status is updated using
+// `ssa.statusForOrder` and the order's expiry is updated using `ssa.expiryForOrder`.
+func (ssa *SQLStorageAuthority) updateOrderWithAuthzs(ctx context.Context, order *corepb.Order) error {
+
+	// Get the full Authorization objects for the order
+	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
+	// If there was an error getting the authorizations, return it immediately
+	if err != nil {
+		return err
+	}
+
+	// If getAllOrderAuthorizations returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
+	// wrong worth raising an internal error about.
+	if len(authzs) != len(order.Authorizations) {
+		return berrors.InternalServerError(
+			"getAllOrderAuthorizations returned the wrong number of authorizations "+
+				"(%d vs expected %d) for order %d",
+			len(authzs), len(order.Authorizations), *order.Id)
+	}
+
+	calculatedStatus, err := ssa.statusForOrder(order, authzs)
+	if err != nil {
+		return err
+	}
+	order.Status = &calculatedStatus
+
+	calculatedExpiry, err := ssa.expiryForOrder(order, authzs)
+	if err != nil {
+		return err
+	}
+	order.Expires = calculatedExpiry
+	return nil
+}
+
+// getAllOrderAuthorizations returns a map of identifier value to authorization
+// object for every identifer associated with a given order ID. This will return
+// *all* associated order authorizations including pending, valid, and expired
+// authorizations.
+func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
+	ctx context.Context,
+	orderID, acctID int64) (map[string]*core.Authorization, error) {
+	var allAuthzs []*core.Authorization
+
+	for _, table := range authorizationTables {
+		var authzs []*core.Authorization
+		_, err := ssa.dbMap.Select(
+			&authzs,
+			fmt.Sprintf(`SELECT %s from %s AS authz
+		INNER JOIN orderToAuthz
+		ON authz.ID = orderToAuthz.authzID
+		WHERE authz.registrationID = ? AND
+		orderToAuthz.orderID = ?`, authzFields, table),
+			acctID,
+			orderID)
+		if err != nil {
+			return nil, err
+		}
+
+		allAuthzs = append(allAuthzs, authzs...)
+	}
+
+	// Collapse the returned authorizations into a mapping from name to
+	// authorization
+	byName := make(map[string]*core.Authorization)
+	for _, auth := range allAuthzs {
+		// We only expect to get back DNS identifiers
+		if auth.Identifier.Type != core.IdentifierDNS {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
+		}
+		// We don't expect there to be multiple authorizations for the same name
+		// within the same order
+		if _, present := byName[auth.Identifier.Value]; present {
+			return nil, berrors.InternalServerError(
+				"Found multiple authorizations within one order for identifier %q",
+				auth.Identifier.Value)
+		}
+		byName[auth.Identifier.Value] = auth
+	}
+	return byName, nil
+}
+
+// statusForOrder examines the status of a provided order and its authorizations
+// to determine what the overall status of the order should be. In summary:
 //   * If the order has an error, the order is invalid
 //   * If any of the order's authorizations are invalid, the order is invalid.
 //   * If any of the order's authorizations are expired, the order is invalid.
@@ -1648,27 +1731,12 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is pending waiting a finalization request.
 // An error is returned for any other case.
-func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
+func (ssa *SQLStorageAuthority) statusForOrder(
+	order *corepb.Order,
+	authzs map[string]*core.Authorization) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
-	}
-
-	// Get the full Authorization objects for the order
-	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
-	// If there was an error getting the authorizations, return it immediately
-	if err != nil {
-		return "", err
-	}
-
-	// If getAllOrderAuthorizations returned a different number of authorization
-	// objects than the order's slice of authorization IDs something has gone
-	// wrong worth raising an internal error about.
-	if len(authzs) != len(order.Authorizations) {
-		return "", berrors.InternalServerError(
-			"getAllOrderAuthorizations returned the wrong number of authorizations "+
-				"(%d vs expected %d) for order %d",
-			len(authzs), len(order.Authorizations), *order.Id)
 	}
 
 	// Keep a count of the authorizations seen
@@ -1753,47 +1821,48 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 			"authorizations", *order.Id)
 }
 
-func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
-	ctx context.Context,
-	orderID, acctID int64) (map[string]*core.Authorization, error) {
-	var allAuthzs []*core.Authorization
+// expiryForOrder will examine an order and its associated authorizations
+// returning a UnixNano timestamp. The returned timestamp is the order's saved
+// expiry if that expiry is sooner than the expiry of any of the authorizations.
+// Otherwise the returned timestamp is the soonest of all of the associated
+// authorization's expiries. An error is returned if any of the order or any of
+// the authorizations are missing an expiry.
+func (ssa *SQLStorageAuthority) expiryForOrder(
+	order *corepb.Order,
+	authzs map[string]*core.Authorization) (*int64, error) {
 
-	for _, table := range authorizationTables {
-		var authzs []*core.Authorization
-		_, err := ssa.dbMap.Select(
-			&authzs,
-			fmt.Sprintf(`SELECT %s from %s AS authz
-		INNER JOIN orderToAuthz
-		ON authz.ID = orderToAuthz.authzID
-		WHERE authz.registrationID = ? AND
-		orderToAuthz.orderID = ?`, authzFields, table),
-			acctID,
-			orderID)
-		if err != nil {
-			return nil, err
-		}
-
-		allAuthzs = append(allAuthzs, authzs...)
+	// An order without an expiry is an unexpected internal server error event.
+	if order.Expires == nil {
+		return nil, berrors.InternalServerError(
+			"Order %d has a nil expiry", *order.Id)
 	}
 
-	// Collapse the returned authorizations into a mapping from name to
-	// authorization
-	byName := make(map[string]*core.Authorization)
-	for _, auth := range allAuthzs {
-		// We only expect to get back DNS identifiers
-		if auth.Identifier.Type != core.IdentifierDNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
-		}
-		// We don't expect there to be multiple authorizations for the same name
-		// within the same order
-		if _, present := byName[auth.Identifier.Value]; present {
+	// Start by assuming the order's overall expiry is the soonest.
+	minExpiry := time.Unix(0, *order.Expires)
+	fmt.Printf("Order MinExpiry: %s\n", minExpiry)
+
+	// Check each associated authorization's expiry
+	for _, authz := range authzs {
+		// An authz without an expiry is an unexpected internal server event
+		if authz.Expires == nil {
 			return nil, berrors.InternalServerError(
-				"Found multiple authorizations within one order for identifier %q",
-				auth.Identifier.Value)
+				"Order %d has an associated authz %d with nil expiry",
+				*order.Id, authz.ID)
 		}
-		byName[auth.Identifier.Value] = auth
+		fmt.Printf("Authz expiry: %s\n", authz.Expires)
+
+		// If the authorization expires before the minExpiry, it's expiry is the new
+		// minExpiry.
+		if authz.Expires.Before(minExpiry) {
+			fmt.Printf("Authz wins\n")
+			minExpiry = *authz.Expires
+		}
 	}
-	return byName, nil
+
+	// Return the minimum expiry as a unix nano timestamp pointer
+	fmt.Printf("MinExpiry is officially %s\n", minExpiry)
+	ts := minExpiry.UnixNano()
+	return &ts, nil
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
@@ -1990,7 +2059,9 @@ func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 	return resp, nil
 }
 
-// GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
+// GetAuthorizations returns a map of valid or pending authorizations for as
+// many names as possible. This is used by the RA when trying to find
+// authorizations to reuse for a V2 Order object.
 func (ssa *SQLStorageAuthority) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
