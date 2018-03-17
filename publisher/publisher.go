@@ -316,6 +316,15 @@ func (pub *Impl) singleLogSubmit(
 	if err != nil {
 		return nil, err
 	}
+	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
+	if timestamp.Sub(time.Now()) > time.Minute {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
+	}
+	// For regular certificates, we could get an old SCT, but that shouldn't
+	// happen for SCTs.
+	if isPrecert && timestamp.Sub(time.Now()) < -10*time.Minute {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
+	}
 
 	// Only store the SCT if it was for a certificate, we have no need for
 	// the precert once it is embedded in a certificate
@@ -364,7 +373,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []b
 	// Sign the SCT
 	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	logID := sha256.Sum256(rawKey)
-	timestamp := uint64(time.Now().Unix())
+	timestamp := uint64(time.Now().UnixNano()) / 1e6
 	serialized, _ := ct.SerializeSCTSignatureInput(ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
 		LogID:      ct.LogID{KeyID: logID},
