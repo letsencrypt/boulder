@@ -982,7 +982,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	} else {
 		result = "successful"
 	}
-	logEvent.ResponseTime = now
+	logEvent.ResponseTime = ra.clk.Now()
+	issuanceExpvar.Set(ra.clk.Now().Unix())
 	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
 	return cert, err
 }
@@ -1098,13 +1099,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
-	now := ra.clk.Now()
 	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
 
-	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("NewCertificates", 1)
 	return cert, nil
 }
