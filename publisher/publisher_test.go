@@ -153,7 +153,32 @@ func logSrv(k *ecdsa.PrivateKey) *testLogSrv {
 		if r.URL.Path == "/ct/v1/add-pre-chain" {
 			precert = true
 		}
-		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert)
+		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert, time.Now())
+		fmt.Fprint(w, string(sct))
+		atomic.AddInt64(&testLog.submissions, 1)
+	})
+
+	testLog.Server = httptest.NewUnstartedServer(m)
+	testLog.Server.Start()
+	return testLog
+}
+
+// lyingLogSrv always signs SCTs with the timestamp it was given.
+func lyingLogSrv(k *ecdsa.PrivateKey, timestamp time.Time) *testLogSrv {
+	testLog := &testLogSrv{}
+	m := http.NewServeMux()
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+		var jsonReq ctSubmissionRequest
+		err := decoder.Decode(&jsonReq)
+		if err != nil {
+			return
+		}
+		precert := false
+		if r.URL.Path == "/ct/v1/add-pre-chain" {
+			precert = true
+		}
+		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert, timestamp)
 		fmt.Fprint(w, string(sct))
 		atomic.AddInt64(&testLog.submissions, 1)
 	})
@@ -185,7 +210,7 @@ func retryableLogSrv(k *ecdsa.PrivateKey, retries int, after *int) *httptest.Ser
 			if err != nil {
 				return
 			}
-			sct := CreateTestingSignedSCT(jsonReq.Chain, k, false)
+			sct := CreateTestingSignedSCT(jsonReq.Chain, k, false, time.Now())
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, string(sct))
 		} else {
@@ -281,6 +306,15 @@ func TestBasicSuccessful(t *testing.T) {
 
 	// Precert
 	trueBool := true
+	issuerBundle, precert, err := makePrecert(k)
+	test.AssertNotError(t, err, "Failed to create test leaf")
+	pub.issuerBundle = issuerBundle
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
+	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+}
+
+func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
 	rootTmpl := x509.Certificate{
 		SerialNumber:          big.NewInt(0),
 		Subject:               pkix.Name{CommonName: "root"},
@@ -288,10 +322,13 @@ func TestBasicSuccessful(t *testing.T) {
 		IsCA: true,
 	}
 	rootBytes, err := x509.CreateCertificate(rand.Reader, &rootTmpl, &rootTmpl, k.Public(), k)
-	test.AssertNotError(t, err, "Failed to create test root")
-	pub.issuerBundle = []ct.ASN1Cert{ct.ASN1Cert{Data: rootBytes}}
+	if err != nil {
+		return nil, nil, err
+	}
 	root, err := x509.ParseCertificate(rootBytes)
-	test.AssertNotError(t, err, "Failed to parse test root")
+	if err != nil {
+		return nil, nil, err
+	}
 	precertTmpl := x509.Certificate{
 		SerialNumber: big.NewInt(0),
 		ExtraExtensions: []pkix.Extension{
@@ -299,10 +336,58 @@ func TestBasicSuccessful(t *testing.T) {
 		},
 	}
 	precert, err := x509.CreateCertificate(rand.Reader, &precertTmpl, root, k.Public(), k)
+	if err != nil {
+		return nil, nil, err
+	}
+	return []ct.ASN1Cert{ct.ASN1Cert{Data: rootBytes}}, precert, err
+}
+
+func TestTimestampVerificationFuture(t *testing.T) {
+	pub, _, k := setup(t)
+
+	server := lyingLogSrv(k, time.Now().Add(time.Hour))
+	defer server.Close()
+	port, err := getPort(server.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	addLog(t, pub, port, &k.PublicKey)
+
+	// Precert
+	trueBool := true
+	issuerBundle, precert, err := makePrecert(k)
 	test.AssertNotError(t, err, "Failed to create test leaf")
+	pub.issuerBundle = issuerBundle
+
 	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+	if err == nil {
+		t.Fatal("Expected error for lying log server, got none")
+	}
+	if !strings.HasPrefix(err.Error(), "SCT Timestamp was too far in the future") {
+		t.Fatalf("Got wrong error: %s", err)
+	}
+}
+
+func TestTimestampVerificationPast(t *testing.T) {
+	pub, _, k := setup(t)
+
+	server := lyingLogSrv(k, time.Now().Add(-time.Hour))
+	defer server.Close()
+	port, err := getPort(server.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	addLog(t, pub, port, &k.PublicKey)
+
+	// Precert
+	trueBool := true
+	issuerBundle, precert, err := makePrecert(k)
+	test.AssertNotError(t, err, "Failed to create test leaf")
+	pub.issuerBundle = issuerBundle
+
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
+	if err == nil {
+		t.Fatal("Expected error for lying log server, got none")
+	}
+	if !strings.HasPrefix(err.Error(), "SCT Timestamp was too far in the past") {
+		t.Fatalf("Got wrong error: %s", err)
+	}
 }
 
 func TestGoodRetry(t *testing.T) {

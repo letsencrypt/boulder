@@ -72,7 +72,7 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert))
+		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
 	case "/submissions":
 		if r.Method != "GET" {
 			http.NotFound(w, r)
