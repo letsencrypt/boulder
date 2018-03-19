@@ -672,6 +672,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 // with a specific order and account has all of the required valid, unexpired
 // authorizations to proceed with issuance. It is the ACME v2 equivalent of
 // `checkAuthorizations`.
+// If it returns an error, it will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	names []string,
@@ -687,7 +688,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 			AcctID: &acctIDInt,
 		})
 	if err != nil {
-		return err
+		return berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
 	}
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
@@ -697,6 +698,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 
 // checkAuthorizations checks that each requested name has a valid authorization
 // that won't expire before the certificate expires. Returns an error otherwise.
+// If it returns an error, it will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
 	now := ra.clk.Now()
 	for i := range names {
@@ -704,7 +706,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	}
 	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, names, now)
 	if err != nil {
-		return err
+		return berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
 	}
 
 	return ra.checkAuthorizationsCAA(ctx, names, auths, regID, now)
@@ -714,6 +716,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 // authorizations against a set of names that is used by both
 // `checkAuthorizations` and `checkOrderAuthorizations`. If required CAA will be
 // rechecked for authorizations that are too old.
+// If it returns an error, it will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
 	names []string,
@@ -980,10 +983,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		logEvent.Error = err.Error()
 		result = "error"
 	} else {
+		issuanceExpvar.Set(ra.clk.Now().Unix())
 		result = "successful"
 	}
 	logEvent.ResponseTime = ra.clk.Now()
-	issuanceExpvar.Set(ra.clk.Now().Unix())
 	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
 	return cert, err
 }
@@ -1044,7 +1047,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
-		return emptyCert, fmt.Errorf("getting order authorizations: %s", err)
+		// Pass through the error without wrapping it because the called functions
+		// return BoulderError and we don't want to lose the type.
+		return emptyCert, err
 	}
 
 	// Mark that we verified the CN and SANs
