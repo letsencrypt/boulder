@@ -316,6 +316,15 @@ func (pub *Impl) singleLogSubmit(
 	if err != nil {
 		return nil, err
 	}
+	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
+	if timestamp.Sub(time.Now()) > time.Minute {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
+	}
+	// For regular certificates, we could get an old SCT, but that shouldn't
+	// happen for precertificates.
+	if isPrecert && timestamp.Sub(time.Now()) < -10*time.Minute {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
+	}
 
 	// Only store the SCT if it was for a certificate, we have no need for
 	// the precert once it is embedded in a certificate
@@ -341,7 +350,7 @@ func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) core.Signe
 
 // CreateTestingSignedSCT is used by both the publisher tests and ct-test-serv, which is
 // why it is exported. It creates a signed SCT based on the provided chain.
-func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []byte {
+func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, timestamp time.Time) []byte {
 	chain := make([]ct.ASN1Cert, len(req))
 	for i, str := range req {
 		b, err := base64.StdEncoding.DecodeString(str)
@@ -364,11 +373,11 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []b
 	// Sign the SCT
 	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	logID := sha256.Sum256(rawKey)
-	timestamp := uint64(time.Now().Unix())
+	timestampMillis := uint64(timestamp.UnixNano()) / 1e6
 	serialized, _ := ct.SerializeSCTSignatureInput(ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
 		LogID:      ct.LogID{KeyID: logID},
-		Timestamp:  timestamp,
+		Timestamp:  timestampMillis,
 	}, ct.LogEntry{Leaf: *leaf})
 	hashed := sha256.Sum256(serialized)
 	var ecdsaSig struct {
@@ -389,7 +398,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool) []b
 	}
 	jsonSCTObj.SCTVersion = ct.V1
 	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(logID[:])
-	jsonSCTObj.Timestamp = timestamp
+	jsonSCTObj.Timestamp = timestampMillis
 	ds := ct.DigitallySigned{
 		Algorithm: cttls.SignatureAndHashAlgorithm{
 			Hash:      cttls.SHA256,

@@ -491,6 +491,10 @@ def test_sct_embedding():
             raise Exception("SCT contains wrong version")
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
             raise Exception("SCT contains wrong entry type")
+        delta = sct.timestamp - datetime.datetime.now()
+        if abs(delta) > datetime.timedelta(hours=1):
+            raise Exception("Delta between SCT timestamp and now was too great "
+                "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta))
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
