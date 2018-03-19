@@ -982,6 +982,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	} else {
 		result = "successful"
 	}
+	logEvent.ResponseTime = now
 	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
 	return cert, err
 }
@@ -1042,7 +1043,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
-		return emptyCert, err
+		return emptyCert, fmt.Errorf("getting order authorizations: %s", err)
 	}
 
 	// Mark that we verified the CN and SANs
@@ -1061,13 +1062,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if features.Enabled(features.EmbedSCTs) {
 		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 		if err != nil {
-			logEvent.Error = err.Error()
-			return emptyCert, err
+			return emptyCert, fmt.Errorf("issuing precert: %s", err)
 		}
 		scts, err := ra.getSCTs(ctx, precert.DER)
 		if err != nil {
-			logEvent.Error = err.Error()
-			return emptyCert, err
+			return emptyCert, fmt.Errorf("getting SCTs: %s", err)
 		}
 		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
 			DER:            precert.DER,
@@ -1076,14 +1075,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 			OrderID:        &orderIDInt,
 		})
 		if err != nil {
-			logEvent.Error = err.Error()
-			return emptyCert, err
+			return emptyCert, fmt.Errorf("issuing cert for precert: %s", err)
 		}
 	} else {
 		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
 		if err != nil {
-			logEvent.Error = err.Error()
-			return emptyCert, err
+			return emptyCert, fmt.Errorf("issuing cert: %s", err)
 		}
 
 		_, _ = ra.getSCTs(ctx, cert.DER)
@@ -1106,7 +1103,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = now
 
 	issuanceExpvar.Set(now.Unix())
 	ra.stats.Inc("NewCertificates", 1)
