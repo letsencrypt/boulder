@@ -34,9 +34,9 @@ from acme import standalone
 
 logging.basicConfig()
 logger = logging.getLogger()
-logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
+logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
+DIRECTORY_V2 = os.getenv('DIRECTORY_V2', 'http://localhost:4001/directory')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
 PORT = os.getenv('PORT', '5002')
 
@@ -50,7 +50,7 @@ def uninitialized_client(key=None):
     if key is None:
         key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
     net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-    directory = messages.Directory.from_json(net.get(DIRECTORY).json())
+    directory = messages.Directory.from_json(net.get(DIRECTORY_V2).json())
     return acme_client.ClientV2(directory, net)
 
 def make_client(email=None):
@@ -68,7 +68,7 @@ def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise Exception("No %s challenge found" % typ)
+    raise Exception("No %s challenge found" % typ.typ)
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""

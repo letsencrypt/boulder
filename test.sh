@@ -11,7 +11,7 @@ fi
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH). We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
-RUN=${RUN:-vet fmt migrations unit integration acme-v2 errcheck dashlint}
+RUN=${RUN:-vet fmt migrations unit integration errcheck dashlint}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.
@@ -187,12 +187,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
   DIRECTORY=http://boulder:4000/directory \
     run python2 test/integration-test.py --chisel --load
   end_context #integration
-fi
-
-if [[ "$RUN" =~ "acme-v2" ]] ; then
-  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
-  DIRECTORY=https://boulder:4431/directory \
-    run python2 test/integration-test-v2.py
 fi
 
 # Run godep-restore (happens only in Travis) to check that the hashes in
