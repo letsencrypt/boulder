@@ -777,13 +777,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
-		ClientAddr   string
-		CSR          string
-		Registration core.Registration
+		ClientAddr string
+		CSR        string
+		Requester  int64
 	}{
-		ClientAddr:   web.GetClientAddr(request),
-		CSR:          hex.EncodeToString(cr.Bytes),
-		Registration: registration,
+		ClientAddr: web.GetClientAddr(request),
+		CSR:        hex.EncodeToString(cr.Bytes),
+		Requester:  registration.ID,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
