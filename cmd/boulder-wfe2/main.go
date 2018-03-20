@@ -67,7 +67,8 @@ type config struct {
 // validates that the PEM is well-formed with no leftover bytes, and contains
 // only a well-formed X509 certificate. If the cert file meets these
 // requirements the PEM bytes from the file are returned, otherwise an error is
-// returned.
+// returned. If the PEM contents of a certFile do not have a trailing newline
+// one is added.
 func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 	pemBytes, err := ioutil.ReadFile(certFile)
 	if err != nil {
@@ -75,6 +76,12 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - error reading contents: %s",
 			aiaIssuerURL, certFile, err)
+	}
+	if bytes.Contains(pemBytes, []byte("\r\n")) {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - contents had CRLF line endings",
+			aiaIssuerURL, certFile)
 	}
 	// Try to decode the contents as PEM
 	certBlock, rest := pem.Decode(pemBytes)
@@ -108,7 +115,10 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 				"input (%d bytes)",
 			aiaIssuerURL, certFile, len(rest))
 	}
-
+	// If the PEM contents don't end in a \n, add it.
+	if pemBytes[len(pemBytes)-1] != '\n' {
+		pemBytes = append(pemBytes, '\n')
+	}
 	return pemBytes, nil
 }
 
