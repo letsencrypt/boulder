@@ -76,6 +76,12 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 				"invalid chain file: %q - error reading contents: %s",
 			aiaIssuerURL, certFile, err)
 	}
+	if bytes.Contains(pemBytes, []byte("\r\n")) {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - contents had CRLF line endings",
+			aiaIssuerURL, certFile)
+	}
 	// Try to decode the contents as PEM
 	certBlock, rest := pem.Decode(pemBytes)
 	if certBlock == nil {

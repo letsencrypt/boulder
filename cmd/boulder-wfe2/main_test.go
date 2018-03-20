@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -27,6 +28,10 @@ func TestLoadCertificateChains(t *testing.T) {
 	leftoverBytes := append(certBytesA, []byte(leftovers)...)
 	err = ioutil.WriteFile(leftoverPEMFile.Name(), leftoverBytes, 0640)
 	test.AssertNotError(t, err, "Error writing leftover PEM tmp file")
+
+	crlfPEM, _ := ioutil.TempFile("", "crlf.pem")
+	crlfPEMBytes := []byte(strings.Replace(string(certBytesB), "\n", "\r\n", -1))
+	err = ioutil.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
 
 	testCases := []struct {
 		Name           string
@@ -59,6 +64,15 @@ func TestLoadCertificateChains(t *testing.T) {
 			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
 				"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
 				"contents: open /tmp/does.not.exist.pem: no such file or directory"),
+		},
+		{
+			Name: "PEM chain file with Windows CRLF line endings",
+			Input: map[string][]string{
+				"http://windows.sad.zone": []string{crlfPEM.Name()},
+			},
+			ExpectedResult: nil,
+			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://windows.sad.zone\" "+
+				"has an invalid chain file: %q - contents had CRLF line endings", crlfPEM.Name()),
 		},
 		{
 			Name: "Invalid PEM chain file",
@@ -123,8 +137,9 @@ func TestLoadCertificateChains(t *testing.T) {
 			result, err := loadCertificateChains(tc.Input)
 			if tc.ExpectedError == nil && err != nil {
 				t.Errorf("Expected nil error, got %#v\n", err)
-			}
-			if tc.ExpectedError != nil {
+			} else if tc.ExpectedError != nil && err == nil {
+				t.Errorf("Expected non-nil error, got nil err")
+			} else if tc.ExpectedError != nil {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError.Error())
 			}
 			test.AssertEquals(t, len(result), len(tc.ExpectedResult))
