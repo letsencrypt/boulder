@@ -29,9 +29,16 @@ func TestLoadCertificateChains(t *testing.T) {
 	err = ioutil.WriteFile(leftoverPEMFile.Name(), leftoverBytes, 0640)
 	test.AssertNotError(t, err, "Error writing leftover PEM tmp file")
 
+	// Make a .pem file that is test-ca2.pem but with Windows/DOS CRLF line
+	// endings
 	crlfPEM, _ := ioutil.TempFile("", "crlf.pem")
 	crlfPEMBytes := []byte(strings.Replace(string(certBytesB), "\n", "\r\n", -1))
 	err = ioutil.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
+
+	// Make a .pem file that is test-ca.pem but with no trailing newline
+	abruptPEM, _ := ioutil.TempFile("", "abrupt.pem")
+	abruptPEMBytes := certBytesA[:len(certBytesA)-1]
+	err = ioutil.WriteFile(abruptPEM.Name(), abruptPEMBytes, 0640)
 
 	testCases := []struct {
 		Name           string
@@ -127,6 +134,18 @@ func TestLoadCertificateChains(t *testing.T) {
 			},
 			ExpectedResult: map[string][]byte{
 				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
+			},
+			ExpectedError: nil,
+		},
+		{
+			Name: "One PEM file chain, no trailing newline",
+			Input: map[string][]string{
+				"http://single-cert-chain.nonewline.com": []string{abruptPEM.Name()},
+			},
+			ExpectedResult: map[string][]byte{
+				// NOTE(@cpu): There should be a trailing \n added by the WFE that we
+				// expect in the format specifier below.
+				"http://single-cert-chain.nonewline.com": []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
 			},
 			ExpectedError: nil,
 		},
