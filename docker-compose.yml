@@ -9,6 +9,7 @@ services:
             BOULDER_CONFIG_DIR: test/config
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
+          - $GOPATH/pkg:/go/pkg
           - /tmp:/tmp
         network_mode: bridge
         extra_hosts:
