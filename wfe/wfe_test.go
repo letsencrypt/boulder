@@ -725,7 +725,39 @@ func TestDirectory(t *testing.T) {
 	body = replaceRandomKey(responseWriter.Body.Bytes())
 	test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
 
-	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry.
+	// Configure a caaIdentity and website for the /directory meta
+	wfe.DirectoryCAAIdentity = "Radiant Lock"
+	wfe.DirectoryWebsite = "zombo.com"
+	responseWriter = httptest.NewRecorder()
+	url, _ = url.Parse("/directory")
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "localhost:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	// The directory response should include the CAAIdentities and Website meta
+	// elements as expected
+	body = replaceRandomKey(responseWriter.Body.Bytes())
+	test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(`{
+  "key-change": "http://localhost:4300/acme/key-change",
+  "meta": {
+    "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "terms-of-service": "http://example.invalid/terms",
+   "website": "zombo.com"
+  },
+  "%s": "%s",
+  "new-authz": "http://localhost:4300/acme/new-authz",
+  "new-cert": "http://localhost:4300/acme/new-cert",
+  "new-reg": "http://localhost:4300/acme/new-reg",
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`, randomKey, randomDirKeyExplanationLink))
+
+	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry,
+	// even with the DirectoryCAAIdentity and DirectoryWebsite configured.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
@@ -2423,4 +2455,38 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	if chall.Status != "invalid" {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
+}
+
+// noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
+type noSCTMockRA struct {
+	MockRegistrationAuthority
+}
+
+func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+}
+
+func TestNewCertificateSCTError(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// Set up an RA mock that always returns a berrors.MissingSCTsError from
+	// `NewCertificate`
+	wfe.RA = &noSCTMockRA{}
+
+	// Create a response writer to capture the WFE response
+	responseWriter := httptest.NewRecorder()
+
+	// Make a well-formed NewCertificate request (test case from `TestNewCertificate`)
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, wfe.nonceService)))
+
+	// We expect the berrors.MissingSCTsError error to have been converted into
+	// a serverInternal error with the right message.
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
 }

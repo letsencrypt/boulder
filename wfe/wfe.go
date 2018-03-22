@@ -75,6 +75,15 @@ type WebFrontEndImpl struct {
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
+	// DirectoryCAAIdentity is used for the /directory response's "meta"
+	// element's "caaIdentities" field. It should match the VA's issuerDomain
+	// field value.
+	DirectoryCAAIdentity string
+
+	// DirectoryWebsite is used for the /directory response's "meta" element's
+	// "website" field.
+	DirectoryWebsite string
+
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
 
@@ -351,14 +360,28 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.Request
 		// expected set of keys. This ensures that we can properly extend the directory when we
 		// need to add a new endpoint or meta element.
 		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
-	}
-	if !clientDirChangeIntolerant {
+
 		// ACME since draft-02 describes an optional "meta" directory entry. The
 		// meta entry may optionally contain a "terms-of-service" URI for the
 		// current ToS.
-		directoryEndpoints["meta"] = map[string]string{
+		metaMap := map[string]interface{}{
 			"terms-of-service": wfe.SubscriberAgreementURL,
 		}
+		// The "meta" directory entry may also include a []string of CAA identities
+		if wfe.DirectoryCAAIdentity != "" {
+			// The specification says caaIdentities is an array of strings. In
+			// practice Boulder's VA only allows configuring ONE CAA identity. Given
+			// that constraint it doesn't make sense to allow multiple directory CAA
+			// identities so we use just the `wfe.DirectoryCAAIdentity` alone.
+			metaMap["caaIdentities"] = []string{
+				wfe.DirectoryCAAIdentity,
+			}
+		}
+		// The "meta" directory entry may also include a string with a website URL
+		if wfe.DirectoryWebsite != "" {
+			metaMap["website"] = wfe.DirectoryWebsite
+		}
+		directoryEndpoints["meta"] = metaMap
 	}
 
 	response.Header().Set("Content-Type", "application/json")

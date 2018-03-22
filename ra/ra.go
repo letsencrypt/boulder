@@ -1124,6 +1124,9 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) (
 		state := "failure"
 		if err == context.DeadlineExceeded {
 			state = "deadlineExceeded"
+			// Convert the error to a missingSCTsError to communicate the timeout,
+			// otherwise it will be a generic serverInternalError
+			err = berrors.MissingSCTsError(err.Error())
 		}
 		ra.log.Warning(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
 		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
