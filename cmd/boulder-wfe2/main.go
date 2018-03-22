@@ -54,8 +54,6 @@ type config struct {
 		Features map[string]bool
 	}
 
-	SubscriberAgreementURL string
-
 	Syslog cmd.SyslogConfig
 
 	Common struct {
@@ -209,13 +207,7 @@ func main() {
 	wfe.RA = rac
 	wfe.SA = sac
 
-	// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
-	if c.WFE.SubscriberAgreementURL != "" {
-		wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
-	} else {
-		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
-	}
-
+	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
