@@ -100,6 +100,9 @@ func AssertUnmarshaledEquals(t *testing.T, got, expected string) {
 	AssertNotError(t, err, "Could not unmarshal 'got'")
 	err = json.Unmarshal([]byte(expected), &expectedMap)
 	AssertNotError(t, err, "Could not unmarshal 'expected'")
+	if len(gotMap) != len(expectedMap) {
+		t.Errorf("Expected had %d keys, got had %d", len(gotMap), len(expectedMap))
+	}
 	for k, v := range expectedMap {
 		if !reflect.DeepEqual(v, gotMap[k]) {
 			t.Errorf("Field %q: Expected \"%v\", got \"%v\"", k, v, gotMap[k])
