@@ -2429,3 +2429,37 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
 }
+
+// noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
+type noSCTMockRA struct {
+	MockRegistrationAuthority
+}
+
+func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+}
+
+func TestNewCertificateSCTError(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// Set up an RA mock that always returns a berrors.MissingSCTsError from
+	// `NewCertificate`
+	wfe.RA = &noSCTMockRA{}
+
+	// Create a response writer to capture the WFE response
+	responseWriter := httptest.NewRecorder()
+
+	// Make a well-formed NewCertificate request (test case from `TestNewCertificate`)
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, wfe.nonceService)))
+
+	// We expect the berrors.MissingSCTsError error to have been converted into
+	// a serverInternal error with the right message.
+	assertJSONEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
+}

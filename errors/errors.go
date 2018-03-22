@@ -17,6 +17,7 @@ const (
 	ConnectionFailure
 	WrongAuthorizationState
 	CAA
+	MissingSCTs
 )
 
 // BoulderError represents internal Boulder errors
@@ -87,4 +88,8 @@ func WrongAuthorizationStateError(msg string, args ...interface{}) error {
 
 func CAAError(msg string, args ...interface{}) error {
 	return New(CAA, msg, args...)
+}
+
+func MissingSCTsError(msg string, args ...interface{}) error {
+	return New(MissingSCTs, msg, args...)
 }

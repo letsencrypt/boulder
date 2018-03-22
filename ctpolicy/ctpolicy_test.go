@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -38,13 +39,15 @@ func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 func TestGetSCTs(t *testing.T) {
 	expired, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
+	missingSCTErr := berrors.MissingSCTs
 	testCases := []struct {
-		name      string
-		mock      core.Publisher
-		groups    []cmd.CTGroup
-		ctx       context.Context
-		result    core.SCTDERs
-		errRegexp *regexp.Regexp
+		name       string
+		mock       core.Publisher
+		groups     []cmd.CTGroup
+		ctx        context.Context
+		result     core.SCTDERs
+		errRegexp  *regexp.Regexp
+		berrorType *berrors.ErrorType
 	}{
 		{
 			name: "basic success case",
@@ -87,8 +90,9 @@ func TestGetSCTs(t *testing.T) {
 					},
 				},
 			},
-			ctx:       context.Background(),
-			errRegexp: regexp.MustCompile("CT log group \".\": all submissions failed"),
+			ctx:        context.Background(),
+			errRegexp:  regexp.MustCompile("CT log group \".\": all submissions failed"),
+			berrorType: &missingSCTErr,
 		},
 		{
 			name: "parent context timeout failure case",
@@ -123,6 +127,9 @@ func TestGetSCTs(t *testing.T) {
 			} else if tc.errRegexp != nil {
 				if !tc.errRegexp.MatchString(err.Error()) {
 					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
+				}
+				if tc.berrorType != nil {
+					test.AssertEquals(t, berrors.Is(err, *tc.berrorType), true)
 				}
 			}
 		})
