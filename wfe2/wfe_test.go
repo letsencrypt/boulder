@@ -721,6 +721,40 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t,
 		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
 		true)
+
+	// Configure a caaIdentity and website for the /directory meta
+	wfe.DirectoryCAAIdentity = "Radiant Lock"
+	wfe.DirectoryWebsite = "zombo.com"
+
+	// Expect directory with a key change endpoint and a meta entry that has both
+	// a website and a caaIdentity
+	metaJSON = `{
+  "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
+  "keyChange": "http://localhost:4300/acme/key-change",
+  "meta": {
+    "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "termsOfService": "http://example.invalid/terms",
+    "website": "zombo.com"
+  },
+  "newAccount": "http://localhost:4300/acme/new-acct",
+  "newNonce": "http://localhost:4300/acme/new-nonce",
+  "newOrder": "http://localhost:4300/acme/new-order",
+  "revokeCert": "http://localhost:4300/acme/revoke-cert"
+}`
+	// Serve the /directory response for this request into a recorder
+	responseWriter = httptest.NewRecorder()
+	mux.ServeHTTP(responseWriter, req)
+	// We expect all directory requests to return a json object with a good HTTP status
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
+	// Check if there is a random directory key present and if so, that it is
+	// expected to be present
+	test.AssertEquals(t,
+		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+		true)
 }
 
 func TestRelativeDirectory(t *testing.T) {

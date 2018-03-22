@@ -52,6 +52,14 @@ type config struct {
 		CertificateChains map[string][]string
 
 		Features map[string]bool
+
+		// DirectoryCAAIdentity is used for the /directory response's "meta"
+		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
+		// configuration value (this value is the one used to enforce CAA)
+		DirectoryCAAIdentity string
+		// DirectoryWebsite is used for the /directory response's "meta" element's
+		// "website" field.
+		DirectoryWebsite string
 	}
 
 	Syslog cmd.SyslogConfig
