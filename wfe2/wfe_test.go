@@ -1156,7 +1156,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
@@ -1215,7 +1215,7 @@ func TestEmptyAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	responseWriter.Body.Reset()
 }
 
