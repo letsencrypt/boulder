@@ -1156,7 +1156,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
@@ -1215,7 +1215,7 @@ func TestEmptyAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	responseWriter.Body.Reset()
 }
 
@@ -1298,29 +1298,32 @@ func TestNewAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
+	// Agreement is an ACMEv1 field and should not be present
+	test.AssertEquals(t, acct.Agreement, "")
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/0")
 
+	// Load an existing key
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test1 key")
 
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
-
 	// POST, Valid JSON, Key already in use
 	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
-
+	// POST the NewAccount request
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	// We expect a Location header and a 200 response with an empty body
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
 func TestGetAuthorization(t *testing.T) {

@@ -513,6 +513,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	addRequesterHeader(response, acct.ID)
 	logEvent.Contacts = acct.Contact
 
+	// We populate the account Agreement field when creating a new response to
+	// track which terms-of-service URL was in effect when an account with
+	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
+	// this value back to a V2 client. The "Agreement" field of an
+	// account/registration is a V1 notion so we strip it here in the WFE2 before
+	// returning the account.
+	acct.Agreement = ""
+
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
 	response.Header().Add("Location", acctURL)
@@ -1064,6 +1072,14 @@ func (wfe *WebFrontEndImpl) Account(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
+
+	// We populate the account Agreement field when creating a new response to
+	// track which terms-of-service URL was in effect when an account with
+	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
+	// this value back to a V2 client. The "Agreement" field of an
+	// account/registration is a V1 notion so we strip it here in the WFE2 before
+	// returning the account.
+	updatedAcct.Agreement = ""
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
