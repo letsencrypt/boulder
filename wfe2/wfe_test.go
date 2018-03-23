@@ -1126,7 +1126,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	responseWriter := httptest.NewRecorder()
-	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"]}`))
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
@@ -1229,8 +1229,8 @@ func TestNewAccount(t *testing.T) {
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 
-	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"agreement":"https://letsencrypt.org/im-bad"}`
-	// An acct with the wrong agreement URL
+	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":false}`
+	// An acct with the terms not agreed to
 	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementAcct, wfe.nonceService)
 
 	// A non-JSON payload
@@ -1428,7 +1428,7 @@ func TestAccount(t *testing.T) {
 
 	signedURL := fmt.Sprintf("http://localhost%s%d", acctPath, 102)
 	path := fmt.Sprintf("%s%d", acctPath, 102)
-	payload := `{"agreement":"` + agreementURL + `"}`
+	payload := `{}`
 	// ID 102 is used by the mock for missing acct
 	_, _, body := signRequestKeyID(t, 102, nil, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
@@ -1444,21 +1444,10 @@ func TestAccount(t *testing.T) {
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	// Test POST valid JSON with account up in the mock (with incorrect agreement URL)
-	payload = `{"agreement":"https://letsencrypt.org/im-bad"}`
+	// Test POST valid JSON with account up in the mock
+	payload = `{}`
 	path = "1"
 	signedURL = "http://localhost/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(path, body)
-
-	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
-	responseWriter.Body.Reset()
-
-	// Test POST valid JSON with account up in the mock (with correct agreement URL)
-	payload = `{"agreement":"` + agreementURL + `"}`
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
@@ -1469,7 +1458,7 @@ func TestAccount(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with garbage in URL but valid account ID
-	payload = `{"agreement":"` + agreementURL + `"}`
+	payload = `{}`
 	signedURL = "http://localhost/a/bunch/of/garbage/1"
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath("/a/bunch/of/garbage/1", body)
@@ -1477,20 +1466,6 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), probs.V2ErrorNS+"malformed")
-	responseWriter.Body.Reset()
-
-	// Test POST valid JSON with account up in the mock (with old agreement URL)
-	responseWriter.HeaderMap = http.Header{}
-	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
-	payload = `{"agreement":"` + agreementURL + `"}`
-	signedURL = "http://localhost/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(path, body)
-
-	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
-	links = responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 }
 
@@ -1655,7 +1630,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Failed to load test 1 RSA key")
 
-	payload := `{"agreement":"` + agreementURL + `"}`
+	payload := `{}`
 	path := fmt.Sprintf("%s%d", acctPath, 1)
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
