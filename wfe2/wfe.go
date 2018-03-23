@@ -1007,11 +1007,24 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	var update core.Registration
-	err = json.Unmarshal(body, &update)
+	// Only the Contact and Status fields of an account may be updated this way.
+	// For key updates clients should be using the key change endpoint.
+	var accountUpdateRequest struct {
+		Contact *[]string       `json:"contact"`
+		Status  core.AcmeStatus `json:"status"`
+	}
+
+	err = json.Unmarshal(body, &accountUpdateRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 		return
+	}
+
+	// Copy over the fields from the request to the registration object used for
+	// the RA updates.
+	update := core.Registration{
+		Contact: accountUpdateRequest.Contact,
+		Status:  accountUpdateRequest.Status,
 	}
 
 	// People *will* POST their full accounts to this endpoint, including
@@ -1028,22 +1041,6 @@ func (wfe *WebFrontEndImpl) Account(
 			return
 		}
 		wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
-		return
-	}
-
-	// If a user POSTs their account object including a previously valid
-	// agreement URL but that URL has since changed we will fail out here
-	// since the update agreement URL doesn't match the current URL. To fix that we
-	// only fail if the sent URL doesn't match the currently valid agreement URL
-	// and it doesn't match the URL currently stored in the account
-	// in the database. The RA understands the user isn't actually trying to
-	// update the agreement but since we do an early check here in order to prevent
-	// extraneous requests to the RA we have to add this bypass.
-	if len(update.Agreement) > 0 && update.Agreement != currAcct.Agreement &&
-		update.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
-			update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
 
