@@ -82,6 +82,15 @@ type WebFrontEndImpl struct {
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
+	// DirectoryCAAIdentity is used for the /directory response's "meta"
+	// element's "caaIdentities" field. It should match the VA's issuerDomain
+	// field value.
+	DirectoryCAAIdentity string
+
+	// DirectoryWebsite is used for the /directory response's "meta" element's
+	// "website" field.
+	DirectoryWebsite string
+
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
 
@@ -371,9 +380,24 @@ func (wfe *WebFrontEndImpl) Directory(
 	// ACME since draft-02 describes an optional "meta" directory entry. The
 	// meta entry may optionally contain a "termsOfService" URI for the
 	// current ToS.
-	directoryEndpoints["meta"] = map[string]string{
+	metaMap := map[string]interface{}{
 		"termsOfService": wfe.SubscriberAgreementURL,
 	}
+	// The "meta" directory entry may also include a []string of CAA identities
+	if wfe.DirectoryCAAIdentity != "" {
+		// The specification says caaIdentities is an array of strings. In
+		// practice Boulder's VA only allows configuring ONE CAA identity. Given
+		// that constraint it doesn't make sense to allow multiple directory CAA
+		// identities so we use just the `wfe.DirectoryCAAIdentity` alone.
+		metaMap["caaIdentities"] = []string{
+			wfe.DirectoryCAAIdentity,
+		}
+	}
+	// The "meta" directory entry may also include a string with a website URL
+	if wfe.DirectoryWebsite != "" {
+		metaMap["website"] = wfe.DirectoryWebsite
+	}
+	directoryEndpoints["meta"] = metaMap
 
 	response.Header().Set("Content-Type", "application/json")
 
@@ -488,6 +512,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	logEvent.Requester = acct.ID
 	addRequesterHeader(response, acct.ID)
 	logEvent.Contacts = acct.Contact
+
+	// We populate the account Agreement field when creating a new response to
+	// track which terms-of-service URL was in effect when an account with
+	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
+	// this value back to a V2 client. The "Agreement" field of an
+	// account/registration is a V1 notion so we strip it here in the WFE2 before
+	// returning the account.
+	acct.Agreement = ""
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
@@ -737,13 +769,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, account core.Registration) {
 	var csrLog = struct {
-		ClientAddr   string
-		CSR          string
-		Registration core.Registration
+		ClientAddr string
+		CSR        string
+		Requester  int64
 	}{
-		ClientAddr:   web.GetClientAddr(request),
-		CSR:          hex.EncodeToString(cr.Bytes),
-		Registration: account,
+		ClientAddr: web.GetClientAddr(request),
+		CSR:        hex.EncodeToString(cr.Bytes),
+		Requester:  account.ID,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
@@ -983,11 +1015,24 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	var update core.Registration
-	err = json.Unmarshal(body, &update)
+	// Only the Contact and Status fields of an account may be updated this way.
+	// For key updates clients should be using the key change endpoint.
+	var accountUpdateRequest struct {
+		Contact *[]string       `json:"contact"`
+		Status  core.AcmeStatus `json:"status"`
+	}
+
+	err = json.Unmarshal(body, &accountUpdateRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 		return
+	}
+
+	// Copy over the fields from the request to the registration object used for
+	// the RA updates.
+	update := core.Registration{
+		Contact: accountUpdateRequest.Contact,
+		Status:  accountUpdateRequest.Status,
 	}
 
 	// People *will* POST their full accounts to this endpoint, including
@@ -1004,22 +1049,6 @@ func (wfe *WebFrontEndImpl) Account(
 			return
 		}
 		wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
-		return
-	}
-
-	// If a user POSTs their account object including a previously valid
-	// agreement URL but that URL has since changed we will fail out here
-	// since the update agreement URL doesn't match the current URL. To fix that we
-	// only fail if the sent URL doesn't match the currently valid agreement URL
-	// and it doesn't match the URL currently stored in the account
-	// in the database. The RA understands the user isn't actually trying to
-	// update the agreement but since we do an early check here in order to prevent
-	// extraneous requests to the RA we have to add this bypass.
-	if len(update.Agreement) > 0 && update.Agreement != currAcct.Agreement &&
-		update.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
-			update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
 
@@ -1040,6 +1069,14 @@ func (wfe *WebFrontEndImpl) Account(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
+
+	// We populate the account Agreement field when creating a new response to
+	// track which terms-of-service URL was in effect when an account with
+	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
+	// this value back to a V2 client. The "Agreement" field of an
+	// account/registration is a V1 notion so we strip it here in the WFE2 before
+	// returning the account.
+	updatedAcct.Agreement = ""
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
@@ -1215,7 +1252,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 	return
@@ -1227,7 +1263,6 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		logEvent.AddError("unable to write issuer certificate response: %s", err)
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }

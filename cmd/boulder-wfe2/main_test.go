@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -27,6 +28,17 @@ func TestLoadCertificateChains(t *testing.T) {
 	leftoverBytes := append(certBytesA, []byte(leftovers)...)
 	err = ioutil.WriteFile(leftoverPEMFile.Name(), leftoverBytes, 0640)
 	test.AssertNotError(t, err, "Error writing leftover PEM tmp file")
+
+	// Make a .pem file that is test-ca2.pem but with Windows/DOS CRLF line
+	// endings
+	crlfPEM, _ := ioutil.TempFile("", "crlf.pem")
+	crlfPEMBytes := []byte(strings.Replace(string(certBytesB), "\n", "\r\n", -1))
+	err = ioutil.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
+
+	// Make a .pem file that is test-ca.pem but with no trailing newline
+	abruptPEM, _ := ioutil.TempFile("", "abrupt.pem")
+	abruptPEMBytes := certBytesA[:len(certBytesA)-1]
+	err = ioutil.WriteFile(abruptPEM.Name(), abruptPEMBytes, 0640)
 
 	testCases := []struct {
 		Name           string
@@ -59,6 +71,15 @@ func TestLoadCertificateChains(t *testing.T) {
 			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
 				"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
 				"contents: open /tmp/does.not.exist.pem: no such file or directory"),
+		},
+		{
+			Name: "PEM chain file with Windows CRLF line endings",
+			Input: map[string][]string{
+				"http://windows.sad.zone": []string{crlfPEM.Name()},
+			},
+			ExpectedResult: nil,
+			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://windows.sad.zone\" "+
+				"has an invalid chain file: %q - contents had CRLF line endings", crlfPEM.Name()),
 		},
 		{
 			Name: "Invalid PEM chain file",
@@ -116,6 +137,18 @@ func TestLoadCertificateChains(t *testing.T) {
 			},
 			ExpectedError: nil,
 		},
+		{
+			Name: "One PEM file chain, no trailing newline",
+			Input: map[string][]string{
+				"http://single-cert-chain.nonewline.com": []string{abruptPEM.Name()},
+			},
+			ExpectedResult: map[string][]byte{
+				// NOTE(@cpu): There should be a trailing \n added by the WFE that we
+				// expect in the format specifier below.
+				"http://single-cert-chain.nonewline.com": []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
+			},
+			ExpectedError: nil,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -123,8 +156,9 @@ func TestLoadCertificateChains(t *testing.T) {
 			result, err := loadCertificateChains(tc.Input)
 			if tc.ExpectedError == nil && err != nil {
 				t.Errorf("Expected nil error, got %#v\n", err)
-			}
-			if tc.ExpectedError != nil {
+			} else if tc.ExpectedError != nil && err == nil {
+				t.Errorf("Expected non-nil error, got nil err")
+			} else if tc.ExpectedError != nil {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError.Error())
 			}
 			test.AssertEquals(t, len(result), len(tc.ExpectedResult))

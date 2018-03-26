@@ -52,9 +52,15 @@ type config struct {
 		CertificateChains map[string][]string
 
 		Features map[string]bool
-	}
 
-	SubscriberAgreementURL string
+		// DirectoryCAAIdentity is used for the /directory response's "meta"
+		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
+		// configuration value (this value is the one used to enforce CAA)
+		DirectoryCAAIdentity string
+		// DirectoryWebsite is used for the /directory response's "meta" element's
+		// "website" field.
+		DirectoryWebsite string
+	}
 
 	Syslog cmd.SyslogConfig
 
@@ -67,7 +73,8 @@ type config struct {
 // validates that the PEM is well-formed with no leftover bytes, and contains
 // only a well-formed X509 certificate. If the cert file meets these
 // requirements the PEM bytes from the file are returned, otherwise an error is
-// returned.
+// returned. If the PEM contents of a certFile do not have a trailing newline
+// one is added.
 func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 	pemBytes, err := ioutil.ReadFile(certFile)
 	if err != nil {
@@ -75,6 +82,12 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - error reading contents: %s",
 			aiaIssuerURL, certFile, err)
+	}
+	if bytes.Contains(pemBytes, []byte("\r\n")) {
+		return nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - contents had CRLF line endings",
+			aiaIssuerURL, certFile)
 	}
 	// Try to decode the contents as PEM
 	certBlock, rest := pem.Decode(pemBytes)
@@ -108,7 +121,10 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 				"input (%d bytes)",
 			aiaIssuerURL, certFile, len(rest))
 	}
-
+	// If the PEM contents don't end in a \n, add it.
+	if pemBytes[len(pemBytes)-1] != '\n' {
+		pemBytes = append(pemBytes, '\n')
+	}
 	return pemBytes, nil
 }
 
@@ -199,13 +215,7 @@ func main() {
 	wfe.RA = rac
 	wfe.SA = sac
 
-	// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
-	if c.WFE.SubscriberAgreementURL != "" {
-		wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
-	} else {
-		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
-	}
-
+	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation

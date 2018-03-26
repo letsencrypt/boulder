@@ -9,7 +9,7 @@ services:
             BOULDER_CONFIG_DIR: test/config
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
-          - /tmp:/tmp
+          - ./.gocache:/root/.cache/go-build
         network_mode: bridge
         extra_hosts:
           - le.wtf:127.0.0.1

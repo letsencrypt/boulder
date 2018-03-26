@@ -29,6 +29,10 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.CAA:
 		return probs.CAA(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.MissingSCTs:
+		// MissingSCTs are an internal server error, but with a specific error
+		// message related to the SCT problem
+		return probs.ServerInternal(fmt.Sprintf("%s :: %s", msg, "Unable to meet CA SCT embedding requirements"))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

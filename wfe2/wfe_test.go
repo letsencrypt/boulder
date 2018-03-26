@@ -721,6 +721,40 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t,
 		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
 		true)
+
+	// Configure a caaIdentity and website for the /directory meta
+	wfe.DirectoryCAAIdentity = "Radiant Lock"
+	wfe.DirectoryWebsite = "zombo.com"
+
+	// Expect directory with a key change endpoint and a meta entry that has both
+	// a website and a caaIdentity
+	metaJSON = `{
+  "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
+  "keyChange": "http://localhost:4300/acme/key-change",
+  "meta": {
+    "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "termsOfService": "http://example.invalid/terms",
+    "website": "zombo.com"
+  },
+  "newAccount": "http://localhost:4300/acme/new-acct",
+  "newNonce": "http://localhost:4300/acme/new-nonce",
+  "newOrder": "http://localhost:4300/acme/new-order",
+  "revokeCert": "http://localhost:4300/acme/revoke-cert"
+}`
+	// Serve the /directory response for this request into a recorder
+	responseWriter = httptest.NewRecorder()
+	mux.ServeHTTP(responseWriter, req)
+	// We expect all directory requests to return a json object with a good HTTP status
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
+	// Check if there is a random directory key present and if so, that it is
+	// expected to be present
+	test.AssertEquals(t,
+		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+		true)
 }
 
 func TestRelativeDirectory(t *testing.T) {
@@ -1092,7 +1126,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	responseWriter := httptest.NewRecorder()
-	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	result, err := signer.Sign([]byte(`{"contact":["mailto:person@mail.com"]}`))
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
@@ -1122,7 +1156,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
@@ -1181,7 +1215,7 @@ func TestEmptyAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, acct.Agreement, "")
 	responseWriter.Body.Reset()
 }
 
@@ -1195,8 +1229,8 @@ func TestNewAccount(t *testing.T) {
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 
-	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"agreement":"https://letsencrypt.org/im-bad"}`
-	// An acct with the wrong agreement URL
+	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":false}`
+	// An acct with the terms not agreed to
 	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementAcct, wfe.nonceService)
 
 	// A non-JSON payload
@@ -1264,29 +1298,32 @@ func TestNewAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
+	// Agreement is an ACMEv1 field and should not be present
+	test.AssertEquals(t, acct.Agreement, "")
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/0")
 
+	// Load an existing key
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test1 key")
 
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
-
 	// POST, Valid JSON, Key already in use
 	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
-
+	// POST the NewAccount request
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	// We expect a Location header and a 200 response with an empty body
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
 func TestGetAuthorization(t *testing.T) {
@@ -1391,7 +1428,7 @@ func TestAccount(t *testing.T) {
 
 	signedURL := fmt.Sprintf("http://localhost%s%d", acctPath, 102)
 	path := fmt.Sprintf("%s%d", acctPath, 102)
-	payload := `{"agreement":"` + agreementURL + `"}`
+	payload := `{}`
 	// ID 102 is used by the mock for missing acct
 	_, _, body := signRequestKeyID(t, 102, nil, signedURL, payload, wfe.nonceService)
 	request := makePostRequestWithPath(path, body)
@@ -1407,21 +1444,10 @@ func TestAccount(t *testing.T) {
 	_, ok = key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	// Test POST valid JSON with account up in the mock (with incorrect agreement URL)
-	payload = `{"agreement":"https://letsencrypt.org/im-bad"}`
+	// Test POST valid JSON with account up in the mock
+	payload = `{}`
 	path = "1"
 	signedURL = "http://localhost/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(path, body)
-
-	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
-	responseWriter.Body.Reset()
-
-	// Test POST valid JSON with account up in the mock (with correct agreement URL)
-	payload = `{"agreement":"` + agreementURL + `"}`
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath(path, body)
 
@@ -1432,7 +1458,7 @@ func TestAccount(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with garbage in URL but valid account ID
-	payload = `{"agreement":"` + agreementURL + `"}`
+	payload = `{}`
 	signedURL = "http://localhost/a/bunch/of/garbage/1"
 	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
 	request = makePostRequestWithPath("/a/bunch/of/garbage/1", body)
@@ -1440,20 +1466,6 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), probs.V2ErrorNS+"malformed")
-	responseWriter.Body.Reset()
-
-	// Test POST valid JSON with account up in the mock (with old agreement URL)
-	responseWriter.HeaderMap = http.Header{}
-	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
-	payload = `{"agreement":"` + agreementURL + `"}`
-	signedURL = "http://localhost/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
-	request = makePostRequestWithPath(path, body)
-
-	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
-	links = responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<http://example.invalid/new-terms>;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 }
 
@@ -1618,7 +1630,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Failed to load test 1 RSA key")
 
-	payload := `{"agreement":"` + agreementURL + `"}`
+	payload := `{}`
 	path := fmt.Sprintf("%s%d", acctPath, 1)
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
@@ -2515,4 +2527,43 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// We also expect the ProvidedKeyAuthorization is not echoed back in the
 	// challenge
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
+}
+
+// noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
+type noSCTMockRA struct {
+	MockRegistrationAuthority
+}
+
+func (ra *noSCTMockRA) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+}
+
+func TestFinalizeSCTError(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// Set up an RA mock that always returns a berrors.MissingSCTsError from
+	// `FinalizeOrder`
+	wfe.RA = &noSCTMockRA{}
+
+	// Create a response writer to capture the WFE response
+	responseWriter := httptest.NewRecorder()
+
+	// Example CSR payload taken from `TestFinalizeOrder`
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	// a valid CSR
+	goodCertCSRPayload := `{
+		"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+	}`
+
+	// Create a finalization request with the above payload
+	request := signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService)
+
+	// POST the finalize order request.
+	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, request)
+
+	// We expect the berrors.MissingSCTsError error to have been converted into
+	// a serverInternal error with the right message.
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V2ErrorNS+`serverInternal","detail":"Error finalizing order :: Unable to meet CA SCT embedding requirements","status":500}`)
 }

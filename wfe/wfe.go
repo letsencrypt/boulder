@@ -75,6 +75,15 @@ type WebFrontEndImpl struct {
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
+	// DirectoryCAAIdentity is used for the /directory response's "meta"
+	// element's "caaIdentities" field. It should match the VA's issuerDomain
+	// field value.
+	DirectoryCAAIdentity string
+
+	// DirectoryWebsite is used for the /directory response's "meta" element's
+	// "website" field.
+	DirectoryWebsite string
+
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
 
@@ -351,14 +360,28 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *web.Request
 		// expected set of keys. This ensures that we can properly extend the directory when we
 		// need to add a new endpoint or meta element.
 		directoryEndpoints[core.RandomString(8)] = randomDirKeyExplanationLink
-	}
-	if !clientDirChangeIntolerant {
+
 		// ACME since draft-02 describes an optional "meta" directory entry. The
 		// meta entry may optionally contain a "terms-of-service" URI for the
 		// current ToS.
-		directoryEndpoints["meta"] = map[string]string{
+		metaMap := map[string]interface{}{
 			"terms-of-service": wfe.SubscriberAgreementURL,
 		}
+		// The "meta" directory entry may also include a []string of CAA identities
+		if wfe.DirectoryCAAIdentity != "" {
+			// The specification says caaIdentities is an array of strings. In
+			// practice Boulder's VA only allows configuring ONE CAA identity. Given
+			// that constraint it doesn't make sense to allow multiple directory CAA
+			// identities so we use just the `wfe.DirectoryCAAIdentity` alone.
+			metaMap["caaIdentities"] = []string{
+				wfe.DirectoryCAAIdentity,
+			}
+		}
+		// The "meta" directory entry may also include a string with a website URL
+		if wfe.DirectoryWebsite != "" {
+			metaMap["website"] = wfe.DirectoryWebsite
+		}
+		directoryEndpoints["meta"] = metaMap
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -729,7 +752,6 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
 	if err != nil {
-		logEvent.AddError("unable to get certificate status: %s", err)
 		// TODO(#991): handle db errors
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate status not yet available"), err)
 		return
@@ -777,13 +799,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
-		ClientAddr   string
-		CSR          string
-		Registration core.Registration
+		ClientAddr string
+		CSR        string
+		Requester  int64
 	}{
-		ClientAddr:   web.GetClientAddr(request),
-		CSR:          hex.EncodeToString(cr.Bytes),
-		Registration: registration,
+		ClientAddr: web.GetClientAddr(request),
+		CSR:        hex.EncodeToString(cr.Bytes),
+		Requester:  registration.ID,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
@@ -820,7 +842,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	// and encoding/asn1 will refuse to parse it. If this is the case exit early
 	// with a more useful error message.
 	if len(rawCSR.CSR) >= 10 && rawCSR.CSR[8] == 2 && rawCSR.CSR[9] == 0 {
-		logEvent.AddError("Pre-1.0.2 OpenSSL malformed CSR")
 		wfe.sendError(
 			response,
 			logEvent,
@@ -892,7 +913,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
-		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
@@ -1215,7 +1235,6 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
-		logEvent.AddError("No such authorization at id %s", id)
 		// TODO(#1199): handle db errors
 		wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
 		return
@@ -1295,7 +1314,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	}
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
-		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 	return
@@ -1313,7 +1331,6 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		logEvent.AddError("unable to write issuer certificate response: %s", err)
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
