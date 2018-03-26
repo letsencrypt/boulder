@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"fmt"
 	"log"
 	"math/big"
@@ -141,6 +142,21 @@ func TestCheckCert(t *testing.T) {
 
 	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
 
+	// Create a RFC 7633 OCSP Must Staple Extension.
+	// OID 1.3.6.1.5.5.7.1.24
+	ocspMustStaple := pkix.Extension{
+		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+		Critical: false,
+		Value:    []uint8{0x30, 0x3, 0x2, 0x1, 0x5},
+	}
+
+	// Create a made up PKIX extension
+	imaginaryExtension := pkix.Extension{
+		Id:       asn1.ObjectIdentifier{1, 3, 3, 7},
+		Critical: false,
+		Value:    []uint8{0xC0, 0xFF, 0xEE},
+	}
+
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
 	goodExpiry := issued.Add(expectedValidityPeriod)
 	serial := big.NewInt(1337)
@@ -158,6 +174,7 @@ func TestCheckCert(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		OCSPServer:            []string{"http://example.com/ocsp"},
 		IssuingCertificateURL: []string{"http://example.com/cert"},
+		ExtraExtensions:       []pkix.Extension{ocspMustStaple, imaginaryExtension},
 	}
 	brokenCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "Couldn't create certificate")
@@ -186,6 +203,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
 		"commonName exeeding max lenght of 64":                                                           1,
+		"Certificate contains unknown extension (1.3.3.7)":                                               1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]
@@ -214,6 +232,7 @@ func TestCheckCert(t *testing.T) {
 	rawCert.DNSNames = []string{"example-a.com"}
 	rawCert.NotAfter = goodExpiry
 	rawCert.BasicConstraintsValid = true
+	rawCert.ExtraExtensions = []pkix.Extension{ocspMustStaple}
 	rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 	goodCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "Couldn't create certificate")

@@ -36,6 +36,9 @@ const (
 	good = "valid"
 	bad  = "invalid"
 
+	certlintCNError             = "commonName field is deprecated"
+	certlintOCSPMustStapleError = "Certificate contains unknown extension (1.3.6.1.5.5.7.1.24)"
+
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
@@ -215,10 +218,17 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			// would have if we omitted CommonName). There have been proposals at
 			// CA/Browser Forum for an alternate contentless field whose purpose would
 			// just be to make Subject non-empty, but so far they have not been
-			// successful.
-			if err.Error() != "commonName field is deprecated" {
-				problems = append(problems, err.Error())
+			// successful. If the check error is `certlintCNError`, ignore it.
+			if err.Error() == certlintCNError {
+				continue
 			}
+			// Certlint doesn't presently understand the RFC 7633 OCSP Must Staple
+			// extension. While this is unaddressed in the upstream library we ignore
+			// this error like we ignore `certlintCNError`.
+			if err.Error() == certlintOCSPMustStapleError {
+				continue
+			}
+			problems = append(problems, err.Error())
 		}
 	}
 
