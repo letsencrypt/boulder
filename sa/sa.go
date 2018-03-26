@@ -29,6 +29,7 @@ import (
 )
 
 type certCountFunc func(domain string, earliest, latest time.Time) (int, error)
+type getChallengesFunc func(authID string) ([]core.Challenge, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -42,9 +43,10 @@ type SQLStorageAuthority struct {
 	// threads).
 	parallelismPerRPC int
 
-	// We use a function type here so we can mock out this internal function in
+	// We use function types here so we can mock out this internal function in
 	// unittests.
 	countCertificatesByName certCountFunc
+	getChallenges           getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -106,6 +108,7 @@ func NewSQLStorageAuthority(
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
+	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
 }
@@ -1947,13 +1950,14 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 		}
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
-			// Retrieve challenges for the authz
-			auth.Challenges, err = ssa.getChallenges(auth.ID)
-			if err != nil {
-				return nil, err
-			}
-
 			byName[auth.Identifier.Value] = auth
+		}
+	}
+
+	for _, auth := range byName {
+		// Retrieve challenges for the authz
+		if auth.Challenges, err = ssa.getChallenges(auth.ID); err != nil {
+			return nil, err
 		}
 	}
 
@@ -2062,7 +2066,7 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
 }
 
-func (ssa *SQLStorageAuthority) getChallenges(authID string) ([]core.Challenge, error) {
+func (ssa *SQLStorageAuthority) getChallengesImpl(authID string) ([]core.Challenge, error) {
 	var challObjs []challModel
 	_, err := ssa.dbMap.Select(
 		&challObjs,
