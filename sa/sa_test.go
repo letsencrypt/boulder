@@ -2184,3 +2184,57 @@ func TestStatusForOrder(t *testing.T) {
 	}
 
 }
+
+// Check that getAuthorizations is fast enough; that is, it shouldn't retrieve
+// challenges for authorizations it won't return (which has been a cause of
+// slowness when there are many authorizations for the same domain name).
+func TestGetAuthorizationsFast(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	expires := fc.Now().Add(time.Hour)
+
+	makeAuthz := func(s string) {
+		_, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+			RegistrationID: reg.ID,
+			Expires:        &expires,
+			Status:         core.StatusPending,
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: s,
+			},
+		})
+		test.AssertNotError(t, err, "making pending authz")
+	}
+
+	for i := 0; i < 10; i++ {
+		makeAuthz("example.com")
+		makeAuthz("www.example.com")
+		expires = expires.Add(time.Hour)
+	}
+
+	// Mock out getChallenges so we can count how many times it's called.
+	var challengeFetchCount int
+	sa.getChallenges = func(s string) ([]core.Challenge, error) {
+		challengeFetchCount++
+		return nil, nil
+	}
+
+	results, err := sa.getAuthorizations(ctx, pendingAuthorizationTable,
+		string(core.StatusPending), reg.ID, []string{"example.com", "www.example.com"},
+		fc.Now(), false)
+	test.AssertNotError(t, err, "getting authorizations")
+	if len(results) != 2 {
+		t.Fatalf("Wrong number of results. Expected 2, got %d", len(results))
+	}
+	if results["example.com"] == nil || results["www.example.com"] == nil {
+		t.Fatalf("Nil result for expected domain: %#v", results)
+	}
+	// We expect getChallenges to be called exactly once for each domain.
+	if challengeFetchCount != 2 {
+		t.Errorf("Wrong challenge fetch count: expected 2, got %d", challengeFetchCount)
+	}
+}
