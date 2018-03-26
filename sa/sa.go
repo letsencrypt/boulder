@@ -1956,8 +1956,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 
 	for _, auth := range byName {
 		// Retrieve challenges for the authz
-		auth.Challenges, err = ssa.getChallenges(auth.ID)
-		if err != nil {
+		if auth.Challenges, err = ssa.getChallenges(auth.ID); err != nil {
 			return nil, err
 		}
 	}
