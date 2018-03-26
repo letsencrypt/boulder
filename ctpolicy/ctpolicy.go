@@ -8,6 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -107,7 +108,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			sct, err := ctp.race(subCtx, cert, g)
 			// Only one of these will be non-nil
 			if err != nil {
-				results <- result{err: fmt.Errorf("CT log group %q: %s", g.Name, err)}
+				results <- result{err: berrors.MissingSCTsError("CT log group %q: %s", g.Name, err)}
 			}
 			results <- result{sct: sct}
 		}(i, g)

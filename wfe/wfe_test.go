@@ -450,11 +450,6 @@ func replaceRandomKey(b []byte) []byte {
 	return b
 }
 
-func assertJSONEquals(t *testing.T, got, expected string) {
-	t.Helper()
-	test.AssertUnmarshaledEquals(t, got, expected)
-}
-
 func TestHandleFunc(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	var mux *http.ServeMux
@@ -494,7 +489,7 @@ func TestHandleFunc(t *testing.T) {
 		} else {
 			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
-			assertJSONEquals(t,
+			test.AssertUnmarshaledEquals(t,
 				rw.Body.String(),
 				`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 		}
@@ -507,7 +502,7 @@ func TestHandleFunc(t *testing.T) {
 	// Disallowed method returns error JSON in body
 	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
@@ -521,7 +516,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	assertJSONEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -716,7 +711,7 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body := replaceRandomKey(responseWriter.Body.Bytes())
-	assertJSONEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
+	test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
 
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
@@ -728,9 +723,41 @@ func TestDirectory(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body = replaceRandomKey(responseWriter.Body.Bytes())
-	assertJSONEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
+	test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(`{"key-change":"http://localhost:4300/acme/key-change","meta":{"terms-of-service":"http://example.invalid/terms"},"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","%s":"%s","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`, randomKey, randomDirKeyExplanationLink))
 
-	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry.
+	// Configure a caaIdentity and website for the /directory meta
+	wfe.DirectoryCAAIdentity = "Radiant Lock"
+	wfe.DirectoryWebsite = "zombo.com"
+	responseWriter = httptest.NewRecorder()
+	url, _ = url.Parse("/directory")
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+		Host:   "localhost:4300",
+	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	// The directory response should include the CAAIdentities and Website meta
+	// elements as expected
+	body = replaceRandomKey(responseWriter.Body.Bytes())
+	test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(`{
+  "key-change": "http://localhost:4300/acme/key-change",
+  "meta": {
+    "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "terms-of-service": "http://example.invalid/terms",
+   "website": "zombo.com"
+  },
+  "%s": "%s",
+  "new-authz": "http://localhost:4300/acme/new-authz",
+  "new-cert": "http://localhost:4300/acme/new-cert",
+  "new-reg": "http://localhost:4300/acme/new-reg",
+  "revoke-cert": "http://localhost:4300/acme/revoke-cert"
+}`, randomKey, randomDirKeyExplanationLink))
+
+	// if the UA is LetsEncryptPythonClient we expect to *not* see the meta entry,
+	// even with the DirectoryCAAIdentity and DirectoryWebsite configured.
 	responseWriter.Body.Reset()
 	url, _ = url.Parse("/directory")
 	headers := map[string][]string{
@@ -744,7 +771,7 @@ func TestDirectory(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 }
 
 func TestRandomDirectoryKey(t *testing.T) {
@@ -853,7 +880,7 @@ func TestRelativeDirectory(t *testing.T) {
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 		body := replaceRandomKey(responseWriter.Body.Bytes())
-		assertJSONEquals(t, string(body), fmt.Sprintf(tt.result, randomKey, randomDirKeyExplanationLink))
+		test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(tt.result, randomKey, randomDirKeyExplanationLink))
 	}
 }
 
@@ -911,7 +938,7 @@ func TestIssueCertificate(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(newCertPath),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
@@ -923,14 +950,14 @@ func TestIssueCertificate(t *testing.T) {
 			"Content-Length": {"0"},
 		},
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 
@@ -938,7 +965,7 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
@@ -947,7 +974,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(
 			signRequest(t, "{}", wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload does not specify a resource","status":400}`)
 
@@ -955,7 +982,7 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
 
@@ -970,7 +997,7 @@ func TestIssueCertificate(t *testing.T) {
       "resource":"new-cert",
       "csr": "MIICVzCCAT8CAQAwEjEQMA4GA1UEAwwHZm9iLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKzHhqcMSTVjBu61vufGVmIYM4mMbWXgndHOUWnIqSKcNtFtPQ465tcZRT5ITIZWXGjsmgDrj31qvG3t5qLwyaF5hsTvFHK72nLMAQhdgM6481Qe9yaoaulWpkGr_9LVz4jQ9pGAaLVamXGpSxV-ipTOo79Sev4aZE8ksD9atEfWtcOD9w8_zj74vpWjTAHN49Q88chlChVqakn0zSfHPfS-jF8g0UTddBuF0Ti3sZChjxzbo6LwZ4182xX7XPnOLav3AGj0Su7j5XMl3OpenOrlWulWJeZIHq5itGW321j306XiGdbrdWH4K7JygICFds6oolwQRGBY6yinAtCgkTcCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxPiHOtKuBxtvecMNtLkTSuTyEkusQGnjoFDaKe5oqwGYQgy0YBii2-BbaPmqS4ZaDc-vDz_RLeKH5ZiH-NliYR1V_CRtpFLQi18g_2pLQnZLVO3ENs-SM37nU_nBGn9O93t2bkssoM3fZmtgp3R2W7I_wvx7Z8oWKa4boTeBAg_q9Gmi6QskZBddK7A4S_vOR0frU6QSPK_ksPhvovp9fwb6CVKrlJWf556UwRPWgbkW39hvTxK2KHhrUEg3oawNkWde2jZtnZ9e-9zpw8-_5O0X7-YN0ucbFTfQybce_ReuLlGepiHT5bvVavBZoIvqw1XOgSMvGgZFU8tAWMBlj"
     }`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
 
@@ -983,7 +1010,7 @@ func TestIssueCertificate(t *testing.T) {
 			"resource":"new-cert",
 			"csr": "MIICWDCCAUACAQAwEzERMA8GA1UEAwwIbWVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5-UED2bFRL1MsyBdbmCF_-pu3i-ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1_TBOwTAuFkHePmkNT63uPm9My_hNzsSm1o-Q519Cf7ry-JQmOVgz_jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoXRUlQjXXkNTj23OxxdT_cVLcLJjytyG6e5izME2R2aCkDBWIc1a4_sRJ0R396auPXG6KhJ7o_AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEALu046p76aKgvoAEHFINkMTgKokPXf9mZ4IZx_BKz-qs1MPMxVtPIrQDVweBH6tYT7Hfj2naLry6SpZ3vUNP_FYeTFWgW1V03LiqacX-QQgbEYtn99Dt3ScGyzb7EH833ztb3vDJ_-ha_CJplIrg-kHBBrlLFWXhh-I9K1qLRTNpbhZ18ooFde4Sbhkw9o9fKivGhx9aYr7ZbjRsNtKit_DsG1nwEXz53TMJ2vB9IQY29coJv_n5NFLkvBfzbG5faRNiFcimPYBO2jFdaA2mWzfxltLtwMF_dBwzTXDpMo3TVT9zEdV8YpsWqr63igqGDZVpKenlkqvRTeGJVayVuMA"
 		}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
 	assertCsrLogged(t, mockLog)
@@ -1036,7 +1063,7 @@ func TestIssueCertificate(t *testing.T) {
       "resource": "new-cert",
       "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
     }`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
 
@@ -1073,7 +1100,7 @@ func TestGetChallenge(t *testing.T) {
 		// be discarded by HandleFunc() anyway, so it doesn't
 		// matter what Challenge() writes to it.
 		if method == "GET" {
-			assertJSONEquals(
+			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
 				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
@@ -1107,7 +1134,7 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/authz/valid>;rel="up"`)
-	assertJSONEquals(
+	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
 		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 
@@ -1118,7 +1145,7 @@ func TestChallenge(t *testing.T) {
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
 
 	// Challenge Not found
@@ -1128,7 +1155,7 @@ func TestChallenge(t *testing.T) {
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such challenge","status":404}`)
 
 	// Unspecified database error
@@ -1138,7 +1165,7 @@ func TestChallenge(t *testing.T) {
 		makePostRequestWithPath(errorURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Problem getting authorization","status":500}`)
 
 }
@@ -1192,7 +1219,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSARegistration(t *testing.T) {
@@ -1231,7 +1258,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to signer.Sign")
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
@@ -1354,7 +1381,7 @@ func TestNewRegistration(t *testing.T) {
 	for _, rt := range regErrTests {
 		responseWriter := httptest.NewRecorder()
 		mux.ServeHTTP(responseWriter, rt.r)
-		assertJSONEquals(t, responseWriter.Body.String(), rt.respBody)
+		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), rt.respBody)
 	}
 
 	responseWriter := httptest.NewRecorder()
@@ -1393,7 +1420,7 @@ func TestNewRegistration(t *testing.T) {
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(
@@ -1515,7 +1542,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
 
 	responseWriter = httptest.NewRecorder()
 	unsupported = revocation.Reason(100)
@@ -1526,7 +1553,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
@@ -1565,7 +1592,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 403)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by the account key of an account that holds valid authorizations for all names in the certificate.","status":403}`)
 }
 
@@ -1602,7 +1629,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 409)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
 }
 
@@ -1634,7 +1661,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(newAuthzPath),
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -1644,18 +1671,18 @@ func TestAuthorization(t *testing.T) {
 			"Content-Length": {"0"},
 		},
 	})
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
@@ -1676,7 +1703,7 @@ func TestAuthorization(t *testing.T) {
 					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
 			}
 		`))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"JWS verification error","status":400}`)
 
@@ -1691,7 +1718,7 @@ func TestAuthorization(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/new-cert>;rel="next"`)
 
-	assertJSONEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
@@ -1705,7 +1732,7 @@ func TestAuthorization(t *testing.T) {
 		URL:    mustParseURL(authzURL),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
 	responseWriter.Body.Reset()
 
@@ -1714,7 +1741,7 @@ func TestAuthorization(t *testing.T) {
 		URL:    mustParseURL("/a/bunch/of/garbage/valid"),
 		Method: "GET",
 	})
-	assertJSONEquals(t, responseWriter.Body.String(),
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Unable to find authorization","status":404}`)
 }
 
@@ -1779,7 +1806,7 @@ func TestRegistration(t *testing.T) {
 		URL:    mustParseURL(regPath),
 		Body:   makeBody("invalid"),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
@@ -1789,14 +1816,14 @@ func TestRegistration(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(regPath),
 	})
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
 	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
@@ -1811,7 +1838,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Unable to sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("2", result.FullSerialize()))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"No registration exists matching provided key","status":403}`)
 	responseWriter.Body.Reset()
@@ -1827,7 +1854,7 @@ func TestRegistration(t *testing.T) {
 	// Test POST valid JSON with registration up in the mock
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", result.FullSerialize()))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
 	responseWriter.Body.Reset()
@@ -1946,7 +1973,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
 	reqlogs = mockLog.GetAllMatching(`INFO: JSON=.*"Code":404.*`)
 	if len(reqlogs) != 1 {
@@ -1960,7 +1987,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1968,7 +1995,7 @@ func TestGetCertificate(t *testing.T) {
 	mux.ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 }
 
 func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
@@ -2147,7 +2174,7 @@ func TestBadKeyCSR(t *testing.T) {
 			"csr": "MIHLMHcCAQAwEjEQMA4GA1UEAwwHZm9vLmNvbTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQDCZftp4x4owgjBnwOKfzihIPedT-BUmV2fuQPMqaUlc8yJUp13vcO5uxUlaBm8leM7Dj_sgTDP_JgykorlYo73AgMBAAGgADANBgkqhkiG9w0BAQsFAANBAEaQ2QBhweK-kp1ejQCedUhMit_wG-uTBtKnc3M82f6_fztLkhg1vWQ782nmhbEI5orXp6QtNHgJYnBpqA9Ut00"
 		}`, wfe.nonceService)))
 
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
@@ -2230,14 +2257,14 @@ func TestDeactivateAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("valid", signRequest(t, `{"resource":"authz","status":""}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.V1ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
 
 	responseWriter.Body.Reset()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("valid", signRequest(t, `{"resource":"authz","status":"deactivated"}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "identifier": {
@@ -2262,14 +2289,14 @@ func TestDeactivateRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"asd"}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.V1ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
 
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"deactivated"}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "id": 1,
@@ -2290,7 +2317,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"reg","status":"deactivated","contact":[]}`, wfe.nonceService)))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "id": 1,
@@ -2321,7 +2348,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("2", result.FullSerialize()))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.V1ErrorNS+`unauthorized",
@@ -2340,7 +2367,7 @@ func TestKeyRollover(t *testing.T) {
 	signer := newJoseSigner(t, rsaKey, wfe.nonceService)
 
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", "{}"))
-	assertJSONEquals(t,
+	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.V1ErrorNS+`malformed",
@@ -2407,7 +2434,7 @@ func TestKeyRollover(t *testing.T) {
 
 		responseWriter.Body.Reset()
 		wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("", outer))
-		assertJSONEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
+		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), testCase.expectedResponse)
 	}
 }
 
@@ -2428,4 +2455,38 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	if chall.Status != "invalid" {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
+}
+
+// noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
+type noSCTMockRA struct {
+	MockRegistrationAuthority
+}
+
+func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+}
+
+func TestNewCertificateSCTError(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// Set up an RA mock that always returns a berrors.MissingSCTsError from
+	// `NewCertificate`
+	wfe.RA = &noSCTMockRA{}
+
+	// Create a response writer to capture the WFE response
+	responseWriter := httptest.NewRecorder()
+
+	// Make a well-formed NewCertificate request (test case from `TestNewCertificate`)
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, wfe.nonceService)))
+
+	// We expect the berrors.MissingSCTsError error to have been converted into
+	// a serverInternal error with the right message.
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
 }

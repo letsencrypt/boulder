@@ -43,9 +43,15 @@ type config struct {
 		SAService *cmd.GRPCClientConfig
 
 		Features map[string]bool
-	}
 
-	SubscriberAgreementURL string
+		// DirectoryCAAIdentity is used for the /directory response's "meta"
+		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
+		// configuration value (this value is the one used to enforce CAA)
+		DirectoryCAAIdentity string
+		// DirectoryWebsite is used for the /directory response's "meta" element's
+		// "website" field.
+		DirectoryWebsite string
+	}
 
 	Syslog cmd.SyslogConfig
 
@@ -97,16 +103,12 @@ func main() {
 	wfe.RA = rac
 	wfe.SA = sac
 
-	// TODO: remove this check once the production config uses the SubscriberAgreementURL in the wfe section
-	if c.WFE.SubscriberAgreementURL != "" {
-		wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
-	} else {
-		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
-	}
-
+	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
+	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
+	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
