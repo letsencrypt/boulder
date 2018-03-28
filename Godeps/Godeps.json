@@ -223,6 +223,10 @@
 			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspmuststaple",
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
+		},
+		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/pdfrevocation",
 			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
@@ -576,10 +580,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspmuststaple",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		}
 	]
 }
