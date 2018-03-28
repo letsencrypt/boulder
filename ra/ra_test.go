@@ -1976,7 +1976,7 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizations(context.Background(), names, 999)
+	_, err := ra.checkAuthorizations(context.Background(), names, 999)
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -3210,20 +3210,23 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			Type:  "dns",
 			Value: domain,
 		}
-		// Create pending challenges mapped by their type
-		chals := map[string]core.Challenge{
-			"http-01":    core.HTTPChallenge01(),
-			"dns-01":     core.DNSChallenge01(),
-			"tls-sni-01": core.TLSSNIChallenge01(),
-		}
-		var chal core.Challenge
-		var validChallengeType bool
-		// Ensure the chalType is one we have in the chals map
-		if chal, validChallengeType = chals[chalType]; !validChallengeType {
+		// Create challenges
+		httpChal := core.HTTPChallenge01()
+		dnsChal := core.DNSChallenge01()
+		tlsChal := core.TLSSNIChallenge01()
+		// Set the selected challenge to valid
+		switch chalType {
+		case "http-01":
+			httpChal.Status = core.StatusValid
+		case "dns-01":
+			dnsChal.Status = core.StatusValid
+		case "tls-sni-01":
+			tlsChal.Status = core.StatusValid
+		default:
 			t.Fatalf("Invalid challenge type used with authzForChalType: %q", chalType)
 		}
-		// Set the selected challenge type to valid
-		chal.Status = "valid"
+		// Set the template's challenges
+		template.Challenges = []core.Challenge{httpChal, dnsChal, tlsChal}
 		// Set the overall authz to valid
 		template.Status = "valid"
 		template.Expires = &exp

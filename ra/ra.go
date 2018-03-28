@@ -697,13 +697,14 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 // checkOrderAuthorizations verifies that a provided set of names associated
 // with a specific order and account has all of the required valid, unexpired
 // authorizations to proceed with issuance. It is the ACME v2 equivalent of
-// `checkAuthorizations`.
-// If it returns an error, it will be of type BoulderError.
+// `checkAuthorizations`. It returns the authorizations that satisfied the set
+// of names or it returns an error. If it returns an error, it will be of type
+// BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	names []string,
 	acctID accountID,
-	orderID orderID) error {
+	orderID orderID) (map[string]*core.Authorization, error) {
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
 	// Get all of the valid authorizations for this account/order
@@ -714,28 +715,37 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 			AcctID: &acctIDInt,
 		})
 	if err != nil {
-		return berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
+		return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
 	}
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now())
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now()); err != nil {
+		return nil, err
+	}
+
+	return authzs, nil
 }
 
 // checkAuthorizations checks that each requested name has a valid authorization
-// that won't expire before the certificate expires. Returns an error otherwise.
+// that won't expire before the certificate expires. It returns the
+// authorizations that satisifed the set of names or it returns an error.
 // If it returns an error, it will be of type BoulderError.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) (map[string]*core.Authorization, error) {
 	now := ra.clk.Now()
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
 	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, names, now)
 	if err != nil {
-		return berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
+		return nil, berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
 	}
 
-	return ra.checkAuthorizationsCAA(ctx, names, auths, regID, now)
+	if err = ra.checkAuthorizationsCAA(ctx, names, auths, regID, now); err != nil {
+		return nil, err
+	}
+
+	return auths, nil
 }
 
 // checkAuthorizationsCAA implements the common logic of validating a set of
@@ -1062,21 +1072,39 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
+	var authzs map[string]*core.Authorization
 	// If the orderID is 0 then this is a classic issuance and we need to check
 	// that the account is authorized for the names in the CSR.
 	if oID == 0 {
-		err = ra.checkAuthorizations(ctx, names, account.ID)
+		authzs, err = ra.checkAuthorizations(ctx, names, account.ID)
 	} else {
 		// Otherwise, if the orderID is not 0 we need to follow the order based
 		// issuance process and check that this specific order is fully authorized
 		// and associated with the expected account ID
-		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
+		authzs, err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
 		return emptyCert, err
 	}
+
+	// Collect up a certificateRequestAuthz that stores the ID and challenge type
+	// of each of the valid authorizations we used for this issuance.
+	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
+	for name, authz := range authzs {
+		var solvedByChallenge *core.Challenge
+		// If the authz has no solved by challenge there has been an internal
+		// consistency violation worth raising an internal server error about.
+		if solvedByChallenge = authz.SolvedBy(); solvedByChallenge == nil {
+			return emptyCert, berrors.InternalServerError("Authz %q has status %q but nil SolvedBy()", authz.ID, authz.Status)
+		}
+		logEventAuthzs[name] = certificateRequestAuthz{
+			ID:            authz.ID,
+			ChallengeType: solvedByChallenge.Type,
+		}
+	}
+	logEvent.Authorizations = logEventAuthzs
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
