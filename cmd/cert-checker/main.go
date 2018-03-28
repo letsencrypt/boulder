@@ -43,6 +43,12 @@ const (
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
 
+// certlintPSLErrPattern is a regex for matching Certlint error strings
+// complaining about a CN or SAN matching a public suffix list entry.
+var certlintPSLErrPattern = regexp.MustCompile(
+	`^Certificate (?:CommonName|subjectAltName) "[a-z0-9*][a-z0-9-.]+" ` +
+		`equals "[a-z0-9][a-z0-9-.]+" from the public suffix list$`)
+
 // For defense-in-depth in addition to using the PA & its hostnamePolicy to
 // check domain names we also perform a check against the regex's from the
 // forbiddenDomains array
@@ -219,6 +225,14 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			// just be to make Subject non-empty, but so far they have not been
 			// successful. If the check error is `certlintCNError`, ignore it.
 			if err.Error() == certlintCNError {
+				continue
+			}
+			// certlint incorrectly flags certificates that have a subj. CN or SAN
+			// exactly equal to a *private* entry on the public suffix list. Since
+			// this is allowed and LE issues certificates for such names we ignore
+			// errors of this form until the upstream bug can be addressed. See
+			// https://github.com/globalsign/certlint/issues/17
+			if certlintPSLErrPattern.MatchString(err.Error()) {
 				continue
 			}
 			problems = append(problems, err.Error())

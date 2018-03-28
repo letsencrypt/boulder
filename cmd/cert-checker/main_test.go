@@ -165,9 +165,18 @@ func TestCheckCert(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: longName,
 		},
-		NotBefore:             issued,
-		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
-		DNSNames:              []string{longName, "example-a.com", "foodnotbombs.mil", "*.foodnotbombs.mil"},
+		NotBefore: issued,
+		NotAfter:  goodExpiry.AddDate(0, 0, 1), // Period too long
+		DNSNames: []string{
+			// longName should be flagged along with the long CN
+			longName,
+			"example-a.com",
+			"foodnotbombs.mil",
+			// `*.foodnotbombs.mil` should be flagged because the wildcard issuance feature is disabled
+			"*.foodnotbombs.mil",
+			// `dev-myqnapcloud.com` is included because it is an exact private
+			// entry on the public suffix list
+			"dev-myqnapcloud.com"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
