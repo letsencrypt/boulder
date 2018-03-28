@@ -398,6 +398,21 @@ func (authz *Authorization) FindChallenge(challengeID int64) int {
 	return -1
 }
 
+// SolvedBy will look through the Authorizations challenges, returning a pointer
+// to the *first* challenge it finds with Status: valid, or nil if no challenge
+// is valid.
+func (authz *Authorization) SolvedBy() *Challenge {
+	if len(authz.Challenges) == 0 {
+		return nil
+	}
+	for _, chal := range authz.Challenges {
+		if chal.Status == StatusValid {
+			return &chal
+		}
+	}
+	return nil
+}
+
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding
 // with stripped padding.
 type JSONBuffer []byte
