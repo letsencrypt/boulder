@@ -264,19 +264,45 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 	return emptyDNSResponseError
 }
 
+// certificateRequestAuthz is a struct for holding information about a valid
+// referenced during a certificateRequestEvent. It holds both the authorization
+// ID and the challenge type that made the authorization valid.
+type certificateRequestAuthz struct {
+	ID            string `json:",omitempty"`
+	ChallengeType string `json:",omitempty"`
+}
+
+// certificateRequestEvent is a struct for holding information that is logged as
+// JSON to the audit log as the result of an issuance event.
 type certificateRequestEvent struct {
-	ID             string    `json:",omitempty"`
-	Requester      int64     `json:",omitempty"`
-	OrderID        int64     `json:",omitempty"`
-	SerialNumber   string    `json:",omitempty"`
-	VerifiedFields []string  `json:",omitempty"`
-	CommonName     string    `json:",omitempty"`
-	Names          []string  `json:",omitempty"`
-	NotBefore      time.Time `json:",omitempty"`
-	NotAfter       time.Time `json:",omitempty"`
-	RequestTime    time.Time `json:",omitempty"`
-	ResponseTime   time.Time `json:",omitempty"`
-	Error          string    `json:",omitempty"`
+	ID string `json:",omitempty"`
+	// Requester is the associated account ID
+	Requester int64 `json:",omitempty"`
+	// OrderID is the associated order ID (may be empty for an ACME v1 issuance)
+	OrderID int64 `json:",omitempty"`
+	// SerialNumber is the string representation of the issued certificate's
+	// serial number
+	SerialNumber string `json:",omitempty"`
+	// VerifiedFields are required by the baseline requirements and are always
+	// a static value for Boulder.
+	VerifiedFields []string `json:",omitempty"`
+	// CommonName is the subject common name from the issued cert
+	CommonName string `json:",omitempty"`
+	// Names are the DNS SAN entries from the issued cert
+	Names []string `json:",omitempty"`
+	// NotBefore is the starting timestamp of the issued cert's validity period
+	NotBefore time.Time `json:",omitempty"`
+	// NotAfter is the ending timestamp of the issued cert's validity period
+	NotAfter time.Time `json:",omitempty"`
+	// RequestTime and ResponseTime are for tracking elapsed time during issuance
+	RequestTime  time.Time `json:",omitempty"`
+	ResponseTime time.Time `json:",omitempty"`
+	// Error contains any encountered errors
+	Error string `json:",omitempty"`
+	// Authorizations is a map of identifier names to certificateRequestAuthz
+	// objects. It can be used to understand how the names in a certificate
+	// request were authorized.
+	Authorizations map[string]certificateRequestAuthz `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
