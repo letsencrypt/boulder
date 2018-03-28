@@ -211,7 +211,7 @@ func isForbiddenString(b []byte) bool {
 			(r >= 58 && r <= 64) ||
 			(r >= 91 && r <= 96) ||
 			(r >= 123 && r <= 126)) {
-			// non metadata character inlcuded in value
+			// non metadata character included in value
 			return false
 		}
 		b = b[size:]

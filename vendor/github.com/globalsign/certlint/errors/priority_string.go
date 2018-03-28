@@ -2,7 +2,7 @@
 
 package errors
 
-import "fmt"
+import "strconv"
 
 const _Priority_name = "UnknownDebugInfoNoticeWarningErrorCriticalAlertEmergency"
 
@@ -10,7 +10,7 @@ var _Priority_index = [...]uint8{0, 7, 12, 16, 22, 29, 34, 42, 47, 56}
 
 func (i Priority) String() string {
 	if i < 0 || i >= Priority(len(_Priority_index)-1) {
-		return fmt.Sprintf("Priority(%d)", i)
+		return "Priority(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _Priority_name[_Priority_index[i]:_Priority_index[i+1]]
 }
