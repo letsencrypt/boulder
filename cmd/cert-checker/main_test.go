@@ -202,7 +202,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has incorrect key usage extensions":                                                 1,
 		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
-		"commonName exeeding max lenght of 64":                                                           1,
+		"commonName exceeding max length of 64":                                                          1,
 		"Certificate contains unknown extension (1.3.3.7)":                                               1,
 	}
 	for _, p := range problems {

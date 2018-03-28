@@ -36,8 +36,7 @@ const (
 	good = "valid"
 	bad  = "invalid"
 
-	certlintCNError             = "commonName field is deprecated"
-	certlintOCSPMustStapleError = "Certificate contains unknown extension (1.3.6.1.5.5.7.1.24)"
+	certlintCNError = "commonName field is deprecated"
 
 	filenameLayout = "20060102"
 
@@ -220,12 +219,6 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			// just be to make Subject non-empty, but so far they have not been
 			// successful. If the check error is `certlintCNError`, ignore it.
 			if err.Error() == certlintCNError {
-				continue
-			}
-			// Certlint doesn't presently understand the RFC 7633 OCSP Must Staple
-			// extension. While this is unaddressed in the upstream library we ignore
-			// this error like we ignore `certlintCNError`.
-			if err.Error() == certlintOCSPMustStapleError {
 				continue
 			}
 			problems = append(problems, err.Error())
