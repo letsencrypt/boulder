@@ -101,13 +101,12 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 	testCases := []struct {
 		Name           string
 		Authz          Authorization
-		ExpectedResult *Challenge
+		ExpectedResult string
 	}{
 		// An authz with no challenges should return nil
 		{
-			Name:           "No challenges",
-			Authz:          Authorization{},
-			ExpectedResult: nil,
+			Name:  "No challenges",
+			Authz: Authorization{},
 		},
 		// An authz with all non-valid challenges should return nil
 		{
@@ -115,7 +114,6 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{HTTPChallenge01(), DNSChallenge01()},
 			},
-			ExpectedResult: nil,
 		},
 		// An authz with one valid HTTP01 challenge amongst other challenges should
 		// return the HTTP01 challenge
@@ -124,7 +122,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{HTTPChallenge01(), validHTTP01, DNSChallenge01()},
 			},
-			ExpectedResult: &validHTTP01,
+			ExpectedResult: "http-01",
 		},
 		// An authz with both a valid HTTP01 challenge and a valid DNS01 challenge
 		// among other challenges should return whichever valid challenge is first
@@ -134,26 +132,15 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{validDNS01, HTTPChallenge01(), validHTTP01, DNSChallenge01()},
 			},
-			ExpectedResult: &validDNS01,
+			ExpectedResult: "dns-01",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			result := tc.Authz.SolvedBy()
-			// If the expected result is nil, make sure the result was nil
-			if tc.ExpectedResult == nil {
-				test.AssertEquals(t, result, tc.ExpectedResult)
-			} else {
-				// Otherwise make sure the result wasn't nil
-				test.AssertNotNil(t, result, "Result was nil")
-				// Make sure the result was the correct challenge
-				test.AssertEquals(t, result.ID, tc.ExpectedResult.ID)
-				// Make sure the result was the correct challenge type
-				test.AssertEquals(t, result.Type, tc.ExpectedResult.Type)
-				// Make sure the result challenge was valid
-				test.AssertEquals(t, result.Status, StatusValid)
-			}
+			// Make sure the result was the correct challenge type
+			test.AssertEquals(t, result, tc.ExpectedResult)
 		})
 	}
 }

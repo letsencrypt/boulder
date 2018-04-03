@@ -1093,15 +1093,15 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
 	for name, authz := range authzs {
-		var solvedByChallenge *core.Challenge
-		// If the authz has no solved by challenge there has been an internal
+		var solvedByChallengeType string
+		// If the authz has no solved by challenge type there has been an internal
 		// consistency violation worth raising an internal server error about.
-		if solvedByChallenge = authz.SolvedBy(); solvedByChallenge == nil {
-			return emptyCert, berrors.InternalServerError("Authz %q has status %q but nil SolvedBy()", authz.ID, authz.Status)
+		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
+			return emptyCert, berrors.InternalServerError("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
 		}
 		logEventAuthzs[name] = certificateRequestAuthz{
 			ID:            authz.ID,
-			ChallengeType: solvedByChallenge.Type,
+			ChallengeType: solvedByChallengeType,
 		}
 	}
 	logEvent.Authorizations = logEventAuthzs
