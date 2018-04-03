@@ -52,7 +52,8 @@
       "ReusePendingAuthz": true,
       "EmbedSCTs": true,
       "EnforceOverlappingWildcards": true,
-      "VAChecksGSB": true
+      "VAChecksGSB": true,
+      "AllowTLSALPN01Challenge": true
     },
     "CTLogGroups2": [
       {
@@ -99,7 +100,8 @@
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
-      "dns-01": true
+      "dns-01": true,
+      "tls-alpn-01": true
     },
     "challengesWhitelistFile": "test/challenges-whitelist.json"
   },

@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -68,9 +69,10 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01   = "http-01"
-	ChallengeTypeTLSSNI01 = "tls-sni-01"
-	ChallengeTypeDNS01    = "dns-01"
+	ChallengeTypeHTTP01    = "http-01"
+	ChallengeTypeTLSSNI01  = "tls-sni-01"
+	ChallengeTypeDNS01     = "dns-01"
+	ChallengeTypeTLSALPN01 = "tls-alpn-01"
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
@@ -82,6 +84,8 @@ func ValidChallenge(name string) bool {
 		fallthrough
 	case ChallengeTypeDNS01:
 		return true
+	case ChallengeTypeTLSALPN01:
+		return features.Enabled(features.AllowTLSALPN01Challenge)
 
 	default:
 		return false
@@ -233,7 +237,7 @@ type Challenge struct {
 	// For the V2 API the "URI" field is deprecated in favour of URL.
 	URL string `json:"url,omitempty"`
 
-	// Used by http-01, tls-sni-01, and dns-01 challenges
+	// Used by http-01, tls-sni-01, tls-alpn-01 and dns-01 challenges
 	Token string `json:"token,omitempty"`
 
 	// The expected KeyAuthorization for validation of the challenge. Populated by
@@ -279,7 +283,7 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeTLSSNI01:
+	case ChallengeTypeTLSSNI01, ChallengeTypeTLSALPN01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
