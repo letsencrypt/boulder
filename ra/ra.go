@@ -846,9 +846,18 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	order := req.Order
 
-	// Only pending orders can be finalized
-	if *order.Status != string(core.StatusPending) {
-		return nil, berrors.InternalServerError("Order's status (%q) was not pending", *order.Status)
+	// If the `OrderReadyStatus` feature flag is disabled, only pending orders can
+	// be finalized. This is the legacy ACME behaviour prior to the ready state
+	// being introduced in draft-10
+	expectedOrderStatus := string(core.StatusPending)
+	// If the `OrderReadyStatus` feature flag is enabled, only **ready** orders
+	// can be finalized. This is the modern ACME draft-10+ behaviour.
+	if features.Enabled(features.OrderReadyStatus) {
+		expectedOrderStatus = string(core.StatusReady)
+	}
+
+	if *order.Status != expectedOrderStatus {
+		return nil, berrors.InternalServerError("Order's status (%q) was not %q", *order.Status, expectedOrderStatus)
 	}
 
 	// There should never be an order with 0 names at the stage the RA is

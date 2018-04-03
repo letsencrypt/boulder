@@ -48,7 +48,8 @@
       "CancelCTSubmissions": false,
       "EmbedSCTs": true,
       "EnforceOverlappingWildcards": true,
-      "VAChecksGSB": true
+      "VAChecksGSB": true,
+      "OrderReadyStatus": true
     },
     "CTLogGroups2": [
       {

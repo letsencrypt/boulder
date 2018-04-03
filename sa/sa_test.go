@@ -2177,11 +2177,13 @@ func TestStatusForOrder(t *testing.T) {
 			}
 
 			// Add a new order with the testcase authz IDs
+			processing := false
 			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
-				RegistrationID: &reg.ID,
-				Expires:        &expiresNano,
-				Authorizations: tc.AuthorizationIDs,
-				Names:          tc.OrderNames,
+				RegistrationID:  &reg.ID,
+				Expires:         &expiresNano,
+				Authorizations:  tc.AuthorizationIDs,
+				Names:           tc.OrderNames,
+				BeganProcessing: &processing,
 			})
 			test.AssertNotError(t, err, "NewOrder errored unexpectedly")
 			// If requested, set the order to processing

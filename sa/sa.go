@@ -1461,12 +1461,27 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	createdTS := order.Created.UnixNano()
 	req.Created = &createdTS
 
-	// Update the request with pending status (No need to calculate the status
-	// based on authzs here, we know a brand new order is always pending)
-	pendingStatus := string(core.StatusPending)
-	req.Status = &pendingStatus
+	// If the OrderReadyStatus feature is enabled we need to calculate the order
+	// status before returning it. Since it may have reused all valid
+	// authorizations the order may be "born" in a ready status.
+	if features.Enabled(features.OrderReadyStatus) {
+		// Calculate the status for the order
+		status, err := ssa.statusForOrder(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		req.Status = &status
+	} else {
+		// Update the request with pending status (No need to calculate the status
+		// based on authzs here, we know a brand new order is always pending when
+		// features.OrderReadyStatus isn't enabled)
+		pendingStatus := string(core.StatusPending)
+		req.Status = &pendingStatus
+	}
+	// A new order is never processing because it can't have been finalized yet
 	processingStatus := false
 	req.BeganProcessing = &processingStatus
+	// Return the new order
 	return req, nil
 }
 
