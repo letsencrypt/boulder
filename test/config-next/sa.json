@@ -27,7 +27,8 @@
     },
     "features": {
       "WildcardDomains": true,
-      "AllowRenewalFirstRL": true
+      "AllowRenewalFirstRL": true,
+      "OrderReadyStatus": true
     }
   },
 

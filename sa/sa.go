@@ -1649,7 +1649,9 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we have began
 //     processing, but there is no certificate serial, the order is processing.
 //   * If all of the order's authorizations are valid, and we haven't begun
-//     processing, then the order is pending waiting a finalization request.
+//     processing, then the order is status ready (if
+//     `features.OrderReadyStatus` is enabled) or status processing otherwise.
+//     In both cases it is awaiting a finalization request.
 // An error is returned for any other case.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
@@ -1746,9 +1748,16 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// If the order is fully authorized, and we haven't begun processing it, then
-	// the order is still pending waiting a finalization request.
+	// the order is pending finalization and either status ready or status pending
+	// depending on the `OrderReadyStatus` feature flag. Historically we used
+	// "Pending" for this state but the ACME specification > draft-10 uses a new
+	// "Ready" state.
 	if fullyAuthorized && order.BeganProcessing != nil && !*order.BeganProcessing {
-		return string(core.StatusPending), nil
+		if features.Enabled(features.OrderReadyStatus) {
+			return string(core.StatusReady), nil
+		} else {
+			return string(core.StatusPending), nil
+		}
 	}
 
 	return "", berrors.InternalServerError(

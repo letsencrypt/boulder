@@ -36,6 +36,7 @@ const (
 	StatusUnknown     = AcmeStatus("unknown")     // Unknown status; the default
 	StatusPending     = AcmeStatus("pending")     // In process; client has next action
 	StatusProcessing  = AcmeStatus("processing")  // In process; server has next action
+	StatusReady       = AcmeStatus("ready")       // Order is ready for finalization
 	StatusValid       = AcmeStatus("valid")       // Object is valid
 	StatusInvalid     = AcmeStatus("invalid")     // Validation failed
 	StatusRevoked     = AcmeStatus("revoked")     // Object no longer valid
