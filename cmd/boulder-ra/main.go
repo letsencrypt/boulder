@@ -93,6 +93,7 @@ type config struct {
 
 	Common struct {
 		DNSResolver               string
+		DNSResolvers              []string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 	}
@@ -221,17 +222,20 @@ func main() {
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
+	if len(c.Common.DNSResolver) != 0 {
+		c.Common.DNSResolvers = append(c.Common.DNSResolvers, c.Common.DNSResolver)
+	}
 	if !c.Common.DNSAllowLoopbackAddresses {
 		rai.DNSClient = bdns.NewDNSClientImpl(
 			raDNSTimeout,
-			[]string{c.Common.DNSResolver},
+			c.Common.DNSResolvers,
 			scope,
 			cmd.Clock(),
 			dnsTries)
 	} else {
 		rai.DNSClient = bdns.NewTestDNSClientImpl(
 			raDNSTimeout,
-			[]string{c.Common.DNSResolver},
+			c.Common.DNSResolvers,
 			scope,
 			cmd.Clock(),
 			dnsTries)

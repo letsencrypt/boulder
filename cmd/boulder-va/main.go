@@ -43,6 +43,7 @@ type config struct {
 
 	Common struct {
 		DNSResolver               string
+		DNSResolvers              []string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 	}
@@ -93,16 +94,19 @@ func main() {
 	}
 	clk := cmd.Clock()
 	var resolver bdns.DNSClient
+	if len(c.Common.DNSResolver) != 0 {
+		c.Common.DNSResolvers = append(c.Common.DNSResolvers, c.Common.DNSResolver)
+	}
 	if !c.Common.DNSAllowLoopbackAddresses {
 		r := bdns.NewDNSClientImpl(
 			dnsTimeout,
-			[]string{c.Common.DNSResolver},
+			c.Common.DNSResolvers,
 			scope,
 			clk,
 			dnsTries)
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSClientImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
+		r := bdns.NewTestDNSClientImpl(dnsTimeout, c.Common.DNSResolvers, scope, clk, dnsTries)
 		resolver = r
 	}
 

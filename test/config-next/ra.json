@@ -101,7 +101,7 @@
   },
 
   "common": {
-    "dnsResolver": "127.0.0.1:8053",
+    "dnsResolvers": ["127.0.0.1:8053"],
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
