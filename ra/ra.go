@@ -268,8 +268,8 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 // referenced during a certificateRequestEvent. It holds both the authorization
 // ID and the challenge type that made the authorization valid.
 type certificateRequestAuthz struct {
-	ID            string `json:",omitempty"`
-	ChallengeType string `json:",omitempty"`
+	ID            string
+	ChallengeType string
 }
 
 // certificateRequestEvent is a struct for holding information that is logged as
@@ -302,7 +302,7 @@ type certificateRequestEvent struct {
 	// Authorizations is a map of identifier names to certificateRequestAuthz
 	// objects. It can be used to understand how the names in a certificate
 	// request were authorized.
-	Authorizations map[string]certificateRequestAuthz `json:",omitempty"`
+	Authorizations map[string]certificateRequestAuthz
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
