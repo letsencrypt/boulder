@@ -120,7 +120,7 @@ func NewRegistrationAuthorityImpl(
 		prometheus.HistogramOpts{
 			Name:    "ctpolicy_results",
 			Help:    "Histogram of latencies of ctpolicy.GetSCTs calls with success/failure/deadlineExceeded labels",
-			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"result"},
 	)
