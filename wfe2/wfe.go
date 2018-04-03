@@ -1665,11 +1665,20 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// If the order's status is not pending we can not finalize it and must
-	// return an error
-	if *order.Status != string(core.StatusPending) {
+	var expectedOrderStatus core.AcmeStatus
+	if features.Enabled(features.OrderReadyStatus) {
+		// If the `OrderReadyStatus` feature flag is enabled, only **ready** orders
+		// can be finalized. This is the modern ACME draft-10+ behaviour.
+		expectedOrderStatus = core.StatusReady
+	} else {
+		// If the `OrderReadyStatus` feature flag is disabled, only pending orders can
+		// be finalized. This is the legacy ACME behaviour prior to the ready state
+		// being introduced in draft-10
+		expectedOrderStatus = core.StatusPending
+	}
+	if *order.Status != string(expectedOrderStatus) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed("Order's status (%q) was not pending", *order.Status), nil)
+			probs.Malformed("Order's status (%q) was not %q", *order.Status, expectedOrderStatus), nil)
 		return
 	}
 

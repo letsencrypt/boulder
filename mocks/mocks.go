@@ -527,6 +527,11 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		validOrder.Expires = &exp
 	}
 
+	if *req.Id == 8 {
+		ready := string(core.StatusReady)
+		validOrder.Status = &ready
+	}
+
 	return validOrder, nil
 }
 
