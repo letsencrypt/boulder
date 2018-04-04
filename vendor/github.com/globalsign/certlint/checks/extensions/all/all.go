@@ -11,6 +11,7 @@ import (
 	_ "github.com/globalsign/certlint/checks/extensions/extkeyusage"
 	_ "github.com/globalsign/certlint/checks/extensions/keyusage"
 	_ "github.com/globalsign/certlint/checks/extensions/nameconstraints"
+	_ "github.com/globalsign/certlint/checks/extensions/ocspmuststaple"
 	_ "github.com/globalsign/certlint/checks/extensions/ocspnocheck"
 	_ "github.com/globalsign/certlint/checks/extensions/pdfrevocation"
 	_ "github.com/globalsign/certlint/checks/extensions/policyidentifiers"

@@ -18,7 +18,7 @@ func (o *object) Equal(oid asn1.ObjectIdentifier) bool {
 
 func (o *object) Valid(v interface{}) error {
 	if o.maxLength > 0 && len([]rune(v.(string))) > o.maxLength {
-		return fmt.Errorf("exeeding max lenght of %d", o.maxLength)
+		return fmt.Errorf("exceeding max length of %d", o.maxLength)
 	}
 	return nil
 }

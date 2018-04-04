@@ -92,159 +92,163 @@
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/asn1",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/certdata",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/aiaissuers",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/all",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/basicconstraints",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extensions",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extkeyusage",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/internal",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/issuerdn",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/keyusage",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey/goodkey",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publicsuffix",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/revocation",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/serialnumber",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/signaturealgorithm",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subject",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subjectaltname",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/validity",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/version",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/certificate/wildcard",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/adobetimestamp",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/all",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authorityinfoaccess",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authoritykeyid",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/basicconstraints",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/crldistributionpoints",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ct",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/extkeyusage",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/keyusage",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/nameconstraints",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
+		},
+		{
+			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspmuststaple",
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspnocheck",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/pdfrevocation",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/policyidentifiers",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/smimecapabilities",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectaltname",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectkeyid",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/globalsign/certlint/errors",
-			"Rev": "6f978b7833fbea4afdf7953aa747c871048a4e9c"
+			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
