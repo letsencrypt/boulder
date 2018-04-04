@@ -265,8 +265,10 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid
-// referenced during a certificateRequestEvent. It holds both the authorization
-// ID and the challenge type that made the authorization valid.
+// authz referenced during a certificateRequestEvent. It holds both the
+// authorization ID and the challenge type that made the authorization valid. We
+// specifically include the challenge type that solved the authorization to make
+// some common analysis easier.
 type certificateRequestAuthz struct {
 	ID            string
 	ChallengeType string
