@@ -68,7 +68,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		prometheus.HistogramOpts{
 			Name:    "validation_time",
 			Help:    "Time taken to validate a challenge",
-			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(validationTime)
@@ -76,7 +76,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		prometheus.HistogramOpts{
 			Name:    "remote_validation_time",
 			Help:    "Time taken to remotely validate a challenge",
-			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result"})
 	stats.MustRegister(remoteValidationTime)

@@ -147,7 +147,7 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 		prometheus.HistogramOpts{
 			Name:    "ct_submission_time_seconds",
 			Help:    "Time taken to submit a certificate to a CT log",
-			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45},
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"log", "status"},
 	)

@@ -7,6 +7,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// InternetFacingBuckets are the histogram buckets that should be used when
+// measuring latencies that involve traversing the public internet.
+var InternetFacingBuckets = []float64{.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45}
+
 // Scope is a stats collector that will prefix the name the stats it
 // collects.
 type Scope interface {
