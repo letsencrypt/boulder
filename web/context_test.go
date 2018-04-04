@@ -26,4 +26,5 @@ func TestLogCode(t *testing.T) {
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
 	test.AssertEquals(t, 1, len(mockLog.GetAllMatching(`"Code":201`)))
+	test.AssertEquals(t, 1, len(mockLog.GetAllMatching(`"Latency":0\.`)))
 }

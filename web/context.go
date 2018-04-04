@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -18,6 +19,7 @@ type RequestEvent struct {
 	Requester int64     `json:",omitempty"`
 	Contacts  *[]string `json:",omitempty"`
 	UserAgent string    `json:",omitempty"`
+	Latency   float64
 	Code      int
 	Payload   string                 `json:",omitempty"`
 	Extra     map[string]interface{} `json:",omitempty"`
@@ -70,11 +72,13 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserAgent: r.Header.Get("User-Agent"),
 		Extra:     make(map[string]interface{}, 0),
 	}
-	defer th.logEvent(logEvent)
 
+	begin := time.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
 		logEvent.Code = rwws.code
+		logEvent.Latency = float64(time.Since(begin)) / float64(time.Second)
+		th.logEvent(logEvent)
 	}()
 	th.wfe.ServeHTTP(logEvent, rwws, r)
 }
