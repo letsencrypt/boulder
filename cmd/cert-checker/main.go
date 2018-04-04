@@ -36,13 +36,18 @@ const (
 	good = "valid"
 	bad  = "invalid"
 
-	certlintCNError             = "commonName field is deprecated"
-	certlintOCSPMustStapleError = "Certificate contains unknown extension (1.3.6.1.5.5.7.1.24)"
+	certlintCNError = "commonName field is deprecated"
 
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
+
+// certlintPSLErrPattern is a regex for matching Certlint error strings
+// complaining about a CN or SAN matching a public suffix list entry.
+var certlintPSLErrPattern = regexp.MustCompile(
+	`^Certificate (?:CommonName|subjectAltName) "[a-z0-9*][a-z0-9-.]+" ` +
+		`equals "[a-z0-9][a-z0-9-.]+" from the public suffix list$`)
 
 // For defense-in-depth in addition to using the PA & its hostnamePolicy to
 // check domain names we also perform a check against the regex's from the
@@ -222,10 +227,12 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			if err.Error() == certlintCNError {
 				continue
 			}
-			// Certlint doesn't presently understand the RFC 7633 OCSP Must Staple
-			// extension. While this is unaddressed in the upstream library we ignore
-			// this error like we ignore `certlintCNError`.
-			if err.Error() == certlintOCSPMustStapleError {
+			// certlint incorrectly flags certificates that have a subj. CN or SAN
+			// exactly equal to a *private* entry on the public suffix list. Since
+			// this is allowed and LE issues certificates for such names we ignore
+			// errors of this form until the upstream bug can be addressed. See
+			// https://github.com/globalsign/certlint/issues/17
+			if certlintPSLErrPattern.MatchString(err.Error()) {
 				continue
 			}
 			problems = append(problems, err.Error())

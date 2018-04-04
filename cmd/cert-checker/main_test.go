@@ -165,9 +165,18 @@ func TestCheckCert(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: longName,
 		},
-		NotBefore:             issued,
-		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
-		DNSNames:              []string{longName, "example-a.com", "foodnotbombs.mil", "*.foodnotbombs.mil"},
+		NotBefore: issued,
+		NotAfter:  goodExpiry.AddDate(0, 0, 1), // Period too long
+		DNSNames: []string{
+			// longName should be flagged along with the long CN
+			longName,
+			"example-a.com",
+			"foodnotbombs.mil",
+			// `*.foodnotbombs.mil` should be flagged because the wildcard issuance feature is disabled
+			"*.foodnotbombs.mil",
+			// `dev-myqnapcloud.com` is included because it is an exact private
+			// entry on the public suffix list
+			"dev-myqnapcloud.com"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
@@ -202,7 +211,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has incorrect key usage extensions":                                                 1,
 		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
-		"commonName exeeding max lenght of 64":                                                           1,
+		"commonName exceeding max length of 64":                                                          1,
 		"Certificate contains unknown extension (1.3.3.7)":                                               1,
 	}
 	for _, p := range problems {

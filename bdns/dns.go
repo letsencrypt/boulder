@@ -189,15 +189,17 @@ func NewDNSClientImpl(
 
 	queryTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "dns_query_time",
-			Help: "Time taken to perform a DNS query",
+			Name:    "dns_query_time",
+			Help:    "Time taken to perform a DNS query",
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"qtype", "result", "authenticated_data"},
 	)
 	totalLookupTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "dns_total_lookup_time",
-			Help: "Time taken to perform a DNS lookup, including all retried queries",
+			Name:    "dns_total_lookup_time",
+			Help:    "Time taken to perform a DNS lookup, including all retried queries",
+			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"qtype", "result", "authenticated_data", "retries"},
 	)
