@@ -1095,9 +1095,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	for name, authz := range authzs {
 		var solvedByChallengeType string
 		// If the authz has no solved by challenge type there has been an internal
-		// consistency violation worth raising an internal server error about.
+		// consistency violation worth logging a warning about. In this case the
+		// solvedByChallengeType will be logged as the emtpy string.
 		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
-			return emptyCert, berrors.InternalServerError("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
+			ra.log.Warning(fmt.Sprintf(
+				"Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status))
 		}
 		logEventAuthzs[name] = certificateRequestAuthz{
 			ID:            authz.ID,
