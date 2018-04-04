@@ -182,11 +182,38 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # Finalize the order without doing anything with the authorizations. YOLO
-    # We expect this to generate a malformed error about the order not being in
-    # the "ready" state.
-    chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
+    # If we are running under config-next with the OrderReadyStatus feature flag
+    # set then we should expect a malformed error when trying to finalize an
+    # order early and can stop without testing anything further
+    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        # We expect this to generate a malformed error about the order not being in
+        # the "ready" state.
+        chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
+            lambda: client.finalize_order(order, deadline))
+        return
+
+    # If we aren't running under-config next then finalizing an order early
+    # should generate an unauthorized error and we should check that the order
+    # is invalidated.
+    chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
         lambda: client.finalize_order(order, deadline))
+
+    # Poll for a fixed amount of time checking for the order to become invalid
+    # from the early finalization attempt initiated above failing
+    while datetime.datetime.now() < deadline:
+        time.sleep(1)
+        updatedOrder = requests.get(order.uri).json()
+        if updatedOrder['status'] == "invalid":
+            break
+
+    # If the loop ended and the status isn't invalid then we reached the
+    # deadline waiting for the order to become invalid, fail the test
+    if updatedOrder['status'] != "invalid":
+        raise Exception("timed out waiting for order %s to become invalid" % order.uri)
+
+    # The order should have an error with the expected type
+    if updatedOrder['error']['type'] != 'urn:ietf:params:acme:error:unauthorized':
+        raise Exception("order %s has incorrect error field type: \"%s\"" % (order.uri, updatedOrder['error']['type']))
 
 def test_revoke_by_issuer():
     client = chisel2.make_client(None)
