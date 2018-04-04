@@ -1976,7 +1976,7 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizations(context.Background(), names, 999)
+	_, err := ra.checkAuthorizations(context.Background(), names, 999)
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
@@ -3194,6 +3194,170 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
 	test.AssertNotError(t, err, "FinalizeOrder failed for authorized "+
 		"wildcard order")
+}
+
+func TestIssueCertificateAuditLog(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Set up order and authz expiries
+	ra.orderLifetime = 24 * time.Hour
+	exp := ra.clk.Now().Add(24 * time.Hour)
+
+	authzForChalType := func(domain, chalType string) core.Authorization {
+		template := AuthzInitial
+		template.Identifier = core.AcmeIdentifier{
+			Type:  "dns",
+			Value: domain,
+		}
+		// Create challenges
+		httpChal := core.HTTPChallenge01()
+		dnsChal := core.DNSChallenge01()
+		tlsChal := core.TLSSNIChallenge01()
+		// Set the selected challenge to valid
+		switch chalType {
+		case "http-01":
+			httpChal.Status = core.StatusValid
+		case "dns-01":
+			dnsChal.Status = core.StatusValid
+		case "tls-sni-01":
+			tlsChal.Status = core.StatusValid
+		default:
+			t.Fatalf("Invalid challenge type used with authzForChalType: %q", chalType)
+		}
+		// Set the template's challenges
+		template.Challenges = []core.Challenge{httpChal, dnsChal, tlsChal}
+		// Set the overall authz to valid
+		template.Status = "valid"
+		template.Expires = &exp
+		template.RegistrationID = Registration.ID
+		// Create the pending authz
+		authz, err := sa.NewPendingAuthorization(ctx, template)
+		if err != nil {
+			t.Fatalf("Could not create test pending authorization")
+		}
+		// Finalize the authz
+		err = sa.FinalizeAuthorization(ctx, authz)
+		if err != nil {
+			t.Fatalf("Could not finalize test pending authorization")
+		}
+		return authz
+	}
+
+	// Make some valid authorizations for some names using different challenge types
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	chalTypes := []string{"http-01", "dns-01", "tls-sni-01", "dns-01"}
+	var authzs []core.Authorization
+	var authzIDs []string
+	for i, name := range names {
+		authzs = append(authzs, authzForChalType(name, chalTypes[i]))
+		authzIDs = append(authzIDs, authzs[i].ID)
+	}
+
+	// Create a pending order for all of the names
+	expUnix := exp.Unix()
+	pendingStatus := "pending"
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &Registration.ID,
+		Expires:        &expUnix,
+		Names:          names,
+		Authorizations: authzIDs,
+		Status:         &pendingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Generate a CSR covering the order names with a random RSA key
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           names,
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create test order CSR")
+
+	// Create a mock certificate for the fake CA to return
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(12),
+		Subject: pkix.Name{
+			CommonName: "not-example.com",
+		},
+		DNSNames:              names,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create mock cert for test CA")
+
+	// Set up the RA's CA with a mock that returns the cert from above
+	ra.CA = &mocks.MockCA{
+		PEM: pem.EncodeToMemory(&pem.Block{
+			Bytes: cert,
+		}),
+	}
+
+	// The mock cert needs to be parsed to get its notbefore/notafter dates
+	parsedCerts, err := x509.ParseCertificates(cert)
+	test.AssertNotError(t, err, "Failed to parse mock cert DER bytes")
+	test.AssertEquals(t, len(parsedCerts), 1)
+	parsedCert := parsedCerts[0]
+
+	// Cast the RA's mock log so we can ensure its cleared and can access the
+	// matched log lines
+	mockLog := ra.log.(*blog.Mock)
+	mockLog.Clear()
+
+	// Finalize the order with the CSR
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr})
+	test.AssertNotError(t, err, "Error finalizing test order")
+
+	// Get the logged lines from the audit logger
+	loglines := mockLog.GetAllMatching("Certificate request - successful JSON=")
+
+	// There should be exactly 1 matching log line
+	test.AssertEquals(t, len(loglines), 1)
+	// Strip away the stuff before 'JSON='
+	jsonContent := strings.TrimPrefix(loglines[0], "INFO: [AUDIT] Certificate request - successful JSON=")
+
+	// Unmarshal the JSON into a certificate request event object
+	var event certificateRequestEvent
+	err = json.Unmarshal([]byte(jsonContent), &event)
+	// The JSON should unmarshal without error
+	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event")
+	// The event should have no error
+	test.AssertEquals(t, event.Error, "")
+	// The event requester should be the expected reg ID
+	test.AssertEquals(t, event.Requester, Registration.ID)
+	// The event order ID should be the expected order ID
+	test.AssertEquals(t, event.OrderID, *order.Id)
+	// The event serial number should be the expected serial number
+	test.AssertEquals(t, event.SerialNumber, core.SerialToString(template.SerialNumber))
+	// The event verified fields should be the expected value
+	test.AssertDeepEquals(t, event.VerifiedFields, []string{"subject.commonName", "subjectAltName"})
+	// The event CommonName should match the expected common name
+	test.AssertEquals(t, event.CommonName, "not-example.com")
+	// The event names should match the order names
+	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.Names))
+	// The event's NotBefore and NotAfter should match the cert's
+	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
+	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
+
+	// There should be one event Authorization entry for each name
+	test.AssertEquals(t, len(event.Authorizations), len(names))
+
+	// Check the authz entry for each name
+	for i, name := range names {
+		authzEntry := event.Authorizations[name]
+		// The authz entry should have the correct authz ID
+		test.AssertEquals(t, authzEntry.ID, authzIDs[i])
+		// The authz entry should have the correct challenge type
+		test.AssertEquals(t, authzEntry.ChallengeType, chalTypes[i])
+	}
 }
 
 // TestUpdateMissingAuthorization tests the race condition where a challenge is
