@@ -32,20 +32,43 @@ branches:
 
 matrix:
   include:
-    - env: RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+    #
+    # Current Go version build tasks:
+    #
+    - env: GO_VERSION="1.10" RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - env: RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - env: RUN="unit"
-    - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - env: RUN="coverage"
+    - env: GO_VERSION="1.10" RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - env: GO_VERSION="1.10" RUN="unit"
+    - env: GO_VERSION="1.10" RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+    - env: GO_VERSION="1.10" RUN="coverage"
+
+    #
+    # Next Go version build tasks:
+    #
+    - env: GO_VERSION="1.10.1" RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+    # Config changes that have landed in master but not yet been applied to
+    # production can be made in boulder-config-next.json.
+    - env: GO_VERSION="1.10.1" RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - env: GO_VERSION="1.10.1" RUN="unit"
+    - env: GO_VERSION="1.10.1" RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
   fast_finish: true
   allow_failures:
     - env: RUN="coverage"
+
+# We require a newer version of docker-compose than is installed by way of the
+# "services: docker" directive. Per the travis docs[0] this is best remedied
+# with the following `before_install` commands.
+# [0]: https://docs.travis-ci.com/user/docker/#Using-Docker-Compose
+before_install:
+  - sudo rm /usr/local/bin/docker-compose
+  - curl -L https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) > docker-compose
+  - chmod +x docker-compose
+  - sudo mv docker-compose /usr/local/bin
 
 install:
   - ./test/travis-before-install.sh
   - docker-compose pull
 
 script:
-  - docker-compose run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder  ./test.sh
+  - docker-compose run -e GO_VERSION="${GO_VERSION}" -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder ./test.sh
