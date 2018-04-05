@@ -24,6 +24,8 @@ const (
 	ForceConsistentStatus
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
+	// Ensure there is headroom in RPC timeouts to return an error to the client
+	RPCHeadroom
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	EmbedSCTs
@@ -46,6 +48,7 @@ var features = map[FeatureFlag]bool{
 	AllowRenewalFirstRL:         false,
 	WildcardDomains:             false,
 	EnforceChallengeDisable:     false, // deprecated
+	RPCHeadroom:                 true,
 	TLSSNIRevalidation:          false,
 	EmbedSCTs:                   false,
 	CancelCTSubmissions:         true,

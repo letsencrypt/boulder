@@ -22,6 +22,7 @@
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "IPv6First": true
     }
   },

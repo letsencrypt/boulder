@@ -35,6 +35,7 @@
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
     "features": {
+      "RPCHeadroom": true,
       "EnforceV2ContentType": true
     }
   },
