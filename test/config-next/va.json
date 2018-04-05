@@ -9,7 +9,10 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
-    "dnsResolvers": ["127.0.0.1:8053"],
+    "dnsResolvers": [
+      "127.0.0.1:8053",
+      "127.0.0.1:8054"
+    ],
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
