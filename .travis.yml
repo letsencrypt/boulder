@@ -61,16 +61,16 @@ matrix:
 # with the following `before_install` commands.
 # [0]: https://docs.travis-ci.com/user/docker/#Using-Docker-Compose
 before_install:
-  - mkdir "$HOME/bin"
+  - mkdir $HOME/bin
   # We install `docker-compose` to $HOME/bin to avoid needing root perms.
   # Afterwards where required we refer to the `docker-compose` binary by
   # absolute path.
-  - curl -L https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) > "$HOME/bin/docker-compose"
-  - chmod +x "$HOME/bin/docker-compose"
+  - curl -L https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) > $HOME/bin/docker-compose
+  - chmod +x $HOME/bin/docker-compose
 
 install:
   - ./test/travis-before-install.sh
-  - "$HOME/bin/docker-compose" pull
+  - $HOME/bin/docker-compose pull
 
 script:
-  - "$HOME/bin/docker-compose" run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder ./test.sh
+  - $HOME/bin/docker-compose run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder ./test.sh
