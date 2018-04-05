@@ -148,6 +148,9 @@ def test_multidomain():
 def test_dns_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
 
+def test_http_challenge():
+    auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
+
 def test_issuer():
     """
     Issue a certificate, fetch its chain, and verify the chain and

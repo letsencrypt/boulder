@@ -167,29 +167,25 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	return
 }
 
-func (ts *testSrv) serveTestResolver() {
+type server interface {
+	ListenAndServe() error
+}
+
+func (ts *testSrv) serveTestResolver(dnsAddr string) {
 	dns.HandleFunc(".", ts.dnsHandler)
-	type server interface {
-		ListenAndServe() error
-	}
 	udpServer := server(&dns.Server{
-		Addr:         "0.0.0.0:8053",
+		Addr:         dnsAddr,
 		Net:          "udp",
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	})
 	tcpServer := server(&dns.Server{
-		Addr:         "0.0.0.0:8053",
+		Addr:         dnsAddr,
 		Net:          "tcp",
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	})
-	webServer := server(&http.Server{
-		Addr: "0.0.0.0:8055",
-	})
-	http.HandleFunc("/set-txt", ts.setTXT)
-	http.HandleFunc("/clear-txt", ts.clearTXT)
-	for _, s := range []server{udpServer, tcpServer, webServer} {
+	for _, s := range []server{udpServer, tcpServer} {
 		go func(s server) {
 			err := s.ListenAndServe()
 			if err != nil {
@@ -201,6 +197,18 @@ func (ts *testSrv) serveTestResolver() {
 
 func main() {
 	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string][]string)}
-	ts.serveTestResolver()
+	ts.serveTestResolver("0.0.0.0:8053")
+	ts.serveTestResolver("0.0.0.0:8054")
+	webServer := server(&http.Server{
+		Addr: "0.0.0.0:8055",
+	})
+	http.HandleFunc("/set-txt", ts.setTXT)
+	http.HandleFunc("/clear-txt", ts.clearTXT)
+	go func(s server) {
+		err := s.ListenAndServe()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(webServer)
 	cmd.CatchSignals(nil, nil)
 }

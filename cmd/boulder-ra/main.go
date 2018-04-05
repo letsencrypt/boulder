@@ -36,7 +36,8 @@ type config struct {
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries int
+		DNSTries     int
+		DNSResolvers []string
 
 		SAService        *cmd.GRPCClientConfig
 		VAService        *cmd.GRPCClientConfig
@@ -221,17 +222,20 @@ func main() {
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
+	if len(c.Common.DNSResolver) != 0 {
+		c.RA.DNSResolvers = append(c.RA.DNSResolvers, c.Common.DNSResolver)
+	}
 	if !c.Common.DNSAllowLoopbackAddresses {
 		rai.DNSClient = bdns.NewDNSClientImpl(
 			raDNSTimeout,
-			[]string{c.Common.DNSResolver},
+			c.RA.DNSResolvers,
 			scope,
 			cmd.Clock(),
 			dnsTries)
 	} else {
 		rai.DNSClient = bdns.NewTestDNSClientImpl(
 			raDNSTimeout,
-			[]string{c.Common.DNSResolver},
+			c.RA.DNSResolvers,
 			scope,
 			cmd.Clock(),
 			dnsTries)

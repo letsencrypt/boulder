@@ -264,19 +264,47 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 	return emptyDNSResponseError
 }
 
+// certificateRequestAuthz is a struct for holding information about a valid
+// authz referenced during a certificateRequestEvent. It holds both the
+// authorization ID and the challenge type that made the authorization valid. We
+// specifically include the challenge type that solved the authorization to make
+// some common analysis easier.
+type certificateRequestAuthz struct {
+	ID            string
+	ChallengeType string
+}
+
+// certificateRequestEvent is a struct for holding information that is logged as
+// JSON to the audit log as the result of an issuance event.
 type certificateRequestEvent struct {
-	ID             string    `json:",omitempty"`
-	Requester      int64     `json:",omitempty"`
-	OrderID        int64     `json:",omitempty"`
-	SerialNumber   string    `json:",omitempty"`
-	VerifiedFields []string  `json:",omitempty"`
-	CommonName     string    `json:",omitempty"`
-	Names          []string  `json:",omitempty"`
-	NotBefore      time.Time `json:",omitempty"`
-	NotAfter       time.Time `json:",omitempty"`
-	RequestTime    time.Time `json:",omitempty"`
-	ResponseTime   time.Time `json:",omitempty"`
-	Error          string    `json:",omitempty"`
+	ID string `json:",omitempty"`
+	// Requester is the associated account ID
+	Requester int64 `json:",omitempty"`
+	// OrderID is the associated order ID (may be empty for an ACME v1 issuance)
+	OrderID int64 `json:",omitempty"`
+	// SerialNumber is the string representation of the issued certificate's
+	// serial number
+	SerialNumber string `json:",omitempty"`
+	// VerifiedFields are required by the baseline requirements and are always
+	// a static value for Boulder.
+	VerifiedFields []string `json:",omitempty"`
+	// CommonName is the subject common name from the issued cert
+	CommonName string `json:",omitempty"`
+	// Names are the DNS SAN entries from the issued cert
+	Names []string `json:",omitempty"`
+	// NotBefore is the starting timestamp of the issued cert's validity period
+	NotBefore time.Time `json:",omitempty"`
+	// NotAfter is the ending timestamp of the issued cert's validity period
+	NotAfter time.Time `json:",omitempty"`
+	// RequestTime and ResponseTime are for tracking elapsed time during issuance
+	RequestTime  time.Time `json:",omitempty"`
+	ResponseTime time.Time `json:",omitempty"`
+	// Error contains any encountered errors
+	Error string `json:",omitempty"`
+	// Authorizations is a map of identifier names to certificateRequestAuthz
+	// objects. It can be used to understand how the names in a certificate
+	// request were authorized.
+	Authorizations map[string]certificateRequestAuthz
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -671,13 +699,14 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 // checkOrderAuthorizations verifies that a provided set of names associated
 // with a specific order and account has all of the required valid, unexpired
 // authorizations to proceed with issuance. It is the ACME v2 equivalent of
-// `checkAuthorizations`.
-// If it returns an error, it will be of type BoulderError.
+// `checkAuthorizations`. It returns the authorizations that satisfied the set
+// of names or it returns an error. If it returns an error, it will be of type
+// BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	names []string,
 	acctID accountID,
-	orderID orderID) error {
+	orderID orderID) (map[string]*core.Authorization, error) {
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
 	// Get all of the valid authorizations for this account/order
@@ -688,28 +717,37 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 			AcctID: &acctIDInt,
 		})
 	if err != nil {
-		return berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
+		return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
 	}
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	return ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now())
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now()); err != nil {
+		return nil, err
+	}
+
+	return authzs, nil
 }
 
 // checkAuthorizations checks that each requested name has a valid authorization
-// that won't expire before the certificate expires. Returns an error otherwise.
+// that won't expire before the certificate expires. It returns the
+// authorizations that satisifed the set of names or it returns an error.
 // If it returns an error, it will be of type BoulderError.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) (map[string]*core.Authorization, error) {
 	now := ra.clk.Now()
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
 	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, names, now)
 	if err != nil {
-		return berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
+		return nil, berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
 	}
 
-	return ra.checkAuthorizationsCAA(ctx, names, auths, regID, now)
+	if err = ra.checkAuthorizationsCAA(ctx, names, auths, regID, now); err != nil {
+		return nil, err
+	}
+
+	return auths, nil
 }
 
 // checkAuthorizationsCAA implements the common logic of validating a set of
@@ -1036,21 +1074,41 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
+	var authzs map[string]*core.Authorization
 	// If the orderID is 0 then this is a classic issuance and we need to check
 	// that the account is authorized for the names in the CSR.
 	if oID == 0 {
-		err = ra.checkAuthorizations(ctx, names, account.ID)
+		authzs, err = ra.checkAuthorizations(ctx, names, account.ID)
 	} else {
 		// Otherwise, if the orderID is not 0 we need to follow the order based
 		// issuance process and check that this specific order is fully authorized
 		// and associated with the expected account ID
-		err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
+		authzs, err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	}
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
 		return emptyCert, err
 	}
+
+	// Collect up a certificateRequestAuthz that stores the ID and challenge type
+	// of each of the valid authorizations we used for this issuance.
+	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
+	for name, authz := range authzs {
+		var solvedByChallengeType string
+		// If the authz has no solved by challenge type there has been an internal
+		// consistency violation worth logging a warning about. In this case the
+		// solvedByChallengeType will be logged as the emtpy string.
+		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
+			ra.log.Warning(fmt.Sprintf(
+				"Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status))
+		}
+		logEventAuthzs[name] = certificateRequestAuthz{
+			ID:            authz.ID,
+			ChallengeType: solvedByChallengeType,
+		}
+	}
+	logEvent.Authorizations = logEventAuthzs
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}

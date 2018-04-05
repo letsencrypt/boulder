@@ -190,7 +190,7 @@ def do_http_challenges(client, authzs):
         thread.join()
     return cleanup
 
-def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, client=None):
+def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, client=None):
     """Make authzs for each of the given domains, set up a server to answer the
        challenges in those authzs, tell the ACME server to validate the challenges,
        then poll for the authzs to be ready and issue a cert."""
