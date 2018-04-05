@@ -4,6 +4,10 @@
     "maxConcurrentRPCServerRequests": 100000,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
+    "dnsResolvers": [
+      "127.0.0.1:8053",
+      "127.0.0.1:8054"
+    ],
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 100,
@@ -101,7 +105,6 @@
   },
 
   "common": {
-    "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }

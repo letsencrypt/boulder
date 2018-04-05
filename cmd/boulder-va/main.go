@@ -31,7 +31,8 @@ type config struct {
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries int
+		DNSTries     int
+		DNSResolvers []string
 
 		RemoteVAs                   []cmd.GRPCClientConfig
 		MaxRemoteValidationFailures int
@@ -93,16 +94,19 @@ func main() {
 	}
 	clk := cmd.Clock()
 	var resolver bdns.DNSClient
+	if len(c.Common.DNSResolver) != 0 {
+		c.VA.DNSResolvers = append(c.VA.DNSResolvers, c.Common.DNSResolver)
+	}
 	if !c.Common.DNSAllowLoopbackAddresses {
 		r := bdns.NewDNSClientImpl(
 			dnsTimeout,
-			[]string{c.Common.DNSResolver},
+			c.VA.DNSResolvers,
 			scope,
 			clk,
 			dnsTries)
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSClientImpl(dnsTimeout, []string{c.Common.DNSResolver}, scope, clk, dnsTries)
+		r := bdns.NewTestDNSClientImpl(dnsTimeout, c.VA.DNSResolvers, scope, clk, dnsTries)
 		resolver = r
 	}
 
