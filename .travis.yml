@@ -35,13 +35,13 @@ matrix:
     #
     # Current Go version build tasks:
     #
-    - env: GO_VERSION="1.10" RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+    - env: RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - env: GO_VERSION="1.10" RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - env: GO_VERSION="1.10" RUN="unit"
-    - env: GO_VERSION="1.10" RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - env: GO_VERSION="1.10" RUN="coverage"
+    - env: RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - env: RUN="unit"
+    - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+    - env: RUN="coverage"
 
     #
     # Next Go version build tasks:
