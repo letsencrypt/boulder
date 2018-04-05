@@ -653,10 +653,14 @@ func detailedError(err error) *probs.ProblemDetails {
 		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
 			syscallErr.Err == syscall.ECONNRESET {
 			return probs.ConnectionFailure("Connection reset by peer")
+		} else if netErr.Timeout() && netErr.Op == "dial" {
+			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+		} else if netErr.Timeout() {
+			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netErr.Op))
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
-		return probs.ConnectionFailure("Timeout")
+		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if berrors.Is(err, berrors.ConnectionFailure) {
 		return probs.ConnectionFailure(err.Error())

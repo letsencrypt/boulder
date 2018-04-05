@@ -340,7 +340,7 @@ func TestHTTPTimeout(t *testing.T) {
 	started := time.Now()
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	took := time.Since(started)
-	// Check that the HTTP connection does't return before a timeout, and times
+	// Check that the HTTP connection doesn't return before a timeout, and times
 	// out after the expected time
 	test.Assert(t,
 		(took > (time.Second * singleDialTimeout)),
@@ -354,7 +354,7 @@ func TestHTTPTimeout(t *testing.T) {
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
-		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout")
+		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
 	if !expectMatch.MatchString(prob.Detail) {
 		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
 			prob.Detail, expectMatch)
