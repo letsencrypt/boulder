@@ -61,7 +61,6 @@ matrix:
 # with the following `before_install` commands.
 # [0]: https://docs.travis-ci.com/user/docker/#Using-Docker-Compose
 before_install:
-  - mkdir $HOME/bin
   # We install `docker-compose` to $HOME/bin to avoid needing root perms.
   # Afterwards where required we refer to the `docker-compose` binary by
   # absolute path.
