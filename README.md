@@ -102,7 +102,7 @@ Boulder requires an installation of libtool-ltdl, goose, SoftHSM, and MariaDB 10
 
     docker-compose up -d bmysql bhsm
 
-Also, Boulder requires Go 1.9 or above. This version may not be
+Also, Boulder requires Go 1.10 or above. This version may not be
 available in OS repositories. If so, you will have to install from https://golang.org/dl/.
 Add ```${GOPATH}/bin``` to your path.
 
