@@ -19,6 +19,7 @@ const (
 	RejectedIdentifierProblem  = ProblemType("rejectedIdentifier")
 	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
 	CAAProblem                 = ProblemType("caa")
+	DNSProblem                 = ProblemType("dns")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -240,6 +241,15 @@ func AccountDoesNotExist(detail string) *ProblemDetails {
 func CAA(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       CAAProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+// DNS returns a ProblemDetails representing a DNSProblem
+func DNS(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       DNSProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}

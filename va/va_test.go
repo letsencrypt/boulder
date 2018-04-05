@@ -772,8 +772,9 @@ func TestPerformValidationInvalid(t *testing.T) {
 	test.Assert(t, prob != nil, "validation succeeded")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":   "dns-01",
-		"result": "invalid",
+		"type":        "dns-01",
+		"result":      "invalid",
+		"problemType": "unauthorized",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
@@ -792,8 +793,9 @@ func TestDNSValidationEmpty(t *testing.T) {
 	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT record found at _acme-challenge.empty-txts.com")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":   "dns-01",
-		"result": "invalid",
+		"type":        "dns-01",
+		"result":      "invalid",
+		"problemType": "unauthorized",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
@@ -856,8 +858,9 @@ func TestPerformValidationValid(t *testing.T) {
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":   "dns-01",
-		"result": "valid",
+		"type":        "dns-01",
+		"result":      "valid",
+		"problemType": "",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
@@ -885,8 +888,9 @@ func TestPerformValidationWildcard(t *testing.T) {
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":   "dns-01",
-		"result": "valid",
+		"type":        "dns-01",
+		"result":      "valid",
+		"problemType": "",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
@@ -971,7 +975,7 @@ func TestDNSValidationServFail(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("servfail.com"), chalDNS)
 
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
@@ -987,7 +991,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chalDNS)
 
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
 func TestDNSValidationOK(t *testing.T) {
