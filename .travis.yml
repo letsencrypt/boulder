@@ -65,9 +65,7 @@ before_install:
   # We install `docker-compose` to $HOME/bin to avoid needing root perms.
   # Afterwards where required we refer to the `docker-compose` binary by
   # absolute path.
-  - curl -L \
-      https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) \
-      > "$HOME/bin/docker-compose"
+  - curl -L https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) > "$HOME/bin/docker-compose"
   - chmod +x "$HOME/bin/docker-compose"
 
 install:
