@@ -142,8 +142,8 @@ func TestTimeouts(t *testing.T) {
 		expectedErrorPrefix string
 	}{
 		{250 * time.Millisecond, "rpc error: code = Unknown desc = rpc error: code = DeadlineExceeded desc = the chiller overslept"},
-		{150 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
-		{50 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
+		{100 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
+		{10 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s", tc.timeout), func(t *testing.T) {

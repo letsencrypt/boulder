@@ -20,13 +20,16 @@ type serverInterceptor struct {
 	serverMetrics *grpc_prometheus.ServerMetrics
 }
 
+const returnOverhead = 20 * time.Millisecond
+const meaningfulWorkOverhead = 100 * time.Millisecond
+
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
 
 	if features.Enabled(features.RPCHeadroom) {
-		// Shave 100 milliseconds off the deadline to ensure that the RPC server times
+		// Shave 20 milliseconds off the deadline to ensure that the RPC server times
 		// out any sub-calls it makes (like DNS lookups, or onwards RPCs), it has a
 		// chance to report that timeout to the client. This allows for more specific
 		// errors, e.g "the VA timed out looking up CAA for example.com" (when called
@@ -39,9 +42,9 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		if !ok {
 			deadline = time.Now().Add(100 * time.Second)
 		}
-		deadline = deadline.Add(-100 * time.Millisecond)
+		deadline = deadline.Add(-returnOverhead)
 		remaining := deadline.Sub(time.Now())
-		if remaining < 100*time.Millisecond {
+		if remaining < meaningfulWorkOverhead {
 			return nil, grpc.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 		}
 		var cancel func()
