@@ -29,7 +29,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	}
 
 	if features.Enabled(features.RPCHeadroom) {
-		// Shave 20 milliseconds off the deadline to ensure that the RPC server times
+		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
 		// out any sub-calls it makes (like DNS lookups, or onwards RPCs), it has a
 		// chance to report that timeout to the client. This allows for more specific
 		// errors, e.g "the VA timed out looking up CAA for example.com" (when called
