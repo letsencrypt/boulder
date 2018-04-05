@@ -108,6 +108,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 
 func TestTimeouts(t *testing.T) {
 	_ = features.Set(map[string]bool{"RPCHeadroom": true})
+	defer features.Reset()
 	// start server
 	lis, err := net.Listen("tcp", ":0")
 	if err != nil {

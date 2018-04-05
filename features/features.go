@@ -48,7 +48,7 @@ var features = map[FeatureFlag]bool{
 	AllowRenewalFirstRL:         false,
 	WildcardDomains:             false,
 	EnforceChallengeDisable:     false, // deprecated
-	RPCHeadroom:                 true,
+	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
 	EmbedSCTs:                   false,
 	CancelCTSubmissions:         true,
