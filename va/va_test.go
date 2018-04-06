@@ -338,23 +338,61 @@ func TestHTTPTimeout(t *testing.T) {
 
 	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	took := time.Since(started)
 	// Check that the HTTP connection doesn't return before a timeout, and times
 	// out after the expected time
-	test.Assert(t,
-		(took > (time.Second * singleDialTimeout)),
-		fmt.Sprintf("HTTP timed out before %d seconds", singleDialTimeout))
-	test.Assert(t,
-		(took < (time.Second * (singleDialTimeout * 2))),
-		fmt.Sprintf("HTTP connection didn't timeout after %d seconds",
-			singleDialTimeout))
+	if took < timeout {
+		t.Fatalf("HTTP timed out before %s: %s", timeout, took)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
+	}
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
 		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
+}
+
+// TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
+// error when dial fails. We do this by using a mock DNS client that resolves
+// everything to an unroutable IP address.
+func TestHTTPDialTimeout(t *testing.T) {
+	va, _ := setup(nil, 0)
+	va.dnsClient = &bdns.MockDNSClient{"10.255.255.1"}
+
+	started := time.Now()
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, prob := va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < timeout/2 {
+		t.Fatalf("HTTP timed out before %s: %s", timeout, took)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expectMatch := regexp.MustCompile(
+		"Fetching http://unroutable.invalid:\\d+/.well-known/acme-challenge/.*: Timeout during connect")
 	if !expectMatch.MatchString(prob.Detail) {
 		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
 			prob.Detail, expectMatch)
@@ -1167,7 +1205,7 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
 
 	// Try to dial the dialer
-	_, dialProb := d.Dial("", "ipv4.and.ipv6.localhost")
+	_, dialProb := d.DialContext(context.Background(), "", "ipv4.and.ipv6.localhost")
 
 	// There shouldn't be a problem from this dial
 	test.AssertEquals(t, dialProb, nil)

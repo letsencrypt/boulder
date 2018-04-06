@@ -13,6 +13,7 @@ import (
 
 // MockDNSClient is a mock
 type MockDNSClient struct {
+	DefaultIP string
 }
 
 // LookupTXT is a mock
@@ -94,8 +95,11 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 			net.ParseIP("::1"),
 		}, nil
 	}
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
+	if mock.DefaultIP == "" {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	} else {
+		return []net.IP{net.ParseIP(mock.DefaultIP)}, nil
+	}
 }
 
 // LookupCAA returns mock records for use in tests.
