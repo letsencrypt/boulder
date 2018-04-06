@@ -46,6 +46,7 @@
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "ReusePendingAuthz": true,

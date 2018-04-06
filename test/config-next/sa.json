@@ -26,6 +26,7 @@
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "WildcardDomains": true,
       "AllowRenewalFirstRL": true
     }
