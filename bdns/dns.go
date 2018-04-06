@@ -158,10 +158,9 @@ type DNSClientImpl struct {
 	maxTries                 int
 	clk                      clock.Clock
 
-	queryTime             *prometheus.HistogramVec
-	totalLookupTime       *prometheus.HistogramVec
-	cancelCounter         *prometheus.CounterVec
-	usedAllRetriesCounter *prometheus.CounterVec
+	queryTime       *prometheus.HistogramVec
+	totalLookupTime *prometheus.HistogramVec
+	timeoutCounter  *prometheus.CounterVec
 }
 
 var _ DNSClient = &DNSClientImpl{}
@@ -203,21 +202,14 @@ func NewDNSClientImpl(
 		},
 		[]string{"qtype", "result", "authenticated_data", "retries"},
 	)
-	cancelCounter := prometheus.NewCounterVec(
+	timeoutCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "dns_query_cancels",
-			Help: "Counter of canceled DNS queries",
+			Name: "dns_timeout",
+			Help: "Counter of various types of DNS query timeouts",
 		},
-		[]string{"qtype"},
+		[]string{"qtype", "type"},
 	)
-	usedAllRetriesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "dns_query_used_all_retries",
-			Help: "Counter of DNS queries which used all its retries",
-		},
-		[]string{"qtype"},
-	)
-	stats.MustRegister(queryTime, totalLookupTime, cancelCounter, usedAllRetriesCounter)
+	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter)
 
 	return &DNSClientImpl{
 		dnsClient:                dnsClient,
@@ -227,8 +219,7 @@ func NewDNSClientImpl(
 		clk:                      clk,
 		queryTime:                queryTime,
 		totalLookupTime:          totalLookupTime,
-		cancelCounter:            cancelCounter,
-		usedAllRetriesCounter:    usedAllRetriesCounter,
+		timeoutCounter:           timeoutCounter,
 	}
 }
 
@@ -304,7 +295,13 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 		}()
 		select {
 		case <-ctx.Done():
-			dnsClient.cancelCounter.With(prometheus.Labels{"qtype": qtypeStr}).Inc()
+			if ctx.Err() == context.DeadlineExceeded {
+				dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "deadline exceeded"}).Inc()
+			} else if ctx.Err() == context.Canceled {
+				dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "canceled"}).Inc()
+			} else {
+				dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "unknown"}).Inc()
+			}
 			err = ctx.Err()
 			return
 		case r := <-ch:
@@ -316,7 +313,7 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 					tries++
 					continue
 				} else if isRetryable && !hasRetriesLeft {
-					dnsClient.usedAllRetriesCounter.With(prometheus.Labels{"qtype": qtypeStr}).Inc()
+					dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "out of retries"}).Inc()
 				}
 			}
 			resp, err = r.m, r.err

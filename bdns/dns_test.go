@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
@@ -609,10 +610,13 @@ func TestRetry(t *testing.T) {
 			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
 		}
 		if tc.metricsAllRetries > 0 {
-			test.AssertEquals(t, test.CountCounterVec(
-				"qtype",
-				"TXT",
-				dr.usedAllRetriesCounter), tc.metricsAllRetries)
+			count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
+				"qtype": "TXT",
+				"type":  "out of retries",
+			}))
+			if count != tc.metricsAllRetries {
+				t.Errorf("wrong count for timeoutCounter: got %d, expected %d", count, tc.metricsAllRetries)
+			}
 		}
 	}
 
@@ -643,10 +647,21 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
-	test.AssertEquals(t, test.CountCounterVec(
-		"qtype",
-		"TXT",
-		dr.cancelCounter), 3)
+	count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
+		"qtype": "TXT",
+		"type":  "canceled",
+	}))
+	if count != 1 {
+		t.Errorf("wrong count for timeoutCounter canceled: got %d, expected %d", count, 1)
+	}
+
+	count = test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
+		"qtype": "TXT",
+		"type":  "deadline exceeded",
+	}))
+	if count != 2 {
+		t.Errorf("wrong count for timeoutCounter deadline exceeded: got %d, expected %d", count, 2)
+	}
 }
 
 type tempError bool
