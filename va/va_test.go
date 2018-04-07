@@ -186,7 +186,7 @@ func tlssni02Srv(t *testing.T, chall core.Challenge) *httptest.Server {
 	return tlssniSrvWithNames(t, chall, sanAName, sanBName)
 }
 
-func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
+func makeACert(names []string) *tls.Certificate {
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1337),
 		Subject: pkix.Name{
@@ -203,11 +203,14 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 	}
 
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	cert := &tls.Certificate{
+	return &tls.Certificate{
 		Certificate: [][]byte{certBytes},
 		PrivateKey:  &TheKey,
 	}
+}
 
+func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
+	cert := makeACert(names)
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		ClientAuth:   tls.NoClientCert,
@@ -570,13 +573,69 @@ func TestTLSSNI01Invalid(t *testing.T) {
 	}
 }
 
-func TestTLSSNI01Timeout(t *testing.T) {
+func slowTLSSrv() *httptest.Server {
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+	server.TLS = &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			time.Sleep(100 * time.Millisecond)
+			return makeACert([]string{"nomatter"}), nil
+		},
+	}
+	server.StartTLS()
+	return server
+}
+
+func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 	// Set a short dial timeout so this test can happen quickly. Note: It would be
 	// better to override this with a context, but that doesn't work right now:
 	// https://github.com/letsencrypt/boulder/issues/3628
 	singleDialTimeout = 50 * time.Millisecond
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
-	hs := tlssni01Srv(t, chall)
+	hs := slowTLSSrv()
+	va, _ := setup(hs, 0)
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	started := time.Now()
+	_, prob := va.validateTLSSNI01(ctx, dnsi("slow.server"), chall)
+	if prob == nil {
+		t.Fatalf("Validation should've failed")
+	}
+	// Check that the TLS connection doesn't return before a timeout, and times
+	// out after the expected time
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < timeout/2 {
+		t.Fatalf("TLSSNI returned before %s (%s) with %#v", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("TLSSNI didn't timeout after %s", timeout)
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expected := "Timeout after connect (your server may be slow or overloaded)"
+	if prob.Detail != expected {
+		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
+}
+
+func TestTLSSNI01DialTimeout(t *testing.T) {
+	// Set a short dial timeout so this test can happen quickly. Note: It would be
+	// better to override this with a context, but that doesn't work right now:
+	// https://github.com/letsencrypt/boulder/issues/3628
+	old := singleDialTimeout
+	singleDialTimeout = 50 * time.Millisecond
+	defer func() {
+		singleDialTimeout = old
+	}()
+	timeout := singleDialTimeout
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 
@@ -585,7 +644,6 @@ func TestTLSSNI01Timeout(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Validation should've failed")
 	}
-	timeout := singleDialTimeout
 	// Check that the TLS connection doesn't return before a timeout, and times
 	// out after the expected time
 	took := time.Since(started)
