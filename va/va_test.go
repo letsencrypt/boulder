@@ -361,6 +361,17 @@ func TestHTTPTimeout(t *testing.T) {
 	}
 }
 
+// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
+// unroutable address for LookupHost. This is useful in testing connect
+// timeouts.
+type dnsMockReturnsUnroutable struct {
+	*bdns.MockDNSClient
+}
+
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+	return []net.IP{net.ParseIP("10.255.255.1")}, nil
+}
+
 // TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
 // error when dial fails. We do this by using a mock DNS client that resolves
 // everything to an unroutable IP address.
@@ -372,7 +383,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	va.dnsClient = &bdns.MockDNSClient{"10.255.255.1"}
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 	_, prob := va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
@@ -381,7 +392,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < timeout/2 {
-		t.Fatalf("HTTP timed out before %s: %s", timeout, took)
+		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, prob)
 	}
 	if took > 2*timeout {
 		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
@@ -560,13 +571,17 @@ func TestTLSSNI01Invalid(t *testing.T) {
 }
 
 func TestTLSSNI01Timeout(t *testing.T) {
+	// Set a short dial timeout so this test can happen quickly. Note: It would be
+	// better to override this with a context, but that doesn't work right now:
+	// https://github.com/letsencrypt/boulder/issues/3628
+	singleDialTimeout = 50 * time.Millisecond
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := tlssni01Srv(t, chall)
 	va, _ := setup(hs, 0)
-	va.dnsClient = &bdns.MockDNSClient{"10.255.255.1"}
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 
 	started := time.Now()
-	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSSNI01(ctx, dnsi("unroutable.invalid"), chall)
 	if prob == nil {
 		t.Fatalf("Validation should've failed")
 	}
@@ -577,7 +592,7 @@ func TestTLSSNI01Timeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < timeout/2 {
-		t.Fatalf("TLSSNI timed out before %s: %s", timeout, took)
+		t.Fatalf("TLSSNI returned before %s (%s) with %#v", timeout, took, prob)
 	}
 	if took > 2*timeout {
 		t.Fatalf("TLSSNI didn't timeout after %s", timeout)
