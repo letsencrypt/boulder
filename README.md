@@ -20,8 +20,8 @@ in that directory:
     git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
     cd $GOPATH/src/github.com/letsencrypt/boulder
 
-Additionally, make sure you have Docker Engine 1.10.0+ and Docker Compose
-1.6.0+ installed. If you do not, you can follow Docker's [installation
+Additionally, make sure you have Docker Engine 1.13.0+ and Docker Compose
+1.10.0+ installed. If you do not, you can follow Docker's [installation
 instructions](https://docs.docker.com/compose/install/).
 
 We recommend having **at least 2GB of RAM** available on your Docker host. In
@@ -102,7 +102,7 @@ Boulder requires an installation of libtool-ltdl, goose, SoftHSM, and MariaDB 10
 
     docker-compose up -d bmysql bhsm
 
-Also, Boulder requires Go 1.9 or above. This version may not be
+Boulder is only supported on Go 1.10 or above. This version may not be
 available in OS repositories. If so, you will have to install from https://golang.org/dl/.
 Add ```${GOPATH}/bin``` to your path.
 

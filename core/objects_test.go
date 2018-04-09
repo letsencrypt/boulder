@@ -92,3 +92,55 @@ func TestJSONBufferUnmarshal(t *testing.T) {
 	err := json.Unmarshal(notValidBase64, &testStruct)
 	test.Assert(t, err != nil, "Should have choked on invalid base64")
 }
+
+func TestAuthorizationSolvedBy(t *testing.T) {
+	validHTTP01 := HTTPChallenge01()
+	validHTTP01.Status = StatusValid
+	validDNS01 := DNSChallenge01()
+	validDNS01.Status = StatusValid
+	testCases := []struct {
+		Name           string
+		Authz          Authorization
+		ExpectedResult string
+	}{
+		// An authz with no challenges should return nil
+		{
+			Name:  "No challenges",
+			Authz: Authorization{},
+		},
+		// An authz with all non-valid challenges should return nil
+		{
+			Name: "All non-valid challenges",
+			Authz: Authorization{
+				Challenges: []Challenge{HTTPChallenge01(), DNSChallenge01()},
+			},
+		},
+		// An authz with one valid HTTP01 challenge amongst other challenges should
+		// return the HTTP01 challenge
+		{
+			Name: "Valid HTTP01 challenge",
+			Authz: Authorization{
+				Challenges: []Challenge{HTTPChallenge01(), validHTTP01, DNSChallenge01()},
+			},
+			ExpectedResult: "http-01",
+		},
+		// An authz with both a valid HTTP01 challenge and a valid DNS01 challenge
+		// among other challenges should return whichever valid challenge is first
+		// (in this case DNS01)
+		{
+			Name: "Valid HTTP01 and DNS01 challenge",
+			Authz: Authorization{
+				Challenges: []Challenge{validDNS01, HTTPChallenge01(), validHTTP01, DNSChallenge01()},
+			},
+			ExpectedResult: "dns-01",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := tc.Authz.SolvedBy()
+			// Make sure the result was the correct challenge type
+			test.AssertEquals(t, result, tc.ExpectedResult)
+		})
+	}
+}

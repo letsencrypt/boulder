@@ -6,9 +6,11 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 )
 
 // serverInterceptor is a gRPC interceptor that adds Prometheus
@@ -18,10 +20,38 @@ type serverInterceptor struct {
 	serverMetrics *grpc_prometheus.ServerMetrics
 }
 
+const returnOverhead = 20 * time.Millisecond
+const meaningfulWorkOverhead = 100 * time.Millisecond
+
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
+
+	if features.Enabled(features.RPCHeadroom) {
+		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
+		// out any sub-calls it makes (like DNS lookups, or onwards RPCs), it has a
+		// chance to report that timeout to the client. This allows for more specific
+		// errors, e.g "the VA timed out looking up CAA for example.com" (when called
+		// from RA.NewCertificate, which was called from WFE.NewCertificate), as
+		// opposed to "RA.NewCertificate timed out" (causing a 500).
+		// Once we've shaved the deadline, we ensure we have we have at least another
+		// 100ms left to do work; otherwise we abort early.
+		deadline, ok := ctx.Deadline()
+		// Should never happen: there was no deadline.
+		if !ok {
+			deadline = time.Now().Add(100 * time.Second)
+		}
+		deadline = deadline.Add(-returnOverhead)
+		remaining := deadline.Sub(time.Now())
+		if remaining < meaningfulWorkOverhead {
+			return nil, grpc.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
+		}
+		var cancel func()
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+
 	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)

@@ -38,6 +38,9 @@ def test_wildcardmultidomain():
     """
     chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
 
+def test_http_challenge():
+    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
+
 def test_overlapping_wildcard():
     """
     Test issuance for a random domain and a wildcard version of the same domain
