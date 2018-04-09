@@ -251,6 +251,6 @@ func DNS(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       DNSProblem,
 		Detail:     detail,
-		HTTPStatus: http.StatusForbidden,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
