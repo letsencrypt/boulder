@@ -134,8 +134,8 @@ func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
 	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
-	if err.Type != probs.ConnectionProblem {
-		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
+	if err.Type != probs.DNSProblem {
+		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
 	expected := "error"
 	if err.Detail != expected {
