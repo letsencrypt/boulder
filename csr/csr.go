@@ -71,7 +71,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
 	}
-	if maxNames > 0 && len(csr.DNSNames) > maxNames {
+	if len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
 	badNames := []string{}

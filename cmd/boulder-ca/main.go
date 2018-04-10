@@ -119,6 +119,10 @@ func main() {
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
+	if c.CA.MaxNames == 0 {
+		cmd.FailOnError(fmt.Errorf("MaxNames must not be 0"), "Error in CA config")
+	}
+
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
