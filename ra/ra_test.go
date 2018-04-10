@@ -22,7 +22,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -3623,7 +3623,7 @@ type mockCAFailPrecert struct {
 
 func (ca *mockCAFailPrecert) IssuePrecertificate(
 	_ context.Context,
-	_ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	_ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	return nil, ca.err
 }
 
@@ -3635,15 +3635,15 @@ type mockCAFailCertForPrecert struct {
 }
 
 // IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
-func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	return &caPB.IssuePrecertificateResponse{
+func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	return &capb.IssuePrecertificateResponse{
 		DER: []byte{},
 	}, nil
 }
 
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
 	_ context.Context,
-	_ *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
+	_ *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	return core.Certificate{}, ca.err
 }
 
@@ -3655,7 +3655,7 @@ type mockCAFailIssueCert struct {
 
 func (ca *mockCAFailIssueCert) IssueCertificate(
 	_ context.Context,
-	_ *caPB.IssueCertificateRequest) (core.Certificate, error) {
+	_ *capb.IssueCertificateRequest) (core.Certificate, error) {
 	return core.Certificate{}, ca.err
 }
 
