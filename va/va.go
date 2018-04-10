@@ -70,7 +70,7 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 			Help:    "Time taken to validate a challenge",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"type", "result", "problemType"})
 	stats.MustRegister(validationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -162,8 +162,7 @@ type verificationRequestEvent struct {
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
-		problem := probs.ConnectionFailure(err.Error())
+		problem := probs.DNS(err.Error())
 		return net.IP{}, nil, problem
 	}
 
@@ -683,7 +682,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 
-		return nil, probs.ConnectionFailure(err.Error())
+		return nil, probs.DNS(err.Error())
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow
@@ -872,7 +871,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
+	var problemType string
 	if prob != nil {
+		problemType = string(prob.Type)
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
@@ -896,8 +897,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent.Challenge = challenge
 
 	va.metrics.validationTime.With(prometheus.Labels{
-		"type":   string(challenge.Type),
-		"result": string(challenge.Status),
+		"type":        string(challenge.Type),
+		"result":      string(challenge.Status),
+		"problemType": problemType,
 	}).Observe(time.Since(vStart).Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)

@@ -423,6 +423,17 @@ def test_expired_authzs_404():
             raise Exception("Unexpected response for expired authz: ",
                 response.status_code)
 
+def test_oversized_csr():
+    # Number of names is chosen to be one greater than the configured RA/CA maxNames
+    numNames = 101
+    # Generate numNames subdomains of a random domain
+    base_domain = random_domain()
+    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    # We expect issuing for these domains to produce a malformed error because
+    # there are too many names in the request.
+    chisel.expect_problem("urn:acme:error:malformed",
+            lambda: auth_and_issue(domains))
+
 default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
 if default_config_dir == '':
     default_config_dir = 'test/config'
