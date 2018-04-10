@@ -1122,15 +1122,26 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		OrderID:        &orderIDInt,
 	}
 
+	// wrapError adds a prefix to an error. If the error is a boulder error then
+	// the problem detail is updated with the prefix. Otherwise a new error is
+	// returned with the message prefixed using `fmt.Errorf`
+	wrapError := func(e error, prefix string) error {
+		if berr, ok := e.(*berrors.BoulderError); ok {
+			berr.Detail = fmt.Sprintf("%s: %s", prefix, berr.Detail)
+			return berr
+		}
+		return fmt.Errorf("%s: %s", prefix, e)
+	}
+
 	var cert core.Certificate
 	if features.Enabled(features.EmbedSCTs) {
 		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 		if err != nil {
-			return emptyCert, fmt.Errorf("issuing precert: %s", err)
+			return emptyCert, wrapError(err, "issuing precertificate")
 		}
 		scts, err := ra.getSCTs(ctx, precert.DER)
 		if err != nil {
-			return emptyCert, fmt.Errorf("getting SCTs: %s", err)
+			return emptyCert, wrapError(err, "getting SCTs")
 		}
 		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
 			DER:            precert.DER,
@@ -1139,12 +1150,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 			OrderID:        &orderIDInt,
 		})
 		if err != nil {
-			return emptyCert, fmt.Errorf("issuing cert for precert: %s", err)
+			return emptyCert, wrapError(err, "issuing certificate for precertificate")
 		}
 	} else {
 		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
 		if err != nil {
-			return emptyCert, fmt.Errorf("issuing cert: %s", err)
+			return emptyCert, wrapError(err, "issuing certificate")
 		}
 
 		_, _ = ra.getSCTs(ctx, cert.DER)
