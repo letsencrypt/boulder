@@ -1137,7 +1137,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if features.Enabled(features.EmbedSCTs) {
 		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 		if err != nil {
-			return emptyCert, wrapError(err, "issuing precert")
+			return emptyCert, wrapError(err, "issuing precertificate")
 		}
 		scts, err := ra.getSCTs(ctx, precert.DER)
 		if err != nil {
@@ -1150,12 +1150,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 			OrderID:        &orderIDInt,
 		})
 		if err != nil {
-			return emptyCert, wrapError(err, "issuing cert for precert")
+			return emptyCert, wrapError(err, "issuing certificate for precertificate")
 		}
 	} else {
 		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
 		if err != nil {
-			return emptyCert, wrapError(err, "issuing cert")
+			return emptyCert, wrapError(err, "issuing certificate")
 		}
 
 		_, _ = ra.getSCTs(ctx, cert.DER)

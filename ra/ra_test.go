@@ -3752,7 +3752,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 				err: fmt.Errorf("bad bad not good"),
 			},
 			Features:    map[string]bool{"EmbedSCTs": true},
-			ExpectedErr: fmt.Errorf("issuing precert: bad bad not good"),
+			ExpectedErr: fmt.Errorf("issuing precertificate: bad bad not good"),
 		},
 		{
 			Name: "malformed problem during IssuePrecertificate",
@@ -3761,7 +3761,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			},
 			Features: map[string]bool{"EmbedSCTs": true},
 			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing precert: detected 1x whack attack",
+				Detail: "issuing precertificate: detected 1x whack attack",
 				Type:   berrors.Malformed,
 			},
 		},
@@ -3771,7 +3771,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 				err: fmt.Errorf("aaaaaaaaaaaaaaaaaaaa!!"),
 			},
 			Features:    map[string]bool{"EmbedSCTs": true},
-			ExpectedErr: fmt.Errorf("issuing cert for precert: aaaaaaaaaaaaaaaaaaaa!!"),
+			ExpectedErr: fmt.Errorf("issuing certificate for precertificate: aaaaaaaaaaaaaaaaaaaa!!"),
 		},
 		{
 			Name: "malformed problem during IssueCertificateForPrecertificate",
@@ -3780,7 +3780,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			},
 			Features: map[string]bool{"EmbedSCTs": true},
 			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing cert for precert: provided DER is DERanged",
+				Detail: "issuing certificate for precertificate: provided DER is DERanged",
 				Type:   berrors.Malformed,
 			},
 		},
@@ -3790,7 +3790,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 				err: fmt.Errorf("CA is out of certificates, try again later"),
 			},
 			Features:    map[string]bool{"EmbedSCTs": false},
-			ExpectedErr: fmt.Errorf("issuing cert: CA is out of certificates, try again later"),
+			ExpectedErr: fmt.Errorf("issuing certificate: CA is out of certificates, try again later"),
 		},
 		{
 			Name: "malformed problem during IssueCertificate",
@@ -3799,7 +3799,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			},
 			Features: map[string]bool{"EmbedSCTs": false},
 			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing cert: CSR had a jillion and one names",
+				Detail: "issuing certificate: CSR had a jillion and one names",
 				Type:   berrors.Malformed,
 			},
 		},
