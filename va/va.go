@@ -271,8 +271,7 @@ func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, 
 	address := net.JoinHostPort(v4[0].String(), d.record.Port)
 	d.record.AddressUsed = v4[0]
 	realDialer = d.realDialer()
-	conn, err := realDialer.DialContext(ctx, "tcp", address)
-	return conn, err
+	return realDialer.DialContext(ctx, "tcp", address)
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
