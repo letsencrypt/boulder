@@ -196,7 +196,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
-		cmd.FailOnError(fmt.Errorf("MaxNames must not be 0"), "Error in RA config")
+		cmd.Fail(fmt.Sprintf("Error in RA config: MaxNames must not be 0"))
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(
