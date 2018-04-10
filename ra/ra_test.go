@@ -22,6 +22,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
+	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -1336,7 +1337,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 100000)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 20)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 5)
 
@@ -3611,6 +3612,225 @@ func TestWildcardOverlap(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("Got error %q, expected none", err)
+	}
+}
+
+// mockCAFailPrecert is a mock CA that always returns an error from `IssuePrecertificate`
+type mockCAFailPrecert struct {
+	mocks.MockCA
+	err error
+}
+
+func (ca *mockCAFailPrecert) IssuePrecertificate(
+	_ context.Context,
+	_ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	return nil, ca.err
+}
+
+// mockCAFailCertForPrecert is a mock CA that always returns an error from
+// `IssueCertificateForPrecertificate`
+type mockCAFailCertForPrecert struct {
+	mocks.MockCA
+	err error
+}
+
+// IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
+func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+	return &caPB.IssuePrecertificateResponse{
+		DER: []byte{},
+	}, nil
+}
+
+func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
+	_ context.Context,
+	_ *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
+	return core.Certificate{}, ca.err
+}
+
+// mockCAFailIssueCert is a mock CA that always returns an error from `IssueCertificate`
+type mockCAFailIssueCert struct {
+	mocks.MockCA
+	err error
+}
+
+func (ca *mockCAFailIssueCert) IssueCertificate(
+	_ context.Context,
+	_ *caPB.IssueCertificateRequest) (core.Certificate, error) {
+	return core.Certificate{}, ca.err
+}
+
+// TestIssueCertificateInnerErrs tests that errors from the CA caught during
+// `ra.issueCertificateInner` are propogated correctly, with the part of the
+// issuance process that failed prefixed on the error message.
+func TestIssueCertificateInnerErrs(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.orderLifetime = 24 * time.Hour
+	exp := ra.clk.Now().Add(24 * time.Hour)
+
+	authzForIdent := func(domain string) core.Authorization {
+		template := AuthzInitial
+		template.Identifier = core.AcmeIdentifier{
+			Type:  "dns",
+			Value: domain,
+		}
+		// Create one valid HTTP challenge
+		httpChal := core.HTTPChallenge01()
+		httpChal.Status = core.StatusValid
+		// Set the template's challenges
+		template.Challenges = []core.Challenge{httpChal}
+		// Set the overall authz to valid
+		template.Status = "valid"
+		template.Expires = &exp
+		template.RegistrationID = Registration.ID
+		// Create the pending authz
+		authz, err := sa.NewPendingAuthorization(ctx, template)
+		if err != nil {
+			t.Fatalf("Could not create test pending authorization")
+		}
+		// Finalize the authz
+		err = sa.FinalizeAuthorization(ctx, authz)
+		if err != nil {
+			t.Fatalf("Could not finalize test pending authorization")
+		}
+		return authz
+	}
+
+	// Make some valid authorizations for some names
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	var authzs []core.Authorization
+	var authzIDs []string
+	for i, name := range names {
+		authzs = append(authzs, authzForIdent(name))
+		authzIDs = append(authzIDs, authzs[i].ID)
+	}
+
+	// Create a pending order for all of the names
+	expUnix := exp.Unix()
+	pendingStatus := "pending"
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &Registration.ID,
+		Expires:        &expUnix,
+		Names:          names,
+		Authorizations: authzIDs,
+		Status:         &pendingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Generate a CSR covering the order names with a random RSA key
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           names,
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create test order CSR")
+
+	// Enable the EmbedSCTs feature so that IssuePrecertificate is used
+	csrOb, err := x509.ParseCertificateRequest(csr)
+	test.AssertNotError(t, err, "Error pasring generated CSR")
+
+	req := core.CertificateRequest{
+		Bytes: csr,
+		CSR:   csrOb,
+	}
+	logEvent := &certificateRequestEvent{}
+
+	testCases := []struct {
+		Name         string
+		Mock         core.CertificateAuthority
+		Features     map[string]bool
+		ExpectedErr  error
+		ExpectedProb *berrors.BoulderError
+	}{
+		{
+			Name: "vanilla error during IssuePrecertificate",
+			Mock: &mockCAFailPrecert{
+				err: fmt.Errorf("bad bad not good"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": true},
+			ExpectedErr: fmt.Errorf("issuing precert: bad bad not good"),
+		},
+		{
+			Name: "malformed problem during IssuePrecertificate",
+			Mock: &mockCAFailPrecert{
+				err: berrors.MalformedError("detected 1x whack attack"),
+			},
+			Features: map[string]bool{"EmbedSCTs": true},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing precert: detected 1x whack attack",
+				Type:   berrors.Malformed,
+			},
+		},
+		{
+			Name: "vanilla error during IssueCertificateForPrecertificate",
+			Mock: &mockCAFailCertForPrecert{
+				err: fmt.Errorf("aaaaaaaaaaaaaaaaaaaa!!"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": true},
+			ExpectedErr: fmt.Errorf("issuing cert for precert: aaaaaaaaaaaaaaaaaaaa!!"),
+		},
+		{
+			Name: "malformed problem during IssueCertificateForPrecertificate",
+			Mock: &mockCAFailCertForPrecert{
+				err: berrors.MalformedError("provided DER is DERanged"),
+			},
+			Features: map[string]bool{"EmbedSCTs": true},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing cert for precert: provided DER is DERanged",
+				Type:   berrors.Malformed,
+			},
+		},
+		{
+			Name: "vanilla error during IssueCertificate",
+			Mock: &mockCAFailIssueCert{
+				err: fmt.Errorf("CA is out of certificates, try again later"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": false},
+			ExpectedErr: fmt.Errorf("issuing cert: CA is out of certificates, try again later"),
+		},
+		{
+			Name: "malformed problem during IssueCertificate",
+			Mock: &mockCAFailIssueCert{
+				err: berrors.MalformedError("CSR had a jillion and one names"),
+			},
+			Features: map[string]bool{"EmbedSCTs": false},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing cert: CSR had a jillion and one names",
+				Type:   berrors.Malformed,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// Mock the CA
+			ra.CA = tc.Mock
+			// Set feature flags
+			_ = features.Set(tc.Features)
+			defer features.Reset()
+			// Attempt issuance
+			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(*order.Id), logEvent)
+			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
+			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
+			// If there is an expected `error` then match the error message
+			if tc.ExpectedErr != nil {
+				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
+			} else if tc.ExpectedProb != nil {
+				// If there is an expected `berrors.BoulderError` then we expect the
+				// `issueCertificateInner` error to be a `berrors.BoulderError`
+				berr, ok := err.(*berrors.BoulderError)
+				if !ok {
+					t.Errorf("Expected a boulder error, got %#v\n", err)
+				}
+				// Match the expected berror Type and Detail to the observed
+				test.AssertEquals(t, berr.Type, tc.ExpectedProb.Type)
+				test.AssertEquals(t, berr.Detail, tc.ExpectedProb.Detail)
+			}
+		})
 	}
 }
 
