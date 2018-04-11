@@ -130,6 +130,7 @@
       }
     },
     "maxConcurrentRPCServerRequests": 100000,
+    "orphanQueueDir": "/tmp/orphaned-certificates",
     "features": {
         "RPCHeadroom": true,
         "WildcardDomains": true,

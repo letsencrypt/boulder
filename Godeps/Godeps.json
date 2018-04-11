@@ -7,6 +7,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/beeker1121/goque",
+			"Comment": "v2.0.1-16-g4044bc2",
+			"Rev": "4044bc29b28064db4f08e947c4972d5ca3e0f3c8"
+		},
+		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "3ac7bf7a47d159a033b107610db8a1b6575507a4"
 		},
@@ -296,6 +301,10 @@
 			"Rev": "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
 		},
 		{
+			"ImportPath": "github.com/golang/snappy",
+			"Rev": "553a641470496b2327abcac10b36396bd98e45c9"
+		},
+		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
 			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
 		},
@@ -407,6 +416,54 @@
 		{
 			"ImportPath": "github.com/prometheus/procfs",
 			"Rev": "abf152e5f3e97f2fafac028d2cc06c1feb87ffa5"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/cache",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/comparer",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/errors",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/filter",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/iterator",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/journal",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/memdb",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/opt",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/storage",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/table",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
+		},
+		{
+			"ImportPath": "github.com/syndtr/goleveldb/leveldb/util",
+			"Rev": "714f901b98fdb3aa954b4193d8cbd64a28d80cad"
 		},
 		{
 			"ImportPath": "github.com/titanous/rocacheck",

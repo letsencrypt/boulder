@@ -299,7 +299,8 @@ func TestFailNoSerial(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
@@ -425,7 +426,8 @@ func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImp
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
 
@@ -485,7 +487,8 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
@@ -509,7 +512,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
@@ -558,7 +562,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	// Now issue a new cert, signed by newIssuerCert
@@ -654,7 +659,8 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.stats,
 				testCtx.issuers,
 				testCtx.keyPolicy,
-				testCtx.logger)
+				testCtx.logger,
+				nil)
 			test.AssertNotError(t, err, "Failed to create CA")
 			ca.enablePrecertificateFlow = mode.issuePrecertificate
 
@@ -694,7 +700,8 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
@@ -749,6 +756,7 @@ func TestSingleAIAEnforcement(t *testing.T) {
 		nil,
 		goodkey.KeyPolicy{},
 		&blog.Mock{},
+		nil,
 	)
 	test.AssertError(t, err, "NewCertificateAuthorityImpl allowed a profile with multiple issuer_urls")
 	test.AssertEquals(t, err.Error(), "only one issuer_url supported")
@@ -903,7 +911,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.enablePrecertificateFlow = true
 	_ = features.Set(map[string]bool{"EmbedSCTs": true})

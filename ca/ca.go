@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeker1121/goque"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
 	"github.com/cloudflare/cfssl/ocsp"
@@ -132,6 +133,7 @@ type CertificateAuthorityImpl struct {
 	enablePrecertificateFlow bool
 	signatureCount           *prometheus.CounterVec
 	csrExtensionCount        *prometheus.CounterVec
+	orphanQueue              *goque.Queue
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -197,6 +199,7 @@ func NewCertificateAuthorityImpl(
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
+	orphanQueue *goque.Queue,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
@@ -276,6 +279,7 @@ func NewCertificateAuthorityImpl(
 		enablePrecertificateFlow: config.EnablePrecertificateFlow,
 		signatureCount:           signatureCount,
 		csrExtensionCount:        csrExtensionCount,
+		orphanQueue:              orphanQueue,
 	}
 
 	if config.Expiry == "" {
@@ -676,8 +680,55 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 			regID,
 			orderID,
 		))
+		if ca.orphanQueue != nil {
+			ca.queueOrphan(&orphanedCert{
+				DER:      certDER,
+				OCSPResp: ocspResp,
+				RegID:    regID,
+			})
+		}
 		return core.Certificate{}, err
 	}
 
 	return core.Certificate{DER: certDER}, nil
+}
+
+type orphanedCert struct {
+	DER      []byte
+	OCSPResp []byte
+	RegID    int64
+}
+
+func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
+	_, err := ca.orphanQueue.EnqueueObject(o)
+	if err != nil {
+		ca.log.Err(fmt.Sprintf("Failed to queue orphan for integration: %s", err))
+	}
+}
+
+func (ca *CertificateAuthorityImpl) integrateOrphans() {
+	for {
+		item, err := ca.orphanQueue.Peek()
+		if err != nil {
+			if err == goque.ErrEmpty {
+				time.Sleep(time.Minute)
+				continue
+			}
+			ca.log.Err(fmt.Sprintf("Failed to peek into orphan queue: %s", err))
+			continue
+		}
+		var orphan orphanedCert
+		err = item.ToObject(&orphan)
+		if err != nil {
+			ca.log.Err(fmt.Sprintf("Failed to marshal orphan: %s", err))
+		}
+		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp)
+		if err != nil && !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			ca.log.Err(fmt.Sprintf("Failed to store orphaned certificate: %s", err))
+		}
+		_, err = ca.orphanQueue.Dequeue()
+		if err != nil {
+			ca.log.Err(fmt.Sprintf("Failed to dequeue integrated orphaned certificate: %s", err))
+		}
+	}
 }
