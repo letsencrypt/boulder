@@ -56,12 +56,6 @@ func (pc *PublisherClientWrapper) SubmitToSingleCTWithResult(ctx context.Context
 	return res, nil
 }
 
-// SubmitToMultipleCT is a wrapper
-func (pc *PublisherClientWrapper) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) error {
-	_, err := pc.inner.SubmitToMultipleCT(ctx, req)
-	return err
-}
-
 // PublisherServerWrapper is the gRPC version of a core.Publisher
 type PublisherServerWrapper struct {
 	inner *publisher.Impl
@@ -96,12 +90,4 @@ func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Contex
 		return nil, errIncompleteRequest
 	}
 	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
-}
-
-// SubmitToMultipleCT is a wrapper
-func (pub *PublisherServerWrapper) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) (*pubpb.Empty, error) {
-	if req == nil || req.Cert == nil || req.Logs == nil {
-		return nil, errIncompleteRequest
-	}
-	return &pubpb.Empty{}, pub.inner.SubmitToMultipleCT(ctx, req)
 }

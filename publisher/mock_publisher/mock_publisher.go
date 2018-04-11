@@ -46,18 +46,6 @@ func (mr *MockPublisherMockRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToCT", reflect.TypeOf((*MockPublisher)(nil).SubmitToCT), arg0, arg1)
 }
 
-// SubmitToMultipleCT mocks base method
-func (m *MockPublisher) SubmitToMultipleCT(arg0 context.Context, arg1 *proto.MultipleRequest) error {
-	ret := m.ctrl.Call(m, "SubmitToMultipleCT", arg0, arg1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SubmitToMultipleCT indicates an expected call of SubmitToMultipleCT
-func (mr *MockPublisherMockRecorder) SubmitToMultipleCT(arg0, arg1 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToMultipleCT", reflect.TypeOf((*MockPublisher)(nil).SubmitToMultipleCT), arg0, arg1)
-}
-
 // SubmitToSingleCT mocks base method
 func (m *MockPublisher) SubmitToSingleCT(arg0 context.Context, arg1, arg2 string, arg3 []byte) error {
 	ret := m.ctrl.Call(m, "SubmitToSingleCT", arg0, arg1, arg2, arg3)

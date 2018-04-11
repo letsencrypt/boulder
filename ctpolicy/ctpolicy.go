@@ -20,29 +20,23 @@ type CTPolicy struct {
 	pub           core.Publisher
 	groups        []cmd.CTGroup
 	informational []cmd.LogDescription
-	finalLogs     []*pubpb.Log
+	finalLogs     []cmd.LogDescription
 	log           blog.Logger
 }
 
 // New creates a new CTPolicy struct
 func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger) *CTPolicy {
-	var finalLogs []*pubpb.Log
+	var finalLogs []cmd.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
 			if log.SubmitFinalCert {
-				finalLogs = append(finalLogs, &pubpb.Log{
-					URL:       &log.URI,
-					PublicKey: &log.Key,
-				})
+				finalLogs = append(finalLogs, log)
 			}
 		}
 	}
 	for _, log := range informational {
 		if log.SubmitFinalCert {
-			finalLogs = append(finalLogs, &pubpb.Log{
-				URL:       &log.URI,
-				PublicKey: &log.Key,
-			})
+			finalLogs = append(finalLogs, log)
 		}
 	}
 
@@ -164,11 +158,23 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 	return ret, nil
 }
 
-// SubmitFinalCert ...
-func (ctp *CTPolicy) SubmitFinalCert(ctx context.Context, cert []byte) {
-	// Any errors will be logged at the publisher
-	err := ctp.pub.SubmitToMultipleCT(ctx, &pubpb.MultipleRequest{Cert: cert, Logs: ctp.finalLogs})
-	if err != nil {
-		ctp.log.Err(fmt.Sprintf("SubmitToMultipleCT RPC failed: %s", err))
+// SubmitFinalCert submits finalized certificates created from precertificates
+// to any configured logs
+func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
+	isPrecert := false
+	storeSCT := false
+	for _, log := range ctp.finalLogs {
+		go func(l cmd.LogDescription) {
+			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+				LogURL:       &l.URI,
+				LogPublicKey: &l.Key,
+				Der:          cert,
+				Precert:      &isPrecert,
+				StoreSCT:     &storeSCT,
+			})
+			if err != nil {
+				ctp.log.Warning(fmt.Sprintf("ct submission of final cert to log %q failed: %s", l.URI, err))
+			}
+		}(log)
 	}
 }

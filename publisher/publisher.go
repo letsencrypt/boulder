@@ -228,11 +228,19 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		isPrecert = *req.Precert
 	}
 
+	// Historically if a cert wasn't a precert we wanted to store the SCT,
+	// but for SCTs for final certificates generated from precerts we don't
+	// want to store those SCTs.
+	storeSCT := !isPrecert
+	if req.StoreSCT != nil {
+		storeSCT = *req.StoreSCT
+	}
+
 	sct, err := pub.singleLogSubmit(
 		ctx,
 		chain,
 		isPrecert,
-		isPrecert,
+		storeSCT,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
@@ -410,31 +418,4 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
 	return jsonSCT
-}
-
-// SubmitToMultipleCT ...
-func (pub *Impl) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) error {
-	chain := append([]ct.ASN1Cert{ct.ASN1Cert{Data: req.Cert}}, pub.issuerBundle...)
-	for _, log := range req.Logs {
-		go func(log *pubpb.Log) {
-			ctLog, err := pub.ctLogsCache.AddLog(*log.URL, *log.PublicKey, pub.log)
-			if err != nil {
-				pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
-				return
-			}
-			_, err = pub.singleLogSubmit(
-				ctx,
-				chain,
-				false, // Cert isn't a precert
-				false, // Don't store the SCT
-				"",    // Serial is not needed as we aren't storing the SCT
-				ctLog)
-			if err != nil {
-				// log error
-			}
-		}(log)
-	}
-	// No need to wait around since errors are only going to be logged locally, return so
-	// we aren't consuming any unnecessary resources and let the goroutines do the work
-	return nil
 }

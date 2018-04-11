@@ -27,9 +27,6 @@ func (mp *mockPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey st
 func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
-func (mp *mockPub) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) error {
-	return nil
-}
 
 type alwaysFail struct {
 	mockPub
