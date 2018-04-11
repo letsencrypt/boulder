@@ -185,19 +185,8 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # If we are running under config-next with the OrderReadyStatus feature flag
-    # set then we should expect a malformed error when trying to finalize an
-    # order early and can stop without testing anything further
-    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        # We expect this to generate a malformed error about the order not being in
-        # the "ready" state.
-        chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
-            lambda: client.finalize_order(order, deadline))
-        return
-
-    # If we aren't running under-config next then finalizing an order early
-    # should generate an unauthorized error and we should check that the order
-    # is invalidated.
+    # Finalizing an order early should generate an unauthorized error and we
+    # should check that the order is invalidated.
     chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
         lambda: client.finalize_order(order, deadline))
 
