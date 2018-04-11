@@ -28,8 +28,7 @@
     "features": {
       "RPCHeadroom": true,
       "WildcardDomains": true,
-      "AllowRenewalFirstRL": true,
-      "OrderReadyStatus": true
+      "AllowRenewalFirstRL": true
     }
   },
 
