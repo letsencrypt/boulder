@@ -16,6 +16,7 @@
     },
     "grpcCA": {
       "address": ":9093",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
