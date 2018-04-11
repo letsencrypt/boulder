@@ -573,6 +573,11 @@ func (*Publisher) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request
 	return nil, nil
 }
 
+// SubmitToMultipleCT is a mock
+func (*Publisher) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) {
+	return
+}
+
 // Mailer is a mock
 type Mailer struct {
 	Messages []MailerMessage

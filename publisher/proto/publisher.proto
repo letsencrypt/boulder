@@ -4,6 +4,7 @@ service Publisher {
         rpc SubmitToCT(Request) returns (Empty) {}
         rpc SubmitToSingleCT(Request) returns (Empty) {}
         rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
+        rpc SubmitToMultipleCT(MultipleRequest) returns (Empty) {}
 }
 
 message Request {
@@ -17,5 +18,16 @@ message Result {
         optional bytes sct = 1;
 }
 
+message Log {
+        optional string URL = 1;
+        optional string PublicKey = 2;
+}
+
+message MultipleRequest {
+        optional bytes cert = 1;
+        repeated Log logs = 2;
+}
+
 message Empty {
 }
+

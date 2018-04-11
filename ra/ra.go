@@ -1152,6 +1152,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		if err != nil {
 			return emptyCert, wrapError(err, "issuing certificate for precertificate")
 		}
+		// Asynchronously submit the final certificate to any configured logs
+		go ra.ctpolicy.SubmitFinalCert(ctx, cert.DER)
 	} else {
 		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
 		if err != nil {

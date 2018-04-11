@@ -20,15 +20,37 @@ type CTPolicy struct {
 	pub           core.Publisher
 	groups        []cmd.CTGroup
 	informational []cmd.LogDescription
+	finalLogs     []*pubpb.Log
 	log           blog.Logger
 }
 
 // New creates a new CTPolicy struct
 func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger) *CTPolicy {
+	var finalLogs []*pubpb.Log
+	for _, group := range groups {
+		for _, log := range group.Logs {
+			if log.SubmitFinalCert {
+				finalLogs = append(finalLogs, &pubpb.Log{
+					URL:       &log.URI,
+					PublicKey: &log.Key,
+				})
+			}
+		}
+	}
+	for _, log := range informational {
+		if log.SubmitFinalCert {
+			finalLogs = append(finalLogs, &pubpb.Log{
+				URL:       &log.URI,
+				PublicKey: &log.Key,
+			})
+		}
+	}
+
 	return &CTPolicy{
 		pub:           pub,
 		groups:        groups,
 		informational: informational,
+		finalLogs:     finalLogs,
 		log:           log,
 	}
 }
@@ -140,4 +162,10 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 		ret = append(ret, res.sct)
 	}
 	return ret, nil
+}
+
+// SubmitFinalCert ...
+func (ctp *CTPolicy) SubmitFinalCert(ctx context.Context, cert []byte) {
+	// Any errors will be logged at the publisher
+	ctp.pub.SubmitToMultipleCT(ctx, &pubpb.MultipleRequest{Cert: cert, Logs: ctp.finalLogs})
 }
