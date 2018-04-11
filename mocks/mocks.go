@@ -574,8 +574,8 @@ func (*Publisher) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request
 }
 
 // SubmitToMultipleCT is a mock
-func (*Publisher) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) {
-	return
+func (*Publisher) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) error {
+	return nil
 }
 
 // Mailer is a mock

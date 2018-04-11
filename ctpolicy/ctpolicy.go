@@ -167,5 +167,8 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 // SubmitFinalCert ...
 func (ctp *CTPolicy) SubmitFinalCert(ctx context.Context, cert []byte) {
 	// Any errors will be logged at the publisher
-	ctp.pub.SubmitToMultipleCT(ctx, &pubpb.MultipleRequest{Cert: cert, Logs: ctp.finalLogs})
+	err := ctp.pub.SubmitToMultipleCT(ctx, &pubpb.MultipleRequest{Cert: cert, Logs: ctp.finalLogs})
+	if err != nil {
+		ctp.log.Err(fmt.Sprintf("SubmitToMultipleCT RPC failed: %s", err))
+	}
 }

@@ -172,5 +172,5 @@ type Publisher interface {
 	SubmitToCT(ctx context.Context, der []byte) error
 	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
 	SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error)
-	SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest)
+	SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) error
 }

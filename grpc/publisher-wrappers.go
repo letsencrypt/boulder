@@ -56,6 +56,12 @@ func (pc *PublisherClientWrapper) SubmitToSingleCTWithResult(ctx context.Context
 	return res, nil
 }
 
+// SubmitToMultipleCT is a wrapper
+func (pc *PublisherClientWrapper) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) error {
+	_, err := pc.inner.SubmitToMultipleCT(ctx, req)
+	return err
+}
+
 // PublisherServerWrapper is the gRPC version of a core.Publisher
 type PublisherServerWrapper struct {
 	inner *publisher.Impl
@@ -75,6 +81,7 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubp
 	return &pubpb.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
 }
 
+// SubmitToSingleCT is a wrapper
 func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request *pubpb.Request) (*pubpb.Empty, error) {
 	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
 		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
@@ -84,9 +91,17 @@ func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request
 }
 
 // SubmitToSingleCTWithResult is a wrapper
-func (pc *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	if req == nil || req.Der == nil || req.LogURL == nil || req.LogPublicKey == nil {
 		return nil, errIncompleteRequest
 	}
-	return pc.inner.SubmitToSingleCTWithResult(ctx, req)
+	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
+}
+
+// SubmitToMultipleCT is a wrapper
+func (pub *PublisherServerWrapper) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) (*pubpb.Empty, error) {
+	if req == nil || req.Cert == nil || req.Logs == nil {
+		return nil, errIncompleteRequest
+	}
+	return &pubpb.Empty{}, pub.inner.SubmitToMultipleCT(ctx, req)
 }

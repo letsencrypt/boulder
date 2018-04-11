@@ -3531,8 +3531,8 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 	return nil, context.DeadlineExceeded
 }
 
-func (mp *timeoutPub) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) {
-	return
+func (mp *timeoutPub) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) error {
+	return nil
 }
 
 func TestCTPolicyMeasurements(t *testing.T) {

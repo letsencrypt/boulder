@@ -114,6 +114,10 @@ func (p *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request
 	return nil, nil
 }
 
+func (p *mockPub) SubmitToMultipleCT(_ context.Context, _ *pubpb.MultipleRequest) error {
+	return nil
+}
+
 var log = blog.UseMock()
 
 const (

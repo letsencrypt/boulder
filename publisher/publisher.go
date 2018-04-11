@@ -413,10 +413,10 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 }
 
 // SubmitToMultipleCT ...
-func (pub *Impl) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) {
+func (pub *Impl) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequest) error {
 	chain := append([]ct.ASN1Cert{ct.ASN1Cert{Data: req.Cert}}, pub.issuerBundle...)
 	for _, log := range req.Logs {
-		go func() {
+		go func(log *pubpb.Log) {
 			ctLog, err := pub.ctLogsCache.AddLog(*log.URL, *log.PublicKey, pub.log)
 			if err != nil {
 				pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
@@ -432,9 +432,9 @@ func (pub *Impl) SubmitToMultipleCT(ctx context.Context, req *pubpb.MultipleRequ
 			if err != nil {
 				// log error
 			}
-		}()
+		}(log)
 	}
 	// No need to wait around since errors are only going to be logged locally, return so
 	// we aren't consuming any unnecessary resources and let the goroutines do the work
-	return
+	return nil
 }
