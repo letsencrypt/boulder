@@ -1955,7 +1955,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") was not pending","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
 		},
 		{
 			Name: "Order is expired",
@@ -1969,7 +1969,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:            "Good CSR",
+			Name:            "Good CSR, Pending Order",
 			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
@@ -1983,6 +1983,23 @@ func TestFinalizeOrder(t *testing.T) {
     "http://localhost/acme/authz/hello"
   ],
   "finalize": "http://localhost/acme/finalize/1/4"
+}`,
+		},
+		{
+			Name:            "Good CSR, Ready Order",
+			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
+			ExpectedBody: `
+{
+  "status": "processing",
+  "expires": "1970-01-01T00:00:00.9466848Z",
+  "identifiers": [
+    {"type":"dns","value":"example.com"}
+  ],
+  "authorizations": [
+    "http://localhost/acme/authz/hello"
+  ],
+  "finalize": "http://localhost/acme/finalize/1/8"
 }`,
 		},
 	}

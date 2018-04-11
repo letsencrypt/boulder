@@ -2750,7 +2750,9 @@ func TestFinalizeOrder(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	validStatus := "valid"
+	validStatus := string(core.StatusValid)
+	readyStatus := string(core.StatusReady)
+	processingStatus := false
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2817,9 +2819,25 @@ func TestFinalizeOrder(t *testing.T) {
 		Expires:        &expUnix,
 		Names:          []string{"not-example.com", "www.not-example.com"},
 		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
-		Status:         &pendingStatus,
+		Status:         &validStatus,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Enable the order ready status temporarily
+	_ = features.Set(map[string]bool{"OrderReadyStatus": true})
+	// Create an order with valid authzs, it should end up status ready in the
+	// resulting returned order
+	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:  &Registration.ID,
+		Expires:         &expUnix,
+		Names:           []string{"not-example.com", "www.not-example.com"},
+		Authorizations:  []string{finalAuthz.ID, finalAuthzB.ID},
+		Status:          &readyStatus,
+		BeganProcessing: &processingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
+	// Disable the order ready status again
+	_ = features.Set(map[string]bool{"OrderReadyStatus": false})
 
 	// Swallowing errors here because the CSRPEM is hardcoded test data expected
 	// to parse in all instance
@@ -2873,14 +2891,14 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "Order has no associated names",
 		},
 		{
-			Name: "Wrong order state",
+			Name: "Wrong order state (valid)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status: &validStatus,
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") was not pending",
+			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
 		},
 		{
 			Name: "Invalid CSR",
@@ -2968,9 +2986,17 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
 		},
 		{
-			Name: "Order with correct authorizations",
+			Name: "Order with correct authorizations, pending status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: finalOrder,
+				Csr:   validCSR.Raw,
+			},
+			ExpectIssuance: true,
+		},
+		{
+			Name: "Order with correct authorizations, ready status",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: modernFinalOrder,
 				Csr:   validCSR.Raw,
 			},
 			ExpectIssuance: true,

@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -2081,7 +2082,7 @@ func TestStatusForOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, invalidAuthz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authz to invalid")
 
-	// Create a deactivate authz
+	// Create a deactivated authz
 	deactivatedAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	deactivatedAuthz.Status = core.StatusDeactivated
@@ -2103,6 +2104,7 @@ func TestStatusForOrder(t *testing.T) {
 		ExpectedStatus   string
 		SetProcessing    bool
 		Finalize         bool
+		Features         []string
 	}{
 		{
 			Name:             "Order with an invalid authz",
@@ -2142,6 +2144,20 @@ func TestStatusForOrder(t *testing.T) {
 			ExpectedStatus:   string(core.StatusProcessing),
 		},
 		{
+			Name:             "Order with only valid authzs, not yet processed or finalized, OrderReadyStatus feature flag",
+			OrderNames:       []string{"valid.your.order.is.up"},
+			AuthorizationIDs: []string{validAuthz.ID},
+			ExpectedStatus:   string(core.StatusReady),
+			Features:         []string{"OrderReadyStatus"},
+		},
+		{
+			Name:             "Order with only valid authzs, set processing",
+			OrderNames:       []string{"valid.your.order.is.up"},
+			AuthorizationIDs: []string{validAuthz.ID},
+			SetProcessing:    true,
+			ExpectedStatus:   string(core.StatusProcessing),
+		},
+		{
 			Name:             "Order with only valid authzs, set processing and finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
 			AuthorizationIDs: []string{validAuthz.ID},
@@ -2153,12 +2169,21 @@ func TestStatusForOrder(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if len(tc.Features) > 0 {
+				for _, flag := range tc.Features {
+					_ = features.Set(map[string]bool{flag: true})
+				}
+				defer features.Reset()
+			}
+
 			// Add a new order with the testcase authz IDs
+			processing := false
 			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
-				RegistrationID: &reg.ID,
-				Expires:        &expiresNano,
-				Authorizations: tc.AuthorizationIDs,
-				Names:          tc.OrderNames,
+				RegistrationID:  &reg.ID,
+				Expires:         &expiresNano,
+				Authorizations:  tc.AuthorizationIDs,
+				Names:           tc.OrderNames,
+				BeganProcessing: &processing,
 			})
 			test.AssertNotError(t, err, "NewOrder errored unexpectedly")
 			// If requested, set the order to processing
