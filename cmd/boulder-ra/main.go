@@ -249,9 +249,6 @@ func main() {
 	rai.CA = cac
 	rai.SA = sac
 
-	err = rai.UpdateIssuedCountForever()
-	cmd.FailOnError(err, "Updating total issuance count")
-
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")

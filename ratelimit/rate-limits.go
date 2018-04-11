@@ -12,7 +12,6 @@ import (
 // Limits is defined to allow mock implementations be provided during unit
 // testing
 type Limits interface {
-	TotalCertificates() RateLimitPolicy
 	CertificatesPerName() RateLimitPolicy
 	RegistrationsPerIP() RateLimitPolicy
 	RegistrationsPerIPRange() RateLimitPolicy
@@ -31,15 +30,6 @@ type Limits interface {
 type limitsImpl struct {
 	sync.RWMutex
 	rlPolicy *rateLimitConfig
-}
-
-func (r *limitsImpl) TotalCertificates() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
-	if r.rlPolicy == nil {
-		return RateLimitPolicy{}
-	}
-	return r.rlPolicy.TotalCertificates
 }
 
 func (r *limitsImpl) CertificatesPerName() RateLimitPolicy {
@@ -136,11 +126,6 @@ func New() Limits {
 // rateLimitConfig contains all application layer rate limiting policies. It is
 // unexported and clients are expected to use the exported container struct
 type rateLimitConfig struct {
-	// Total number of certificates that can be extant at any given time.
-	// The 2160h window, 90 days, is chosen to match certificate lifetime, since the
-	// main capacity factor is how many OCSP requests we can sign with available
-	// hardware.
-	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
 	// Number of certificates that can be extant containing any given name.
 	// These are counted by "base domain" aka eTLD+1, so any entries in the
 	// overrides section must be an eTLD+1 according to the publicsuffix package.
