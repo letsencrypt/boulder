@@ -27,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -1898,7 +1897,6 @@ func TestFinalizeOrder(t *testing.T) {
 		Request         *http.Request
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
-		Features        []string
 	}{
 		{
 			Name: "POST, but no body",
@@ -1957,20 +1955,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") was not \"pending\"","status":400}`,
-		},
-		{
-			Name: "Order is pending, OrderReadyStatus flag is enabled",
-			// ID 4 is mocked to be status "pending"
-			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"pending\") was not \"ready\"","status":400}`,
-			Features:     []string{"OrderReadyStatus"},
-		},
-		{
-			Name: "Order is ready, OrderReadyStatus flag is disabled",
-			// ID 8 is mocked to be status "ready"
-			Request:      signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"ready\") was not \"pending\"","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
 		},
 		{
 			Name: "Order is expired",
@@ -1984,7 +1969,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:            "Good CSR",
+			Name:            "Good CSR, Pending Order",
 			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
@@ -2001,7 +1986,7 @@ func TestFinalizeOrder(t *testing.T) {
 }`,
 		},
 		{
-			Name:            "Good CSR, Ready Order, OrderReadyStatus flag enabled",
+			Name:            "Good CSR, Ready Order",
 			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
 			ExpectedBody: `
@@ -2016,18 +2001,11 @@ func TestFinalizeOrder(t *testing.T) {
   ],
   "finalize": "http://localhost/acme/finalize/1/8"
 }`,
-			Features: []string{"OrderReadyStatus"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			if len(tc.Features) > 0 {
-				for _, flag := range tc.Features {
-					_ = features.Set(map[string]bool{flag: true})
-				}
-				defer features.Reset()
-			}
 			responseWriter.Body.Reset()
 			responseWriter.HeaderMap = http.Header{}
 			wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, tc.Request)

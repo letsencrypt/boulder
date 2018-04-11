@@ -36,8 +36,7 @@
     },
     "features": {
       "EnforceV2ContentType": true,
-      "RPCHeadroom": true,
-      "OrderReadyStatus": true
+      "RPCHeadroom": true
     }
   },
 

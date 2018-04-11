@@ -2879,7 +2879,6 @@ func TestFinalizeOrder(t *testing.T) {
 		OrderReq       *rapb.FinalizeOrderRequest
 		ExpectedErrMsg string
 		ExpectIssuance bool
-		Features       []string
 	}{
 		{
 			Name: "No names in order",
@@ -2899,28 +2898,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") was not \"pending\"",
-		},
-		{
-			Name: "Wrong order state (ready), OrderReadyStatus feature disabled",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: &corepb.Order{
-					Status: &readyStatus,
-					Names:  []string{"example.com"},
-				},
-			},
-			ExpectedErrMsg: "Order's status (\"ready\") was not \"pending\"",
-		},
-		{
-			Name: "Wrong order state (pending), OrderReadyStatus feature enabled",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: &corepb.Order{
-					Status: &pendingStatus,
-					Names:  []string{"example.com"},
-				},
-			},
-			ExpectedErrMsg: "Order's status (\"pending\") was not \"ready\"",
-			Features:       []string{"OrderReadyStatus"},
+			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
 		},
 		{
 			Name: "Invalid CSR",
@@ -3008,16 +2986,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
 		},
 		{
-			Name: "Order with correct authorizations, old status, flag on",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: finalOrder,
-				Csr:   validCSR.Raw,
-			},
-			ExpectedErrMsg: "Order's status (\"pending\") was not \"ready\"",
-			Features:       []string{"OrderReadyStatus"},
-		},
-		{
-			Name: "Order with correct authorizations",
+			Name: "Order with correct authorizations, pending status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: finalOrder,
 				Csr:   validCSR.Raw,
@@ -3025,24 +2994,17 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectIssuance: true,
 		},
 		{
-			Name: "Order with correct authorizations, modern status, flag on",
+			Name: "Order with correct authorizations, ready status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: modernFinalOrder,
 				Csr:   validCSR.Raw,
 			},
 			ExpectIssuance: true,
-			Features:       []string{"OrderReadyStatus"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			if len(tc.Features) > 0 {
-				for _, flag := range tc.Features {
-					_ = features.Set(map[string]bool{flag: true})
-				}
-				defer features.Reset()
-			}
 			_, result := ra.FinalizeOrder(context.Background(), tc.OrderReq)
 			// If we don't expect issuance we expect an error
 			if !tc.ExpectIssuance {
