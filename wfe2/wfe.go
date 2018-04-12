@@ -1665,11 +1665,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// If the order's status is not pending we can not finalize it and must
-	// return an error
-	if *order.Status != string(core.StatusPending) {
+	// Prior to ACME draft-10 the "ready" status did not exist and orders in
+	// a pending status with valid authzs were finalizable. We accept both states
+	// here for deployability ease. In the future we will only allow ready orders
+	// to be finalized.
+	// TODO(@cpu): Forbid finalizing "Pending" orders once
+	// `features.Enabled(features.OrderReadyStatus)` is deployed
+	if *order.Status != string(core.StatusPending) &&
+		*order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed("Order's status (%q) was not pending", *order.Status), nil)
+			probs.Malformed(
+				"Order's status (%q) is not acceptable for finalization",
+				*order.Status),
+			nil)
 		return
 	}
 
