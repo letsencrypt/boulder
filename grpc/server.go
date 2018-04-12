@@ -52,7 +52,7 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, serverMetrics *grpc_pro
 	return grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(si.intercept),
-		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		grpc.MaxConcurrentStreams(uint32(maxConcurrentStreams)),
 	), l, nil
 }
 
