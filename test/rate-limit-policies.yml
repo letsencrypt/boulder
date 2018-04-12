@@ -1,7 +1,4 @@
 # See cmd/shell.go for definitions of these rate limits.
-totalCertificates:
-  window: 2160h
-  threshold: 100000
 certificatesPerName:
   window: 2160h
   threshold: 2
@@ -32,7 +29,7 @@ registrationsPerIPRange:
     127.0.0.1: 1000000
 pendingAuthorizationsPerAccount:
   window: 168h # 1 week, should match pending authorization lifetime.
-  threshold: 20
+  threshold: 150
 invalidAuthorizationsPerAccount:
   window: 5m
   threshold: 3

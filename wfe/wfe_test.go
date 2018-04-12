@@ -915,7 +915,7 @@ func TestIssueCertificate(t *testing.T) {
 		stats,
 		0,
 		testKeyPolicy,
-		0,
+		100,
 		true,
 		false,
 		300*24*time.Hour,

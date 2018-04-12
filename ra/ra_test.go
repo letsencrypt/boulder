@@ -22,6 +22,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -280,7 +281,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp)
+		1, testKeyPolicy, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -1079,10 +1080,6 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
@@ -1092,64 +1089,6 @@ func TestNewCertificate(t *testing.T) {
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
-}
-
-func TestTotalCertRateLimit(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.rlPolicies = &dummyRateLimitConfig{
-		TotalCertificatesPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	}
-	fc.Add(24 * 90 * time.Hour)
-
-	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
-	test.AssertNotError(t, err, "Could not store test data")
-	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
-
-	// Inject another final authorization to cover www.not-example.com
-	authzFinalWWW := AuthzFinal
-	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
-	test.AssertNotError(t, err, "Could not store test data")
-	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
-	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
-	}
-
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount not yet called")
-
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
-	// TODO(jsha): Since we're using a real SA rather than a mock, we call
-	// NewCertificate twice and insert the first result into the SA. Instead we
-	// should mock out the SA and have it return the cert count that we want.
-	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID, nil)
-	test.AssertNotError(t, err, "Failed to store certificate")
-
-	fc.Add(time.Hour)
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Total certificate rate limit failed")
-
-	fc.Add(time.Hour)
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount too long out of date")
 }
 
 func TestAuthzRateLimiting(t *testing.T) {
@@ -1333,10 +1272,9 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
 
 	// Test some fields of the initial policy to ensure it loaded correctly
-	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 100000)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 20)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 5)
 
@@ -1354,7 +1292,6 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// Test fields of the policy to make sure writing the new policy to the monitored file
 	// resulted in the runtime values being updated
-	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 99999)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 9999)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], 9999)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)
@@ -2749,7 +2686,9 @@ func TestFinalizeOrder(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	validStatus := "valid"
+	validStatus := string(core.StatusValid)
+	readyStatus := string(core.StatusReady)
+	processingStatus := false
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2816,9 +2755,25 @@ func TestFinalizeOrder(t *testing.T) {
 		Expires:        &expUnix,
 		Names:          []string{"not-example.com", "www.not-example.com"},
 		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
-		Status:         &pendingStatus,
+		Status:         &validStatus,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Enable the order ready status temporarily
+	_ = features.Set(map[string]bool{"OrderReadyStatus": true})
+	// Create an order with valid authzs, it should end up status ready in the
+	// resulting returned order
+	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:  &Registration.ID,
+		Expires:         &expUnix,
+		Names:           []string{"not-example.com", "www.not-example.com"},
+		Authorizations:  []string{finalAuthz.ID, finalAuthzB.ID},
+		Status:          &readyStatus,
+		BeganProcessing: &processingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
+	// Disable the order ready status again
+	_ = features.Set(map[string]bool{"OrderReadyStatus": false})
 
 	// Swallowing errors here because the CSRPEM is hardcoded test data expected
 	// to parse in all instance
@@ -2872,14 +2827,14 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "Order has no associated names",
 		},
 		{
-			Name: "Wrong order state",
+			Name: "Wrong order state (valid)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status: &validStatus,
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") was not pending",
+			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
 		},
 		{
 			Name: "Invalid CSR",
@@ -2967,9 +2922,17 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
 		},
 		{
-			Name: "Order with correct authorizations",
+			Name: "Order with correct authorizations, pending status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: finalOrder,
+				Csr:   validCSR.Raw,
+			},
+			ExpectIssuance: true,
+		},
+		{
+			Name: "Order with correct authorizations, ready status",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: modernFinalOrder,
 				Csr:   validCSR.Raw,
 			},
 			ExpectIssuance: true,
@@ -3611,6 +3574,225 @@ func TestWildcardOverlap(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("Got error %q, expected none", err)
+	}
+}
+
+// mockCAFailPrecert is a mock CA that always returns an error from `IssuePrecertificate`
+type mockCAFailPrecert struct {
+	mocks.MockCA
+	err error
+}
+
+func (ca *mockCAFailPrecert) IssuePrecertificate(
+	_ context.Context,
+	_ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	return nil, ca.err
+}
+
+// mockCAFailCertForPrecert is a mock CA that always returns an error from
+// `IssueCertificateForPrecertificate`
+type mockCAFailCertForPrecert struct {
+	mocks.MockCA
+	err error
+}
+
+// IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
+func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	return &capb.IssuePrecertificateResponse{
+		DER: []byte{},
+	}, nil
+}
+
+func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
+	_ context.Context,
+	_ *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
+	return core.Certificate{}, ca.err
+}
+
+// mockCAFailIssueCert is a mock CA that always returns an error from `IssueCertificate`
+type mockCAFailIssueCert struct {
+	mocks.MockCA
+	err error
+}
+
+func (ca *mockCAFailIssueCert) IssueCertificate(
+	_ context.Context,
+	_ *capb.IssueCertificateRequest) (core.Certificate, error) {
+	return core.Certificate{}, ca.err
+}
+
+// TestIssueCertificateInnerErrs tests that errors from the CA caught during
+// `ra.issueCertificateInner` are propogated correctly, with the part of the
+// issuance process that failed prefixed on the error message.
+func TestIssueCertificateInnerErrs(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.orderLifetime = 24 * time.Hour
+	exp := ra.clk.Now().Add(24 * time.Hour)
+
+	authzForIdent := func(domain string) core.Authorization {
+		template := AuthzInitial
+		template.Identifier = core.AcmeIdentifier{
+			Type:  "dns",
+			Value: domain,
+		}
+		// Create one valid HTTP challenge
+		httpChal := core.HTTPChallenge01()
+		httpChal.Status = core.StatusValid
+		// Set the template's challenges
+		template.Challenges = []core.Challenge{httpChal}
+		// Set the overall authz to valid
+		template.Status = "valid"
+		template.Expires = &exp
+		template.RegistrationID = Registration.ID
+		// Create the pending authz
+		authz, err := sa.NewPendingAuthorization(ctx, template)
+		if err != nil {
+			t.Fatalf("Could not create test pending authorization")
+		}
+		// Finalize the authz
+		err = sa.FinalizeAuthorization(ctx, authz)
+		if err != nil {
+			t.Fatalf("Could not finalize test pending authorization")
+		}
+		return authz
+	}
+
+	// Make some valid authorizations for some names
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	var authzs []core.Authorization
+	var authzIDs []string
+	for i, name := range names {
+		authzs = append(authzs, authzForIdent(name))
+		authzIDs = append(authzIDs, authzs[i].ID)
+	}
+
+	// Create a pending order for all of the names
+	expUnix := exp.Unix()
+	pendingStatus := "pending"
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &Registration.ID,
+		Expires:        &expUnix,
+		Names:          names,
+		Authorizations: authzIDs,
+		Status:         &pendingStatus,
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Generate a CSR covering the order names with a random RSA key
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           names,
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create test order CSR")
+
+	// Enable the EmbedSCTs feature so that IssuePrecertificate is used
+	csrOb, err := x509.ParseCertificateRequest(csr)
+	test.AssertNotError(t, err, "Error pasring generated CSR")
+
+	req := core.CertificateRequest{
+		Bytes: csr,
+		CSR:   csrOb,
+	}
+	logEvent := &certificateRequestEvent{}
+
+	testCases := []struct {
+		Name         string
+		Mock         core.CertificateAuthority
+		Features     map[string]bool
+		ExpectedErr  error
+		ExpectedProb *berrors.BoulderError
+	}{
+		{
+			Name: "vanilla error during IssuePrecertificate",
+			Mock: &mockCAFailPrecert{
+				err: fmt.Errorf("bad bad not good"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": true},
+			ExpectedErr: fmt.Errorf("issuing precertificate: bad bad not good"),
+		},
+		{
+			Name: "malformed problem during IssuePrecertificate",
+			Mock: &mockCAFailPrecert{
+				err: berrors.MalformedError("detected 1x whack attack"),
+			},
+			Features: map[string]bool{"EmbedSCTs": true},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing precertificate: detected 1x whack attack",
+				Type:   berrors.Malformed,
+			},
+		},
+		{
+			Name: "vanilla error during IssueCertificateForPrecertificate",
+			Mock: &mockCAFailCertForPrecert{
+				err: fmt.Errorf("aaaaaaaaaaaaaaaaaaaa!!"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": true},
+			ExpectedErr: fmt.Errorf("issuing certificate for precertificate: aaaaaaaaaaaaaaaaaaaa!!"),
+		},
+		{
+			Name: "malformed problem during IssueCertificateForPrecertificate",
+			Mock: &mockCAFailCertForPrecert{
+				err: berrors.MalformedError("provided DER is DERanged"),
+			},
+			Features: map[string]bool{"EmbedSCTs": true},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing certificate for precertificate: provided DER is DERanged",
+				Type:   berrors.Malformed,
+			},
+		},
+		{
+			Name: "vanilla error during IssueCertificate",
+			Mock: &mockCAFailIssueCert{
+				err: fmt.Errorf("CA is out of certificates, try again later"),
+			},
+			Features:    map[string]bool{"EmbedSCTs": false},
+			ExpectedErr: fmt.Errorf("issuing certificate: CA is out of certificates, try again later"),
+		},
+		{
+			Name: "malformed problem during IssueCertificate",
+			Mock: &mockCAFailIssueCert{
+				err: berrors.MalformedError("CSR had a jillion and one names"),
+			},
+			Features: map[string]bool{"EmbedSCTs": false},
+			ExpectedProb: &berrors.BoulderError{
+				Detail: "issuing certificate: CSR had a jillion and one names",
+				Type:   berrors.Malformed,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// Mock the CA
+			ra.CA = tc.Mock
+			// Set feature flags
+			_ = features.Set(tc.Features)
+			defer features.Reset()
+			// Attempt issuance
+			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(*order.Id), logEvent)
+			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
+			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
+			// If there is an expected `error` then match the error message
+			if tc.ExpectedErr != nil {
+				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
+			} else if tc.ExpectedProb != nil {
+				// If there is an expected `berrors.BoulderError` then we expect the
+				// `issueCertificateInner` error to be a `berrors.BoulderError`
+				berr, ok := err.(*berrors.BoulderError)
+				if !ok {
+					t.Errorf("Expected a boulder error, got %#v\n", err)
+				}
+				// Match the expected berror Type and Detail to the observed
+				test.AssertEquals(t, berr.Type, tc.ExpectedProb.Type)
+				test.AssertEquals(t, berr.Detail, tc.ExpectedProb.Detail)
+			}
+		})
 	}
 }
 

@@ -24,6 +24,8 @@ const (
 	ForceConsistentStatus
 	// Enforce prevention of use of disabled challenge types
 	EnforceChallengeDisable
+	// Ensure there is headroom in RPC timeouts to return an error to the client
+	RPCHeadroom
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	EmbedSCTs
@@ -34,6 +36,8 @@ const (
 	EnforceV2ContentType
 	// Reject new-orders that contain a hostname redundant with a wildcard.
 	EnforceOverlappingWildcards
+	// Set orders to status "ready" when they are awaiting finalization
+	OrderReadyStatus
 )
 
 // List of features and their default value, protected by fMu
@@ -46,6 +50,7 @@ var features = map[FeatureFlag]bool{
 	AllowRenewalFirstRL:         false,
 	WildcardDomains:             false,
 	EnforceChallengeDisable:     false, // deprecated
+	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
 	EmbedSCTs:                   false,
 	CancelCTSubmissions:         true,
@@ -53,6 +58,7 @@ var features = map[FeatureFlag]bool{
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,
 	EnforceOverlappingWildcards: false,
+	OrderReadyStatus:            false,
 }
 
 var fMu = new(sync.RWMutex)

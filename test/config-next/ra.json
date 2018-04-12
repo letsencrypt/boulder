@@ -40,12 +40,14 @@
     },
     "grpc": {
       "address": ":9094",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "wfe.boulder",
         "admin-revoker.boulder"
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "ReusePendingAuthz": true,

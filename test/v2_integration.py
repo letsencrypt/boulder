@@ -38,6 +38,9 @@ def test_wildcardmultidomain():
     """
     chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
 
+def test_http_challenge():
+    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
+
 def test_overlapping_wildcard():
     """
     Test issuance for a random domain and a wildcard version of the same domain
@@ -112,6 +115,16 @@ def test_bad_overlap_wildcard():
     chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
         lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
 
+def test_duplicate_orders():
+    """
+    Test that the same client issuing for the same domain names twice in a row
+    works without error.
+    """
+    client = chisel2.make_client(None)
+    domains = [ random_domain() ]
+    chisel2.auth_and_issue(domains, client=client)
+    chisel2.auth_and_issue(domains, client=client)
+
 def test_order_reuse_failed_authz():
     """
     Test that creating an order for a domain name, failing an authorization in
@@ -182,8 +195,8 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # Finalize the order without doing anything with the authorizations. YOLO
-    # We expect this to generate an unauthorized error.
+    # Finalizing an order early should generate an unauthorized error and we
+    # should check that the order is invalidated.
     chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
         lambda: client.finalize_order(order, deadline))
 

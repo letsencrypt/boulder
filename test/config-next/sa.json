@@ -13,6 +13,7 @@
     },
     "grpc": {
       "address": ":9095",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "admin-revoker.boulder",
         "ca.boulder",
@@ -26,8 +27,10 @@
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "WildcardDomains": true,
-      "AllowRenewalFirstRL": true
+      "AllowRenewalFirstRL": true,
+      "OrderReadyStatus": false
     }
   },
 

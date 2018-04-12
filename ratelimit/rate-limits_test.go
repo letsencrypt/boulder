@@ -73,12 +73,6 @@ func TestLoadPolicies(t *testing.T) {
 	err := policy.LoadPolicies(policyContent)
 	test.AssertNotError(t, err, "Failed to parse rate-limit-policies.yml")
 
-	// Test that the TotalCertificates section parsed correctly
-	totalCerts := policy.TotalCertificates()
-	test.AssertEquals(t, totalCerts.Threshold, 100000)
-	test.AssertEquals(t, len(totalCerts.Overrides), 0)
-	test.AssertEquals(t, len(totalCerts.RegistrationOverrides), 0)
-
 	// Test that the CertificatesPerName section parsed correctly
 	certsPerName := policy.CertificatesPerName()
 	test.AssertEquals(t, certsPerName.Threshold, 2)
@@ -109,7 +103,7 @@ func TestLoadPolicies(t *testing.T) {
 
 	// Test that the PendingAuthorizationsPerAccount section parsed correctly
 	pendingAuthsPerAcct := policy.PendingAuthorizationsPerAccount()
-	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 20)
+	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 150)
 	test.AssertEquals(t, len(pendingAuthsPerAcct.Overrides), 0)
 	test.AssertEquals(t, len(pendingAuthsPerAcct.RegistrationOverrides), 0)
 
@@ -142,7 +136,6 @@ func TestLoadPolicies(t *testing.T) {
 	// `LoadPolicy` call, and instead return empty RateLimitPolicy objects with default
 	// values.
 	emptyPolicy := New()
-	test.AssertEquals(t, emptyPolicy.TotalCertificates().Threshold, 0)
 	test.AssertEquals(t, emptyPolicy.CertificatesPerName().Threshold, 0)
 	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
 	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)

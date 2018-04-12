@@ -21,6 +21,7 @@
     },
     "grpc": {
       "address": ":9092",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -31,6 +32,7 @@
       "ServerURL": "http://boulder:6000"
     },
     "features": {
+      "RPCHeadroom": true,
       "VAChecksGSB": true,
       "IPv6First": true
     },

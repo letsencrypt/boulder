@@ -190,13 +190,20 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 	return metrics.NewPromScope(registry)
 }
 
-// FailOnError exits and prints an error message if we encountered a problem
+// Fail exits and prints an error message to stderr and the logger audit log.
+func Fail(msg string) {
+	logger := blog.Get()
+	logger.AuditErr(msg)
+	fmt.Fprintf(os.Stderr, msg)
+	os.Exit(1)
+}
+
+// FailOnError exits and prints an error message, but only if we encountered
+// a problem and err != nil
 func FailOnError(err error, msg string) {
 	if err != nil {
-		logger := blog.Get()
-		logger.AuditErr(fmt.Sprintf("%s: %s", msg, err))
-		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
-		os.Exit(1)
+		msg := fmt.Sprintf("%s: %s", msg, err)
+		Fail(msg)
 	}
 }
 
