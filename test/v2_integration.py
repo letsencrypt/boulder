@@ -185,8 +185,8 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # Finalizing an order early should generate an unauthorized error and we
-    # should check that the order is invalidated.
+    # Finalize the order without doing anything with the authorizations. YOLO
+    # We expect this to generate an unauthorized error.
     chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
         lambda: client.finalize_order(order, deadline))
 

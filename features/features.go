@@ -36,8 +36,6 @@ const (
 	EnforceV2ContentType
 	// Reject new-orders that contain a hostname redundant with a wildcard.
 	EnforceOverlappingWildcards
-	// Set orders to status "ready" when they are awaiting finalization
-	OrderReadyStatus
 )
 
 // List of features and their default value, protected by fMu
@@ -58,7 +56,6 @@ var features = map[FeatureFlag]bool{
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,
 	EnforceOverlappingWildcards: false,
-	OrderReadyStatus:            false,
 }
 
 var fMu = new(sync.RWMutex)
