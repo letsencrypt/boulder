@@ -1080,10 +1080,6 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
@@ -1093,64 +1089,6 @@ func TestNewCertificate(t *testing.T) {
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
-}
-
-func TestTotalCertRateLimit(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.rlPolicies = &dummyRateLimitConfig{
-		TotalCertificatesPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	}
-	fc.Add(24 * 90 * time.Hour)
-
-	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
-	test.AssertNotError(t, err, "Could not store test data")
-	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
-
-	// Inject another final authorization to cover www.not-example.com
-	authzFinalWWW := AuthzFinal
-	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
-	test.AssertNotError(t, err, "Could not store test data")
-	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
-	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
-	}
-
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount not yet called")
-
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
-	// TODO(jsha): Since we're using a real SA rather than a mock, we call
-	// NewCertificate twice and insert the first result into the SA. Instead we
-	// should mock out the SA and have it return the cert count that we want.
-	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID, nil)
-	test.AssertNotError(t, err, "Failed to store certificate")
-
-	fc.Add(time.Hour)
-	if err := ra.updateIssuedCount(); err != nil {
-		t.Fatal("Updating issuance count:", err)
-	}
-
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Total certificate rate limit failed")
-
-	fc.Add(time.Hour)
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
-	test.AssertError(t, err, "Expected to fail issuance when updateIssuedCount too long out of date")
 }
 
 func TestAuthzRateLimiting(t *testing.T) {
@@ -1334,7 +1272,6 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
 
 	// Test some fields of the initial policy to ensure it loaded correctly
-	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 100000)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
 	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
@@ -1355,7 +1292,6 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// Test fields of the policy to make sure writing the new policy to the monitored file
 	// resulted in the runtime values being updated
-	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 99999)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 9999)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], 9999)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)

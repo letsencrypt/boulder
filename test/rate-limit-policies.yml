@@ -1,7 +1,4 @@
 # See cmd/shell.go for definitions of these rate limits.
-totalCertificates:
-  window: 2160h
-  threshold: 100000
 certificatesPerName:
   window: 2160h
   threshold: 2
