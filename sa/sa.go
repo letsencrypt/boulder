@@ -1461,12 +1461,27 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	createdTS := order.Created.UnixNano()
 	req.Created = &createdTS
 
-	// Update the request with pending status (No need to calculate the status
-	// based on authzs here, we know a brand new order is always pending)
-	pendingStatus := string(core.StatusPending)
-	req.Status = &pendingStatus
+	// If the OrderReadyStatus feature is enabled we need to calculate the order
+	// status before returning it. Since it may have reused all valid
+	// authorizations the order may be "born" in a ready status.
+	if features.Enabled(features.OrderReadyStatus) {
+		// Calculate the status for the order
+		status, err := ssa.statusForOrder(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		req.Status = &status
+	} else {
+		// Update the request with pending status (No need to calculate the status
+		// based on authzs here, we know a brand new order is always pending when
+		// features.OrderReadyStatus isn't enabled)
+		pendingStatus := string(core.StatusPending)
+		req.Status = &pendingStatus
+	}
+	// A new order is never processing because it can't have been finalized yet
 	processingStatus := false
 	req.BeganProcessing = &processingStatus
+	// Return the new order
 	return req, nil
 }
 
@@ -1649,7 +1664,9 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we have began
 //     processing, but there is no certificate serial, the order is processing.
 //   * If all of the order's authorizations are valid, and we haven't begun
-//     processing, then the order is pending waiting a finalization request.
+//     processing, then the order is status ready (if
+//     `features.OrderReadyStatus` is enabled) or status processing otherwise.
+//     In both cases it is awaiting a finalization request.
 // An error is returned for any other case.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
@@ -1746,9 +1763,16 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// If the order is fully authorized, and we haven't begun processing it, then
-	// the order is still pending waiting a finalization request.
+	// the order is pending finalization and either status ready or status pending
+	// depending on the `OrderReadyStatus` feature flag. Historically we used
+	// "Pending" for this state but the ACME specification > draft-10 uses a new
+	// "Ready" state.
 	if fullyAuthorized && order.BeganProcessing != nil && !*order.BeganProcessing {
-		return string(core.StatusPending), nil
+		if features.Enabled(features.OrderReadyStatus) {
+			return string(core.StatusReady), nil
+		} else {
+			return string(core.StatusPending), nil
+		}
 	}
 
 	return "", berrors.InternalServerError(
