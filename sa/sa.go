@@ -1460,6 +1460,9 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	// Update the request with the created timestamp from the model
 	createdTS := order.Created.UnixNano()
 	req.Created = &createdTS
+	// A new order is never processing because it can't have been finalized yet
+	processingStatus := false
+	req.BeganProcessing = &processingStatus
 
 	// If the OrderReadyStatus feature is enabled we need to calculate the order
 	// status before returning it. Since it may have reused all valid
@@ -1478,9 +1481,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		pendingStatus := string(core.StatusPending)
 		req.Status = &pendingStatus
 	}
-	// A new order is never processing because it can't have been finalized yet
-	processingStatus := false
-	req.BeganProcessing = &processingStatus
 	// Return the new order
 	return req, nil
 }

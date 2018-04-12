@@ -115,6 +115,16 @@ def test_bad_overlap_wildcard():
     chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
         lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
 
+def test_duplicate_orders():
+    """
+    Test that the same client issuing for the same domain names twice in a row
+    works without error.
+    """
+    client = chisel2.make_client(None)
+    domains = [ random_domain() ]
+    chisel2.auth_and_issue(domains, client=client)
+    chisel2.auth_and_issue(domains, client=client)
+
 def test_order_reuse_failed_authz():
     """
     Test that creating an order for a domain name, failing an authorization in
