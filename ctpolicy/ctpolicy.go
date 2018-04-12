@@ -161,16 +161,15 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured logs
 func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
-	isPrecert := false
-	storeSCT := false
+	falseVar := false
 	for _, log := range ctp.finalLogs {
 		go func(l cmd.LogDescription) {
 			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
-				Precert:      &isPrecert,
-				StoreSCT:     &storeSCT,
+				Precert:      &falseVar,
+				StoreSCT:     &falseVar,
 			})
 			if err != nil {
 				ctp.log.Warning(fmt.Sprintf("ct submission of final cert to log %q failed: %s", l.URI, err))
