@@ -508,7 +508,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	if !features.Enabled(features.IPv6First) {
 		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = addresses[0]
-		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+		certs, err := va.getTLSSNICerts(ctx, address, identifier, challenge, zName)
 		return certs, validationRecords, err
 	}
 
@@ -518,7 +518,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
-		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+		certs, err := va.getTLSSNICerts(ctx, address, identifier, challenge, zName)
 
 		// If there is no error, return immediately
 		if err == nil {
@@ -547,7 +547,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	// talking to the first IPv6 address, try the first IPv4 address
 	address := net.JoinHostPort(v4[0].String(), thisRecord.Port)
 	thisRecord.AddressUsed = v4[0]
-	certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+	certs, err := va.getTLSSNICerts(ctx, address, identifier, challenge, zName)
 	return certs, validationRecords, err
 }
 
@@ -575,18 +575,21 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 	return validationRecords, probs.Unauthorized(errText)
 }
 
-func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) getTLSSNICerts(
+	ctx context.Context,
+	hostPort string,
+	identifier core.AcmeIdentifier,
+	challenge core.Challenge,
+	zName string,
+) ([]*x509.Certificate, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: singleDialTimeout}, "tcp", hostPort, &tls.Config{
-		ServerName:         zName,
-		InsecureSkipVerify: true,
-	})
-
+	conn, err := tlsDial(ctx, hostPort, zName)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err))
 		return nil, detailedError(err)
 	}
 	// close errors are not important here
+
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -602,6 +605,36 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier co
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
 	}
 	return certs, nil
+}
+
+// tlsDial does the equivalent of tls.Dial, but obeying a context. Once
+// tls.DialContextWithDialer is available, switch to that.
+func tlsDial(ctx context.Context, hostPort, zName string) (*tls.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, singleDialTimeout)
+	defer cancel()
+	dialer := &net.Dialer{}
+	netConn, err := dialer.DialContext(ctx, "tcp", hostPort)
+	if err != nil {
+		return nil, err
+	}
+	conn := tls.Client(netConn, &tls.Config{
+		ServerName:         zName,
+		InsecureSkipVerify: true,
+	})
+	errChan := make(chan error)
+	go func() {
+		err = conn.Handshake()
+		errChan <- err
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-errChan:
+		if err != nil {
+			return nil, err
+		}
+	}
+	return conn, nil
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
