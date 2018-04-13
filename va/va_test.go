@@ -372,7 +372,7 @@ type dnsMockReturnsUnroutable struct {
 }
 
 func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return []net.IP{net.ParseIP("10.255.255.1")}, nil
+	return []net.IP{net.ParseIP("198.51.100.1")}, nil
 }
 
 // TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
@@ -387,7 +387,19 @@ func TestHTTPDialTimeout(t *testing.T) {
 	defer cancel()
 
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
-	_, prob := va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
+	// The only method I've found so far to trigger a connect timeout is to
+	// connect to an unrouteable IP address. This usuall generates a connection
+	// timeout, but will rarely return "Network unreachable" instead. If we get
+	// that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
@@ -638,9 +650,22 @@ func TestTLSSNI01DialTimeout(t *testing.T) {
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
-
 	started := time.Now()
-	_, prob := va.validateTLSSNI01(ctx, dnsi("unroutable.invalid"), chall)
+
+	// The only method I've found so far to trigger a connect timeout is to
+	// connect to an unrouteable IP address. This usuall generates a connection
+	// timeout, but will rarely return "Network unreachable" instead. If we get
+	// that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, prob = va.validateTLSSNI01(ctx, dnsi("unroutable.invalid"), chall)
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
+
 	if prob == nil {
 		t.Fatalf("Validation should've failed")
 	}

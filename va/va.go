@@ -664,6 +664,9 @@ func detailedError(err error) *probs.ProblemDetails {
 			syscallErr.Err == syscall.ECONNREFUSED {
 			return probs.ConnectionFailure("Connection refused")
 		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
+			syscallErr.Err == syscall.ENETUNREACH {
+			return probs.ConnectionFailure("Network unreachable")
+		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
 			syscallErr.Err == syscall.ECONNRESET {
 			return probs.ConnectionFailure("Connection reset by peer")
 		} else if netErr.Timeout() && netErr.Op == "dial" {
