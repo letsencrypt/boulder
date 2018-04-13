@@ -75,6 +75,7 @@ func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubp
 	return &pubpb.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
 }
 
+// SubmitToSingleCT is a wrapper
 func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request *pubpb.Request) (*pubpb.Empty, error) {
 	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
 		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
@@ -84,9 +85,9 @@ func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request
 }
 
 // SubmitToSingleCTWithResult is a wrapper
-func (pc *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	if req == nil || req.Der == nil || req.LogURL == nil || req.LogPublicKey == nil {
 		return nil, errIncompleteRequest
 	}
-	return pc.inner.SubmitToSingleCTWithResult(ctx, req)
+	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
 }

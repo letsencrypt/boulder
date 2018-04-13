@@ -20,15 +20,31 @@ type CTPolicy struct {
 	pub           core.Publisher
 	groups        []cmd.CTGroup
 	informational []cmd.LogDescription
+	finalLogs     []cmd.LogDescription
 	log           blog.Logger
 }
 
 // New creates a new CTPolicy struct
 func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger) *CTPolicy {
+	var finalLogs []cmd.LogDescription
+	for _, group := range groups {
+		for _, log := range group.Logs {
+			if log.SubmitFinalCert {
+				finalLogs = append(finalLogs, log)
+			}
+		}
+	}
+	for _, log := range informational {
+		if log.SubmitFinalCert {
+			finalLogs = append(finalLogs, log)
+		}
+	}
+
 	return &CTPolicy{
 		pub:           pub,
 		groups:        groups,
 		informational: informational,
+		finalLogs:     finalLogs,
 		log:           log,
 	}
 }
@@ -140,4 +156,24 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 		ret = append(ret, res.sct)
 	}
 	return ret, nil
+}
+
+// SubmitFinalCert submits finalized certificates created from precertificates
+// to any configured logs
+func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
+	falseVar := false
+	for _, log := range ctp.finalLogs {
+		go func(l cmd.LogDescription) {
+			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+				LogURL:       &l.URI,
+				LogPublicKey: &l.Key,
+				Der:          cert,
+				Precert:      &falseVar,
+				StoreSCT:     &falseVar,
+			})
+			if err != nil {
+				ctp.log.Warning(fmt.Sprintf("ct submission of final cert to log %q failed: %s", l.URI, err))
+			}
+		}(log)
+	}
 }
