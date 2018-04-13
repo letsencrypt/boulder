@@ -125,6 +125,15 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
+	if pc.HTTPPort == 0 {
+		pc.HTTPPort = 80
+	}
+	if pc.HTTPSPort == 0 {
+		pc.HTTPSPort = 443
+	}
+	if pc.TLSPort == 0 {
+		pc.TLSPort = 443
+	}
 
 	return &ValidationAuthorityImpl{
 		log:               logger,

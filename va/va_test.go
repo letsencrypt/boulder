@@ -414,7 +414,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
-		"Fetching http://unroutable.invalid:\\d+/.well-known/acme-challenge/.*: Timeout during connect")
+		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
 	if !expectMatch.MatchString(prob.Detail) {
 		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
 			prob.Detail, expectMatch)
