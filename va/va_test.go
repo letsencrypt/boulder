@@ -601,7 +601,11 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 	// Set a short dial timeout so this test can happen quickly. Note: It would be
 	// better to override this with a context, but that doesn't work right now:
 	// https://github.com/letsencrypt/boulder/issues/3628
+	oldSingleDialTimeout := singleDialTimeout
 	singleDialTimeout = 50 * time.Millisecond
+	defer func() {
+		singleDialTimeout = oldSingleDialTimeout
+	}()
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
