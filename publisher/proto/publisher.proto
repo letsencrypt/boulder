@@ -11,6 +11,7 @@ message Request {
         optional string LogURL = 2;
         optional string LogPublicKey = 3;
         optional bool precert = 4;
+        optional bool storeSCT = 5;
 }
 
 message Result {
@@ -19,3 +20,4 @@ message Result {
 
 message Empty {
 }
+

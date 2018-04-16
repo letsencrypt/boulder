@@ -228,10 +228,19 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		isPrecert = *req.Precert
 	}
 
+	// Historically if a cert wasn't a precert we wanted to store the SCT,
+	// but for SCTs for final certificates generated from precerts we don't
+	// want to store those SCTs.
+	storeSCT := !isPrecert
+	if req.StoreSCT != nil {
+		storeSCT = *req.StoreSCT
+	}
+
 	sct, err := pub.singleLogSubmit(
 		ctx,
 		chain,
 		isPrecert,
+		storeSCT,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
@@ -273,6 +282,7 @@ func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
 	isPrecert bool,
+	storeSCT bool,
 	serial string,
 	ctLog *Log,
 ) (*ct.SignedCertificateTimestamp, error) {
@@ -326,9 +336,7 @@ func (pub *Impl) singleLogSubmit(
 		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
 	}
 
-	// Only store the SCT if it was for a certificate, we have no need for
-	// the precert once it is embedded in a certificate
-	if !isPrecert {
+	if storeSCT {
 		err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
 		if err != nil {
 			return nil, err
