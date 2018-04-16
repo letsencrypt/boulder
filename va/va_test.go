@@ -598,14 +598,6 @@ func slowTLSSrv() *httptest.Server {
 }
 
 func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
-	// Set a short dial timeout so this test can happen quickly. Note: It would be
-	// better to override this with a context, but that doesn't work right now:
-	// https://github.com/letsencrypt/boulder/issues/3628
-	oldSingleDialTimeout := singleDialTimeout
-	singleDialTimeout = 50 * time.Millisecond
-	defer func() {
-		singleDialTimeout = oldSingleDialTimeout
-	}()
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
@@ -628,7 +620,8 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 		t.Fatalf("TLSSNI returned before %s (%s) with %#v", timeout, took, prob)
 	}
 	if took > 2*timeout {
-		t.Fatalf("TLSSNI didn't timeout after %s", timeout)
+		t.Fatalf("TLSSNI didn't timeout after %s (took %s to return %#v)", timeout,
+			took, prob)
 	}
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
@@ -641,20 +634,15 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 }
 
 func TestTLSSNI01DialTimeout(t *testing.T) {
-	// Set a short dial timeout so this test can happen quickly. Note: It would be
-	// better to override this with a context, but that doesn't work right now:
-	// https://github.com/letsencrypt/boulder/issues/3628
-	old := singleDialTimeout
-	singleDialTimeout = 50 * time.Millisecond
-	defer func() {
-		singleDialTimeout = old
-	}()
-	timeout := singleDialTimeout
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 	started := time.Now()
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	// The only method I've found so far to trigger a connect timeout is to
 	// connect to an unrouteable IP address. This usuall generates a connection
@@ -734,10 +722,10 @@ func TestTLSSNI01TalkingToHTTP(t *testing.T) {
 
 	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
 	test.AssertError(t, prob, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
-	test.Assert(t, strings.HasSuffix(
-		prob.Detail,
-		"Server only speaks HTTP, not TLS",
-	), "validate TLS-SNI-01 didn't return useful error")
+	expected := "Server only speaks HTTP, not TLS"
+	if !strings.HasSuffix(prob.Detail, expected) {
+		t.Errorf("Got wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
 }
 
 func brokenTLSSrv() *httptest.Server {
