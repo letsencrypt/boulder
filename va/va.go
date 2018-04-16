@@ -43,9 +43,9 @@ const (
 	maxResponseSize = 128
 )
 
-// singleDialTimeout specifies how long an individual `Dial` operation may take
+// singleDialTimeout specifies how long an individual `DialContext` operation may take
 // before timing out. This timeout ignores the base RPC timeout and is strictly
-// used for the Dial operations that take place during an
+// used for the DialContext operations that take place during an
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
 var singleDialTimeout = time.Second * 10
 
@@ -125,6 +125,15 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 ) *ValidationAuthorityImpl {
+	if pc.HTTPPort == 0 {
+		pc.HTTPPort = 80
+	}
+	if pc.HTTPSPort == 0 {
+		pc.HTTPSPort = 443
+	}
+	if pc.TLSPort == 0 {
+		pc.TLSPort = 443
+	}
 
 	return &ValidationAuthorityImpl{
 		log:               logger,
@@ -178,8 +187,8 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 }
 
 // http01Dialer is a struct that exists to provide a dialer like object with
-// a `Dial` method that can be given to an http.Transport for HTTP-01
-// validation. The primary purpose of the http01Dialer's Dial method is to
+// a `DialContext` method that can be given to an http.Transport for HTTP-01
+// validation. The primary purpose of the http01Dialer's DialContext method is to
 // circumvent traditional DNS lookup and to use the IP addresses provided in the
 // inner `record` member populated by the `resolveAndConstructDialer` function.
 type http01Dialer struct {
@@ -190,19 +199,32 @@ type http01Dialer struct {
 
 // realDialer is used to create a true `net.Dialer` that can be used once an IP
 // address to connect to is determined. It increments the `dialerCount` integer
-// to track how many "fresh" dialer instances have been created during a `Dial`
-// for testing purposes.
+// to track how many "fresh" dialer instances have been created during a
+// `DialContext` for testing purposes.
 func (d *http01Dialer) realDialer() *net.Dialer {
 	// Record that we created a new instance of a real net.Dialer
 	d.dialerCount++
 	return &net.Dialer{Timeout: singleDialTimeout}
 }
 
-// Dial processes the IP addresses from the inner validation record, using
+// DialContext processes the IP addresses from the inner validation record, using
 // `realDialer` to make connections as required. If `features.IPv6First` is
 // enabled then for dual-homed hosts an initial IPv6 connection will be made
 // followed by a IPv4 connection if there is a failure with the IPv6 connection.
-func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
+func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		// Shouldn't happen: All requests should have a deadline by this point.
+		deadline = time.Now().Add(100 * time.Second)
+	} else {
+		// Set the context deadline slightly shorter than the HTTP deadline, so we
+		// get the dial error rather than a generic "deadline exceeded" error. This
+		// lets us give a more specific error to the subscriber.
+		deadline = deadline.Add(-10 * time.Millisecond)
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
 	var realDialer *net.Dialer
 
 	// Split the available addresses into v4 and v6 addresses
@@ -219,7 +241,7 @@ func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
 		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
 		d.record.AddressUsed = addresses[0]
 		realDialer = d.realDialer()
-		return realDialer.Dial("tcp", address)
+		return realDialer.DialContext(ctx, "tcp", address)
 	}
 
 	// If the IPv6 first feature is enabled and there is at least one IPv6 address
@@ -228,7 +250,7 @@ func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
 		address := net.JoinHostPort(v6[0].String(), d.record.Port)
 		d.record.AddressUsed = v6[0]
 		realDialer = d.realDialer()
-		conn, err := realDialer.Dial("tcp", address)
+		conn, err := realDialer.DialContext(ctx, "tcp", address)
 
 		// If there is no error, return immediately
 		if err == nil {
@@ -257,7 +279,7 @@ func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
 	address := net.JoinHostPort(v4[0].String(), d.record.Port)
 	d.record.AddressUsed = v4[0]
 	realDialer = d.realDialer()
-	return realDialer.Dial("tcp", address)
+	return realDialer.DialContext(ctx, "tcp", address)
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
@@ -325,6 +347,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		return nil, nil, probs.Malformed("URL provided for HTTP was invalid")
 	}
 
+	httpRequest = httpRequest.WithContext(ctx)
 	if va.userAgent != "" {
 		httpRequest.Header["User-Agent"] = []string{va.userAgent}
 	}
@@ -332,7 +355,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	dialer, prob := va.resolveAndConstructDialer(ctx, host, port)
 	dialer.record.URL = url.String()
 	// Start with an empty validation record list - we will add a record after
-	// each dialer.Dial()
+	// each dialer.DialContext()
 	var validationRecords []core.ValidationRecord
 	if prob != nil {
 		return nil, []core.ValidationRecord{dialer.record}, prob
@@ -345,9 +368,9 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
 		DisableKeepAlives: true,
-		// Intercept Dial in order to connect to the IP address we
+		// Intercept DialContext in order to connect to the IP address we
 		// select.
-		Dial: dialer.Dial,
+		DialContext: dialer.DialContext,
 	}
 
 	// Some of our users use mod_security. Mod_security sees a lack of Accept
@@ -401,7 +424,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		if err != nil {
 			return err
 		}
-		tr.Dial = dialer.Dial
+		tr.DialContext = dialer.DialContext
 		va.log.Debug(fmt.Sprintf("%s [%s] redirect from %q to %q [%s]", challenge.Type, identifier, via[len(via)-1].URL.String(), req.URL.String(), dialer.record.AddressUsed))
 		return nil
 	}
@@ -650,12 +673,19 @@ func detailedError(err error) *probs.ProblemDetails {
 			syscallErr.Err == syscall.ECONNREFUSED {
 			return probs.ConnectionFailure("Connection refused")
 		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
+			syscallErr.Err == syscall.ENETUNREACH {
+			return probs.ConnectionFailure("Network unreachable")
+		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
 			syscallErr.Err == syscall.ECONNRESET {
 			return probs.ConnectionFailure("Connection reset by peer")
+		} else if netErr.Timeout() && netErr.Op == "dial" {
+			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+		} else if netErr.Timeout() {
+			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netErr.Op))
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
-		return probs.ConnectionFailure("Timeout")
+		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if berrors.Is(err, berrors.ConnectionFailure) {
 		return probs.ConnectionFailure(err.Error())
