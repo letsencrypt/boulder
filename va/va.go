@@ -622,13 +622,12 @@ func tlsDial(ctx context.Context, hostPort, zName string) (*tls.Conn, error) {
 	})
 	errChan := make(chan error)
 	go func() {
-		err = conn.Handshake()
-		errChan <- err
+		errChan <- conn.Handshake()
 	}()
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-errChan:
+	case err := <-errChan:
 		if err != nil {
 			return nil, err
 		}
