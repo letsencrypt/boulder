@@ -589,7 +589,6 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(
 		return nil, detailedError(err)
 	}
 	// close errors are not important here
-
 	defer func() {
 		_ = conn.Close()
 	}()
