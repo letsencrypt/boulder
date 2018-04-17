@@ -1035,7 +1035,7 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 	var issued *time.Time
 	// If the request.Issued int64 pointer isn't nil, create a pointer to
 	// a time.Time instance with its value.
-	if *request.Issued != 0 {
+	if request.Issued != nil && *request.Issued != 0 {
 		reqIssued := time.Unix(0, *request.Issued)
 		issued = &reqIssued
 	}
