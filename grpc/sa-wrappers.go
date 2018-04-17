@@ -442,11 +442,21 @@ func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Cont
 	return nil
 }
 
-func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64, ocspResponse []byte) (string, error) {
+func (sac StorageAuthorityClientWrapper) AddCertificate(
+	ctx context.Context,
+	der []byte,
+	regID int64,
+	ocspResponse []byte,
+	issued *time.Time) (string, error) {
+	issuedTS := int64(0)
+	if issued != nil {
+		issuedTS = issued.UnixNano()
+	}
 	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:   der,
-		RegID: &regID,
-		Ocsp:  ocspResponse,
+		Der:    der,
+		RegID:  &regID,
+		Ocsp:   ocspResponse,
+		Issued: &issuedTS,
 	})
 	if err != nil {
 		return "", err
@@ -1014,11 +1024,23 @@ func (sas StorageAuthorityServerWrapper) MarkCertificateRevoked(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	// NOTE(@cpu): We allow `request.Issued` to be nil here for deployability aid.
+	// This allows a RA that hasn't been updated to send this parameter to operate
+	// correctly. We replace the nil value with a default in the SA's
+	// `AddCertificate` impl
 	if request == nil || request.Der == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
 
-	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID, request.Ocsp)
+	var issued *time.Time
+	// If the request.Issued int64 pointer isn't nil, create a pointer to
+	// a time.Time instance with its value.
+	if *request.Issued != 0 {
+		reqIssued := time.Unix(0, *request.Issued)
+		issued = &reqIssued
+	}
+
+	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID, request.Ocsp, issued)
 	if err != nil {
 		return nil, err
 	}

@@ -309,7 +309,7 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte, _ *time.Time) (digest string, err error) {
 	return
 }
 

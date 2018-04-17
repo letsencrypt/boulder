@@ -166,7 +166,7 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte) (string, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
 	m.certificate.DER = der
 	return "", nil
 }

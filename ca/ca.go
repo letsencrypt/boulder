@@ -98,7 +98,7 @@ const (
 )
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 }
 
 type certificateType string
@@ -663,7 +663,8 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 		// and generate the initial response in this case.
 	}
 
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
+	now := ca.clk.Now()
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp, &now)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any

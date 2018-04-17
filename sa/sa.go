@@ -887,7 +887,20 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64, ocspResponse []byte) (string, error) {
+func (ssa *SQLStorageAuthority) AddCertificate(
+	ctx context.Context,
+	certDER []byte,
+	regID int64,
+	ocspResponse []byte,
+	issued *time.Time) (string, error) {
+	// NOTE(@cpu): Historically `AddCertificate` was hardcoded to set the added
+	// `core.Certificate`'s `Issued` field to the current time. If the `issued`
+	// parameter is nil then default to using now as the issued time to preserve
+	// this historic default.
+	if issued == nil {
+		now := ssa.clk.Now()
+		issued = &now
+	}
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err
@@ -900,7 +913,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Serial:         serial,
 		Digest:         digest,
 		DER:            certDER,
-		Issued:         ssa.clk.Now(),
+		Issued:         *issued,
 		Expires:        parsedCertificate.NotAfter,
 	}
 
