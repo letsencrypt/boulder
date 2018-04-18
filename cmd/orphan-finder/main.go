@@ -119,7 +119,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	// when we know it was an orphan issued in the past. Because certificates are
 	// backdated we need to add the backdate duration to find the true issued
 	// time.
-	issuedDate := cert.NotBefore.Add(1 * backdateDuration)
+	issuedDate := cert.NotBefore.Add(backdateDuration)
 	_, err = sa.AddCertificate(ctx, der, int64(regID), nil, &issuedDate)
 	if err != nil {
 		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
