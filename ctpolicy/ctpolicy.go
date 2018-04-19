@@ -60,25 +60,17 @@ type result struct {
 // getting a single SCT.
 func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
-	var subCtx context.Context
-	var cancel func()
-	if features.Enabled(features.CancelCTSubmissions) {
-		subCtx, cancel = context.WithCancel(ctx)
-	} else {
-		subCtx, cancel = ctx, func() {}
-	}
-	defer cancel()
 	isPrecert := features.Enabled(features.EmbedSCTs)
 	for _, l := range group.Logs {
 		go func(l cmd.LogDescription) {
-			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
+			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
 				Precert:      &isPrecert,
 			})
 			if err != nil {
-				// Only log the error if it is not a result of canceling subCtx
+				// Only log the error if it is not a result of the context being canceled
 				if !canceled.Is(err) {
 					ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
 				}
@@ -111,13 +103,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 // the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDERs, error) {
 	results := make(chan result, len(ctp.groups))
-	var subCtx context.Context
-	var cancel func()
-	if features.Enabled(features.CancelCTSubmissions) {
-		subCtx, cancel = context.WithCancel(ctx)
-	} else {
-		subCtx, cancel = ctx, func() {}
-	}
+	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for i, g := range ctp.groups {
 		go func(i int, g cmd.CTGroup) {
@@ -132,7 +118,11 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 	isPrecert := features.Enabled(features.EmbedSCTs)
 	for _, log := range ctp.informational {
 		go func(l cmd.LogDescription) {
-			_, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
+			// We use a context.Background() here instead of subCtx because these
+			// submissions are running in a goroutine and we don't want them to be
+			// cancelled when the caller of CTPolicy.GetSCTs returns and cancels
+			// its RPC context.
+			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
 				Der:          cert,
