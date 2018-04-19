@@ -414,8 +414,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.3.2-30-g7881288",
-			"Rev": "7881288a8a3d24d7ae2add26fea4111e8a189516"
+			"Comment": "v0.4.0-8-g542377b",
+			"Rev": "542377b4412b209bdfc880fd4d698f7fd171aa5e"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cryptobyte",
