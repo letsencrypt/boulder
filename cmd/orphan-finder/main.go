@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -41,11 +42,15 @@ type config struct {
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
 	Syslog    cmd.SyslogConfig
-	Features  map[string]bool
+	// Backdate specifies how to adjust a certificate's NotBefore date to get back
+	// to the original issued date. It should match the value used in
+	// `test/config/ca.json` for the CA "backdate" value.
+	Backdate cmd.ConfigDuration
+	Features map[string]bool
 }
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
 }
 
@@ -55,20 +60,22 @@ var (
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
 
-func checkDER(sai certificateStorage, der []byte) error {
+var backdateDuration time.Duration
+
+func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, error) {
 	ctx := context.Background()
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return fmt.Errorf("Failed to parse DER: %s", err)
+		return nil, fmt.Errorf("Failed to parse DER: %s", err)
 	}
 	_, err = sai.GetCertificate(ctx, core.SerialToString(cert.SerialNumber))
 	if err == nil {
-		return errAlreadyExists
+		return nil, errAlreadyExists
 	}
 	if berrors.Is(err, berrors.NotFound) {
-		return nil
+		return cert, nil
 	}
-	return fmt.Errorf("Existing certificate lookup failed: %s", err)
+	return nil, fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
 func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
@@ -86,7 +93,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		logger.AuditErr(fmt.Sprintf("Couldn't decode hex: %s, [%s]", err, line))
 		return true, false
 	}
-	err = checkDER(sa, der)
+	cert, err := checkDER(sa, der)
 	if err != nil {
 		logFunc := logger.Err
 		if err == errAlreadyExists {
@@ -107,8 +114,13 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		return true, false
 	}
 	// OCSP-Updater will do the first response generation for this cert so pass an
-	// empty OCSP response
-	_, err = sa.AddCertificate(ctx, der, int64(regID), nil)
+	// empty OCSP response. We use `cert.NotBefore` as the issued date to avoid
+	// the SA tagging this certificate with an issued date of the current time
+	// when we know it was an orphan issued in the past. Because certificates are
+	// backdated we need to add the backdate duration to find the true issued
+	// time.
+	issuedDate := cert.NotBefore.Add(backdateDuration)
+	_, err = sa.AddCertificate(ctx, der, int64(regID), nil, &issuedDate)
 	if err != nil {
 		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
@@ -133,6 +145,8 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	conn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+
+	backdateDuration = conf.Backdate.Duration
 	return logger, sac
 }
 
@@ -192,9 +206,12 @@ func main() {
 		}
 		der, err := ioutil.ReadFile(*derPath)
 		cmd.FailOnError(err, "Failed to read DER file")
-		err = checkDER(sa, der)
+		cert, err := checkDER(sa, der)
 		cmd.FailOnError(err, "Pre-AddCertificate checks failed")
-		_, err = sa.AddCertificate(ctx, der, int64(*regID), nil)
+		// Because certificates are backdated we need to add the backdate duration
+		// to find the true issued time.
+		issuedDate := cert.NotBefore.Add(1 * backdateDuration)
+		_, err = sa.AddCertificate(ctx, der, int64(*regID), nil, &issuedDate)
 		cmd.FailOnError(err, "Failed to add certificate to database")
 
 	default:
