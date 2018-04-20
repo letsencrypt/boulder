@@ -431,7 +431,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	client := http.Client{
 		Transport:     tr,
 		CheckRedirect: logRedirect,
-		Timeout:       singleDialTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
 	// Append a validation record now that we have dialed the dialer
