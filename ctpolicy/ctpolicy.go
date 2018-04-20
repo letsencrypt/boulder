@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
@@ -69,7 +70,10 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	}
 	defer cancel()
 	isPrecert := features.Enabled(features.EmbedSCTs)
-	for _, l := range group.Logs {
+	// Randomize the order in which we send requests to the logs in a group
+	// so we maximize the distribution of logs we get SCTs from.
+	for _, i := range rand.Perm(len(group.Logs)) {
+		l := group.Logs[i]
 		go func(l cmd.LogDescription) {
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(subCtx, &pubpb.Request{
 				LogURL:       &l.URI,
