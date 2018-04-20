@@ -171,9 +171,9 @@ func main() {
 				Logs: logs,
 			}
 		}
-		ctp = ctpolicy.New(pubc, groups, nil, logger)
+		ctp = ctpolicy.New(pubc, groups, nil, logger, scope)
 	} else if c.RA.CTLogGroups2 != nil {
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger)
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 	}
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics)

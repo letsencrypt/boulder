@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
@@ -11,7 +12,9 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // CTPolicy is used to hold information about SCTs required from various
@@ -22,10 +25,12 @@ type CTPolicy struct {
 	informational []cmd.LogDescription
 	finalLogs     []cmd.LogDescription
 	log           blog.Logger
+
+	winnerCounter *prometheus.CounterVec
 }
 
 // New creates a new CTPolicy struct
-func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger) *CTPolicy {
+func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger, stats metrics.Scope) *CTPolicy {
 	var finalLogs []cmd.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
@@ -40,17 +45,28 @@ func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescri
 		}
 	}
 
+	winnerCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "sct_race_winner",
+			Help: "Counter of logs that win SCT submission races.",
+		},
+		[]string{"log", "group"},
+	)
+	stats.MustRegister(winnerCounter)
+
 	return &CTPolicy{
 		pub:           pub,
 		groups:        groups,
 		informational: informational,
 		finalLogs:     finalLogs,
 		log:           log,
+		winnerCounter: winnerCounter,
 	}
 }
 
 type result struct {
 	sct []byte
+	log string
 	err error
 }
 
@@ -61,7 +77,10 @@ type result struct {
 func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	isPrecert := features.Enabled(features.EmbedSCTs)
-	for _, l := range group.Logs {
+	// Randomize the order in which we send requests to the logs in a group
+	// so we maximize the distribution of logs we get SCTs from.
+	for _, i := range rand.Perm(len(group.Logs)) {
+		l := group.Logs[i]
 		go func(l cmd.LogDescription) {
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
 				LogURL:       &l.URI,
@@ -77,7 +96,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 				results <- result{err: err}
 				return
 			}
-			results <- result{sct: sct.Sct}
+			results <- result{sct: sct.Sct, log: l.URI}
 		}(l)
 	}
 
@@ -87,6 +106,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 			return nil, ctx.Err()
 		case res := <-results:
 			if res.sct != nil {
+				ctp.winnerCounter.With(prometheus.Labels{"log": res.log, "group": group.Name}).Inc()
 				// Return the very first SCT we get back. Returning triggers
 				// the defer'd context cancellation method.
 				return res.sct, nil
