@@ -276,7 +276,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		Status:    core.StatusValid,
 	})
 
-	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log)
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log, metrics.NewNoopScope())
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -3508,7 +3508,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		PEM: eeCertPEM,
 	}
 
-	ctp := ctpolicy.New(&timeoutPub{}, []cmd.CTGroup{{}}, nil, log)
+	ctp := ctpolicy.New(&timeoutPub{}, []cmd.CTGroup{{}}, nil, log, metrics.NewNoopScope())
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,

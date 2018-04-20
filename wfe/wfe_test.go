@@ -908,7 +908,7 @@ func TestIssueCertificate(t *testing.T) {
 	// authorized, etc.
 	stats := metrics.NewNoopScope()
 
-	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, wfe.log)
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, wfe.log, metrics.NewNoopScope())
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		wfe.log,
