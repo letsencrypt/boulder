@@ -29,6 +29,7 @@ const (
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	EmbedSCTs
+	// CancelCTSubmissions is deprecated
 	CancelCTSubmissions
 	VAChecksGSB
 	// Return errors to ACMEv2 clients that do not send the correct JWS
@@ -53,7 +54,7 @@ var features = map[FeatureFlag]bool{
 	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
 	EmbedSCTs:                   false,
-	CancelCTSubmissions:         true,
+	CancelCTSubmissions:         true, // deprecated
 	VAChecksGSB:                 false,
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,

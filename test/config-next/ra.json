@@ -51,7 +51,6 @@
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "ReusePendingAuthz": true,
-      "CancelCTSubmissions": false,
       "EmbedSCTs": true,
       "EnforceOverlappingWildcards": true,
       "VAChecksGSB": true
