@@ -439,7 +439,6 @@ func initStats(scope metrics.Scope) mailerStats {
 }
 
 func main() {
-	saAddr := flag.String("sa-addr", "", "SA gRPC server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
@@ -458,10 +457,6 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-
-	if *saAddr != "" {
-		c.Mailer.SAService.ServerAddresses = []string{*saAddr}
-	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)
 	defer logger.AuditPanic()

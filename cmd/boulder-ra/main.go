@@ -101,9 +101,7 @@ type config struct {
 
 func main() {
 	grpcAddr := flag.String("grpc-addr", "", "gRPC listen address override")
-	saAddr := flag.String("sa-addr", "", "SA gRPC server address override")
-	vaAddr := flag.String("va-addr", "", "VA gRPC server address override")
-	caAddr := flag.String("ca-addr", "", "CA gRPC server address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -121,14 +119,8 @@ func main() {
 	if *grpcAddr != "" {
 		c.RA.GRPC.Address = *grpcAddr
 	}
-	if *saAddr != "" {
-		c.RA.SAService.ServerAddresses = []string{*saAddr}
-	}
-	if *vaAddr != "" {
-		c.RA.VAService.ServerAddresses = []string{*vaAddr}
-	}
-	if *caAddr != "" {
-		c.RA.CAService.ServerAddresses = []string{*caAddr}
+	if *debugAddr != "" {
+		c.RA.DebugAddr = *debugAddr
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.RA.DebugAddr)

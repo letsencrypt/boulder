@@ -107,7 +107,7 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 func main() {
 	caAddr := flag.String("ca-grpc-addr", "", "CA gRPC listen address override")
 	ocspAddr := flag.String("ocsp-grpc-addr", "", "OCSP gRPC listen address override")
-	saAddr := flag.String("sa-addr", "", "SA gRPC server address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -128,8 +128,8 @@ func main() {
 	if *ocspAddr != "" {
 		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
 	}
-	if *saAddr != "" {
-		c.CA.SAService.ServerAddresses = []string{*saAddr}
+	if *debugAddr != "" {
+		c.CA.DebugAddr = *debugAddr
 	}
 
 	if c.CA.MaxNames == 0 {
