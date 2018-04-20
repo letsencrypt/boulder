@@ -105,9 +105,9 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 }
 
 func main() {
-	caAddr := flag.String("ca-grpc-addr", "", "CA gRPC listen address override")
-	ocspAddr := flag.String("ocsp-grpc-addr", "", "OCSP gRPC listen address override")
-	debugAddr := flag.String("debug-addr", "", "Debug server address override")
+	caPort := flag.Int("ca-port", 0, "CA gRPC listen port override")
+	ocspPort := flag.Int("ocsp-port", 0, "OCSP gRPC listen port override")
+	debugPort := flag.Int("debug-port", 0, "Debug server port override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -122,14 +122,14 @@ func main() {
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	if *caAddr != "" {
-		c.CA.GRPCCA.Address = *caAddr
+	if *caPort != 0 {
+		c.CA.GRPCCA.Address = fmt.Sprintf(":%d", *caPort)
 	}
-	if *ocspAddr != "" {
-		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
+	if *ocspPort != 0 {
+		c.CA.GRPCOCSPGenerator.Address = fmt.Sprintf(":%d", *ocspPort)
 	}
-	if *debugAddr != "" {
-		c.CA.DebugAddr = *debugAddr
+	if *debugPort != 0 {
+		c.CA.DebugAddr = fmt.Sprintf(":%d", *debugPort)
 	}
 
 	if c.CA.MaxNames == 0 {

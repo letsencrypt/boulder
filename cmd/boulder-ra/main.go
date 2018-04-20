@@ -100,8 +100,8 @@ type config struct {
 }
 
 func main() {
-	grpcAddr := flag.String("grpc-addr", "", "gRPC listen address override")
-	debugAddr := flag.String("debug-addr", "", "Debug server address override")
+	grpcPort := flag.Int("port", 0, "gRPC listen port override")
+	debugPort := flag.Int("debug-port", 0, "Debug server port override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -116,11 +116,11 @@ func main() {
 	err = features.Set(c.RA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	if *grpcAddr != "" {
-		c.RA.GRPC.Address = *grpcAddr
+	if *grpcPort != 0 {
+		c.RA.GRPC.Address = fmt.Sprintf(":%d", *grpcPort)
 	}
-	if *debugAddr != "" {
-		c.RA.DebugAddr = *debugAddr
+	if *debugPort != 0 {
+		c.RA.DebugAddr = fmt.Sprintf(":%d", *debugPort)
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.RA.DebugAddr)
