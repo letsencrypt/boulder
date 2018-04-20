@@ -77,6 +77,8 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.Registrat
 }
 
 func main() {
+	saAddr := flag.String("sa-addr", "", "SA gRPC server address override")
+	raAddr := flag.String("ra-addr", "", "RA gRPC server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -90,6 +92,13 @@ func main() {
 
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *saAddr != "" {
+		c.WFE.SAService.ServerAddresses = []string{*saAddr}
+	}
+	if *raAddr != "" {
+		c.WFE.RAService.ServerAddresses = []string{*raAddr}
+	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()

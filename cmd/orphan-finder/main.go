@@ -128,7 +128,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (blog.Logger, core.StorageAuthority) {
+func setup(configFile string, saAddr string) (blog.Logger, core.StorageAuthority) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -136,6 +136,11 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if saAddr != "" {
+		conf.SAService.ServerAddresses = []string{saAddr}
+	}
+
 	logger := cmd.NewLogger(conf.Syslog)
 
 	tlsConfig, err := conf.TLS.Load()
@@ -158,6 +163,7 @@ func main() {
 
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
+	saAddr := flagSet.String("sa-addr", "", "SA gRPC server address override")
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
 	logPath := flagSet.String("log-file", "", "Path to boulder-ca log file to parse")
 	derPath := flagSet.String("der-file", "", "Path to DER certificate file")
@@ -177,7 +183,7 @@ func main() {
 
 	switch command {
 	case "parse-ca-log":
-		logger, sa := setup(*configFile)
+		logger, sa := setup(*configFile, *saAddr)
 		if *logPath == "" {
 			usage()
 		}
@@ -200,7 +206,7 @@ func main() {
 
 	case "parse-der":
 		ctx := context.Background()
-		_, sa := setup(*configFile)
+		_, sa := setup(*configFile, *saAddr)
 		if *derPath == "" || *regID == 0 {
 			usage()
 		}

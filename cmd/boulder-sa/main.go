@@ -27,6 +27,7 @@ type config struct {
 }
 
 func main() {
+	grpcAddr := flag.String("grpc-addr", "", "gRPC listen address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -40,6 +41,10 @@ func main() {
 
 	err = features.Set(c.SA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *grpcAddr != "" {
+		c.SA.GRPC.Address = *grpcAddr
+	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
