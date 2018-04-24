@@ -481,8 +481,10 @@ func main() {
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
+	clk := cmd.Clock()
+
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -557,7 +559,7 @@ func main() {
 		emailTemplate:   tmpl,
 		nagTimes:        nags,
 		limit:           c.Mailer.CertLimit,
-		clk:             cmd.Clock(),
+		clk:             clk,
 		stats:           initStats(scope),
 	}
 

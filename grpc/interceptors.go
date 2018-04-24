@@ -1,9 +1,12 @@
 package grpc
 
 import (
+	"strconv"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -13,20 +16,58 @@ import (
 	"github.com/letsencrypt/boulder/features"
 )
 
+const (
+	returnOverhead         = 20 * time.Millisecond
+	meaningfulWorkOverhead = 100 * time.Millisecond
+	clientRequestTimeKey   = "client-request-time"
+	serverLatencyKey       = "server-latency"
+)
+
 // serverInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
 type serverInterceptor struct {
 	serverMetrics *grpc_prometheus.ServerMetrics
+	rpcLag        prometheus.Histogram
+	clk           clock.Clock
 }
 
-const returnOverhead = 20 * time.Millisecond
-const meaningfulWorkOverhead = 100 * time.Millisecond
+func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
+	return serverInterceptor{
+		serverMetrics: metrics.GRPCMetrics,
+		rpcLag:        metrics.RPCLag,
+		clk:           clk,
+	}
+}
 
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
+
+	// Extract the grpc metadata from the context
+	md, ok := metadata.FromContext(ctx)
+	if !ok {
+		return nil, berrors.InternalServerError("passed context with no grpc metadata")
+	}
+	// Ensure only one value is present
+	if len(md[clientRequestTimeKey]) != 1 {
+		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: "+
+			"expected 1 value, found %d",
+			clientRequestTimeKey, len(md[clientRequestTimeKey]))
+	}
+	// Convert the metadata request time into an int64
+	reqTimeStr := md[clientRequestTimeKey][0]
+	reqTimeUnix, err := strconv.ParseInt(reqTimeStr, 10, 64)
+	if err != nil {
+		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: %s - %s",
+			clientRequestTimeKey, md[clientRequestTimeKey], err)
+	}
+	// Calculate the elapsed time since the client sent the RPC
+	reqTime := time.Unix(0, reqTimeUnix)
+	elapsed := si.clk.Now().Sub(reqTime)
+	// Publish an RPC latency observation to the histogram
+	si.rpcLag.Observe(elapsed.Seconds())
 
 	if features.Enabled(features.RPCHeadroom) {
 		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
@@ -69,6 +110,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 type clientInterceptor struct {
 	timeout       time.Duration
 	clientMetrics *grpc_prometheus.ClientMetrics
+	clk           clock.Clock
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
@@ -86,9 +128,16 @@ func (ci *clientInterceptor) intercept(
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
-	// Create grpc/metadata.Metadata to encode internal error type if one is returned
-	md := metadata.New(nil)
+	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
+	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
+	// Create a grpc/metadata.Metadata instance. Initialize the metadata with the
+	// request time.
+	md := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
+	// Configure a grpc Trailer with the metadata. This allows us to wrap error
+	// types in the server interceptor later on.
 	opts = append(opts, grpc.Trailer(&md))
+	// Configure the localCtx with the metadata so it gets sent along in the request
+	localCtx = metadata.NewContext(localCtx, md)
 	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, md)

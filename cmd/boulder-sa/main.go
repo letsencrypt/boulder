@@ -66,17 +66,19 @@ func main() {
 	}
 	go sa.ReportDbConnCount(dbMap, scope)
 
+	clk := cmd.Clock()
+
 	parallel := saConf.ParallelismPerRPC
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, cmd.Clock(), logger, scope, parallel)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, clk, logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics)
+	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 	gw := bgrpc.NewStorageAuthorityServer(sai)
 	sapb.RegisterStorageAuthorityServer(grpcSrv, gw)

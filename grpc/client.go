@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
@@ -16,7 +17,7 @@ import (
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, clientMetrics *grpc_prometheus.ClientMetrics) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, clientMetrics *grpc_prometheus.ClientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
 		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
 	}
@@ -24,7 +25,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, clientMetrics *grpc_p
 		return nil, errNilTLS
 	}
 
-	ci := clientInterceptor{c.Timeout.Duration, clientMetrics}
+	ci := clientInterceptor{c.Timeout.Duration, clientMetrics, clk}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
