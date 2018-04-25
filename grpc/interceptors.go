@@ -42,14 +42,10 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
 
-	// Extract the grpc metadata from the context
-	md, ok := metadata.FromContext(ctx)
-	if !ok {
-		return nil, berrors.InternalServerError("passed context with no grpc metadata")
-	}
-	// If there is a `clientRequestTimeKey` field, and it has a value, then
-	// observe the RPC latency with Prometheus.
-	if len(md[clientRequestTimeKey]) > 0 {
+	// Extract the grpc metadata from the context. If the context has
+	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
+	// latency with Prometheus.
+	if md, ok := metadata.FromContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
 		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
 			return nil, err
 		}
