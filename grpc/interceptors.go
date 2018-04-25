@@ -47,24 +47,13 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	if !ok {
 		return nil, berrors.InternalServerError("passed context with no grpc metadata")
 	}
-	// Ensure only one value is present
-	if len(md[clientRequestTimeKey]) != 1 {
-		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: "+
-			"expected 1 value, found %d",
-			clientRequestTimeKey, len(md[clientRequestTimeKey]))
+	// If there is a `clientRequestTimeKey` field, and it has a value, then
+	// observe the RPC latency with Prometheus.
+	if len(md[clientRequestTimeKey]) > 0 {
+		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
+			return nil, err
+		}
 	}
-	// Convert the metadata request time into an int64
-	reqTimeStr := md[clientRequestTimeKey][0]
-	reqTimeUnix, err := strconv.ParseInt(reqTimeStr, 10, 64)
-	if err != nil {
-		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: %s - %s",
-			clientRequestTimeKey, md[clientRequestTimeKey], err)
-	}
-	// Calculate the elapsed time since the client sent the RPC
-	reqTime := time.Unix(0, reqTimeUnix)
-	elapsed := si.clk.Now().Sub(reqTime)
-	// Publish an RPC latency observation to the histogram
-	si.metrics.rpcLag.Observe(elapsed.Seconds())
 
 	if features.Enabled(features.RPCHeadroom) {
 		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
@@ -95,6 +84,26 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		err = wrapError(ctx, err)
 	}
 	return resp, err
+}
+
+// observeLatency is called with the `clientRequestTimeKey` value from
+// a request's gRPC metadata. This string value is converted to a timestamp and
+// used to calcuate the latency between send and receive time. The latency is
+// published to the server interceptor's rpcLag prometheus histogram. An error
+// is returned if the `clientReqTime` string is not a valid timestamp.
+func (si *serverInterceptor) observeLatency(clientReqTime string) error {
+	// Convert the metadata request time into an int64
+	reqTimeUnix, err := strconv.ParseInt(clientReqTime, 10, 64)
+	if err != nil {
+		return berrors.InternalServerError("grpc metadata had illegal %s value: %q - %s",
+			clientRequestTimeKey, clientReqTime, err)
+	}
+	// Calculate the elapsed time since the client sent the RPC
+	reqTime := time.Unix(0, reqTimeUnix)
+	elapsed := si.clk.Now().Sub(reqTime)
+	// Publish an RPC latency observation to the histogram
+	si.metrics.rpcLag.Observe(elapsed.Seconds())
+	return nil
 }
 
 // clientInterceptor is a gRPC interceptor that adds Prometheus
