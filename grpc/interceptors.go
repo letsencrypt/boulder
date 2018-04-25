@@ -100,7 +100,7 @@ func (si *serverInterceptor) observeLatency(clientReqTime string) error {
 	}
 	// Calculate the elapsed time since the client sent the RPC
 	reqTime := time.Unix(0, reqTimeUnixNanos)
-	elapsed := si.clk.Now().Sub(reqTime)
+	elapsed := si.clk.Since(reqTime)
 	// Publish an RPC latency observation to the histogram
 	si.metrics.rpcLag.Observe(elapsed.Seconds())
 	return nil
