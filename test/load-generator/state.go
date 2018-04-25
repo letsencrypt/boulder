@@ -526,6 +526,7 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
+	req.Header.Add("Content-Type", "application/jose+json")
 	atomic.AddInt64(&s.postTotal, 1)
 	resp, err := s.client.Do(req)
 	if err != nil {

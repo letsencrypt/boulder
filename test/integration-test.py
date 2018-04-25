@@ -532,7 +532,7 @@ def main():
         run_loadtest=False, test_case_filter="")
     args = parser.parse_args()
 
-    if not (args.run_all or args.run_certbot or args.run_chisel or args.custom is not None):
+    if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, or --custom")
 
     now = datetime.datetime.utcnow()
@@ -576,11 +576,27 @@ def run_loadtest():
     run("./bin/load-generator \
             -config test/load-generator/config/integration-test-config.json\
             -results %s" % latency_data_file)
+    check_loadoutput(latency_data_file)
 
     latency_data_file = "%s/v2-integration-test-latency.json" % tempdir
     run("./bin/load-generator \
             -config test/load-generator/config/v2-integration-test-config.json\
             -results %s" % latency_data_file)
+    check_loadoutput(latency_data_file)
+
+def check_loadoutput(statefile):
+    """
+    check_loadoutput checks that a JSON load generator latency state file
+    contains only "good" request results and not any errors. If there are any
+    bad request results an exception is raised.
+    """
+    with open(statefile) as f:
+        data_lines = f.readlines()
+
+    for line in data_lines:
+        datapoint = json.loads(line)
+        if datapoint['type'] != 'good':
+            raise Exception("Load generator had a failed request: %s", line)
 
 def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)
