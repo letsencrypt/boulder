@@ -26,7 +26,7 @@ cat <<EOF >> /etc/hosts
 EOF
 
 # make sure we can reach the mysqldb
-wait_tcp_port boulder-mysql 3306
+wait_tcp_port bmysql 3306
 
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
@@ -34,7 +34,7 @@ MYSQL_CONTAINER=1 $DIR/create_db.sh
 # Delaying loading private key into SoftHSM container until now so that switching
 # out the signing key doesn't require rebuilding the boulder-tools image. Only
 # convert key to DER once per container.
-wait_tcp_port boulder-hsm 5657
+wait_tcp_port bhsm 5657
 
 addkey() {
   pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so \

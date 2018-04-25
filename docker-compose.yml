@@ -5,15 +5,14 @@ services:
         image: letsencrypt/boulder-tools-go${GO_VERSION:-1.10.1}:2018-04-05
         environment:
             FAKE_DNS: 127.0.0.1
-            PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
+            PKCS11_PROXY_SOCKET: tcp://bhsm:5657
             BOULDER_CONFIG_DIR: test/config
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - ./.gocache:/root/.cache/go-build
-        network_mode: bridge
-        extra_hosts:
-          - le.wtf:127.0.0.1
-          - boulder:127.0.0.1
+        networks:
+          bluenet:
+          rednet:
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2
@@ -38,7 +37,7 @@ services:
           - 9381:9381 # mail-test-srv
         links:
           - bhsm:boulder-hsm
-          - bmysql:boulder-mysql
+          - bmysql:bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
@@ -49,12 +48,18 @@ services:
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
         expose:
           - 5657
-        network_mode: bridge
+        networks:
+          - bluenet
     bmysql:
         image: mariadb:10.1
-        network_mode: bridge
+        networks:
+          - bluenet
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
+
+networks:
+  bluenet:
+  rednet:

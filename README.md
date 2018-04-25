@@ -130,7 +130,7 @@ or
 
 Edit /etc/hosts to add this line:
 
-    127.0.0.1 boulder boulder-mysql
+    127.0.0.1 boulder bmysql
 
 Resolve Go-dependencies, set up a database:
 
