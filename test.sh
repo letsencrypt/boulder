@@ -94,7 +94,7 @@ function run_test_coverage() {
   # -race in `run_unit_tests` and it adds substantial overhead to run every
   # test with -race independently
   echo "running test suite with coverage enabled and without race detection"
-  run go test -cover -coverprofile=${dir}.coverprofile ./...
+  run go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
 
   # Gather all the coverprofiles
   run gover
