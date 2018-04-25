@@ -134,19 +134,23 @@ func (ci *clientInterceptor) intercept(
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
+
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
-	// Create a grpc/metadata.Metadata instance. Initialize the metadata with the
-	// request time.
-	md := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
-	// Configure a grpc Trailer with the metadata. This allows us to wrap error
-	// types in the server interceptor later on.
-	opts = append(opts, grpc.Trailer(&md))
+	// Create a grpc/metadata.Metadata instance for the request metadata.
+	// Initialize it with the request time.
+	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
 	// Configure the localCtx with the metadata so it gets sent along in the request
-	localCtx = metadata.NewContext(localCtx, md)
+	localCtx = metadata.NewContext(localCtx, reqMD)
+
+	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
+	respMD := metadata.New(nil)
+	// Configure a grpc Trailer with respMD. This allows us to wrap error
+	// types in the server interceptor later on.
+	opts = append(opts, grpc.Trailer(&respMD))
 	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
 	if err != nil {
-		err = unwrapError(err, md)
+		err = unwrapError(err, respMD)
 	}
 	return err
 }
