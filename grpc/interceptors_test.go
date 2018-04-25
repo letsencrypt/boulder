@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc/test_proto"
@@ -40,20 +41,27 @@ func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.Cli
 }
 
 func TestServerInterceptor(t *testing.T) {
-	si := serverInterceptor{grpc_prometheus.NewServerMetrics()}
+	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
+	si := newServerInterceptor(serverMetrics, clock.NewFake())
+
+	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
+	ctxWithMetadata := metadata.NewContext(context.Background(), md)
 
 	_, err := si.intercept(context.Background(), nil, nil, testHandler)
+	test.AssertError(t, err, "si.intercept didn't fail with a context missing metadata")
+
+	_, err = si.intercept(ctxWithMetadata, nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a nil grpc.UnaryServerInfo")
 
-	_, err = si.intercept(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
+	_, err = si.intercept(ctxWithMetadata, nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
 	test.AssertNotError(t, err, "si.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	_, err = si.intercept(context.Background(), 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
+	_, err = si.intercept(ctxWithMetadata, 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail when handler returned a error")
 }
 
 func TestClientInterceptor(t *testing.T) {
-	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics()}
+	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
 	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
@@ -66,7 +74,7 @@ func TestClientInterceptor(t *testing.T) {
 // timeout is reached, i.e. that FailFast is set to false.
 // https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
-	ci := &clientInterceptor{100 * time.Millisecond, grpc_prometheus.NewClientMetrics()}
+	ci := &clientInterceptor{100 * time.Millisecond, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),
@@ -116,7 +124,8 @@ func TestTimeouts(t *testing.T) {
 	}
 	port := lis.Addr().(*net.TCPAddr).Port
 
-	si := &serverInterceptor{NewServerMetrics(metrics.NewNoopScope())}
+	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
+	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	go func() {
@@ -129,7 +138,7 @@ func TestTimeouts(t *testing.T) {
 	defer s.Stop()
 
 	// make client
-	ci := &clientInterceptor{30 * time.Second, grpc_prometheus.NewClientMetrics()}
+	ci := &clientInterceptor{30 * time.Second, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
@@ -160,4 +169,55 @@ func TestTimeouts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequestTimeTagging(t *testing.T) {
+	clk := clock.NewFake()
+	// Listen for TCP requests on a random system assigned port number
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	// Retrieve the concrete port numberthe system assigned our listener
+	port := lis.Addr().(*net.TCPAddr).Port
+
+	// Create a new ChillerServer
+	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
+	si := newServerInterceptor(serverMetrics, clk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	test_proto.RegisterChillerServer(s, &testServer{})
+	// Chill until ill
+	go func() {
+		start := time.Now()
+		if err := s.Serve(lis); err != nil &&
+			!strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
+		}
+	}()
+	defer s.Stop()
+
+	// Dial the ChillerServer
+	ci := &clientInterceptor{30 * time.Second, grpc_prometheus.NewClientMetrics(), clk}
+	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(ci.intercept))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
+	// Create a ChillerClient with the connection to the ChillerServer
+	c := test_proto.NewChillerClient(conn)
+
+	// Make an RPC request with the ChillerClient with a timeout higher than the
+	// requested ChillerServer delay so that the RPC completes normally
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var delayTime int64 = (time.Second * 5).Nanoseconds()
+	_, err = c.Chill(ctx, &test_proto.Time{Time: &delayTime})
+	if err != nil {
+		t.Fatal(fmt.Sprintf("Unexpected error calling Chill RPC: %s", err))
+	}
+
+	// There should be one histogram sample in the serverInterceptor rpcLag stat
+	count := test.CountHistogramSamples(si.metrics.rpcLag)
+	test.AssertEquals(t, count, 1)
 }
