@@ -93,13 +93,13 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 // is returned if the `clientReqTime` string is not a valid timestamp.
 func (si *serverInterceptor) observeLatency(clientReqTime string) error {
 	// Convert the metadata request time into an int64
-	reqTimeUnix, err := strconv.ParseInt(clientReqTime, 10, 64)
+	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
 	if err != nil {
 		return berrors.InternalServerError("grpc metadata had illegal %s value: %q - %s",
 			clientRequestTimeKey, clientReqTime, err)
 	}
 	// Calculate the elapsed time since the client sent the RPC
-	reqTime := time.Unix(0, reqTimeUnix)
+	reqTime := time.Unix(0, reqTimeUnixNanos)
 	elapsed := si.clk.Now().Sub(reqTime)
 	// Publish an RPC latency observation to the histogram
 	si.metrics.rpcLag.Observe(elapsed.Seconds())
