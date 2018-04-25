@@ -57,8 +57,8 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, metrics serverMetrics, 
 // serverMetrics is a struct type used to return a few registered metrics from
 // `NewServerMetrics`
 type serverMetrics struct {
-	GRPCMetrics *grpc_prometheus.ServerMetrics
-	RPCLag      prometheus.Histogram
+	grpcMetrics *grpc_prometheus.ServerMetrics
+	rpcLag      prometheus.Histogram
 }
 
 // NewServerMetrics registers metrics with a registry. It must be called a
@@ -82,7 +82,7 @@ func NewServerMetrics(stats registry) serverMetrics {
 	stats.MustRegister(rpcLag)
 
 	return serverMetrics{
-		GRPCMetrics: grpcMetrics,
-		RPCLag:      rpcLag,
+		grpcMetrics: grpcMetrics,
+		rpcLag:      rpcLag,
 	}
 }

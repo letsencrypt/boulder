@@ -34,8 +34,8 @@ type serverInterceptor struct {
 
 func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
 	return serverInterceptor{
-		serverMetrics: metrics.GRPCMetrics,
-		rpcLag:        metrics.RPCLag,
+		serverMetrics: metrics.grpcMetrics,
+		rpcLag:        metrics.rpcLag,
 		clk:           clk,
 	}
 }
