@@ -77,7 +77,7 @@ func NewServerMetrics(stats registry) serverMetrics {
 	rpcLag := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name: "rpc_lag",
-			Help: "Delta between client RPC send time and serer RPC receipt time",
+			Help: "Delta between client RPC send time and server RPC receipt time",
 		})
 	stats.MustRegister(rpcLag)
 
