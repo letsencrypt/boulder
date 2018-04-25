@@ -19,8 +19,6 @@ HARDFAIL=${HARDFAIL:-fmt godep-restore}
 
 FAILURE=0
 
-GITHUB_SECRET_FILE="/tmp/github-secret.json"
-
 start_context() {
   CONTEXT="$1"
   printf "[%16s] Starting\n" ${CONTEXT}
@@ -61,13 +59,6 @@ function run_and_expect_silence() {
     FAILURE=1
   fi
   rm ${result_file}
-}
-
-function die() {
-  if [ ! -z "$1" ]; then
-    echo $1 > /dev/stderr
-  fi
-  exit 1
 }
 
 function run_unit_tests() {
