@@ -22,7 +22,7 @@ wait_tcp_port() {
     echo "Connected to $host:$port"
 }
 cat <<EOF >> /etc/hosts
-127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder
+127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder ct.boulder
 EOF
 
 # make sure we can reach the mysqldb

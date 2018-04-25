@@ -213,8 +213,8 @@ def test_ct_submission():
     # it will think we failed to retrieve an SCT for the extra log it is configured with and
     # attempt to submit it to just that log instead of all of the logs it knows about (which
     # is just the one it already has submitted to).
-    url_a = "http://boulder:4500/submissions"
-    url_b = "http://boulder:4501/submissions"
+    url_a = "http://wfe.boulder:4500/submissions"
+    url_b = "http://wfe.boulder:4501/submissions"
     submissions_a = urllib2.urlopen(url_a).read()
     submissions_b = urllib2.urlopen(url_b).read()
     expected_a_submissions = int(submissions_a)+1
@@ -229,18 +229,18 @@ def test_ct_submission():
     # for more information: https://github.com/letsencrypt/boulder/issues/2610
     if (int(submissions_a) < expected_a_submissions or
         int(submissions_a) > 2 * expected_a_submissions):
-        raise Exception("Expected %d CT submissions to boulder:4500, found %s" % (expected_a_submissions, submissions_a))
+        raise Exception("Expected %d CT submissions to wfe.boulder:4500, found %s" % (expected_a_submissions, submissions_a))
     for _ in range(0, 10):
         submissions_a = urllib2.urlopen(url_a).read()
         submissions_b = urllib2.urlopen(url_b).read()
         if (int(submissions_a) < expected_a_submissions or
             int(submissions_a) > 2 * expected_a_submissions):
-            raise Exception("Expected no change in submissions to boulder:4500: expected %s, got %s" % (expected_a_submissions, submissions_a))
+            raise Exception("Expected no change in submissions to wfe.boulder:4500: expected %s, got %s" % (expected_a_submissions, submissions_a))
         if (int(submissions_b) >= expected_b_submissions and
             int(submissions_b) < 2 * expected_b_submissions + 1):
             return
         time.sleep(1)
-    raise Exception("Expected %d CT submissions to boulder:4501, found %s" % (expected_b_submissions, submissions_b))
+    raise Exception("Expected %d CT submissions to wfe.boulder:4501, found %s" % (expected_b_submissions, submissions_b))
 
 
 def random_domain():

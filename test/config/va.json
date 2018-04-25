@@ -24,7 +24,7 @@
     "GoogleSafeBrowsing": {
       "APIKey": "my-voice-is-my-passport",
       "DataDir": "/tmp",
-      "ServerURL": "http://boulder:6000"
+      "ServerURL": "http://va.boulder:6000"
     },
     "features": {
       "IPv6First": true

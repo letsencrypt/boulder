@@ -34,7 +34,7 @@
     "ct": {
       "logs": [
         {
-          "uri": "http://boulder:4500",
+          "uri": "http://ct.boulder:4500",
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],
