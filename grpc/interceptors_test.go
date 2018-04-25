@@ -218,6 +218,6 @@ func TestRequestTimeTagging(t *testing.T) {
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
-	count := test.CountHistogramSamples(si.rpcLag)
+	count := test.CountHistogramSamples(si.metrics.rpcLag)
 	test.AssertEquals(t, count, 1)
 }

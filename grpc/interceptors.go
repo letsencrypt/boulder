@@ -6,7 +6,6 @@ import (
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,16 +26,14 @@ const (
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
 type serverInterceptor struct {
-	serverMetrics *grpc_prometheus.ServerMetrics
-	rpcLag        prometheus.Histogram
-	clk           clock.Clock
+	metrics serverMetrics
+	clk     clock.Clock
 }
 
 func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
 	return serverInterceptor{
-		serverMetrics: metrics.grpcMetrics,
-		rpcLag:        metrics.rpcLag,
-		clk:           clk,
+		metrics: metrics,
+		clk:     clk,
 	}
 }
 
@@ -67,7 +64,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	reqTime := time.Unix(0, reqTimeUnix)
 	elapsed := si.clk.Now().Sub(reqTime)
 	// Publish an RPC latency observation to the histogram
-	si.rpcLag.Observe(elapsed.Seconds())
+	si.metrics.rpcLag.Observe(elapsed.Seconds())
 
 	if features.Enabled(features.RPCHeadroom) {
 		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
@@ -93,7 +90,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		defer cancel()
 	}
 
-	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
+	resp, err := si.metrics.grpcMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
