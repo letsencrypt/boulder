@@ -683,23 +683,20 @@ func TestLoopTickBackoff(t *testing.T) {
 	l.tick()
 	// Expected to sleep for 1m
 	backoff := float64(60000000000)
-	maxJittered := backoff * 1.2
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
 
 	start = l.clk.Now()
 	l.tick()
 	// Expected to sleep for 1m30s
 	backoff = 90000000000
-	maxJittered = backoff * 1.2
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
 
 	l.failures = 6
 	start = l.clk.Now()
 	l.tick()
 	// Expected to sleep for 11m23.4375s, should be truncated to 10m
 	backoff = 600000000000
-	maxJittered = backoff * 1.2
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
 
 	l.tickFunc = func(context.Context, int) error { return nil }
 	start = l.clk.Now()

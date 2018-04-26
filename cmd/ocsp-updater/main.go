@@ -654,9 +654,7 @@ func (l *looper) tick() {
 		l.stats.Inc("LongTicks", 1)
 	}
 
-	// After we have all the stats stuff out of the way let's check if the tick
-	// function failed, if the reason is the HSM is dead increase the length of
-	// sleepDur using the exponentially increasing duration returned by core.RetryBackoff.
+	// On success, sleep till it's time for the next tick. On failure, backoff.
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
 		l.stats.Inc("FailedTicks", 1)
