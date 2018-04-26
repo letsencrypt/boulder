@@ -1,7 +1,9 @@
 package grpc
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -100,6 +102,18 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	return resp, err
 }
 
+// splitMethodName is borrowed directly from
+// `grpc-ecosystem/go-grpc-prometheus/util.go` and is used to extract the
+// service and method name from the `method` argument to
+// a `UnaryClientInterceptor`.
+func splitMethodName(fullMethodName string) (string, string) {
+	fullMethodName = strings.TrimPrefix(fullMethodName, "/") // remove leading slash
+	if i := strings.Index(fullMethodName, "/"); i >= 0 {
+		return fullMethodName[:i], fullMethodName[i+1:]
+	}
+	return "unknown", "unknown"
+}
+
 // clientInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to sent requests, and disables FailFast. We disable FailFast because
 // non-FailFast mode is most similar to the old AMQP RPC layer: If a client
@@ -110,6 +124,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 type clientInterceptor struct {
 	timeout       time.Duration
 	clientMetrics *grpc_prometheus.ClientMetrics
+	inFlightRPCs  *prometheus.GaugeVec
 	clk           clock.Clock
 }
 
@@ -117,17 +132,25 @@ type clientInterceptor struct {
 // is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
 func (ci *clientInterceptor) intercept(
 	ctx context.Context,
-	method string,
+	fullMethod string,
 	req,
 	reply interface{},
 	cc *grpc.ClientConn,
 	invoker grpc.UnaryInvoker,
 	opts ...grpc.CallOption) error {
+	// This should not occur but fail fast with a clear error if it does (e.g.
+	// because of buggy unit test code) instead of a generic nil panic later!
+	if ci.inFlightRPCs == nil {
+		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
+	}
+
+	// Create a local context with the configured interceptor timeout
 	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
 	defer cancel()
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
+
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
 	// Create a grpc/metadata.Metadata instance. Initialize the metadata with the
@@ -138,9 +161,27 @@ func (ci *clientInterceptor) intercept(
 	opts = append(opts, grpc.Trailer(&md))
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewContext(localCtx, md)
-	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
+
+	// Split the method and service name from the fullMethod.
+	// UnaryClientInterceptor's receive a `method` arg of the form
+	// "/ServiceName/MethodName"
+	service, method := splitMethodName(fullMethod)
+	// Slice the inFlightRPC inc/dec calls by method and service
+	labels := prometheus.Labels{
+		"method":  method,
+		"service": service,
+	}
+
+	fmt.Printf("Incrementing inFlightRPCs for Labels: %#v\n", labels)
+	// Increment the inFlightRPCs gauge for this method/service
+	ci.inFlightRPCs.With(labels).Inc()
+	// Handle the RPC
+	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, md)
 	}
+	fmt.Printf("Decrementing inFlightRPCs for Labels: %#v\n", labels)
+	// Decrement the inFlightRPCs gague
+	ci.inFlightRPCs.With(labels).Dec()
 	return err
 }

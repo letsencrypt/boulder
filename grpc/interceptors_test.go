@@ -6,11 +6,13 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -22,7 +24,13 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var fc = clock.NewFake()
+var (
+	fc = clock.NewFake()
+	// dummyGauge is an unregistered gauge vec with the correct labels
+	// to stand in for the `rpcsInFlight` gauge when constructing
+	// `clientInterceptor{}` instances directly vs using `ClientSetup`
+	dummyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"method", "service"})
+)
 
 func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 	if i != nil {
@@ -61,7 +69,12 @@ func TestServerInterceptor(t *testing.T) {
 }
 
 func TestClientInterceptor(t *testing.T) {
-	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
+	ci := clientInterceptor{
+		timeout:       time.Second,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		inFlightRPCs:  dummyGauge,
+		clk:           clock.NewFake(),
+	}
 	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
@@ -74,7 +87,12 @@ func TestClientInterceptor(t *testing.T) {
 // timeout is reached, i.e. that FailFast is set to false.
 // https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
-	ci := &clientInterceptor{100 * time.Millisecond, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
+	ci := &clientInterceptor{
+		timeout:       100 * time.Millisecond,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		clk:           clock.NewFake(),
+		inFlightRPCs:  dummyGauge,
+	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
 		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),
@@ -138,7 +156,12 @@ func TestTimeouts(t *testing.T) {
 	defer s.Stop()
 
 	// make client
-	ci := &clientInterceptor{30 * time.Second, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
+	ci := &clientInterceptor{
+		timeout:       30 * time.Second,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		clk:           clock.NewFake(),
+		inFlightRPCs:  dummyGauge,
+	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
@@ -197,7 +220,12 @@ func TestRequestTimeTagging(t *testing.T) {
 	defer s.Stop()
 
 	// Dial the ChillerServer
-	ci := &clientInterceptor{30 * time.Second, grpc_prometheus.NewClientMetrics(), clk}
+	ci := &clientInterceptor{
+		timeout:       30 * time.Second,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		clk:           clk,
+		inFlightRPCs:  dummyGauge,
+	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
@@ -220,4 +248,122 @@ func TestRequestTimeTagging(t *testing.T) {
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
 	count := test.CountHistogramSamples(si.rpcLag)
 	test.AssertEquals(t, count, 1)
+}
+
+type blockedServer struct {
+	roadblock, received *sync.WaitGroup
+}
+
+// Chill implements ChillerServer.Chill
+func (s *blockedServer) Chill(_ context.Context, _ *test_proto.Time) (*test_proto.Time, error) {
+	// Note that a client RPC arrived
+	s.received.Done()
+	// Wait for the roadblock to be cleared
+	s.roadblock.Wait()
+	// Return a dummy spent value to adhere to the chiller protocol
+	spent := int64(1)
+	return &test_proto.Time{Time: &spent}, nil
+}
+
+func TestInFlightRPCStat(t *testing.T) {
+	clk := clock.NewFake()
+	// Listen for TCP requests on a random system assigned port number
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	// Retrieve the concrete port numberthe system assigned our listener
+	port := lis.Addr().(*net.TCPAddr).Port
+
+	// Create and increment a roadblock waitgroup - this will cause all chill RPCs to
+	// the server to block until we call Done()!
+	roadblock := new(sync.WaitGroup)
+	roadblock.Add(1)
+
+	// Create and increment a sentRPCs waitgroup - we use this to find out when all
+	// the RPCs we want to send have been received and we can count the in-flight
+	// gauge
+	numRPCs := 5
+	sentRPCs := new(sync.WaitGroup)
+	sentRPCs.Add(numRPCs)
+
+	// Create a new blockedServer to act as a ChillerServer
+	server := &blockedServer{
+		roadblock: roadblock,
+		received:  sentRPCs,
+	}
+	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
+	si := newServerInterceptor(serverMetrics, clk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	test_proto.RegisterChillerServer(s, server)
+	// Chill until ill
+	go func() {
+		start := time.Now()
+		if err := s.Serve(lis); err != nil &&
+			!strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
+		}
+	}()
+	defer s.Stop()
+
+	// Create and register a gaugevec for the client interceptor
+	// Create a gauge to track in-flight RPCs and register it.
+	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "inFlightRPCs",
+		Help: "Number of in-flight (sent, not yet completed) RPCs",
+	}, []string{"method", "service"})
+
+	// Dial the ChillerServer
+	ci := &clientInterceptor{
+		timeout:       30 * time.Second,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		clk:           clk,
+		inFlightRPCs:  inFlightGauge,
+	}
+	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(ci.intercept))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
+	// Create a ChillerClient with the connection to the ChillerServer
+	c := test_proto.NewChillerClient(conn)
+
+	// Fire off a few RPCs. They will block on the blockedServer's roadblock wg
+	for i := 0; i < numRPCs; i++ {
+		go func() {
+			_, err := c.Chill(context.Background(), &test_proto.Time{})
+			if err != nil {
+				t.Fatal(fmt.Sprintf("Unexpected error calling Chill RPC: %s", err))
+			}
+		}()
+	}
+
+	// wait until all of the client RPCs have been sent and are blocking. We can
+	// now check the gauge.
+	sentRPCs.Wait()
+
+	// Specify the labels for the RPCs we're interested in
+	labels := prometheus.Labels{
+		"service": "Chiller",
+		"method":  "Chill",
+	}
+
+	// Retrieve the gauge for inflight Chiller.Chill RPCs
+	inFlightCount, err := test.GaugeValueWithLabels(inFlightGauge, labels)
+	test.AssertNotError(t, err, "Error collecting gauge value for inFlightGauge")
+	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
+	test.AssertEquals(t, inFlightCount, numRPCs)
+
+	// Unblock the blockedServer to let all of the Chiller.Chill RPCs complete
+	roadblock.Done()
+	// Sleep for a little bit to let all the RPCs complete
+	time.Sleep(1 * time.Second)
+
+	// Check the gauge value again
+	inFlightCount, err = test.GaugeValueWithLabels(inFlightGauge, labels)
+	test.AssertNotError(t, err, "Error collecting gauge value for inFlightGauge")
+	// There should now be zero in flight chill requests.
+	// What a ~ ~ Chill Sitch ~ ~
+	test.AssertEquals(t, inFlightCount, 0)
 }

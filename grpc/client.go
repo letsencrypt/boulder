@@ -17,7 +17,7 @@ import (
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, clientMetrics *grpc_prometheus.ClientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
 	if len(c.ServerAddresses) == 0 {
 		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
 	}
@@ -25,7 +25,12 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, clientMetrics *grpc_p
 		return nil, errNilTLS
 	}
 
-	ci := clientInterceptor{c.Timeout.Duration, clientMetrics, clk}
+	ci := clientInterceptor{
+		timeout:       c.Timeout.Duration,
+		clientMetrics: metrics.GRPCMetrics,
+		inFlightRPCs:  metrics.InFlightRPCs,
+		clk:           clk,
+	}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
@@ -39,12 +44,31 @@ type registry interface {
 	MustRegister(...prometheus.Collector)
 }
 
+// clientMetrics is a struct type used to return registered metrics from
+// `NewClientMetrics`
+type clientMetrics struct {
+	GRPCMetrics  *grpc_prometheus.ClientMetrics
+	InFlightRPCs *prometheus.GaugeVec
+}
+
 // NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
 // the given registry, with timing histogram enabled. It must be called a
 // maximum of once per registry, or there will be conflicting names.
-func NewClientMetrics(stats registry) *grpc_prometheus.ClientMetrics {
-	metrics := grpc_prometheus.NewClientMetrics()
-	metrics.EnableClientHandlingTimeHistogram()
-	stats.MustRegister(metrics)
-	return metrics
+func NewClientMetrics(stats registry) clientMetrics {
+	// Create the grpc prometheus client metrics instance and register it
+	grpcMetrics := grpc_prometheus.NewClientMetrics()
+	grpcMetrics.EnableClientHandlingTimeHistogram()
+	stats.MustRegister(grpcMetrics)
+
+	// Create a gauge to track in-flight RPCs and register it.
+	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "inFlightRPCs",
+		Help: "Number of in-flight (sent, not yet completed) RPCs",
+	}, []string{"method", "service"})
+	stats.MustRegister(inFlightGauge)
+
+	return clientMetrics{
+		GRPCMetrics:  grpcMetrics,
+		InFlightRPCs: inFlightGauge,
+	}
 }

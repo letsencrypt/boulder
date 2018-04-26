@@ -178,3 +178,27 @@ func CountHistogramSamples(hist prometheus.Histogram) int {
 	_ = m.Write(&iom)
 	return int(iom.Histogram.GetSampleCount())
 }
+
+// GaugeValueWithLabels collects 10 samples with the provided labels from the
+// provided GaugeVec and returns its value, or an error if there was a problem
+// collecting the metrics.
+func GaugeValueWithLabels(vecGauge *prometheus.GaugeVec, labels prometheus.Labels) (int, error) {
+	gauge, err := vecGauge.GetMetricWith(labels)
+	//gauge, err := vecGauge.GetMetricWithLabelValues("Chill", "Chiller")
+	if err != nil {
+		return 0, err
+	}
+
+	ch := make(chan prometheus.Metric, 10)
+	gauge.Collect(ch)
+	var m prometheus.Metric
+	select {
+	case <-time.After(time.Second):
+		return 0, fmt.Errorf("timed out collecting gauge metrics")
+	case m = <-ch:
+	}
+	var iom io_prometheus_client.Metric
+	_ = m.Write(&iom)
+
+	return int(iom.Gauge.GetValue()), nil
+}

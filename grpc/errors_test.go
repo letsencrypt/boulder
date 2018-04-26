@@ -28,7 +28,12 @@ func (s *errorServer) Chill(_ context.Context, _ *testproto.Time) (*testproto.Ti
 func TestErrorWrapping(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
-	ci := clientInterceptor{time.Second, grpc_prometheus.NewClientMetrics(), clock.NewFake()}
+	ci := clientInterceptor{
+		timeout:       time.Second,
+		clientMetrics: grpc_prometheus.NewClientMetrics(),
+		clk:           clock.NewFake(),
+		inFlightRPCs:  dummyGauge,
+	}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
 	es := &errorServer{}
 	testproto.RegisterChillerServer(srv, es)
