@@ -177,12 +177,12 @@ func (ci *clientInterceptor) intercept(
 
 	// Increment the inFlightRPCs gauge for this method/service
 	ci.metrics.inFlightRPCs.With(labels).Inc()
+	// And defer decrementing it when we're done
+	defer ci.metrics.inFlightRPCs.With(labels).Dec()
 	// Handle the RPC
 	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
 	}
-	// Decrement the inFlightRPCs gague
-	ci.metrics.inFlightRPCs.With(labels).Dec()
 	return err
 }
