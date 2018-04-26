@@ -79,19 +79,24 @@ def start(race_detection, fakeclock=None):
             [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     progs.extend([
-        [8003, 'boulder-sa --config %s' % os.path.join(default_config_dir, "sa.json")],
+        [8003, 'boulder-sa --config %s --addr :9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
+        [8103, 'boulder-sa --config %s --addr :9195 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
         [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
-        [8009, 'boulder-publisher --config %s' % os.path.join(default_config_dir, "publisher.json")],
+        [8009, 'boulder-publisher --config %s --addr :9091 --debug-addr :8009' % os.path.join(default_config_dir, "publisher.json")],
+        [8109, 'boulder-publisher --config %s --addr :9191 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
         [9380, 'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
         [8005, 'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
         [6000, 'gsb-test-srv -apikey my-voice-is-my-passport'],
         [8055, 'dns-test-srv'],
-        [8004, 'boulder-va --config %s' % os.path.join(default_config_dir, "va.json")],
-        [8001, 'boulder-ca --config %s' % os.path.join(default_config_dir, "ca.json")],
+        [8004, 'boulder-va --config %s --addr :9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
+        [8104, 'boulder-va --config %s --addr :9192 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
+        [8001, 'boulder-ca --config %s --ca-addr :9093 --ocsp-addr :9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca.json")],
+        [8101, 'boulder-ca --config %s --ca-addr :9193 --ocsp-addr :9196 --debug-addr :8101' % os.path.join(default_config_dir, "ca.json")],
         [8006, 'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
-        [8002, 'boulder-ra --config %s' % os.path.join(default_config_dir, "ra.json")],
+        [8002, 'boulder-ra --config %s --addr :9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
+        [8102, 'boulder-ra --config %s --addr :9194 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],
         [4431, 'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
         [4000, 'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
     ])

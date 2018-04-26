@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
@@ -29,16 +28,14 @@ const (
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
 type serverInterceptor struct {
-	serverMetrics *grpc_prometheus.ServerMetrics
-	rpcLag        prometheus.Histogram
-	clk           clock.Clock
+	metrics serverMetrics
+	clk     clock.Clock
 }
 
 func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
 	return serverInterceptor{
-		serverMetrics: metrics.GRPCMetrics,
-		rpcLag:        metrics.RPCLag,
-		clk:           clk,
+		metrics: metrics,
+		clk:     clk,
 	}
 }
 
@@ -47,29 +44,14 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
 
-	// Extract the grpc metadata from the context
-	md, ok := metadata.FromContext(ctx)
-	if !ok {
-		return nil, berrors.InternalServerError("passed context with no grpc metadata")
+	// Extract the grpc metadata from the context. If the context has
+	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
+	// latency with Prometheus.
+	if md, ok := metadata.FromContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
+		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
+			return nil, err
+		}
 	}
-	// Ensure only one value is present
-	if len(md[clientRequestTimeKey]) != 1 {
-		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: "+
-			"expected 1 value, found %d",
-			clientRequestTimeKey, len(md[clientRequestTimeKey]))
-	}
-	// Convert the metadata request time into an int64
-	reqTimeStr := md[clientRequestTimeKey][0]
-	reqTimeUnix, err := strconv.ParseInt(reqTimeStr, 10, 64)
-	if err != nil {
-		return nil, berrors.InternalServerError("grpc metadata had illegal %s value: %s - %s",
-			clientRequestTimeKey, md[clientRequestTimeKey], err)
-	}
-	// Calculate the elapsed time since the client sent the RPC
-	reqTime := time.Unix(0, reqTimeUnix)
-	elapsed := si.clk.Now().Sub(reqTime)
-	// Publish an RPC latency observation to the histogram
-	si.rpcLag.Observe(elapsed.Seconds())
 
 	if features.Enabled(features.RPCHeadroom) {
 		// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
@@ -95,7 +77,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		defer cancel()
 	}
 
-	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
+	resp, err := si.metrics.grpcMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
@@ -114,6 +96,26 @@ func splitMethodName(fullMethodName string) (string, string) {
 	return "unknown", "unknown"
 }
 
+// observeLatency is called with the `clientRequestTimeKey` value from
+// a request's gRPC metadata. This string value is converted to a timestamp and
+// used to calcuate the latency between send and receive time. The latency is
+// published to the server interceptor's rpcLag prometheus histogram. An error
+// is returned if the `clientReqTime` string is not a valid timestamp.
+func (si *serverInterceptor) observeLatency(clientReqTime string) error {
+	// Convert the metadata request time into an int64
+	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
+	if err != nil {
+		return berrors.InternalServerError("grpc metadata had illegal %s value: %q - %s",
+			clientRequestTimeKey, clientReqTime, err)
+	}
+	// Calculate the elapsed time since the client sent the RPC
+	reqTime := time.Unix(0, reqTimeUnixNanos)
+	elapsed := si.clk.Since(reqTime)
+	// Publish an RPC latency observation to the histogram
+	si.metrics.rpcLag.Observe(elapsed.Seconds())
+	return nil
+}
+
 // clientInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to sent requests, and disables FailFast. We disable FailFast because
 // non-FailFast mode is most similar to the old AMQP RPC layer: If a client
@@ -122,10 +124,9 @@ func splitMethodName(fullMethodName string) (string, string) {
 // comes back up within the timeout. Under gRPC the same effect is achieved by
 // retries up to the Context deadline.
 type clientInterceptor struct {
-	timeout       time.Duration
-	clientMetrics *grpc_prometheus.ClientMetrics
-	inFlightRPCs  *prometheus.GaugeVec
-	clk           clock.Clock
+	timeout time.Duration
+	metrics clientMetrics
+	clk     clock.Clock
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
@@ -140,7 +141,7 @@ func (ci *clientInterceptor) intercept(
 	opts ...grpc.CallOption) error {
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
-	if ci.inFlightRPCs == nil {
+	if ci.metrics.InFlightRPCs == nil {
 		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
@@ -153,14 +154,18 @@ func (ci *clientInterceptor) intercept(
 
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
-	// Create a grpc/metadata.Metadata instance. Initialize the metadata with the
-	// request time.
-	md := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
-	// Configure a grpc Trailer with the metadata. This allows us to wrap error
-	// types in the server interceptor later on.
-	opts = append(opts, grpc.Trailer(&md))
+
+	// Create a grpc/metadata.Metadata instance for the request metadata.
+	// Initialize it with the request time.
+	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
 	// Configure the localCtx with the metadata so it gets sent along in the request
-	localCtx = metadata.NewContext(localCtx, md)
+	localCtx = metadata.NewContext(localCtx, reqMD)
+
+	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
+	respMD := metadata.New(nil)
+	// Configure a grpc Trailer with respMD. This allows us to wrap error
+	// types in the server interceptor later on.
+	opts = append(opts, grpc.Trailer(&respMD))
 
 	// Split the method and service name from the fullMethod.
 	// UnaryClientInterceptor's receive a `method` arg of the form
@@ -174,14 +179,14 @@ func (ci *clientInterceptor) intercept(
 
 	fmt.Printf("Incrementing inFlightRPCs for Labels: %#v\n", labels)
 	// Increment the inFlightRPCs gauge for this method/service
-	ci.inFlightRPCs.With(labels).Inc()
+	ci.metrics.InFlightRPCs.With(labels).Inc()
 	// Handle the RPC
-	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
+	err := ci.metrics.GRPCMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
-		err = unwrapError(err, md)
+		err = unwrapError(err, respMD)
 	}
 	fmt.Printf("Decrementing inFlightRPCs for Labels: %#v\n", labels)
 	// Decrement the inFlightRPCs gague
-	ci.inFlightRPCs.With(labels).Dec()
+	ci.metrics.InFlightRPCs.With(labels).Dec()
 	return err
 }

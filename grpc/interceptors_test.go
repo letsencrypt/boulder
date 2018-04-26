@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
@@ -26,10 +25,6 @@ import (
 
 var (
 	fc = clock.NewFake()
-	// dummyGauge is an unregistered gauge vec with the correct labels
-	// to stand in for the `rpcsInFlight` gauge when constructing
-	// `clientInterceptor{}` instances directly vs using `ClientSetup`
-	dummyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"method", "service"})
 )
 
 func testHandler(_ context.Context, i interface{}) (interface{}, error) {
@@ -70,10 +65,9 @@ func TestServerInterceptor(t *testing.T) {
 
 func TestClientInterceptor(t *testing.T) {
 	ci := clientInterceptor{
-		timeout:       time.Second,
-		clientMetrics: grpc_prometheus.NewClientMetrics(),
-		inFlightRPCs:  dummyGauge,
-		clk:           clock.NewFake(),
+		timeout: time.Second,
+		metrics: NewClientMetrics(metrics.NewNoopScope()),
+		clk:     clock.NewFake(),
 	}
 	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
@@ -88,10 +82,9 @@ func TestClientInterceptor(t *testing.T) {
 // https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
 	ci := &clientInterceptor{
-		timeout:       100 * time.Millisecond,
-		clientMetrics: grpc_prometheus.NewClientMetrics(),
-		clk:           clock.NewFake(),
-		inFlightRPCs:  dummyGauge,
+		timeout: 100 * time.Millisecond,
+		metrics: NewClientMetrics(metrics.NewNoopScope()),
+		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
@@ -157,10 +150,9 @@ func TestTimeouts(t *testing.T) {
 
 	// make client
 	ci := &clientInterceptor{
-		timeout:       30 * time.Second,
-		clientMetrics: grpc_prometheus.NewClientMetrics(),
-		clk:           clock.NewFake(),
-		inFlightRPCs:  dummyGauge,
+		timeout: 30 * time.Second,
+		metrics: NewClientMetrics(metrics.NewNoopScope()),
+		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
@@ -221,10 +213,9 @@ func TestRequestTimeTagging(t *testing.T) {
 
 	// Dial the ChillerServer
 	ci := &clientInterceptor{
-		timeout:       30 * time.Second,
-		clientMetrics: grpc_prometheus.NewClientMetrics(),
-		clk:           clk,
-		inFlightRPCs:  dummyGauge,
+		timeout: 30 * time.Second,
+		metrics: NewClientMetrics(metrics.NewNoopScope()),
+		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
@@ -246,7 +237,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
-	count := test.CountHistogramSamples(si.rpcLag)
+	count := test.CountHistogramSamples(si.metrics.rpcLag)
 	test.AssertEquals(t, count, 1)
 }
 
@@ -306,19 +297,11 @@ func TestInFlightRPCStat(t *testing.T) {
 	}()
 	defer s.Stop()
 
-	// Create and register a gaugevec for the client interceptor
-	// Create a gauge to track in-flight RPCs and register it.
-	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "inFlightRPCs",
-		Help: "Number of in-flight (sent, not yet completed) RPCs",
-	}, []string{"method", "service"})
-
 	// Dial the ChillerServer
 	ci := &clientInterceptor{
-		timeout:       30 * time.Second,
-		clientMetrics: grpc_prometheus.NewClientMetrics(),
-		clk:           clk,
-		inFlightRPCs:  inFlightGauge,
+		timeout: 30 * time.Second,
+		metrics: NewClientMetrics(metrics.NewNoopScope()),
+		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
 		grpc.WithInsecure(),
@@ -332,10 +315,8 @@ func TestInFlightRPCStat(t *testing.T) {
 	// Fire off a few RPCs. They will block on the blockedServer's roadblock wg
 	for i := 0; i < numRPCs; i++ {
 		go func() {
-			_, err := c.Chill(context.Background(), &test_proto.Time{})
-			if err != nil {
-				t.Fatal(fmt.Sprintf("Unexpected error calling Chill RPC: %s", err))
-			}
+			// Ignore errors, just chilllll.
+			_, _ = c.Chill(context.Background(), &test_proto.Time{})
 		}()
 	}
 
@@ -350,8 +331,8 @@ func TestInFlightRPCStat(t *testing.T) {
 	}
 
 	// Retrieve the gauge for inflight Chiller.Chill RPCs
-	inFlightCount, err := test.GaugeValueWithLabels(inFlightGauge, labels)
-	test.AssertNotError(t, err, "Error collecting gauge value for inFlightGauge")
+	inFlightCount, err := test.GaugeValueWithLabels(ci.metrics.InFlightRPCs, labels)
+	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
 	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
 	test.AssertEquals(t, inFlightCount, numRPCs)
 
@@ -361,8 +342,8 @@ func TestInFlightRPCStat(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Check the gauge value again
-	inFlightCount, err = test.GaugeValueWithLabels(inFlightGauge, labels)
-	test.AssertNotError(t, err, "Error collecting gauge value for inFlightGauge")
+	inFlightCount, err = test.GaugeValueWithLabels(ci.metrics.InFlightRPCs, labels)
+	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
 	// There should now be zero in flight chill requests.
 	// What a ~ ~ Chill Sitch ~ ~
 	test.AssertEquals(t, inFlightCount, 0)

@@ -105,6 +105,9 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 }
 
 func main() {
+	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
+	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -118,6 +121,16 @@ func main() {
 
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *caAddr != "" {
+		c.CA.GRPCCA.Address = *caAddr
+	}
+	if *ocspAddr != "" {
+		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
+	}
+	if *debugAddr != "" {
+		c.CA.DebugAddr = *debugAddr
+	}
 
 	if c.CA.MaxNames == 0 {
 		cmd.Fail(fmt.Sprintf("Error in CA config: MaxNames must not be 0"))

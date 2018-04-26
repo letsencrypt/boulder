@@ -25,12 +25,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 		return nil, errNilTLS
 	}
 
-	ci := clientInterceptor{
-		timeout:       c.Timeout.Duration,
-		clientMetrics: metrics.GRPCMetrics,
-		inFlightRPCs:  metrics.InFlightRPCs,
-		clk:           clk,
-	}
+	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
 	return grpc.Dial(
 		"", // Since our staticResolver provides addresses we don't need to pass an address here
