@@ -15,10 +15,24 @@ services:
             ipv4_address: 10.77.77.77
             aliases:
               - boulder-blue
+              - sa1.boulder
+              - ca1.boulder
+              - ra1.boulder
+              - va1.boulder
+              - publisher1.boulder
+              - ocsp-updater.boulder
+              - admin-revoker.boulder
+              - ct.boulder
+              - wfe.boulder
           rednet:
             ipv4_address: 10.88.88.88
             aliases:
               - boulder-red
+              - sa2.boulder
+              - ca2.boulder
+              - ra2.boulder
+              - va2.boulder
+              - publisher2.boulder
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2

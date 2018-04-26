@@ -10,7 +10,6 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 rm -f /var/run/rsyslogd.pid
 service rsyslog start
 
-ping boulder-blue
 wait_tcp_port() {
     local host="$1" port="$2"
 
@@ -25,10 +24,6 @@ wait_tcp_port() {
     exec 6>&-
     echo "Connected to $host:$port"
 }
-cat <<EOF >> /etc/hosts
-127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder ct.boulder
-EOF
-
 # make sure we can reach the mysqldb
 wait_tcp_port bmysql 3306
 
