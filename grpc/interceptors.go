@@ -1,7 +1,6 @@
 package grpc
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -141,11 +140,10 @@ func (ci *clientInterceptor) intercept(
 	opts ...grpc.CallOption) error {
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
-	if ci.metrics.InFlightRPCs == nil {
+	if ci.metrics.inFlightRPCs == nil {
 		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
-	// Create a local context with the configured interceptor timeout
 	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
 	defer cancel()
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
@@ -177,16 +175,14 @@ func (ci *clientInterceptor) intercept(
 		"service": service,
 	}
 
-	fmt.Printf("Incrementing inFlightRPCs for Labels: %#v\n", labels)
 	// Increment the inFlightRPCs gauge for this method/service
-	ci.metrics.InFlightRPCs.With(labels).Inc()
+	ci.metrics.inFlightRPCs.With(labels).Inc()
 	// Handle the RPC
-	err := ci.metrics.GRPCMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
+	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
 	}
-	fmt.Printf("Decrementing inFlightRPCs for Labels: %#v\n", labels)
 	// Decrement the inFlightRPCs gague
-	ci.metrics.InFlightRPCs.With(labels).Dec()
+	ci.metrics.inFlightRPCs.With(labels).Dec()
 	return err
 }

@@ -42,8 +42,10 @@ type registry interface {
 // clientMetrics is a struct type used to return registered metrics from
 // `NewClientMetrics`
 type clientMetrics struct {
-	GRPCMetrics  *grpc_prometheus.ClientMetrics
-	InFlightRPCs *prometheus.GaugeVec
+	grpcMetrics *grpc_prometheus.ClientMetrics
+	// inFlightRPCs is a labelled gauge that slices by service/method the number
+	// of outstanding/in-flight RPCs.
+	inFlightRPCs *prometheus.GaugeVec
 }
 
 // NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
@@ -57,13 +59,13 @@ func NewClientMetrics(stats registry) clientMetrics {
 
 	// Create a gauge to track in-flight RPCs and register it.
 	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "inFlightRPCs",
+		Name: "in-flight-rpcs",
 		Help: "Number of in-flight (sent, not yet completed) RPCs",
 	}, []string{"method", "service"})
 	stats.MustRegister(inFlightGauge)
 
 	return clientMetrics{
-		GRPCMetrics:  grpcMetrics,
-		InFlightRPCs: inFlightGauge,
+		grpcMetrics:  grpcMetrics,
+		inFlightRPCs: inFlightGauge,
 	}
 }

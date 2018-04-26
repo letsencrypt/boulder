@@ -23,9 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var (
-	fc = clock.NewFake()
-)
+var fc = clock.NewFake()
 
 func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 	if i != nil {
@@ -241,6 +239,11 @@ func TestRequestTimeTagging(t *testing.T) {
 	test.AssertEquals(t, count, 1)
 }
 
+// blockedServer implements a ChillerServer with a Chill method that:
+//   a) Calls Done() on the received waitgroup when receiving an RPC
+//   b) Blocks the RPC on the roadblock waitgroup
+// This is used by TestInFlightRPCStat to test that the gauge for in-flight RPCs
+// is incremented and decremented as expected.
 type blockedServer struct {
 	roadblock, received *sync.WaitGroup
 }
@@ -331,7 +334,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	}
 
 	// Retrieve the gauge for inflight Chiller.Chill RPCs
-	inFlightCount, err := test.GaugeValueWithLabels(ci.metrics.InFlightRPCs, labels)
+	inFlightCount, err := test.GaugeValueWithLabels(ci.metrics.inFlightRPCs, labels)
 	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
 	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
 	test.AssertEquals(t, inFlightCount, numRPCs)
@@ -342,7 +345,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Check the gauge value again
-	inFlightCount, err = test.GaugeValueWithLabels(ci.metrics.InFlightRPCs, labels)
+	inFlightCount, err = test.GaugeValueWithLabels(ci.metrics.inFlightRPCs, labels)
 	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
 	// There should now be zero in flight chill requests.
 	// What a ~ ~ Chill Sitch ~ ~
