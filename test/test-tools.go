@@ -179,9 +179,8 @@ func CountHistogramSamples(hist prometheus.Histogram) int {
 	return int(iom.Histogram.GetSampleCount())
 }
 
-// GaugeValueWithLabels collects 10 samples with the provided labels from the
-// provided GaugeVec and returns its value, or an error if there was a problem
-// collecting the metrics.
+// GaugeValueWithLabels returns the current value with the provided labels from the
+// the GaugeVec argument, or an error if there was a problem collecting the value.
 func GaugeValueWithLabels(vecGauge *prometheus.GaugeVec, labels prometheus.Labels) (int, error) {
 	gauge, err := vecGauge.GetMetricWith(labels)
 	if err != nil {
