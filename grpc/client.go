@@ -59,7 +59,7 @@ func NewClientMetrics(stats registry) clientMetrics {
 
 	// Create a gauge to track in-flight RPCs and register it.
 	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "in-flight-rpcs",
+		Name: "in_flight_rpcs",
 		Help: "Number of in-flight (sent, not yet completed) RPCs",
 	}, []string{"method", "service"})
 	stats.MustRegister(inFlightGauge)
