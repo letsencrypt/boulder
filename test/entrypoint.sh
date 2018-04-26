@@ -10,6 +10,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 rm -f /var/run/rsyslogd.pid
 service rsyslog start
 
+ping boulder-blue
 wait_tcp_port() {
     local host="$1" port="$2"
 

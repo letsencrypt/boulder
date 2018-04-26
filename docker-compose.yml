@@ -12,7 +12,13 @@ services:
           - ./.gocache:/root/.cache/go-build
         networks:
           bluenet:
+            ipv4_address: 10.77.77.77
+            aliases:
+              - boulder-blue
           rednet:
+            ipv4_address: 10.88.88.88
+            aliases:
+              - boulder-red
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2
@@ -62,4 +68,14 @@ services:
 
 networks:
   bluenet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.77.77.0/24
   rednet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.88.88.0/24
