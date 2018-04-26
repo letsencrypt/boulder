@@ -245,7 +245,7 @@ func TestRequestTimeTagging(t *testing.T) {
 // This is used by TestInFlightRPCStat to test that the gauge for in-flight RPCs
 // is incremented and decremented as expected.
 type blockedServer struct {
-	roadblock, received *sync.WaitGroup
+	roadblock, received sync.WaitGroup
 }
 
 // Chill implements ChillerServer.Chill
@@ -269,23 +269,19 @@ func TestInFlightRPCStat(t *testing.T) {
 	// Retrieve the concrete port numberthe system assigned our listener
 	port := lis.Addr().(*net.TCPAddr).Port
 
-	// Create and increment a roadblock waitgroup - this will cause all chill RPCs to
-	// the server to block until we call Done()!
-	roadblock := new(sync.WaitGroup)
-	roadblock.Add(1)
+	// Create a new blockedServer to act as a ChillerServer
+	server := &blockedServer{}
 
-	// Create and increment a sentRPCs waitgroup - we use this to find out when all
-	// the RPCs we want to send have been received and we can count the in-flight
+	// Increment the roadblock waitgroup - this will cause all chill RPCs to
+	// the server to block until we call Done()!
+	server.roadblock.Add(1)
+
+	// Increment the sentRPCs waitgroup - we use this to find out when all the
+	// RPCs we want to send have been received and we can count the in-flight
 	// gauge
 	numRPCs := 5
-	sentRPCs := new(sync.WaitGroup)
-	sentRPCs.Add(numRPCs)
+	server.received.Add(numRPCs)
 
-	// Create a new blockedServer to act as a ChillerServer
-	server := &blockedServer{
-		roadblock: roadblock,
-		received:  sentRPCs,
-	}
 	serverMetrics := NewServerMetrics(metrics.NewNoopScope())
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
@@ -325,7 +321,7 @@ func TestInFlightRPCStat(t *testing.T) {
 
 	// wait until all of the client RPCs have been sent and are blocking. We can
 	// now check the gauge.
-	sentRPCs.Wait()
+	server.received.Wait()
 
 	// Specify the labels for the RPCs we're interested in
 	labels := prometheus.Labels{
@@ -340,7 +336,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	test.AssertEquals(t, inFlightCount, numRPCs)
 
 	// Unblock the blockedServer to let all of the Chiller.Chill RPCs complete
-	roadblock.Done()
+	server.roadblock.Done()
 	// Sleep for a little bit to let all the RPCs complete
 	time.Sleep(1 * time.Second)
 
