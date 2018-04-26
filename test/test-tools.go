@@ -184,7 +184,6 @@ func CountHistogramSamples(hist prometheus.Histogram) int {
 // collecting the metrics.
 func GaugeValueWithLabels(vecGauge *prometheus.GaugeVec, labels prometheus.Labels) (int, error) {
 	gauge, err := vecGauge.GetMetricWith(labels)
-	//gauge, err := vecGauge.GetMetricWithLabelValues("Chill", "Chiller")
 	if err != nil {
 		return 0, err
 	}
