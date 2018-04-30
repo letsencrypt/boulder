@@ -12,7 +12,7 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "subscriberAgreementURL": "https://wfe.boulder:4431/terms/v7",
+    "subscriberAgreementURL": "https://boulder:4431/terms/v7",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8013",

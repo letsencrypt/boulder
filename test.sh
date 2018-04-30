@@ -169,7 +169,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
-  DIRECTORY=http://localhost:4000/directory \
+  DIRECTORY=http://boulder:4000/directory \
     run python2 test/integration-test.py --chisel --load
   end_context #integration
 fi

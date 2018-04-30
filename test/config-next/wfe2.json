@@ -11,7 +11,7 @@
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
-    "subscriberAgreementURL": "https://wfe.boulder:4431/terms/v7",
+    "subscriberAgreementURL": "https://boulder:4431/terms/v7",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8013",
@@ -31,7 +31,7 @@
       "timeout": "15s"
     },
     "certificateChains": {
-      "http://wfe.boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
+      "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
     "features": {

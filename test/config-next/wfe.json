@@ -11,7 +11,7 @@
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
-    "subscriberAgreementURL": "http://wfe.boulder:4000/terms/v1",
+    "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8000",
