@@ -39,11 +39,11 @@ To start Boulder in a Docker container, run:
 
 To run tests:
 
-    docker-compose run boulder ./test.sh
+    docker-compose run --use-aliases boulder ./test.sh
 
 To run a specific unittest:
 
-    docker-compose run boulder go test ./ra
+    docker-compose run --use-aliases boulder go test ./ra
 
 The configuration in docker-compose.yml mounts your
 [`$GOPATH`](https://golang.org/doc/code.html#GOPATH) on top of its own
@@ -71,7 +71,7 @@ match.
 
 Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
 
-    docker-compose run -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
+    docker-compose run --use-aliases -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 
 Boulder's default VA configuration (`test/config/va.json`) is configured to
 connect to port 5002 to validate HTTP-01 challenges and port 5001 to validate
