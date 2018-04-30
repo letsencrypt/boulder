@@ -654,9 +654,7 @@ func (l *looper) tick() {
 		l.stats.Inc("LongTicks", 1)
 	}
 
-	// After we have all the stats stuff out of the way let's check if the tick
-	// function failed, if the reason is the HSM is dead increase the length of
-	// sleepDur using the exponentially increasing duration returned by core.RetryBackoff.
+	// On success, sleep till it's time for the next tick. On failure, backoff.
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
 		l.stats.Inc("FailedTicks", 1)
@@ -715,7 +713,7 @@ type config struct {
 	}
 }
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
@@ -727,18 +725,18 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 		cmd.FailOnError(err, "TLS config")
 	}
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics)
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
 	// TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewOCSPGeneratorClient.
 	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, clientMetrics)
+	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
 
-	conn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -772,11 +770,12 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	cac, pubc, sac := setupClients(conf, scope)
+	clk := cmd.Clock()
+	cac, pubc, sac := setupClients(conf, scope, clk)
 
 	updater, err := newUpdater(
 		scope,
-		cmd.Clock(),
+		clk,
 		dbMap,
 		cac,
 		pubc,

@@ -1,9 +1,12 @@
 package grpc
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -13,19 +16,40 @@ import (
 	"github.com/letsencrypt/boulder/features"
 )
 
+const (
+	returnOverhead         = 20 * time.Millisecond
+	meaningfulWorkOverhead = 100 * time.Millisecond
+	clientRequestTimeKey   = "client-request-time"
+	serverLatencyKey       = "server-latency"
+)
+
 // serverInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
 type serverInterceptor struct {
-	serverMetrics *grpc_prometheus.ServerMetrics
+	metrics serverMetrics
+	clk     clock.Clock
 }
 
-const returnOverhead = 20 * time.Millisecond
-const meaningfulWorkOverhead = 100 * time.Millisecond
+func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
+	return serverInterceptor{
+		metrics: metrics,
+		clk:     clk,
+	}
+}
 
 func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
+	}
+
+	// Extract the grpc metadata from the context. If the context has
+	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
+	// latency with Prometheus.
+	if md, ok := metadata.FromContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
+		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
+			return nil, err
+		}
 	}
 
 	if features.Enabled(features.RPCHeadroom) {
@@ -52,11 +76,43 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		defer cancel()
 	}
 
-	resp, err := si.serverMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
+	resp, err := si.metrics.grpcMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
 	return resp, err
+}
+
+// splitMethodName is borrowed directly from
+// `grpc-ecosystem/go-grpc-prometheus/util.go` and is used to extract the
+// service and method name from the `method` argument to
+// a `UnaryClientInterceptor`.
+func splitMethodName(fullMethodName string) (string, string) {
+	fullMethodName = strings.TrimPrefix(fullMethodName, "/") // remove leading slash
+	if i := strings.Index(fullMethodName, "/"); i >= 0 {
+		return fullMethodName[:i], fullMethodName[i+1:]
+	}
+	return "unknown", "unknown"
+}
+
+// observeLatency is called with the `clientRequestTimeKey` value from
+// a request's gRPC metadata. This string value is converted to a timestamp and
+// used to calcuate the latency between send and receive time. The latency is
+// published to the server interceptor's rpcLag prometheus histogram. An error
+// is returned if the `clientReqTime` string is not a valid timestamp.
+func (si *serverInterceptor) observeLatency(clientReqTime string) error {
+	// Convert the metadata request time into an int64
+	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
+	if err != nil {
+		return berrors.InternalServerError("grpc metadata had illegal %s value: %q - %s",
+			clientRequestTimeKey, clientReqTime, err)
+	}
+	// Calculate the elapsed time since the client sent the RPC
+	reqTime := time.Unix(0, reqTimeUnixNanos)
+	elapsed := si.clk.Since(reqTime)
+	// Publish an RPC latency observation to the histogram
+	si.metrics.rpcLag.Observe(elapsed.Seconds())
+	return nil
 }
 
 // clientInterceptor is a gRPC interceptor that adds Prometheus
@@ -67,31 +123,66 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 // comes back up within the timeout. Under gRPC the same effect is achieved by
 // retries up to the Context deadline.
 type clientInterceptor struct {
-	timeout       time.Duration
-	clientMetrics *grpc_prometheus.ClientMetrics
+	timeout time.Duration
+	metrics clientMetrics
+	clk     clock.Clock
 }
 
 // intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
 // is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
 func (ci *clientInterceptor) intercept(
 	ctx context.Context,
-	method string,
+	fullMethod string,
 	req,
 	reply interface{},
 	cc *grpc.ClientConn,
 	invoker grpc.UnaryInvoker,
 	opts ...grpc.CallOption) error {
+	// This should not occur but fail fast with a clear error if it does (e.g.
+	// because of buggy unit test code) instead of a generic nil panic later!
+	if ci.metrics.inFlightRPCs == nil {
+		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
+	}
+
 	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
 	defer cancel()
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
 	opts = append(opts, grpc.FailFast(false))
-	// Create grpc/metadata.Metadata to encode internal error type if one is returned
-	md := metadata.New(nil)
-	opts = append(opts, grpc.Trailer(&md))
-	err := ci.clientMetrics.UnaryClientInterceptor()(localCtx, method, req, reply, cc, invoker, opts...)
+
+	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
+	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
+
+	// Create a grpc/metadata.Metadata instance for the request metadata.
+	// Initialize it with the request time.
+	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
+	// Configure the localCtx with the metadata so it gets sent along in the request
+	localCtx = metadata.NewContext(localCtx, reqMD)
+
+	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
+	respMD := metadata.New(nil)
+	// Configure a grpc Trailer with respMD. This allows us to wrap error
+	// types in the server interceptor later on.
+	opts = append(opts, grpc.Trailer(&respMD))
+
+	// Split the method and service name from the fullMethod.
+	// UnaryClientInterceptor's receive a `method` arg of the form
+	// "/ServiceName/MethodName"
+	service, method := splitMethodName(fullMethod)
+	// Slice the inFlightRPC inc/dec calls by method and service
+	labels := prometheus.Labels{
+		"method":  method,
+		"service": service,
+	}
+
+	// Increment the inFlightRPCs gauge for this method/service
+	ci.metrics.inFlightRPCs.With(labels).Inc()
+	// And defer decrementing it when we're done
+	defer ci.metrics.inFlightRPCs.With(labels).Dec()
+	// Handle the RPC
+	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
-		err = unwrapError(err, md)
+		err = unwrapError(err, respMD)
 	}
 	return err
 }

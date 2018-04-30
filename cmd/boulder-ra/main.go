@@ -149,26 +149,28 @@ func main() {
 	tlsConfig, err := c.RA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
+	clk := cmd.Clock()
+
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
 	caaClient := vaPB.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	// Build a CA client that is only capable of issuing certificates, not
 	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewCertificateAuthorityClient.
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
-	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(raConn))
 
 	var ctp *ctpolicy.CTPolicy
-	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
@@ -185,7 +187,7 @@ func main() {
 		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 	}
 
-	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
@@ -209,7 +211,7 @@ func main() {
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(
-		cmd.Clock(),
+		clk,
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
@@ -243,14 +245,14 @@ func main() {
 			raDNSTimeout,
 			c.RA.DNSResolvers,
 			scope,
-			cmd.Clock(),
+			clk,
 			dnsTries)
 	} else {
 		rai.DNSClient = bdns.NewTestDNSClientImpl(
 			raDNSTimeout,
 			c.RA.DNSResolvers,
 			scope,
-			cmd.Clock(),
+			clk,
 			dnsTries)
 	}
 
@@ -259,7 +261,7 @@ func main() {
 	rai.SA = sac
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics)
+	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 	gw := bgrpc.NewRegistrationAuthorityServer(rai)
 	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
