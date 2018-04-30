@@ -21,8 +21,6 @@ services:
               - publisher1.boulder
               - ocsp-updater.boulder
               - admin-revoker.boulder
-              - ct.boulder
-              - wfe.boulder
           rednet:
             ipv4_address: 10.88.88.88
             aliases:
