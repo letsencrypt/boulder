@@ -495,7 +495,14 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
+	// Calling AddCertificate with a nil issued should fail
 	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
+	test.AssertError(t, err, "Calling AddCertificate with nil issued didn't err")
+	test.AssertEquals(t, err.Error(), "AddCertificate received nil issued argument")
+
+	// Calling AddCertificate with a non-nil issued should succeed
+	issued := sa.clk.Now()
+	digest, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
@@ -541,7 +548,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial = "ffa0160630d618b2eb5c0510824b14274856"
 	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, nil)
+	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
 	certificateStatus3, err := sa.GetCertificateStatus(ctx, serial)
@@ -586,7 +593,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -628,7 +636,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil, nil)
+	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
@@ -706,7 +714,8 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -744,7 +753,8 @@ func TestCountCertificates(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	fc.Add(2 * time.Hour)
@@ -1029,7 +1039,8 @@ func TestPreviousCertificateExists(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "reading cert DER")
 
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "calling AddCertificate")
 
 	cases := []struct {

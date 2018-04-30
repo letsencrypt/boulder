@@ -893,13 +893,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	regID int64,
 	ocspResponse []byte,
 	issued *time.Time) (string, error) {
-	// NOTE(@cpu): Historically `AddCertificate` was hardcoded to set the added
-	// `core.Certificate`'s `Issued` field to the current time. If the `issued`
-	// parameter is nil then default to using now as the issued time to preserve
-	// this historic default.
+	// This should not happen - the gRPC layer enforces that issued != nil. If it
+	// does occur it should be considered an internal server error
 	if issued == nil {
-		now := ssa.clk.Now()
-		issued = &now
+		return "", berrors.InternalServerError("AddCertificate received nil issued argument")
 	}
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
