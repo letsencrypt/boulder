@@ -53,6 +53,9 @@ services:
           - 8055:8055 # dns-test-srv updates
           - 9380:9380 # mail-test-srv
           - 9381:9381 # mail-test-srv
+        depends_on:
+          - bhsm
+          - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
