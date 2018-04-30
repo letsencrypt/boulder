@@ -27,7 +27,7 @@ func TestMaxOpenConns(t *testing.T) {
 		maxOpenConns = m
 		oldSetMaxOpenConns(db, maxOpenConns)
 	}
-	_, err := NewDbMap("sa@tcp(bmysql:3306)/boulder_sa_integration", 100)
+	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", 100)
 	if err != nil {
 		t.Errorf("connecting to DB: %s", err)
 	}
@@ -37,8 +37,8 @@ func TestMaxOpenConns(t *testing.T) {
 }
 
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectURL = "mysql+tcp://policy:password@bmysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(bmysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=STRICT_ALL_TABLES"
+	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const expected = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=STRICT_ALL_TABLES"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen

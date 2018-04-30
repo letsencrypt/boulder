@@ -5,7 +5,7 @@ services:
         image: letsencrypt/boulder-tools-go${GO_VERSION:-1.10.1}:2018-04-05
         environment:
             FAKE_DNS: 127.0.0.1
-            PKCS11_PROXY_SOCKET: tcp://bhsm:5657
+            PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
             BOULDER_CONFIG_DIR: test/config
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
@@ -53,9 +53,6 @@ services:
           - 8055:8055 # dns-test-srv updates
           - 9380:9380 # mail-test-srv
           - 9381:9381 # mail-test-srv
-        links:
-          - bhsm:boulder-hsm
-          - bmysql:bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
@@ -67,11 +64,15 @@ services:
         expose:
           - 5657
         networks:
-          - bluenet
+          bluenet:
+            aliases:
+              - boulder-hsm
     bmysql:
         image: mariadb:10.1
         networks:
-          - bluenet
+          bluenet:
+            aliases:
+              - boulder-mysql
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
