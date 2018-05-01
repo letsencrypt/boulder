@@ -968,23 +968,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	return digest, tx.Commit()
 }
 
-// CountCertificatesRange returns the number of certificates issued in a specific
-// date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
-	var count int64
-	err := ssa.dbMap.SelectOne(
-		&count,
-		`SELECT COUNT(1) FROM certificates
-		WHERE issued >= :windowLeft
-		AND issued < :windowRight`,
-		map[string]interface{}{
-			"windowLeft":  start,
-			"windowRight": end,
-		},
-	)
-	return count, err
-}
-
 // CountPendingAuthorizations returns the number of pending, unexpired
 // authorizations for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
