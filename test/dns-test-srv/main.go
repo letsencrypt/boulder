@@ -197,7 +197,7 @@ func (ts *testSrv) serveTestResolver(dnsAddr string) {
 
 func main() {
 	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string][]string)}
-	ts.serveTestResolver("0.0.0.0:8053")
+	ts.serveTestResolver("0.0.0.0:53")
 	ts.serveTestResolver("0.0.0.0:8054")
 	webServer := server(&http.Server{
 		Addr: "0.0.0.0:8055",
