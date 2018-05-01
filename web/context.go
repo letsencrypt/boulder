@@ -12,21 +12,22 @@ import (
 )
 
 type RequestEvent struct {
-	RealIP    string    `json:",omitempty"`
-	Endpoint  string    `json:",omitempty"`
-	Method    string    `json:",omitempty"`
-	Errors    []string  `json:",omitempty"`
-	Requester int64     `json:",omitempty"`
-	Contacts  *[]string `json:",omitempty"`
-	UserAgent string    `json:",omitempty"`
-	Latency   float64
-	Code      int
-	Payload   string                 `json:",omitempty"`
-	Extra     map[string]interface{} `json:",omitempty"`
+	RealIP         string    `json:",omitempty"`
+	Endpoint       string    `json:",omitempty"`
+	Method         string    `json:",omitempty"`
+	InternalErrors []string  `json:",omitempty"`
+	PublicError    string    `json:",omitempty"`
+	Requester      int64     `json:",omitempty"`
+	Contacts       *[]string `json:",omitempty"`
+	UserAgent      string    `json:",omitempty"`
+	Latency        float64
+	Code           int
+	Payload        string                 `json:",omitempty"`
+	Extra          map[string]interface{} `json:",omitempty"`
 }
 
 func (e *RequestEvent) AddError(msg string, args ...interface{}) {
-	e.Errors = append(e.Errors, fmt.Sprintf(msg, args...))
+	e.InternalErrors = append(e.InternalErrors, fmt.Sprintf(msg, args...))
 }
 
 type WFEHandlerFunc func(context.Context, *RequestEvent, http.ResponseWriter, *http.Request)
