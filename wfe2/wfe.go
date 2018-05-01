@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -175,7 +174,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
-				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
+				logEvent.Slug = request.URL.Path
 			}
 
 			switch request.Method {
