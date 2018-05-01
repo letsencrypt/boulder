@@ -33,9 +33,9 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
-# URLs to control dns-test-srv
-SET_TXT = "http://localhost:8055/set-txt"
-CLEAR_TXT = "http://localhost:8055/clear-txt"
+# URLs for management interface of challsrv
+SET_TXT = "http://localhost:8056/set-txt"
+CLEAR_TXT = "http://localhost:8056/clear-txt"
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 

@@ -89,7 +89,7 @@ def start(race_detection, fakeclock=None):
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
         [6000, 'gsb-test-srv -apikey my-voice-is-my-passport'],
-        [8055, 'dns-test-srv'],
+        [8053, 'challsrv --dns01 :8053 --management :8056 --http01 ""'],
         [8004, 'boulder-va --config %s --addr :9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
         [8104, 'boulder-va --config %s --addr :9192 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
         [8001, 'boulder-ca --config %s --ca-addr :9093 --ocsp-addr :9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca.json")],

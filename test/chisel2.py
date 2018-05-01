@@ -42,9 +42,9 @@ PORT = os.getenv('PORT', '5002')
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 
-# URLs to control dns-test-srv
-SET_TXT = "http://localhost:8055/set-txt"
-CLEAR_TXT = "http://localhost:8055/clear-txt"
+# URLs for management interface of challsrv
+SET_TXT = "http://localhost:8056/set-txt"
+CLEAR_TXT = "http://localhost:8056/clear-txt"
 
 def uninitialized_client(key=None):
     if key is None:

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/test/challsrv"
 )
 
 // RatePeriod describes how long a certain throughput should be maintained
@@ -211,7 +213,7 @@ type State struct {
 	// accts holds V2 account objects
 	accts []*account
 
-	challSrv    *challSrv
+	challSrv    *challsrv.ChallSrv
 	callLatency latencyWriter
 	client      *http.Client
 
@@ -399,10 +401,26 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
-	s.challSrv = newChallSrv(httpOneAddr, tlsOneAddr)
-	s.challSrv.run()
-	fmt.Printf("[+] Started challenge servers, http-01: %q, tls-sni-01: %q\n", httpOneAddr, tlsOneAddr)
+func (s *State) Run(httpOneAddr string, p Plan) error {
+	// Create a new challenge server for HTTP-01 challenges
+	challSrv, err := challsrv.New(challsrv.Config{
+		HTTPOneAddr: httpOneAddr,
+		// Use a logger that has a load-generator prefix
+		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
+	})
+	if err != nil {
+		return err
+	}
+	// Save the challenge server in the state
+	s.challSrv = challSrv
+
+	// Create a waitgroup that can be used to block until the challenge server has
+	// cleanly shut down
+	challSrvWg := new(sync.WaitGroup)
+	challSrvWg.Add(1)
+	// Start the Challenge server in its own Go routine
+	go s.challSrv.Run(challSrvWg)
+	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
 		go func() {
@@ -468,6 +486,12 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	stop <- true
 	fmt.Println("[+] Waiting for pending flows to finish before killing challenge server")
 	s.wg.Wait()
+	fmt.Println("[+] Shutting down challenge server")
+	// Send a Shutdown request to the challenge server
+	s.challSrv.Shutdown()
+	// Wait on the waitgroup we gave the challenge server when we called Run().
+	// This will block until the challenge server is fully shut down.
+	challSrvWg.Wait()
 	return nil
 }
 

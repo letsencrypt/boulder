@@ -26,7 +26,6 @@ type Config struct {
 	APIBase         string // ACME API address to send requests to
 	DomainBase      string // base domain name to create authorizations for
 	HTTPOneAddr     string // address to listen for http-01 validation requests on
-	TLSOneAddr      string // address to listen for tls-sni-01 validation requests on
 	RealIP          string // value of the Real-IP header to use when bypassing CDN
 	CertKeySize     int    // size of the key to use when creating CSRs
 	RegEmail        string // email to use in registrations
@@ -103,7 +102,9 @@ func main() {
 		delta = &RateDelta{Inc: int64(rate), Period: period}
 	}
 
-	err = s.Run(config.HTTPOneAddr, config.TLSOneAddr, Plan{
+	go cmd.CatchSignals(nil, nil)
+
+	err = s.Run(config.HTTPOneAddr, Plan{
 		Runtime: runtime,
 		Rate:    config.Plan.Rate,
 		Delta:   delta,
