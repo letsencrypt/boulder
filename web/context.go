@@ -14,6 +14,7 @@ import (
 type RequestEvent struct {
 	RealIP    string    `json:",omitempty"`
 	Endpoint  string    `json:",omitempty"`
+	Slug      string    `json:",omitempty"`
 	Method    string    `json:",omitempty"`
 	Errors    []string  `json:",omitempty"`
 	Requester int64     `json:",omitempty"`
