@@ -893,11 +893,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	regID int64,
 	ocspResponse []byte,
 	issued *time.Time) (string, error) {
-	// This should not happen - the gRPC layer enforces that issued != nil. If it
-	// does occur it should be considered an internal server error
-	if issued == nil {
-		return "", berrors.InternalServerError("AddCertificate received nil issued argument")
-	}
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err

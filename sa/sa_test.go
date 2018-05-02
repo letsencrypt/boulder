@@ -495,14 +495,9 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	// Calling AddCertificate with a nil issued should fail
-	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil, nil)
-	test.AssertError(t, err, "Calling AddCertificate with nil issued didn't err")
-	test.AssertEquals(t, err.Error(), "AddCertificate received nil issued argument")
-
 	// Calling AddCertificate with a non-nil issued should succeed
 	issued := sa.clk.Now()
-	digest, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
