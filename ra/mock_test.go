@@ -44,10 +44,6 @@ func (sa *mockInvalidAuthorizationsAuthority) GetCertificateStatus(ctx context.C
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) CountCertificatesRange(ctx context.Context, in *sapb.Range, opts ...grpc.CallOption) (*sapb.Count, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) CountCertificatesByNames(ctx context.Context, in *sapb.CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return nil, nil
 }

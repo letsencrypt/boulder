@@ -134,25 +134,6 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	}, nil
 }
 
-func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountCertificatesRange(ctx, &sapb.Range{
-		Earliest: &earliestNano,
-		Latest:   &latestNano,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil || response.Count == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return *response.Count, nil
-}
-
 func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
@@ -743,19 +724,6 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 		NotAfter:              &notAfterNano,
 		IsExpired:             &certStatus.IsExpired,
 	}, nil
-}
-
-func (sas StorageAuthorityServerWrapper) CountCertificatesRange(ctx context.Context, request *sapb.Range) (*sapb.Count, error) {
-	if request == nil || request.Earliest == nil || request.Latest == nil {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountCertificatesRange(ctx, time.Unix(0, *request.Earliest), time.Unix(0, *request.Latest))
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: &count}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {

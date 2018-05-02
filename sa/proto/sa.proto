@@ -14,7 +14,6 @@ service StorageAuthority {
         rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
         rpc GetCertificate(Serial) returns (core.Certificate) {}
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
-        rpc CountCertificatesRange(Range) returns (Count) {}
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountCertificatesByExactNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
