@@ -245,8 +245,18 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		ctLog)
 	if err != nil {
 		if !canceled.Is(err) {
-			pub.log.AuditErr(
-				fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+			if respErr, ok := err.(ctClient.RspError); ok && respErr.StatusCode < 500 {
+				pub.log.AuditErr(
+					fmt.Sprintf(
+						"Failed to submit certificate to CT log at %s: Error=%q Body=%q",
+						ctLog.uri,
+						err,
+						string(respErr.Body),
+					))
+			} else {
+				pub.log.AuditErr(
+					fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+			}
 		}
 		return nil, err
 	}
