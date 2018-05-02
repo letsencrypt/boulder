@@ -3,6 +3,7 @@ package grpc
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
@@ -31,9 +32,14 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	// can use gRPC's built-in DNS based one. If that server address resolves
 	// via DNS to multiple IP addresses, gRPC will load balance among them.
 	if len(c.ServerAddresses) == 1 {
+		host, _, err := net.SplitHostPort(c.ServerAddresses[0])
+		if err != nil {
+			return nil, err
+		}
 		return grpc.Dial(
 			c.ServerAddresses[0],
 			grpc.WithTransportCredentials(creds),
+			grpc.WithBalancer(grpc.RoundRobin(newDNSResolver(host))),
 			grpc.WithUnaryInterceptor(ci.intercept),
 		)
 	} else {

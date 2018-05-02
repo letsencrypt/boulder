@@ -558,6 +558,7 @@ def main():
         run(args.custom)
 
     run_cert_checker()
+    check_balance()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -581,6 +582,25 @@ def run_loadtest():
     run("./bin/load-generator \
             -config test/load-generator/config/v2-integration-test-config.json\
             -results %s" % latency_data_file)
+
+def check_balance():
+    addresses = [
+        "sa1.boulder:8003",
+        "sa2.boulder:8103",
+        "publisher1.boulder:8009",
+        "publisher2.boulder:8109",
+        "va1.boulder:8004",
+        "va2.boulder:8104",
+        "ca1.boulder:8001",
+        "ca2.boulder:8104",
+        "ra1.boulder:8002",
+        "ra2.boulder:8102",
+    ]
+    for address in addresses:
+        metrics = requests.get("http://%s/metrics" % address)
+        if not metrics.contains("grpc_server_handled_total"):
+            raise Exception("no gRPC traffic processed by %s; load balancing problem?"
+                % address)
 
 def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)
