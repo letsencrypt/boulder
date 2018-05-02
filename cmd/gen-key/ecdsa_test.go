@@ -145,9 +145,10 @@ func TestECVerify(t *testing.T) {
 		}
 		rBytes := r.Bytes()
 		sBytes := s.Bytes()
-		// if len(rBytes) != len(sBytes) pad the shorter of the two slices
-		// so that we get an even length signature per PKCS#11
-		// spec
+		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
+		// Section 2.3.1: EC Signatures
+		// "If r and s have different octet length, the shorter of both must be padded with
+		// leading zero octets such that both have the same octet length."
 		switch {
 		case len(rBytes) < len(sBytes):
 			padding := make([]byte, len(sBytes)-len(rBytes))
