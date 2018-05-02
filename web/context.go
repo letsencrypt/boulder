@@ -16,7 +16,7 @@ type RequestEvent struct {
 	Endpoint       string    `json:",omitempty"`
 	Method         string    `json:",omitempty"`
 	InternalErrors []string  `json:",omitempty"`
-	PublicError    string    `json:",omitempty"`
+	Error          string    `json:",omitempty"`
 	Requester      int64     `json:",omitempty"`
 	Contacts       *[]string `json:",omitempty"`
 	UserAgent      string    `json:",omitempty"`

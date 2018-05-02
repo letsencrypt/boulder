@@ -492,7 +492,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		if err == nil {
 			ip = net.ParseIP(host)
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("couldn't parse the remote (that is, the client's) address"), fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr))
+			wfe.sendError(
+				response,
+				logEvent,
+				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			)
 			return
 		}
 	}
@@ -1176,7 +1181,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
 	if !core.ValidSerial(serial) {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), fmt.Errorf("certificate serial provided was not valid: %s", serial))
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.NotFound("Certificate not found"),
+			fmt.Errorf("certificate serial provided was not valid: %s", serial),
+		)
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
