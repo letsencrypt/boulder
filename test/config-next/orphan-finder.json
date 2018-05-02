@@ -12,7 +12,7 @@
   },
 
   "saService": {
-    "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
+    "serverAddresses": ["sa.boulder:9095"],
     "timeout": "15s"
   }
 }

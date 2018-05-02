@@ -248,7 +248,7 @@ def random_domain():
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def test_expiration_mailer():
-    email_addr = "integration.%x@boulder.local" % random.randrange(2**16)
+    email_addr = "integration.%x@boulder" % random.randrange(2**16)
     cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
     expiry = datetime.datetime.strptime(cert.body.get_notAfter(), '%Y%m%d%H%M%SZ')

@@ -27,12 +27,23 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
-	return grpc.Dial(
-		"", // Since our staticResolver provides addresses we don't need to pass an address here
-		grpc.WithTransportCredentials(creds),
-		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
-		grpc.WithUnaryInterceptor(ci.intercept),
-	)
+	// When there's only one server address, we don't need our custom Balancer. We
+	// can use gRPC's built-in DNS based one. If that server address resolves
+	// via DNS to multiple IP addresses, gRPC will load balance among them.
+	if len(c.ServerAddresses) == 1 {
+		return grpc.Dial(
+			c.ServerAddresses[0],
+			grpc.WithTransportCredentials(creds),
+			grpc.WithUnaryInterceptor(ci.intercept),
+		)
+	} else {
+		return grpc.Dial(
+			"", // Since our staticResolver provides addresses we don't need to pass an address here
+			grpc.WithTransportCredentials(creds),
+			grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
+			grpc.WithUnaryInterceptor(ci.intercept),
+		)
+	}
 }
 
 type registry interface {

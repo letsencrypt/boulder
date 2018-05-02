@@ -16,6 +16,19 @@ import (
 	"github.com/miekg/dns"
 )
 
+var services = map[string]bool{
+	"sa.boulder.":        true,
+	"va.boulder.":        true,
+	"ra.boulder.":        true,
+	"ca.boulder.":        true,
+	"publisher.boulder.": true,
+}
+
+var serviceIPs = []net.IP{
+	net.ParseIP("10.77.77.77"),
+	net.ParseIP("10.88.88.88"),
+}
+
 type testSrv struct {
 	mu         *sync.RWMutex
 	txtRecords map[string][]string
@@ -91,16 +104,31 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		fmt.Printf("dns-srv: Query -- [%s] %s\n", q.Name, dns.TypeToString[q.Qtype])
 		switch q.Qtype {
 		case dns.TypeA:
-			record := new(dns.A)
-			record.Hdr = dns.RR_Header{
-				Name:   q.Name,
-				Rrtype: dns.TypeA,
-				Class:  dns.ClassINET,
-				Ttl:    0,
-			}
-			record.A = net.ParseIP(fakeDNS)
+			if services[q.Name] {
+				for _, v := range serviceIPs {
+					record := new(dns.A)
+					record.Hdr = dns.RR_Header{
+						Name:   q.Name,
+						Rrtype: dns.TypeA,
+						Class:  dns.ClassINET,
+						Ttl:    0,
+					}
+					record.A = v
 
-			m.Answer = append(m.Answer, record)
+					m.Answer = append(m.Answer, record)
+				}
+			} else {
+				record := new(dns.A)
+				record.Hdr = dns.RR_Header{
+					Name:   q.Name,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    0,
+				}
+				record.A = net.ParseIP(fakeDNS)
+
+				m.Answer = append(m.Answer, record)
+			}
 		case dns.TypeMX:
 			record := new(dns.MX)
 			record.Hdr = dns.RR_Header{
