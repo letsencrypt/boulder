@@ -893,14 +893,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	regID int64,
 	ocspResponse []byte,
 	issued *time.Time) (string, error) {
-	// NOTE(@cpu): Historically `AddCertificate` was hardcoded to set the added
-	// `core.Certificate`'s `Issued` field to the current time. If the `issued`
-	// parameter is nil then default to using now as the issued time to preserve
-	// this historic default.
-	if issued == nil {
-		now := ssa.clk.Now()
-		issued = &now
-	}
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err
