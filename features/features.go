@@ -47,7 +47,7 @@ var features = map[FeatureFlag]bool{
 	UseAIAIssuerURL:             false,
 	ReusePendingAuthz:           false,
 	CountCertificatesExact:      false,
-	IPv6First:                   false,
+	IPv6First:                   false, // deprecated
 	AllowRenewalFirstRL:         false,
 	WildcardDomains:             false,
 	EnforceChallengeDisable:     false, // deprecated
