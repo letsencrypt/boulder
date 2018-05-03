@@ -603,7 +603,6 @@ func TestLogErrorBody(t *testing.T) {
 	defer srv.Close()
 	port, err := getPort(srv.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
-	// addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
 	logURI := fmt.Sprintf("http://localhost:%d", port)
