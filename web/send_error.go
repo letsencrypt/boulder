@@ -27,7 +27,7 @@ func SendError(
 	code := probs.ProblemDetailsToStatusCode(prob)
 
 	// Record details to the log event
-	logEvent.AddError(fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail))
+	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail)
 	if ierr != nil {
 		logEvent.AddError(fmt.Sprintf("%#v", ierr))
 	}
