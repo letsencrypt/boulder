@@ -199,6 +199,18 @@ func errorLogSrv() *httptest.Server {
 	return server
 }
 
+func errorBodyLogSrv() *httptest.Server {
+	m := http.NewServeMux()
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("well this isn't good now is it."))
+	})
+
+	server := httptest.NewUnstartedServer(m)
+	server.Start()
+	return server
+}
+
 func retryableLogSrv(k *ecdsa.PrivateKey, retries int, after *int) *httptest.Server {
 	hits := 0
 	m := http.NewServeMux()
@@ -582,4 +594,27 @@ func TestSubmitToCTParallel(t *testing.T) {
 	// time budget isn't being consumed by one and depriving the other.
 	test.AssertEquals(t, srvB.submissions, int64(1))
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to submit.*")), 1)
+}
+
+func TestLogErrorBody(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	srv := errorBodyLogSrv()
+	defer srv.Close()
+	port, err := getPort(srv.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	// addLog(t, pub, port, &k.PublicKey)
+
+	log.Clear()
+	logURI := fmt.Sprintf("http://localhost:%d", port)
+	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       &logURI,
+		LogPublicKey: &pkB64,
+		Der:          leaf.Raw,
+	})
+	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
+	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
 }
