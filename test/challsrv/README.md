@@ -1,7 +1,7 @@
 # Challenge Test Server
 
 The `chal-test-srv` package offers a library/command that can be used by test
-code to solve HTTP-01 and DNS-01 ACME challenges.
+code to respond to HTTP-01 and DNS-01 ACME challenges.
 
 ## Install
 
@@ -31,36 +31,36 @@ Usage of challsrv:
 To disable a challenge type, set the bind address to `""`. E.g.:
 
 * To run HTTP-01 only: `challsrv -dns01 ""`
-* TO run DNS-01 only: `chalsrv -http01 ""`
+* To run DNS-01 only: `chalsrv -http01 ""`
 
 ### Management Interface
 
-_Note: These examples assume the default management interface of `:8056`.
+_Note: These examples assume the default management interface of `:8056`_
 
 Adding an HTTP-01 challenge response for the token `"aaaa"` with the content
 `"bbbb"`:
 
-    `curl -X POST -d '{"token":"aaaa", "content":"bbbb"}' localhost:8056/add-http01`
+    curl -X POST -d '{"token":"aaaa", "content":"bbbb"}' localhost:8056/add-http01
 
 Deleting an HTTP-01 challenge response for the token `"aaaa"`:
 
-    `curl -X POST -d '{"token":"aaaa"}' localhost:8056/del-http01`
+    curl -X POST -d '{"token":"aaaa"}' localhost:8056/del-http01
 
-Adding a DNS-01 TXT challenge for the host `"_acme-challenge.example.com."`:
+Adding a DNS-01 TXT challenge for the host `"_acme-challenge.example.com."`
 with the value `"bbbb"`:
 
-    `curl -X POST -d '{"host":"_acme-challenge.example.com.", "value":"bbbb"}' localhost:8056/set-txt`
+    curl -X POST -d '{"host":"_acme-challenge.example.com.", "value":"bbbb"}' localhost:8056/set-txt
 
 Deleting a DNS-01 TXT challenge for the host `"_acme-challenge.example.com."`:
 
-    `curl -X POST -d '{"host":"_acme-challenge.example.com."}' localhost:8056/clear-txt`
+    curl -X POST -d '{"host":"_acme-challenge.example.com."}' localhost:8056/clear-txt
 
 ## The `test/challsrv` package
 
 The `test/challsrv` package can be used as a library by another program to
-avoid needing to manage an external `challsrv` or use the HTTP based management
-interface. This is used by the Boulder `load-generator` command to manage its
-own in-process HTTP-01 challenge server.
+avoid needing to manage an external `challsrv` binary or use the HTTP based
+management interface. This is used by the Boulder `load-generator` command to
+manage its own in-process HTTP-01 challenge server.
 
 ### Usage
 
