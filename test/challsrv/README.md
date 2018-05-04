@@ -9,8 +9,8 @@ code to respond to HTTP-01 and DNS-01 ACME challenges.
 
 ## Standalone `challsrv`
 
-The standalone `challsrv` binary lets you run a HTTP-01 and DNS-01 challenge
-server that external programs can add/remove challenge responses to using a
+The standalone `challsrv` binary lets you run HTTP-01 and DNS-01 challenge
+servers that external programs can add/remove challenge responses to using a
 management HTTP API.
 
 This is used by the Boulder integration tests to easily add/remove TXT records
@@ -21,9 +21,9 @@ for DNS-01 challenges for the `chisel.py` ACME client.
 ```
 Usage of challsrv:
   -dns01 string
-       Bind address/port for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
+       Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
   -http01 string
-       Bind address/port for HTTP-01 challenges. Set empty to disable. (default ":5002")
+       Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable. (default ":5002")
   -management string
        Bind address/port for management HTTP interface (default ":8056")
 ```
@@ -65,12 +65,12 @@ manage its own in-process HTTP-01 challenge server.
 ### Usage
 
 Create a challenge server responding to HTTP-01 challenges on ":8888" and
-DNS-01 challenges on ":9999":
+DNS-01 challenges on ":9999" and "10.0.0.1:9998":
 
 ```
   challSrv, err := challsrv.New(challsrv.Config{
-    HTTPOneAddr: ":8888",
-    DNSOneAddr: ":9999",
+    HTTPOneAddr: []string{":8888"},
+    DNSOneAddr: []string{":9999", "10.0.0.1:9998"},
   })
   if err != nil {
     panic(err)
