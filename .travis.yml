@@ -50,7 +50,7 @@ matrix:
   # Only do a coverage run for the current go version
   exclude:
     - go: "1.10.2"
-    - env: RUN="coverage"
+      env: RUN="coverage"
 
 # We require a newer version of docker-compose than is installed by way of the
 # "services: docker" directive. Per the travis docs[0] this is best remedied
