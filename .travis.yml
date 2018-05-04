@@ -2,6 +2,7 @@ language: go
 
 go:
   - "1.10"
+  - "1.10.2"
 
 go_import_path: github.com/letsencrypt/boulder
 
@@ -30,8 +31,7 @@ branches:
     - release
     - /^test-.*$/
 
-matrix:
-  include:
+env:
     #
     # Current Go version build tasks:
     #
@@ -42,17 +42,14 @@ matrix:
     - env: RUN="unit"
     - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
     - env: RUN="coverage"
-    #
-    # Next Go version build tasks:
-    #
-    - env: GO_VERSION="1.10.2" RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
-    # Config changes that have landed in master but not yet been applied to
-    # production can be made in boulder-config-next.json.
-    - env: GO_VERSION="1.10.2" RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - env: GO_VERSION="1.10.2" RUN="unit"
-    - env: GO_VERSION="1.10.2" RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+
+matrix:
   fast_finish: true
   allow_failures:
+    - env: RUN="coverage"
+  exclude:
+    # only do coverage for the current go version
+    - go: "1.10.2"
     - env: RUN="coverage"
 
 # We require a newer version of docker-compose than is installed by way of the
