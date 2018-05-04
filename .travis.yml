@@ -47,8 +47,8 @@ matrix:
   fast_finish: true
   allow_failures:
     - env: RUN="coverage"
+  # Only do a coverage run for the current go version
   exclude:
-    # only do coverage for the current go version
     - go: "1.10.2"
     - env: RUN="coverage"
 
