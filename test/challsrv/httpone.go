@@ -55,11 +55,11 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // tokens that have been added to the challenge server. A cleanup function is
 // returned to the caller that should be used to request the clean shutdown of
 // the HTTP server.
-func (s *ChallSrv) httpOneServer() func() {
-	s.log.Printf("Starting HTTP-01 challenge server on %s\n", s.httpOneAddr)
+func (s *ChallSrv) httpOneServer(address string) func() {
+	s.log.Printf("Starting HTTP-01 challenge server on %s\n", address)
 	// Create an HTTP Server for HTTP-01 challenges
 	srv := &http.Server{
-		Addr:         s.httpOneAddr,
+		Addr:         address,
 		Handler:      s,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
@@ -74,9 +74,9 @@ func (s *ChallSrv) httpOneServer() func() {
 	}()
 	// Return a cleanup function that shuts down the HTTP server.
 	return func() {
-		s.log.Printf("Shutting down HTTP-01 server on %s", s.httpOneAddr)
+		s.log.Printf("Shutting down HTTP-01 server on %s", address)
 		if err := srv.Shutdown(context.Background()); err != nil {
-			s.log.Printf("Err shutting down HTTP-01 server on %s: %s", s.httpOneAddr, err)
+			s.log.Printf("Err shutting down HTTP-01 server on %s: %s", address, err)
 		}
 	}
 }

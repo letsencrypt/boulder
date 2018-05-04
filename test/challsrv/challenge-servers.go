@@ -14,8 +14,11 @@ type ChallSrv struct {
 	// Shutdown is a channel used to request the challenge server cleanly shut down
 	shutdown chan bool
 
-	// httpOneAddr is the HTTP-01 challenge server bind address/port
-	httpOneAddr string
+	// httpOneAddrs are the HTTP-01 challenge server bind address(es)/port(s). If
+	// none are specified no HTTP-01 challenge server is run. If multiple are
+	// specified an HTTP-01 challenge response server will be bound to each
+	// address.
+	httpOneAddrs []string
 	// hoMu is a RWMutex used to control concurrent updates to the HTTP-01
 	// challenges in httpOne
 	hoMu sync.RWMutex
@@ -23,8 +26,10 @@ type ChallSrv struct {
 	// responses
 	httpOne map[string]string
 
-	// dnsOneAddr is the DNS-01 challenge server bind address/port
-	dnsOneAddr string
+	// dnsOneAddr are the DNS-01 challenge server bind address(es)/port(s). If
+	// none are specified no DNS-01 challenge server is run. If multiple are
+	// specified a DNS-01 challenge response server will be bound to each address.
+	dnsOneAddrs []string
 	// dnsMu is a RWMutex used to control concurrent updates to the DNS-01
 	// challenges in dnsOne
 	dnsMu sync.RWMutex
@@ -36,10 +41,10 @@ type ChallSrv struct {
 // Config holds challenge server configuration
 type Config struct {
 	Log *log.Logger
-	// HTTPOneAddr is the HTTP-01 challenge server bind address/port
-	HTTPOneAddr string
-	// DNSOneAddr is the DNS-01 challenge server bind address/port
-	DNSOneAddr string
+	// HTTPOneAddrs are the HTTP-01 challenge server bind addresses/ports
+	HTTPOneAddrs []string
+	// DNSOneAddrs are the DNS-01 challenge server bind addresses/ports
+	DNSOneAddrs []string
 }
 
 // validate checks that a challenge server Config is valid. To be valid it must
@@ -47,8 +52,9 @@ type Config struct {
 // configured log in the config a default is provided.
 func (c *Config) validate() error {
 	// There needs to be at least one challenge time with a bind address
-	if c.HTTPOneAddr == "" && c.DNSOneAddr == "" {
-		return fmt.Errorf("config specified empty HTTPOneAddr and DNSOneAddr values")
+	if len(c.HTTPOneAddrs) < 1 && len(c.DNSOneAddrs) < 1 {
+		return fmt.Errorf(
+			"config must specify at least one HTTPOneAddrs entry or one DNSOneAddrs entry")
 	}
 	// If there is no configured log make a default with a prefix
 	if c.Log == nil {
@@ -68,11 +74,11 @@ func New(config Config) (*ChallSrv, error) {
 		log:      config.Log,
 		shutdown: make(chan bool),
 
-		httpOne:     make(map[string]string),
-		httpOneAddr: config.HTTPOneAddr,
+		httpOne:      make(map[string]string),
+		httpOneAddrs: config.HTTPOneAddrs,
 
-		dnsOneAddr: config.DNSOneAddr,
-		dnsOne:     make(map[string][]string),
+		dnsOneAddrs: config.DNSOneAddrs,
+		dnsOne:      make(map[string][]string),
 	}, nil
 }
 
@@ -87,16 +93,14 @@ func (s *ChallSrv) Run(wg *sync.WaitGroup) {
 	// started.
 	var cleanups []func()
 
-	// If there is an HTTP-01 address configured, start an HTTP-01 server
-	if s.httpOneAddr != "" {
-		s.log.Printf("Starting HTTP-01 server")
-		cleanups = append(cleanups, s.httpOneServer())
+	// If there are HTTP-01 addresses configured, start HTTP-01 servers
+	for _, address := range s.httpOneAddrs {
+		cleanups = append(cleanups, s.httpOneServer(address))
 	}
 
-	// If there is a DNS-01 address configured, start a DNS-01 server
-	if s.dnsOneAddr != "" {
-		s.log.Printf("Starting DNS-01 server")
-		cleanups = append(cleanups, s.dnsOneServer())
+	// If there are DNS-01 addresses configured, start DNS-01 servers
+	for _, address := range s.dnsOneAddrs {
+		cleanups = append(cleanups, s.dnsOneServer(address))
 	}
 
 	// Block forever waiting for a shutdown request

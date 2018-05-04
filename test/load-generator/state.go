@@ -404,7 +404,7 @@ func New(
 func (s *State) Run(httpOneAddr string, p Plan) error {
 	// Create a new challenge server for HTTP-01 challenges
 	challSrv, err := challsrv.New(challsrv.Config{
-		HTTPOneAddr: httpOneAddr,
+		HTTPOneAddrs: []string{httpOneAddr},
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})

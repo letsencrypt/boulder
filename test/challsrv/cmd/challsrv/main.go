@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -57,21 +58,38 @@ func (srv *managementServer) Shutdown() {
 	srv.shutdown <- true
 }
 
+func filterEmpty(input []string) []string {
+	var output []string
+	for _, val := range input {
+		trimmed := strings.TrimSpace(val)
+		if trimmed != "" {
+			output = append(output, trimmed)
+		}
+	}
+	return output
+}
+
 func main() {
-	httpOneBind := flag.String("http01", ":5002", "Bind address/port for HTTP-01 challenges. Set empty to disable.")
-	dnsOneBind := flag.String("dns01", ":8053", "Bind address/port for DNS-01 challenges and fake DNS data. Set empty to disable.")
-	managementBind := flag.String("management", ":8056", "Bind address/port for management HTTP interface")
+	httpOneBind := flag.String("http01", ":5002",
+		"Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable.")
+	dnsOneBind := flag.String("dns01", ":8053",
+		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
+	managementBind := flag.String("management", ":8056",
+		"Bind address/port for management HTTP interface")
 
 	flag.Parse()
+
+	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
+	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
 
 	// Create a default logger with the challsrv binary name as a prefix
 	logger := log.New(os.Stdout, "challsrv - ", log.Ldate|log.Ltime)
 
 	// Create a new challenge server with the provided config
 	srv, err := challsrv.New(challsrv.Config{
-		HTTPOneAddr: *httpOneBind,
-		DNSOneAddr:  *dnsOneBind,
-		Log:         logger,
+		HTTPOneAddrs: httpOneAddresses,
+		DNSOneAddrs:  dnsOneAddresses,
+		Log:          logger,
 	})
 	cmd.FailOnError(err, "Unable to construct challenge server")
 
