@@ -28,9 +28,10 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
-	// When there's only one server address, we don't need our custom Balancer. We
-	// can use gRPC's built-in DNS based one. If that server address resolves
-	// via DNS to multiple IP addresses, gRPC will load balance among them.
+	// When there's only one server address, we use our custom newDNSResolver,
+	// intended as a temporary shim until we upgrade to a version of gRPC that has
+	// its own built-in DNS resolver. This works equally well when there's only
+	// one IP for a hostname or when there are multiple IPs for the hostname.
 	if len(c.ServerAddresses) == 1 {
 		host, _, err := net.SplitHostPort(c.ServerAddresses[0])
 		if err != nil {

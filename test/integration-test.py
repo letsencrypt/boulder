@@ -584,6 +584,11 @@ def run_loadtest():
             -results %s" % latency_data_file)
 
 def check_balance():
+    """Verify that gRPC load balancing across backends is working correctly.
+
+    Fetch metrics from each backend and ensure the grpc_server_handled_total
+    metric is present, which means that backend handled at least one request.
+    """
     addresses = [
         "sa1.boulder:8003",
         "sa2.boulder:8103",
