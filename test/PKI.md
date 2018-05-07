@@ -15,14 +15,16 @@ variable may break HTTPS connections to non-WFE destinations. If causes problems
 for you, you may need to create a combined bundle containing
 `test/wfe-tls/minica.pem` in addition to the other relevant root certificates.
 
-The gRPC PKI is under test/grpc-creds/. Each Boulder component has its own hostname
-(even though right now all those hostnames resolve to 127.0.0.1 in test). For
-each Boulder hostname, there is a directory under test/grpc-creds/ containing a
-certificate and private key.
+The gRPC PKI is under test/grpc-creds/. Each Boulder component has two
+hostnames, each resolving to a different IP address in our test environment,
+plus a third hostname that resolves to both IP addresses. Certificates for these
+components contain all three hostnames, and are stored under
+test/grpc-creds/SERVICE.boulder.
 
 To issue new certificates in the WFE or gRPC PKI, install
 https://github.com/jsha/minica, cd to the directory containing minica.pem for
-the PKI you want to issue in, and run `minica -domains YOUR_NEW_DOMAIN`.
+the PKI you want to issue in, and run `minica -domains YOUR_NEW_DOMAINs`. If
+you're updating the gRPC PKI, please make sure to update grpc-creds/generate.sh.
 
 The issuance PKI consists of a root and two intermediates. Certificates issued
 by Boulder tests are issued from the second of these two intermediates. During
