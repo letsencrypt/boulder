@@ -1333,10 +1333,6 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	// Set the IPv6First feature flag
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
@@ -1375,24 +1371,6 @@ func TestFallbackDialer(t *testing.T) {
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
-	// Create an identifier for a host that has an IPv6 and an IPv4 address.
-	// Since the IPv6First feature flag is not enabled we expect that the IPv4
-	// address will be used and validation will succeed using the httpSrv we
-	// created earlier.
-	ident := dnsi("ipv4.and.ipv6.localhost")
-	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob == nil, "validation failed for an dual homed host with IPv6First disabled")
-	// We expect one validation record to be present
-	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv4 address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
-	// We expect that zero addresses were tried before the address used
-	test.AssertEquals(t, len(records[0].AddressesTried), 0)
-
-	// Enable the IPv6 First feature
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	scope := mock_metrics.NewMockScope(ctrl)
@@ -1401,9 +1379,10 @@ func TestFallbackDialer(t *testing.T) {
 	// We expect the IPV4 Fallback stat to be incremented
 	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
-	// The validation is expected to succeed with IPv6First enabled even though
-	// the V6 server doesn't exist because we fallback to the IPv4 address.
-	records, prob = va.validateChallenge(ctx, ident, chall)
+	// The validation is expected to succeed even though the V6 server
+	// doesn't exist because we fallback to the IPv4 address.
+	ident := dnsi("ipv4.and.ipv6.localhost")
+	records, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
@@ -1427,24 +1406,6 @@ func TestFallbackTLS(t *testing.T) {
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
-	// Create an identifier for a host that has an IPv6 and an IPv4 address.
-	// Since the IPv6First feature flag is not enabled we expect that the IPv4
-	// address will be used and validation will succeed using the httpSrv we
-	// created earlier.
-	ident := dnsi("ipv4.and.ipv6.localhost")
-	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob == nil, "validation failed for a dual-homed address with an IPv4 server")
-	// We expect one validation record to be present
-	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
-	// We expect that no addresses were tried before the address used
-	test.AssertEquals(t, len(records[0].AddressesTried), 0)
-
-	// Enable the IPv6 First feature
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	scope := mock_metrics.NewMockScope(ctrl)
@@ -1453,9 +1414,10 @@ func TestFallbackTLS(t *testing.T) {
 	// We expect the IPV4 Fallback stat to be incremented
 	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
-	// The validation is expected to succeed now that IPv6First is enabled by the
-	// fallback to the IPv4 address that has a test server waiting
-	records, prob = va.validateChallenge(ctx, ident, chall)
+	// The validation is expected to succeed  by the fallback to the IPv4 address
+	// that has a test server waiting
+	ident := dnsi("ipv4.and.ipv6.localhost")
+	records, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)

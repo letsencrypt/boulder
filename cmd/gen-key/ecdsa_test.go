@@ -131,7 +131,7 @@ func TestECVerify(t *testing.T) {
 	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256().Params(), rand.Reader)
+	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = ecVerify(ctx, 0, 0, &tk.PublicKey)
 	test.AssertError(t, err, "ecVerify didn't fail on signature verification error")
@@ -143,7 +143,21 @@ func TestECVerify(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return append(r.Bytes(), s.Bytes()...), nil
+		rBytes := r.Bytes()
+		sBytes := s.Bytes()
+		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
+		// Section 2.3.1: EC Signatures
+		// "If r and s have different octet length, the shorter of both must be padded with
+		// leading zero octets such that both have the same octet length."
+		switch {
+		case len(rBytes) < len(sBytes):
+			padding := make([]byte, len(sBytes)-len(rBytes))
+			rBytes = append(padding, rBytes...)
+		case len(rBytes) > len(sBytes):
+			padding := make([]byte, len(rBytes)-len(sBytes))
+			sBytes = append(padding, sBytes...)
+		}
+		return append(rBytes, sBytes...), nil
 	}
 	err = ecVerify(ctx, 0, 0, &tk.PublicKey)
 	test.AssertNotError(t, err, "ecVerify failed with a valid signature")

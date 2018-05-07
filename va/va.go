@@ -208,9 +208,9 @@ func (d *http01Dialer) realDialer() *net.Dialer {
 }
 
 // DialContext processes the IP addresses from the inner validation record, using
-// `realDialer` to make connections as required. If `features.IPv6First` is
-// enabled then for dual-homed hosts an initial IPv6 connection will be made
-// followed by a IPv4 connection if there is a failure with the IPv6 connection.
+// `realDialer` to make connections as required. For dual-homed hosts an initial
+// IPv6 connection will be made followed by a IPv4 connection if there is a failure
+// with the IPv6 connection.
 func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -230,23 +230,8 @@ func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, 
 	// Split the available addresses into v4 and v6 addresses
 	v4, v6 := availableAddresses(d.record)
 
-	// If the IPv6 first feature isn't enabled then combine available IPv4 and
-	// IPv6 addresses and connect to the first IP in the combined list
-	if !features.Enabled(features.IPv6First) {
-		addresses := append(v4, v6...)
-		// This shouldn't happen, but be defensive about it anyway
-		if len(addresses) < 1 {
-			return nil, fmt.Errorf("no IP addresses found for %q", d.record.Hostname)
-		}
-		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
-		d.record.AddressUsed = addresses[0]
-		realDialer = d.realDialer()
-		return realDialer.DialContext(ctx, "tcp", address)
-	}
-
-	// If the IPv6 first feature is enabled and there is at least one IPv6 address
-	// then try it first
-	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+	// If there is at least one IPv6 address then try it first
+	if len(v6) > 0 {
 		address := net.JoinHostPort(v6[0].String(), d.record.Port)
 		d.record.AddressUsed = v6[0]
 		realDialer = d.realDialer()
@@ -276,10 +261,9 @@ func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, 
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
-	address := net.JoinHostPort(v4[0].String(), d.record.Port)
 	d.record.AddressUsed = v4[0]
 	realDialer = d.realDialer()
-	return realDialer.DialContext(ctx, "tcp", address)
+	return realDialer.DialContext(ctx, "tcp", net.JoinHostPort(v4[0].String(), d.record.Port))
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
@@ -502,18 +486,8 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 			fmt.Sprintf("no IP addresses found for %q", identifier.Value))
 	}
 
-	// If the IPv6 first feature isn't enabled then combine available IPv4 and
-	// IPv6 addresses and connect to the first IP in the combined list
-	if !features.Enabled(features.IPv6First) {
-		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
-		thisRecord.AddressUsed = addresses[0]
-		certs, err := va.getTLSSNICerts(ctx, address, identifier, challenge, zName)
-		return certs, validationRecords, err
-	}
-
-	// If the IPv6 first feature is enabled and there is at least one IPv6 address
-	// then try it first
-	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+	// If there is at least one IPv6 address then try it first
+	if len(v6) > 0 {
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
@@ -544,9 +518,9 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
-	address := net.JoinHostPort(v4[0].String(), thisRecord.Port)
 	thisRecord.AddressUsed = v4[0]
-	certs, err := va.getTLSSNICerts(ctx, address, identifier, challenge, zName)
+	certs, err := va.getTLSSNICerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
+		identifier, challenge, zName)
 	return certs, validationRecords, err
 }
 

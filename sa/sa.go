@@ -893,14 +893,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	regID int64,
 	ocspResponse []byte,
 	issued *time.Time) (string, error) {
-	// NOTE(@cpu): Historically `AddCertificate` was hardcoded to set the added
-	// `core.Certificate`'s `Issued` field to the current time. If the `issued`
-	// parameter is nil then default to using now as the issued time to preserve
-	// this historic default.
-	if issued == nil {
-		now := ssa.clk.Now()
-		issued = &now
-	}
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err
@@ -966,23 +958,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	return digest, tx.Commit()
-}
-
-// CountCertificatesRange returns the number of certificates issued in a specific
-// date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
-	var count int64
-	err := ssa.dbMap.SelectOne(
-		&count,
-		`SELECT COUNT(1) FROM certificates
-		WHERE issued >= :windowLeft
-		AND issued < :windowRight`,
-		map[string]interface{}{
-			"windowLeft":  start,
-			"windowRight": end,
-		},
-	)
-	return count, err
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
