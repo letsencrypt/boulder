@@ -1243,53 +1243,43 @@ func TestAvailableAddresses(t *testing.T) {
 	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
 
 	testcases := []struct {
-		input core.ValidationRecord
+		input []net.IP
 		v4    []net.IP
 		v6    []net.IP
 	}{
 		// An empty validation record
 		{
-			core.ValidationRecord{},
+			[]net.IP{},
 			[]net.IP{},
 			[]net.IP{},
 		},
 		// A validation record with one IPv4 address
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v4a},
-			},
+			[]net.IP{v4a},
 			[]net.IP{v4a},
 			[]net.IP{},
 		},
 		// A dual homed record with an IPv4 and IPv6 address
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v4a, v6a},
-			},
+			[]net.IP{v4a, v6a},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
 		// The same as above but with the v4/v6 order flipped
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v4a},
-			},
+			[]net.IP{v6a, v4a},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
 		// A validation record with just IPv6 addresses
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v6b},
-			},
+			[]net.IP{v6a, v6b},
 			[]net.IP{},
 			[]net.IP{v6a, v6b},
 		},
 		// A validation record with interleaved IPv4/IPv6 records
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v4a, v6b, v4b},
-			},
+			[]net.IP{v6a, v4a, v6b, v4b},
 			[]net.IP{v4a, v4b},
 			[]net.IP{v6a, v6b},
 		},
@@ -1350,13 +1340,14 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	test.AssertEquals(t, d.dialerCount, 2)
 
 	// We expect one validation record to be present
-	test.AssertNotNil(t, d.record, "there should be a non-nil validaiton record on the dialer")
+	test.Assert(t, len(d.addrInfoChan) == 1, "there should be one address info struct in the dialer.addrInfoChan chan")
+	addrInfo := <-d.addrInfoChan
 	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, d.record.AddressUsed.String(), "127.0.0.1")
+	test.AssertEquals(t, addrInfo.used.String(), "127.0.0.1")
 	// We expect that one address was tried before the address used
-	test.AssertEquals(t, len(d.record.AddressesTried), 1)
+	test.AssertEquals(t, len(addrInfo.tried), 1)
 	// We expect that IPv6 address was tried before the address used
-	test.AssertEquals(t, d.record.AddressesTried[0].String(), "::1")
+	test.AssertEquals(t, addrInfo.tried[0].String(), "::1")
 }
 
 func TestFallbackDialer(t *testing.T) {
