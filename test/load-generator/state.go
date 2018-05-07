@@ -28,7 +28,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/test/challsrv"
+	"github.com/letsencrypt/boulder/test/challtestsrv"
 )
 
 // RatePeriod describes how long a certain throughput should be maintained
@@ -213,7 +213,7 @@ type State struct {
 	// accts holds V2 account objects
 	accts []*account
 
-	challSrv    *challsrv.ChallSrv
+	challSrv    *challtestsrv.ChallSrv
 	callLatency latencyWriter
 	client      *http.Client
 
@@ -403,7 +403,7 @@ func New(
 // Run runs the WFE load-generator
 func (s *State) Run(httpOneAddr string, p Plan) error {
 	// Create a new challenge server for HTTP-01 challenges
-	challSrv, err := challsrv.New(challsrv.Config{
+	challSrv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs: []string{httpOneAddr},
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),

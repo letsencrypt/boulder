@@ -1,4 +1,4 @@
-package challsrv
+package challtestsrv
 
 import (
 	"net"

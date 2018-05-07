@@ -1,15 +1,19 @@
 # Challenge Test Server
 
-The `chal-test-srv` package offers a library/command that can be used by test
+The `challtestsrv` package offers a library/command that can be used by test
 code to respond to HTTP-01 and DNS-01 ACME challenges.
+
+**Important note: The `challtestsrv` command and library are for TEST USAGE
+ONLY. It is trivially insecure, offering no authentication. Only use
+`challtestsrv` in a controlled test environment.**
 
 ## Install
 
-`go install ./test/challsrv/...`
+`go install ./test/challtestsrv/...`
 
-## Standalone `challsrv`
+## Standalone `challtestsrv` Command
 
-The standalone `challsrv` binary lets you run HTTP-01 and DNS-01 challenge
+The standalone `challtestsrv` binary lets you run HTTP-01 and DNS-01 challenge
 servers that external programs can add/remove challenge responses to using a
 management HTTP API.
 
@@ -19,7 +23,7 @@ for DNS-01 challenges for the `chisel.py` ACME client.
 ### Usage
 
 ```
-Usage of challsrv:
+Usage of challtestsrv:
   -dns01 string
        Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
   -http01 string
@@ -30,8 +34,8 @@ Usage of challsrv:
 
 To disable a challenge type, set the bind address to `""`. E.g.:
 
-* To run HTTP-01 only: `challsrv -dns01 ""`
-* To run DNS-01 only: `chalsrv -http01 ""`
+* To run HTTP-01 only: `challtestsrv -dns01 ""`
+* To run DNS-01 only: `challtestsrv -http01 ""`
 
 ### Management Interface
 
@@ -55,10 +59,10 @@ Deleting a DNS-01 TXT challenge for the host `"_acme-challenge.example.com."`:
 
     curl -X POST -d '{"host":"_acme-challenge.example.com."}' localhost:8056/clear-txt
 
-## The `test/challsrv` package
+## The `test/challtestsrv` package
 
-The `test/challsrv` package can be used as a library by another program to
-avoid needing to manage an external `challsrv` binary or use the HTTP based
+The `test/challtestsrv` package can be used as a library by another program to
+avoid needing to manage an external `challtestsrv` binary or use the HTTP based
 management interface. This is used by the Boulder `load-generator` command to
 manage its own in-process HTTP-01 challenge server.
 
@@ -68,7 +72,9 @@ Create a challenge server responding to HTTP-01 challenges on ":8888" and
 DNS-01 challenges on ":9999" and "10.0.0.1:9998":
 
 ```
-  challSrv, err := challsrv.New(challsrv.Config{
+  import "github.com/letsencrypt/boulder/test/challtestsrv"
+
+  challSrv, err := challtestsrv.New(challsrv.Config{
     HTTPOneAddr: []string{":8888"},
     DNSOneAddr: []string{":9999", "10.0.0.1:9998"},
   })
@@ -104,7 +110,7 @@ value `"bbb"`, defer cleaning it up again:
 Stop the Challenge server:
 ```
   // Send a Shutdown request to the challenge server
-  s.challSrv.Shutdown()
+  challSrv.Shutdown()
   // Wait on the waitgroup we gave the challenge server when we called Run().
   // This will block until the challenge server is fully shut down.
   challSrvWg.Wait()

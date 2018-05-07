@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/test/challsrv"
+	"github.com/letsencrypt/boulder/test/challtestsrv"
 )
 
 // managementServer is a small HTTP server that can control a challenge server,
@@ -20,7 +20,7 @@ type managementServer struct {
 	*http.Server
 	log *log.Logger
 	// The challenge server that is under control by the management server
-	challSrv *challsrv.ChallSrv
+	challSrv *challtestsrv.ChallSrv
 	// Shutdown is a channel used to request the management server cleanly shut down
 	shutdown chan bool
 }
@@ -86,7 +86,7 @@ func main() {
 	logger := log.New(os.Stdout, "challsrv - ", log.Ldate|log.Ltime)
 
 	// Create a new challenge server with the provided config
-	srv, err := challsrv.New(challsrv.Config{
+	srv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs: httpOneAddresses,
 		DNSOneAddrs:  dnsOneAddresses,
 		Log:          logger,
