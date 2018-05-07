@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -175,7 +174,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
-				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
+				logEvent.Slug = request.URL.Path
 			}
 
 			switch request.Method {
@@ -606,8 +605,12 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 		if err == nil {
 			init.InitialIP = net.ParseIP(host)
 		} else {
-			logEvent.AddError("Couldn't parse RemoteAddr: %s", request.RemoteAddr)
-			wfe.sendError(response, logEvent, probs.ServerInternal("couldn't parse the remote (that is, the client's) address"), nil)
+			wfe.sendError(
+				response,
+				logEvent,
+				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			)
 			return
 		}
 	}
@@ -1063,11 +1066,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Check that the registration ID matching the key used matches
 	// the registration ID on the authz object
 	if currReg.ID != authz.RegistrationID {
-		logEvent.AddError("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID)
 		wfe.sendError(response,
 			logEvent,
 			probs.Unauthorized("User registration ID doesn't match registration ID in authorization"),
-			nil,
+			fmt.Errorf("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID),
 		)
 		return
 	}
@@ -1287,11 +1289,11 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	// TODO(#991): handle db errors
 	if err != nil {
-		logEvent.AddError("unable to get certificate by serial id %#v: %s", serial, err)
+		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), err)
+			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
 		} else {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
 		return
 	}

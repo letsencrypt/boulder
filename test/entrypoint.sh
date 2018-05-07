@@ -14,17 +14,17 @@ wait_tcp_port() {
     local host="$1" port="$2"
 
     # see http://tldp.org/LDP/abs/html/devref1.html for description of this syntax.
-    while ! exec 6<>/dev/tcp/$host/$port; do
-	echo "$(date) - still trying to connect to $host:$port"
-	sleep 1
+    for n in `seq 1 30` ; do
+      if exec 6<>/dev/tcp/$host/$port; then
+        break
+      else
+        echo "$(date) - still trying to connect to $host:$port"
+        sleep 1
+      fi
     done
     exec 6>&-
     echo "Connected to $host:$port"
 }
-cat <<EOF >> /etc/hosts
-127.0.0.1 sa.boulder ra.boulder wfe.boulder ca.boulder va.boulder publisher.boulder ocsp-updater.boulder admin-revoker.boulder
-EOF
-
 # make sure we can reach the mysqldb
 wait_tcp_port boulder-mysql 3306
 

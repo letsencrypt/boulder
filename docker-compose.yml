@@ -2,7 +2,7 @@ version: '3'
 services:
     boulder:
         # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools-go${GO_VERSION:-1.10.1}:2018-04-05
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
         environment:
             FAKE_DNS: 127.0.0.1
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
@@ -10,10 +10,25 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - ./.gocache:/root/.cache/go-build
-        network_mode: bridge
-        extra_hosts:
-          - le.wtf:127.0.0.1
-          - boulder:127.0.0.1
+        networks:
+          bluenet:
+            ipv4_address: 10.77.77.77
+            aliases:
+              - sa1.boulder
+              - ca1.boulder
+              - ra1.boulder
+              - va1.boulder
+              - publisher1.boulder
+              - ocsp-updater.boulder
+              - admin-revoker.boulder
+          rednet:
+            ipv4_address: 10.88.88.88
+            aliases:
+              - sa2.boulder
+              - ca2.boulder
+              - ra2.boulder
+              - va2.boulder
+              - publisher2.boulder
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2
@@ -36,25 +51,45 @@ services:
           - 8055:8055 # dns-test-srv updates
           - 9380:9380 # mail-test-srv
           - 9381:9381 # mail-test-srv
-        links:
-          - bhsm:boulder-hsm
-          - bmysql:boulder-mysql
+        depends_on:
+          - bhsm
+          - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
         # To minimize fetching this should be the same version used above
-        image: letsencrypt/boulder-tools-go${GO_VERSION:-1.10.1}:2018-04-05
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
         environment:
             PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
         expose:
           - 5657
-        network_mode: bridge
+        networks:
+          bluenet:
+            aliases:
+              - boulder-hsm
     bmysql:
         image: mariadb:10.1
-        network_mode: bridge
+        networks:
+          bluenet:
+            aliases:
+              - boulder-mysql
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
+
+networks:
+  bluenet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.77.77.0/24
+  rednet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.88.88.0/24

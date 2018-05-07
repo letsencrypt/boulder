@@ -15,8 +15,7 @@ When a new Go version is available we perform serveral steps to integrate it to 
 1. We add it to the `GO_VERSIONS` array in `tag_and_upload.sh`.
 2. We run the `tag_and_upload.sh` script to build, tag, and upload
    a `boulder-tools` image for each of the `GO_VERSIONS`
-3. We update `.travis.yml`, duplicating the existing build tasks, adding new
-   `GO_VERSION=` `ENV` entries for the new Go version.
+3. We update `.travis.yml`, adding the new Go version to the `go` section.
 
 After some time when we have spot checked the new Go release and coordinated
 a staging/prod environment upgrade with the operations team we can remove the
