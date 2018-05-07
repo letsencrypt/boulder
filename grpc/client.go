@@ -33,14 +33,14 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	// its own built-in DNS resolver. This works equally well when there's only
 	// one IP for a hostname or when there are multiple IPs for the hostname.
 	if len(c.ServerAddresses) == 1 {
-		host, _, err := net.SplitHostPort(c.ServerAddresses[0])
+		host, port, err := net.SplitHostPort(c.ServerAddresses[0])
 		if err != nil {
 			return nil, err
 		}
 		return grpc.Dial(
 			c.ServerAddresses[0],
 			grpc.WithTransportCredentials(creds),
-			grpc.WithBalancer(grpc.RoundRobin(newDNSResolver(host))),
+			grpc.WithBalancer(grpc.RoundRobin(newDNSResolver(host, port))),
 			grpc.WithUnaryInterceptor(ci.intercept),
 		)
 	} else {

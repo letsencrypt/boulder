@@ -12,14 +12,15 @@ import (
 // has a built-in DNS resolver. It looks up the hostname only once; it doesn't
 // monitor for changes.
 type dnsResolver struct {
-	host string
+	host, port string
 	// ch is used to enforce the "lookup only once" behavior.
 	ch chan bool
 }
 
-func newDNSResolver(host string) *dnsResolver {
+func newDNSResolver(host, port string) *dnsResolver {
 	return &dnsResolver{
 		host: host,
+		port: port,
 		ch:   make(chan bool, 1),
 	}
 }
@@ -42,7 +43,7 @@ func (dr *dnsResolver) Next() ([]*naming.Update, error) {
 	for _, ip := range addrs {
 		updates = append(updates, &naming.Update{
 			Op:   naming.Add,
-			Addr: ip,
+			Addr: net.JoinHostPort(ip, dr.port),
 		})
 	}
 	return updates, nil

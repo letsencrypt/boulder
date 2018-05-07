@@ -603,7 +603,7 @@ def check_balance():
     ]
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
-        if not metrics.contains("grpc_server_handled_total"):
+        if not metrics.text.contains("grpc_server_handled_total"):
             raise Exception("no gRPC traffic processed by %s; load balancing problem?"
                 % address)
 
