@@ -40,11 +40,14 @@ func (e SANNotAcceptedErr) Error() string {
 type clientTransportCredentials struct {
 	roots   *x509.CertPool
 	clients []tls.Certificate
+	// If set, this is used as the hostname to validate on certificates, instead
+	// of the value passed to ClientHandshake by grpc.
+	hostOverride string
 }
 
 // NewClientCredentials returns a new initialized grpc/credentials.TransportCredentials for client usage
-func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate) credentials.TransportCredentials {
-	return &clientTransportCredentials{rootCAs, clientCerts}
+func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate, hostOverride string) credentials.TransportCredentials {
+	return &clientTransportCredentials{rootCAs, clientCerts, hostOverride}
 }
 
 // ClientHandshake does the authentication handshake specified by the corresponding
@@ -52,11 +55,15 @@ func NewClientCredentials(rootCAs *x509.CertPool, clientCerts []tls.Certificate)
 // connection and the corresponding auth information about the connection.
 // Implementations must use the provided context to implement timely cancellation.
 func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	// IMPORTANT: Don't wrap the errors returned from this method. gRPC expects to be
-	// able to check err.Temporary to spot temporary errors and reconnect when they happen.
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, nil, err
+	var err error
+	host := tc.hostOverride
+	if host == "" {
+		// IMPORTANT: Don't wrap the errors returned from this method. gRPC expects to be
+		// able to check err.Temporary to spot temporary errors and reconnect when they happen.
+		host, _, err = net.SplitHostPort(addr)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	conn := tls.Client(rawConn, &tls.Config{
 		ServerName:   host,
@@ -107,7 +114,7 @@ func (tc *clientTransportCredentials) RequireTransportSecurity() bool {
 
 // Clone returns a copy of the clientTransportCredentials
 func (tc *clientTransportCredentials) Clone() credentials.TransportCredentials {
-	return NewClientCredentials(tc.roots, tc.clients)
+	return NewClientCredentials(tc.roots, tc.clients, tc.hostOverride)
 }
 
 // OverrideServerName is not implemented and here only to satisfy the interface

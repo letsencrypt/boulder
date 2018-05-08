@@ -27,7 +27,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
-	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates)
 	// When there's only one server address, we use our custom newDNSResolver,
 	// intended as a temporary shim until we upgrade to a version of gRPC that has
 	// its own built-in DNS resolver. This works equally well when there's only
@@ -37,6 +36,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 		if err != nil {
 			return nil, err
 		}
+		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
 		return grpc.Dial(
 			c.ServerAddresses[0],
 			grpc.WithTransportCredentials(creds),
@@ -44,6 +44,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 			grpc.WithUnaryInterceptor(ci.intercept),
 		)
 	} else {
+		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, "")
 		return grpc.Dial(
 			"", // Since our staticResolver provides addresses we don't need to pass an address here
 			grpc.WithTransportCredentials(creds),
