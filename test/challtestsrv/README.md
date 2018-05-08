@@ -83,14 +83,10 @@ DNS-01 challenges on ":9999" and "10.0.0.1:9998":
   }
 ```
 
-Run the Challenge server:
+Run the Challenge server and subservers:
 ```
-  // Create a waitgroup that can be used to block until the challenge server has
-  // cleanly shut down
-  challSrvWg := new(sync.WaitGroup)
-  challSrvWg.Add(1)
   // Start the Challenge server in its own Go routine
-  go challSrv.Run(challSrvWg)
+  go challSrv.Run()
 ```
 
 Add an HTTP-01 response for the token `"aaa"` and the value `"bbb"`, defer
@@ -107,11 +103,8 @@ value `"bbb"`, defer cleaning it up again:
   defer challSrv.DeleteHTTPOneChallenge("_acme-challenge.example.com.")
 ```
 
-Stop the Challenge server:
+Stop the Challenge server and subservers:
 ```
-  // Send a Shutdown request to the challenge server
+  // Shutdown the Challenge server
   challSrv.Shutdown()
-  // Wait on the waitgroup we gave the challenge server when we called Run().
-  // This will block until the challenge server is fully shut down.
-  challSrvWg.Wait()
 ```
