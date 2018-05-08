@@ -244,10 +244,20 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
-		if !canceled.Is(err) {
-			pub.log.AuditErr(
-				fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+		if canceled.Is(err) {
+			return nil, err
 		}
+		var body string
+		if respErr, ok := err.(ctClient.RspError); ok && respErr.StatusCode < 500 {
+			body = string(respErr.Body)
+		}
+		pub.log.AuditErr(
+			fmt.Sprintf(
+				"Failed to submit certificate to CT log at %s: %s Body=%q",
+				ctLog.uri,
+				err,
+				body,
+			))
 		return nil, err
 	}
 
