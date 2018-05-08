@@ -435,7 +435,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
@@ -445,13 +445,13 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
 	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`No valid IP addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
@@ -461,8 +461,8 @@ func TestHTTPRedirectLookup(t *testing.T) {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectInvalidPort)
@@ -545,7 +545,7 @@ func TestTLSSNI01Success(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Unexpected failure in validate TLS-SNI-01: %s", prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
 	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
 		t.Errorf("Didn't get log message with validated certificate. Instead got:\n%s",
 			strings.Join(log.GetAllMatching(".*"), "\n"))
@@ -1328,7 +1328,8 @@ func TestHTTP01DialerFallback(t *testing.T) {
 
 	// Create a test dialer for the dual homed host. There is only an IPv4 httpSrv
 	// so the IPv6 address returned in the AAAA record will always fail.
-	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
+	addrs, _ := va.getAddrs(context.Background(), "ipv4.and.ipv6.localhost")
+	d := va.newHTTP01Dialer("ipv4.and.ipv6.localhost", va.httpPort, addrs)
 
 	// Try to dial the dialer
 	_, dialProb := d.DialContext(context.Background(), "", "ipv4.and.ipv6.localhost")

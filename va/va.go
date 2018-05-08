@@ -168,22 +168,21 @@ type verificationRequestEvent struct {
 // the preferred address, the first net.IP in the addrs slice, and all addresses
 // resolved. This is the same choice made by the Go internal resolution library
 // used by net/http.
-func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
 		problem := probs.DNS(err.Error())
-		return net.IP{}, nil, problem
+		return nil, problem
 	}
 
 	if len(addrs) == 0 {
 		problem := probs.UnknownHost(
 			fmt.Sprintf("No valid IP addresses found for %s", hostname),
 		)
-		return net.IP{}, nil, problem
+		return nil, problem
 	}
-	addr := addrs[0]
-	va.log.Debug(fmt.Sprintf("Resolved addresses for %s [using %s]: %s", hostname, addr, addrs))
-	return addr, addrs, nil
+	va.log.Debug(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
+	return addrs, nil
 }
 
 type addrRecord struct {
@@ -193,9 +192,9 @@ type addrRecord struct {
 
 // http01Dialer is a struct that exists to provide a dialer like object with
 // a `DialContext` method that can be given to an http.Transport for HTTP-01
-// validation. The primary purpose of the http01Dialer's DialContext method is to
-// circumvent traditional DNS lookup and to use the IP addresses provided in the
-// inner `record` member populated by the `resolveAndConstructDialer` function.
+// validation. The primary purpose of the http01Dialer's DialContext method
+// is to circumvent traditional DNS lookup and to use the IP addresses in the
+// addr slice.
 type http01Dialer struct {
 	addrs       []net.IP
 	hostname    string
@@ -293,22 +292,16 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-// resolveAndConstructDialer gets the preferred address using va.getAddr and returns
-// the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (http01Dialer, *probs.ProblemDetails) {
-	d := http01Dialer{
-		hostname:     name,
+// newHTTP01Dialer initializes a http01Dialer for the relevant hostname and port
+// number
+func (va *ValidationAuthorityImpl) newHTTP01Dialer(host string, port int, addrs []net.IP) http01Dialer {
+	return http01Dialer{
+		hostname:     host,
 		port:         strconv.Itoa(port),
+		addrs:        addrs,
 		stats:        va.stats,
 		addrInfoChan: make(chan addrRecord, 1),
 	}
-
-	_, allAddrs, err := va.getAddr(ctx, name)
-	if err != nil {
-		return d, err
-	}
-	d.addrs = allAddrs
-	return d, nil
 }
 
 // Validation methods
@@ -356,11 +349,12 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		URL:      url.String(),
 	}
 	// Resolve IP addresses and construct custom dialer
-	dialer, prob := va.resolveAndConstructDialer(ctx, host, port)
+	addrs, prob := va.getAddrs(ctx, host)
 	if prob != nil {
 		return nil, []core.ValidationRecord{baseRecord}, prob
 	}
-	baseRecord.AddressesResolved = dialer.addrs
+	baseRecord.AddressesResolved = addrs
+	dialer := va.newHTTP01Dialer(host, port, addrs)
 
 	// Start with an empty validation record list - we will add a record after
 	// each dialer.DialContext()
@@ -423,24 +417,32 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			reqPort = va.httpPort
 		}
 
-		// Record validation record for previous request
+		// Since we've used dialer.DialContext we need to drain the address info
+		// channel and build a validation record using it and baseRecord so that
+		// we have a record for the host that sent the redirect.
 		addrInfo := <-dialer.addrInfoChan
 		record := baseRecord
 		record.AddressUsed, record.AddressesTried = addrInfo.used, addrInfo.tried
 		validationRecords = append(validationRecords, record)
 
-		// Update base record host, port, and URL
-		baseRecord.Hostname, baseRecord.Port, baseRecord.URL = reqHost, strconv.Itoa(reqPort), req.URL.String()
+		// Update base record host, port, and URL for next dial. If there isn't
+		// another redirect this will be used by the parent scope to construct
+		// the final record.
+		baseRecord.Hostname = reqHost
+		baseRecord.Port = strconv.Itoa(reqPort)
+		baseRecord.URL = req.URL.String()
 
-		var prob *probs.ProblemDetails
-		dialer, prob = va.resolveAndConstructDialer(ctx, reqHost, reqPort)
-		baseRecord.AddressesResolved = dialer.addrs
+		// Resolve new hostname and construct a new dialer
+		addrs, prob := va.getAddrs(ctx, reqHost)
 		if prob != nil {
-			// Since we won't call dialer.DialContext again the parent scope will block waiting for
-			// a something from dialer.addrInfoChan so we put an addrRecord struct in the channel
+			// Since we won't call dialer.DialContext again the parent scope
+			// will block waiting for something from dialer.addrInfoChan so
+			// we put an empty addrRecord struct in the channel.
 			dialer.addrInfoChan <- addrRecord{}
 			return prob
 		}
+		baseRecord.AddressesResolved = addrs
+		dialer = va.newHTTP01Dialer(reqHost, reqPort, addrs)
 
 		tr.DialContext = dialer.DialContext
 		va.log.Debug(fmt.Sprintf(
@@ -505,7 +507,7 @@ func certNames(cert *x509.Certificate) []string {
 }
 
 func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, []core.ValidationRecord, *probs.ProblemDetails) {
-	_, allAddrs, problem := va.getAddr(ctx, identifier.Value)
+	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
 			Hostname:          identifier.Value,
