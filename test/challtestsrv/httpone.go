@@ -13,15 +13,15 @@ const wellKnownPath = "/.well-known/acme-challenge/"
 // AddHTTPOneChallenge adds a new HTTP-01 challenge for the given token and
 // content.
 func (s *ChallSrv) AddHTTPOneChallenge(token, content string) {
-	s.hoMu.Lock()
-	defer s.hoMu.Unlock()
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
 	s.httpOne[token] = content
 }
 
 // DeleteHTTPOneChallenge deletes a given HTTP-01 challenge token.
 func (s *ChallSrv) DeleteHTTPOneChallenge(token string) {
-	s.hoMu.Lock()
-	defer s.hoMu.Unlock()
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
 	if _, ok := s.httpOne[token]; ok {
 		delete(s.httpOne, token)
 	}
@@ -31,8 +31,8 @@ func (s *ChallSrv) DeleteHTTPOneChallenge(token string) {
 // (if it exists) and a true bool. If the token does not exist then an empty
 // string and a false bool are returned.
 func (s *ChallSrv) GetHTTPOneChallenge(token string) (string, bool) {
-	s.hoMu.RLock()
-	defer s.hoMu.RUnlock()
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
 	content, present := s.httpOne[token]
 	return content, present
 }

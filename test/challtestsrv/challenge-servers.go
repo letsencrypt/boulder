@@ -14,14 +14,15 @@ type ChallSrv struct {
 	// Shutdown is a channel used to request the challenge server cleanly shut down
 	shutdown chan bool
 
+	// challMu is a RWMutex used to control concurrent updates to challenge
+	// response maps `httpOne` and `dnsOne`.
+	challMu sync.RWMutex
+
 	// httpOneAddrs are the HTTP-01 challenge server bind address(es)/port(s). If
 	// none are specified no HTTP-01 challenge server is run. If multiple are
 	// specified an HTTP-01 challenge response server will be bound to each
 	// address.
 	httpOneAddrs []string
-	// hoMu is a RWMutex used to control concurrent updates to the HTTP-01
-	// challenges in httpOne
-	hoMu sync.RWMutex
 	// httpOne is a map of token values to key authorizations used for HTTP-01
 	// responses
 	httpOne map[string]string
@@ -30,9 +31,6 @@ type ChallSrv struct {
 	// none are specified no DNS-01 challenge server is run. If multiple are
 	// specified a DNS-01 challenge response server will be bound to each address.
 	dnsOneAddrs []string
-	// dnsMu is a RWMutex used to control concurrent updates to the DNS-01
-	// challenges in dnsOne
-	dnsMu sync.RWMutex
 	// dnsOne is a map of DNS host values to key authorizations used for DNS-01
 	// responses
 	dnsOne map[string][]string

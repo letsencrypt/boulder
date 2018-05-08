@@ -11,15 +11,15 @@ import (
 // AddDNSOneChallenge adds a TXT record for the given host with the given
 // content.
 func (s *ChallSrv) AddDNSOneChallenge(host, content string) {
-	s.dnsMu.Lock()
-	defer s.dnsMu.Unlock()
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
 	s.dnsOne[host] = append(s.dnsOne[host], content)
 }
 
 // DeleteDNSOneChallenge deletes a TXT record for the given host.
 func (s *ChallSrv) DeleteDNSOneChallenge(host string) {
-	s.dnsMu.Lock()
-	defer s.dnsMu.Unlock()
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
 	if _, ok := s.dnsOne[host]; ok {
 		delete(s.dnsOne, host)
 	}
@@ -29,8 +29,8 @@ func (s *ChallSrv) DeleteDNSOneChallenge(host string) {
 // a true bool. If the host does not exist in the challenge response data then
 // an empty slice is returned and a false bool.
 func (s *ChallSrv) GetDNSOneChallenge(host string) ([]string, bool) {
-	s.dnsMu.RLock()
-	defer s.dnsMu.RUnlock()
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
 	content, present := s.dnsOne[host]
 	return content, present
 }
