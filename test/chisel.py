@@ -33,7 +33,7 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
-# URLs for management interface of challsrv
+# URLs for management interface of challtestsrv
 SET_TXT = "http://localhost:8056/set-txt"
 CLEAR_TXT = "http://localhost:8056/clear-txt"
 
