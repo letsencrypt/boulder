@@ -458,6 +458,10 @@
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
+			"ImportPath": "golang.org/x/net/http/httpguts",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
@@ -576,10 +580,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "golang.org/x/net/http/httpguts",
-			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		}
 	]
 }
