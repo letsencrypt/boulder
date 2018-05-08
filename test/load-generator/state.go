@@ -414,12 +414,8 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 	// Save the challenge server in the state
 	s.challSrv = challSrv
 
-	// Create a waitgroup that can be used to block until the challenge server has
-	// cleanly shut down
-	challSrvWg := new(sync.WaitGroup)
-	challSrvWg.Add(1)
 	// Start the Challenge server in its own Go routine
-	go s.challSrv.Run(challSrvWg)
+	go s.challSrv.Run()
 	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
@@ -487,11 +483,7 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 	fmt.Println("[+] Waiting for pending flows to finish before killing challenge server")
 	s.wg.Wait()
 	fmt.Println("[+] Shutting down challenge server")
-	// Send a Shutdown request to the challenge server
 	s.challSrv.Shutdown()
-	// Wait on the waitgroup we gave the challenge server when we called Run().
-	// This will block until the challenge server is fully shut down.
-	challSrvWg.Wait()
 	return nil
 }
 
