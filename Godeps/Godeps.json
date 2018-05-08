@@ -454,11 +454,11 @@
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
-			"ImportPath": "golang.org/x/net/http2",
+			"ImportPath": "golang.org/x/net/http/httpguts",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
-			"ImportPath": "golang.org/x/net/http/httpguts",
+			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
