@@ -7,30 +7,31 @@ import (
 	"sync"
 )
 
+type challengeServer interface {
+	ListenAndServe() error
+	Shutdown() error
+}
+
 // ChallSrv is a multi-purpose challenge server. Each ChallSrv may have one or
 // more ACME challenges it provides servers for.
 type ChallSrv struct {
 	log *log.Logger
-	// Shutdown is a channel used to request the challenge server cleanly shut down
-	shutdown chan bool
 
 	// challMu is a RWMutex used to control concurrent updates to challenge
 	// response maps `httpOne` and `dnsOne`.
 	challMu sync.RWMutex
 
-	// httpOneAddrs are the HTTP-01 challenge server bind address(es)/port(s). If
-	// none are specified no HTTP-01 challenge server is run. If multiple are
-	// specified an HTTP-01 challenge response server will be bound to each
-	// address.
-	httpOneAddrs []string
+	// wg is a sync.WaitGroup used in Shutdown() to wait on each of the servers
+	wg sync.WaitGroup
+
+	// servers are the individual challenge server listeners started in New() and
+	// closed in Shutdown()
+	servers []challengeServer
+
 	// httpOne is a map of token values to key authorizations used for HTTP-01
 	// responses
 	httpOne map[string]string
 
-	// dnsOneAddr are the DNS-01 challenge server bind address(es)/port(s). If
-	// none are specified no DNS-01 challenge server is run. If multiple are
-	// specified a DNS-01 challenge response server will be bound to each address.
-	dnsOneAddrs []string
 	// dnsOne is a map of DNS host values to key authorizations used for DNS-01
 	// responses
 	dnsOne map[string][]string
@@ -67,55 +68,56 @@ func New(config Config) (*ChallSrv, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
-	// Construct and return a challenge server
-	return &ChallSrv{
-		log:      config.Log,
-		shutdown: make(chan bool),
 
-		httpOne:      make(map[string]string),
-		httpOneAddrs: config.HTTPOneAddrs,
+	challSrv := &ChallSrv{
+		log: config.Log,
 
-		dnsOneAddrs: config.DNSOneAddrs,
-		dnsOne:      make(map[string][]string),
-	}, nil
+		httpOne: make(map[string]string),
+		dnsOne:  make(map[string][]string),
+	}
+
+	// If there are HTTP-01 addresses configured, create HTTP-01 servers
+	for _, address := range config.HTTPOneAddrs {
+		challSrv.log.Printf("Creating HTTP-01 challenge server on %s\n", address)
+		challSrv.servers = append(challSrv.servers, httpOneServer(address, challSrv))
+	}
+
+	// If there are DNS-01 addresses configured, create DNS-01 servers
+	for _, address := range config.DNSOneAddrs {
+		challSrv.log.Printf("Creating TCP and UDP DNS-01 challenge server on %s\n", address)
+		challSrv.servers = append(challSrv.servers,
+			dnsOneServer(address, challSrv.dnsHandler)...)
+	}
+
+	// Increment the wait group for each of the configured servers
+	challSrv.wg.Add(len(challSrv.servers))
+	return challSrv, nil
 }
 
-// Run runs the configured challenge servers blocking until a shutdown request
-// is received on the shutdown channel. When a shutdown occurs the configured
-// challenge servers will be cleanly shutdown and the provided WaitGroup will
-// have its `Done()` function called. This allows the caller to wait on the
-// waitgroup and know that they will not unblock until all challenge servers are
-// cleanly stopped.
-func (s *ChallSrv) Run(wg *sync.WaitGroup) {
-	// Cleanups collects the cleanup functions returned by the servers that are
-	// started.
-	var cleanups []func()
+// Run starts each of the ChallSrv's challengeServers.
+func (s *ChallSrv) Run() {
+	s.log.Printf("Starting challenge servers")
 
-	// If there are HTTP-01 addresses configured, start HTTP-01 servers
-	for _, address := range s.httpOneAddrs {
-		cleanups = append(cleanups, s.httpOneServer(address))
+	// Start each server in their own dedicated Go routine
+	for _, srv := range s.servers {
+		go func(srv challengeServer) {
+			err := srv.ListenAndServe()
+			if err != nil {
+				s.log.Print(err)
+			}
+		}(srv)
 	}
-
-	// If there are DNS-01 addresses configured, start DNS-01 servers
-	for _, address := range s.dnsOneAddrs {
-		cleanups = append(cleanups, s.dnsOneServer(address))
-	}
-
-	// Block forever waiting for a shutdown request
-	<-s.shutdown
-	// When a shutdown occurs, call each of the cleanup routines
-	s.log.Printf("Shutting down challenge servers")
-	for _, cleanup := range cleanups {
-		cleanup()
-	}
-	// When the cleanup is finished call Done() on the WG
-	s.log.Printf("Challenge servers shut down")
-	wg.Done()
 }
 
-// Shutdown writes a shutdown request to the challenge server's shutdown
-// channel. This will unblock the Go-routine running Run(), beginning the
-// cleanup process.
+// Shutdown gracefully stops each of the ChallSrv's challengeServers.
 func (s *ChallSrv) Shutdown() {
-	s.shutdown <- true
+	for _, srv := range s.servers {
+		if err := srv.Shutdown(); err != nil {
+			s.log.Printf("err in Shutdown(): %s\n", err.Error())
+		}
+		s.wg.Done()
+	}
+
+	// Wait for each child to complete
+	s.wg.Wait()
 }

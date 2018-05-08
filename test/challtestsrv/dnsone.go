@@ -127,14 +127,15 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	return
 }
 
-// dnsOneServer creates and starts an ACME DNS-01 challenge server. The
-// server's dns handler will be registered with the `miekg/dns` package to
-// handle DNS requests. A cleanup function is returned to the caller that should
-// be used to request the clean shutdown of the HTTP server.
-func (srv *ChallSrv) dnsOneServer(address string) func() {
-	srv.log.Printf("Starting TCP and UDP DNS-01 challenge server on %s\n", address)
+type dnsHandler func(dns.ResponseWriter, *dns.Msg)
+
+// dnsOneServer creates an ACME DNS-01 challenge server. The provided dns
+// handler will be registered with the `miekg/dns` package to
+// handle DNS requests. Because the DNS server runs both a UDP and a TCP
+// listener two `server` objects are returned.
+func dnsOneServer(address string, handler dnsHandler) []challengeServer {
 	// Register the dnsHandler
-	dns.HandleFunc(".", srv.dnsHandler)
+	dns.HandleFunc(".", handler)
 	// Create a UDP DNS server
 	udpServer := &dns.Server{
 		Addr:         address,
@@ -149,22 +150,5 @@ func (srv *ChallSrv) dnsOneServer(address string) func() {
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	}
-	// Start both servers in their own dedicated Go routines
-	for _, s := range []*dns.Server{udpServer, tcpServer} {
-		go func(s *dns.Server) {
-			err := s.ListenAndServe()
-			if err != nil {
-				srv.log.Print(err)
-			}
-		}(s)
-	}
-	// Return a cleanup function that shuts down both DNS servers.
-	return func() {
-		srv.log.Printf("Shutting down DNS-01 servers on %s", address)
-		for _, s := range []*dns.Server{udpServer, tcpServer} {
-			if err := s.Shutdown(); err != nil {
-				srv.log.Printf("Err shutting down DNS-01 server on %s: %s", address, err)
-			}
-		}
-	}
+	return []challengeServer{udpServer, tcpServer}
 }

@@ -50,33 +50,30 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// httpOneServer creates and starts an ACME HTTP-01 challenge server. The
+// challHTTPServer is a *http.Server that has a Shutdown() func that doesn't
+// take a context argument. This lets us treat the HTTP server the same as the
+// DNS-01 servers (which use a `dns.Server` that has `Shutdown()` with no
+// context arg) by having an http.Server that implements the challengeServer
+// interface.
+type challHTTPServer struct {
+	*http.Server
+}
+
+func (c challHTTPServer) Shutdown() error {
+	return c.Server.Shutdown(context.Background())
+}
+
+// httpOneServer creates an ACME HTTP-01 challenge server. The
 // server's handler will return configured HTTP-01 challenge responses for
-// tokens that have been added to the challenge server. A cleanup function is
-// returned to the caller that should be used to request the clean shutdown of
-// the HTTP server.
-func (s *ChallSrv) httpOneServer(address string) func() {
-	s.log.Printf("Starting HTTP-01 challenge server on %s\n", address)
+// tokens that have been added to the challenge server.
+func httpOneServer(address string, handler http.Handler) challengeServer {
 	// Create an HTTP Server for HTTP-01 challenges
 	srv := &http.Server{
 		Addr:         address,
-		Handler:      s,
+		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 	srv.SetKeepAlivesEnabled(false)
-	// Start the HTTP server on its own Go routine
-	go func() {
-		err := srv.ListenAndServe()
-		if err != nil {
-			s.log.Print(err)
-		}
-	}()
-	// Return a cleanup function that shuts down the HTTP server.
-	return func() {
-		s.log.Printf("Shutting down HTTP-01 server on %s", address)
-		if err := srv.Shutdown(context.Background()); err != nil {
-			s.log.Printf("Err shutting down HTTP-01 server on %s: %s", address, err)
-		}
-	}
+	return challHTTPServer{srv}
 }

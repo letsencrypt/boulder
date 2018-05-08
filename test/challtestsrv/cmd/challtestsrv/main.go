@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/test/challtestsrv"
@@ -25,12 +24,7 @@ type managementServer struct {
 	shutdown chan bool
 }
 
-// Run runs the management server blocking until a shutdown request is received
-// on the shutdown channel. When a shutdown occurs the management HTTP server
-// will be cleanly shutdown and the provided WaitGroup will have its `Done()`
-// function called. This allows the caller to wait on the waitgroup and know
-// that they will not unblock until the management server is cleanly stopped.
-func (srv *managementServer) Run(wg *sync.WaitGroup) {
+func (srv *managementServer) Run() {
 	srv.log.Printf("Starting management server")
 	// Start the HTTP server in its own dedicated Go routine
 	go func() {
@@ -39,23 +33,13 @@ func (srv *managementServer) Run(wg *sync.WaitGroup) {
 			srv.log.Print(err)
 		}
 	}()
+}
 
-	// Block forever waiting for a shutdown request
-	<-srv.shutdown
-	// When a shutdown request arrives cleanly stop the HTTP server
+func (srv *managementServer) Shutdown() {
 	srv.log.Printf("Shutting down management server")
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
 		srv.log.Printf("Err shutting down management server")
 	}
-	// When the cleanup is finished call Done() on the WG
-	wg.Done()
-}
-
-// Shutdown writes a shutdown request to the management server's shutdown
-// channel. This will unblock the Go-routine running Run(), beginning the
-// cleanup process.
-func (srv *managementServer) Shutdown() {
-	srv.shutdown <- true
 }
 
 func filterEmpty(input []string) []string {
@@ -99,7 +83,6 @@ func main() {
 		},
 		challSrv: srv,
 		log:      logger,
-		shutdown: make(chan bool),
 	}
 	// Register handlers on the management server for adding challenge responses
 	// for the configured challenges.
@@ -112,27 +95,15 @@ func main() {
 		http.HandleFunc("/clear-txt", oobSrv.delDNS01)
 	}
 
-	// Create a waitgroup that can be used to know when all of the servers have
-	// been cleanly shut down after a shutdown request is sent.
-	wg := new(sync.WaitGroup)
+	// Start all of the sub-servers in their own Go routines so that the main Go
+	// routine can spin forever looking for signals to catch.
+	go srv.Run()
+	go oobSrv.Run()
 
-	// Start the challenge servers in a Go routine
-	wg.Add(1)
-	go srv.Run(wg)
-
-	// Start the OOB server in a Go routine
-	wg.Add(1)
-	go oobSrv.Run(wg)
-
-	// Block the main Go routine to wait for signals to arrive from the OS
 	cmd.CatchSignals(nil, func() {
-		// If a signal arrives, request clean shutdowns of the challenge server(s)
-		// and the management server
 		logger.Printf("Caught signals. Shutting down")
 		srv.Shutdown()
 		oobSrv.Shutdown()
-		// Block until all of shutdowns calls above have completed cleanly
-		wg.Wait()
 		logger.Printf("Goodbye!")
 	})
 }
