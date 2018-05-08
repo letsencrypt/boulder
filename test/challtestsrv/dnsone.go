@@ -25,14 +25,13 @@ func (s *ChallSrv) DeleteDNSOneChallenge(host string) {
 	}
 }
 
-// GetDNSOneChallenge returns a slice of TXT record valuefor the given host and
-// a true bool. If the host does not exist in the challenge response data then
-// an empty slice is returned and a false bool.
-func (s *ChallSrv) GetDNSOneChallenge(host string) ([]string, bool) {
+// GetDNSOneChallenge returns a slice of TXT record values for the given host.
+// If the host does not exist in the challenge response data then nil is
+// returned.
+func (s *ChallSrv) GetDNSOneChallenge(host string) []string {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	content, present := s.dnsOne[host]
-	return content, present
+	return s.dnsOne[host]
 }
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
@@ -77,8 +76,8 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 			m.Answer = append(m.Answer, record)
 		case dns.TypeTXT:
-			values, present := s.GetDNSOneChallenge(q.Name)
-			if !present {
+			values := s.GetDNSOneChallenge(q.Name)
+			if values == nil {
 				continue
 			}
 			s.log.Printf("Returning %d TXT records: %#v\n", len(values), values)
