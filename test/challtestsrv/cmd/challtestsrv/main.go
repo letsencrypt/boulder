@@ -82,8 +82,7 @@ func main() {
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
 
-	// Create a default logger with the challsrv binary name as a prefix
-	logger := log.New(os.Stdout, "challsrv - ", log.Ldate|log.Ltime)
+	logger := log.New(os.Stdout, "challtestsrv - ", log.Ldate|log.Ltime)
 
 	// Create a new challenge server with the provided config
 	srv, err := challtestsrv.New(challtestsrv.Config{
