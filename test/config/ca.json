@@ -38,7 +38,7 @@
     "expiry": "2160h",
     "lifespanOCSP": "96h",
     "maxNames": 100,
-    "doNotForceCN": true,
+    "doNotForceCN": false,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
     "cfssl": {

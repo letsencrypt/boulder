@@ -7,7 +7,7 @@
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 100,
-    "doNotForceCN": true,
+    "doNotForceCN": false,
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
