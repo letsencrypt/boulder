@@ -499,14 +499,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
 		return emptyCert, err
 	}
 	certDER := block.Bytes
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
-		hex.EncodeToString(certDER)))
+		hex.EncodeToString(certDER))
 	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
@@ -523,7 +522,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
+		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
 		return nil, validity{}, err
 	}
 	serialBigInt := big.NewInt(0)
@@ -611,36 +610,35 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
+	ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
 		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
 	}
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType)}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
-		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErrf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
 		return nil, err
 	}
 	certDER := block.Bytes
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw), certType,
-		hex.EncodeToString(certDER)))
+		hex.EncodeToString(certDER))
 
 	return certDER, nil
 }
@@ -657,7 +655,7 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
+		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
 		// Ignore errors here to avoid orphaning the certificate. The
 		// ocsp-updater will look for certs with a zero ocspLastUpdated
 		// and generate the initial response in this case.
@@ -669,14 +667,8 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			core.SerialToString(serialBigInt),
-			hex.EncodeToString(certDER),
-			err,
-			regID,
-			orderID,
-		))
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
+			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
 		return core.Certificate{}, err
 	}
 

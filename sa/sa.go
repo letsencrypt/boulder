@@ -1236,7 +1236,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 	// If there are no results we have encountered a major error and
 	// should loudly complain
 	if err == sql.ErrNoRows || len(results) == 0 {
-		ssa.log.AuditErr(fmt.Sprintf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets))
+		ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
 		return 0, err
 	}
 

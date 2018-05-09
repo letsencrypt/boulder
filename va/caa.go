@@ -44,12 +44,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	if err != nil {
 		return probs.DNS(err.Error())
 	}
-	va.log.AuditInfo(fmt.Sprintf(
-		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-		identifier.Value,
-		present,
-		valid,
-	))
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+		identifier.Value, present, valid)
 	if !valid {
 		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
