@@ -937,13 +937,17 @@ func TestExtractJWK(t *testing.T) {
 	}
 }
 
-func signRequestBadKeyID(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
+func signRequestSpecifyKeyID(t *testing.T, keyID string, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
 	privateKey := loadKey(t, []byte(test1KeyPrivatePEM))
+
+	if keyID == "" {
+		keyID = "this is an invalid non-numeric key ID"
+	}
 
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
 		Algorithm: "RSA",
-		KeyID:     "this is an invalid non-numeric key ID",
+		KeyID:     keyID,
 	}
 
 	signerKey := jose.SigningKey{
@@ -975,13 +979,18 @@ func TestLookupJWK(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	embeddedJWS, _, embeddedJWSBody := signRequestEmbed(t, nil, "", "", wfe.nonceService)
-	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestBadKeyID(t, wfe.nonceService)
+	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestSpecifyKeyID(t, "https://acme-99.lettuceencrypt.org/acme/reg/1", wfe.nonceService)
 	// ID 100 is mocked to return a non-missing error from sa.GetRegistration
 	errorIDJWS, _, errorIDJWSBody := signRequestKeyID(t, 100, nil, "", "", wfe.nonceService)
 	// ID 102 is mocked to return an account does not exist error from sa.GetRegistration
 	missingIDJWS, _, missingIDJWSBody := signRequestKeyID(t, 102, nil, "", "", wfe.nonceService)
 	// ID 3 is mocked to return a deactivated account from sa.GetRegistration
 	deactivatedIDJWS, _, deactivatedIDJWSBody := signRequestKeyID(t, 3, nil, "", "", wfe.nonceService)
+
+	wfe.LegacyKeyIDPrefix = "https://acme-v00.lettuceencrypt.org/acme/reg/"
+	legacyKeyIDJWS, legacyKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"1", wfe.nonceService)
+
+	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", wfe.nonceService)
 
 	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
 	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)
@@ -1009,12 +1018,23 @@ func TestLookupJWK(t *testing.T) {
 			ErrorStatType: "JWSAuthTypeWrong",
 		},
 		{
-			Name:    "JWS with invalid key ID",
+			Name:    "JWS with invalid key ID URL",
 			JWS:     invalidKeyIDJWS,
 			Request: makePostRequestWithPath("test-path", invalidKeyIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
-				Detail:     "Malformed account ID in KeyID header",
+				Detail:     "KeyID header contained an invalid account URL",
+				HTTPStatus: http.StatusBadRequest,
+			},
+			ErrorStatType: "JWSInvalidKeyID",
+		},
+		{
+			Name:    "JWS with non-numeric account ID in key ID URL",
+			JWS:     nonNumericKeyIDJWS,
+			Request: makePostRequestWithPath("test-path", nonNumericKeyIDJWSBody),
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.MalformedProblem,
+				Detail:     "Malformed account ID in KeyID header URL",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSInvalidKeyID",
@@ -1051,6 +1071,13 @@ func TestLookupJWK(t *testing.T) {
 				HTTPStatus: http.StatusForbidden,
 			},
 			ErrorStatType: "JWSKeyIDAccountInvalid",
+		},
+		{
+			Name:            "Valid JWS with legacy account ID",
+			JWS:             legacyKeyIDJWS,
+			Request:         makePostRequestWithPath("test-path", legacyKeyIDJWSBody),
+			ExpectedKey:     validKey,
+			ExpectedAccount: &validAccount,
 		},
 		{
 			Name:            "Valid JWS with valid account ID",
