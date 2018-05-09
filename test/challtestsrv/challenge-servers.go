@@ -21,9 +21,6 @@ type ChallSrv struct {
 	// response maps `httpOne` and `dnsOne`.
 	challMu sync.RWMutex
 
-	// wg is a sync.WaitGroup used in Shutdown() to wait on each of the servers
-	wg sync.WaitGroup
-
 	// servers are the individual challenge server listeners started in New() and
 	// closed in Shutdown()
 	servers []challengeServer
@@ -89,8 +86,6 @@ func New(config Config) (*ChallSrv, error) {
 			dnsOneServer(address, challSrv.dnsHandler)...)
 	}
 
-	// Increment the wait group for each of the configured servers
-	challSrv.wg.Add(len(challSrv.servers))
 	return challSrv, nil
 }
 
@@ -115,9 +110,5 @@ func (s *ChallSrv) Shutdown() {
 		if err := srv.Shutdown(); err != nil {
 			s.log.Printf("err in Shutdown(): %s\n", err.Error())
 		}
-		s.wg.Done()
 	}
-
-	// Wait for each child to complete
-	s.wg.Wait()
 }
