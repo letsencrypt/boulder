@@ -58,7 +58,7 @@ func main() {
 		"Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable.")
 	dnsOneBind := flag.String("dns01", ":8053",
 		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
-	managementBind := flag.String("management", ":8056",
+	managementBind := flag.String("management", ":8055",
 		"Bind address/port for management HTTP interface")
 
 	flag.Parse()

@@ -29,7 +29,7 @@ Usage of challtestsrv:
   -http01 string
        Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable. (default ":5002")
   -management string
-       Bind address/port for management HTTP interface (default ":8056")
+       Bind address/port for management HTTP interface (default ":8055")
 ```
 
 To disable a challenge type, set the bind address to `""`. E.g.:
