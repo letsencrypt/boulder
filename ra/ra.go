@@ -763,43 +763,33 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_names", int64(len(names)))
-	wg := sync.WaitGroup{}
-	ch := make(chan *probs.ProblemDetails, len(names))
+	ch := make(chan *probs.ProblemDetails)
 	for _, name := range names {
-		wg.Add(1)
 		go func(name string) {
-			defer wg.Done()
+			var problem *probs.ProblemDetails
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain: &name,
 			})
 			if err != nil {
 				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
-				ch <- probs.ServerInternal("Internal error rechecking CAA for " + name)
+				problem = probs.ServerInternal("Internal error rechecking CAA for " + name)
 			} else if resp.Problem != nil {
-				ch <- &probs.ProblemDetails{
+				problem = &probs.ProblemDetails{
 					Type:   probs.ProblemType(*resp.Problem.ProblemType),
 					Detail: *resp.Problem.Detail,
 				}
 			}
+			ch <- problem
 		}(name)
 	}
-	wg.Wait()
-	close(ch)
-	var fails []*probs.ProblemDetails
-	for err := range ch {
-		if err != nil {
-			fails = append(fails, err)
+	var fails []string
+	for _ = range names {
+		if problem := <-ch; problem != nil {
+			fails = append(fails, problem.Detail)
 		}
 	}
 	if len(fails) > 0 {
-		message := "Rechecking CAA: "
-		for i, pd := range fails {
-			if i > 0 {
-				message = message + ", "
-			}
-			message = message + pd.Detail
-		}
-		return berrors.CAAError(message)
+		return berrors.CAAError(fmt.Sprintf("Rechecking CAA: %v", strings.Join(fails, ", ")))
 	}
 	return nil
 }
