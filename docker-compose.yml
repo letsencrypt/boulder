@@ -29,6 +29,14 @@ services:
               - ra2.boulder
               - va2.boulder
               - publisher2.boulder
+        ports:
+          - 4000:4000 # ACME
+          - 4001:4001 # ACMEv2
+          - 4002:4002 # OCSP
+          - 4003:4003 # OCSP
+          - 4430:4430 # ACME via HTTPS
+          - 4431:4431 # ACMEv2 via HTTPS
+          - 8055:8055 # dns-test-srv updates
         depends_on:
           - bhsm
           - bmysql
