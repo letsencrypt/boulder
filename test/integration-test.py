@@ -42,6 +42,7 @@ class ProcInfo:
         self.proc = proc
 
 old_authzs = []
+new_authzs = []
 
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
@@ -51,6 +52,13 @@ def setup_seventy_days_ago():
     # later that they are expired (404).
     global old_authzs
     _, old_authzs = auth_and_issue([random_domain()])
+
+def setup_zero_days_ago():
+    """Do any setup that needs to happen at the start of a test run."""
+    # Issue a certificate and save the authzs to check that they still exist
+    # at a later point.
+    global new_authzs
+    _, new_authzs = auth_and_issue([random_domain()])
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
@@ -349,7 +357,11 @@ def fakeclock(date):
 def get_future_output(cmd, date):
     return run(cmd, env={'FAKECLOCK': fakeclock(date)})
 
-def test_expired_authz_purger():
+def test_zzz_expired_authz_purger():
+    # Note: This test must be run after all other tests that depend on
+    # authorizations added to the database during setup
+    # (e.g. test_expired_authzs_404).
+
     def expect(target_time, num, table):
         out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
         if 'via FAKECLOCK' not in out:
@@ -415,8 +427,18 @@ def test_certificates_per_name():
         lambda: auth_and_issue([random_domain() + ".lim.it"]))
 
 def test_expired_authzs_404():
-    if len(old_authzs) == 0:
+    # TODO(@4a6f656c): This test is rather broken, since it cannot distinguish
+    # between a 404 due to an expired authz and a 404 due to a non-existant authz.
+    # Further verification is necessary in order to ensure that the 404 is actually
+    # due to an expiration. The new authzs at least provide a form of canary to
+    # detect authz purges.
+    if len(old_authzs) == 0 or len(new_authzs) == 0:
         raise Exception("Old authzs not prepared for test_expired_authzs_404")
+    for a in new_authzs:
+        response = requests.get(a.uri)
+        if response.status_code != 200:
+            raise Exception("Unexpected response for valid authz: ",
+                response.status_code)
     for a in old_authzs:
         response = requests.get(a.uri)
         if response.status_code != 404:
@@ -545,6 +567,8 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
+    setup_zero_days_ago()
+
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)
 
@@ -566,7 +590,8 @@ def main():
     exit_status = 0
 
 def run_chisel(test_case_filter):
-    for key, value in globals().items():
+    # Sort tests by name so we can force order via name.
+    for key, value in sorted(globals().items()):
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
 
