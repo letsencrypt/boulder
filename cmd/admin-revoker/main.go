@@ -107,7 +107,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, revocation.ReasonToString[reasonCode]))
+	logger.Infof("Revoked certificate %s with reason '%s'", serial, revocation.ReasonToString[reasonCode])
 	return
 }
 
@@ -229,11 +229,8 @@ func main() {
 		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
 		authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
 		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
-		logger.Info(fmt.Sprintf(
-			"Revoked %d pending authorizations and %d final authorizations\n",
-			pendingAuthsRevoked,
-			authsRevoked,
-		))
+		logger.Infof("Revoked %d pending authorizations and %d final authorizations",
+			pendingAuthsRevoked, authsRevoked)
 
 	default:
 		usage()
