@@ -89,10 +89,10 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	var msg string
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErr(fmt.Sprintf("failed to marshal logEvent - %s - %#v", msg, err))
+		th.log.AuditErrf("failed to marshal logEvent - %s - %#v", msg, err)
 		return
 	}
-	th.log.Info(fmt.Sprintf("JSON=%s", jsonEvent))
+	th.log.Infof("JSON=%s", jsonEvent)
 }
 
 // Comma-separated list of HTTP clients involved in making this

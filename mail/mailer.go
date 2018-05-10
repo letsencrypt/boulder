@@ -83,12 +83,12 @@ func (d dryRunClient) Dial() (smtpClient, error) {
 }
 
 func (d dryRunClient) Mail(from string) error {
-	d.log.Debug(fmt.Sprintf("MAIL FROM:<%s>", from))
+	d.log.Debugf("MAIL FROM:<%s>", from)
 	return nil
 }
 
 func (d dryRunClient) Rcpt(to string) error {
-	d.log.Debug(fmt.Sprintf("RCPT TO:<%s>", to))
+	d.log.Debugf("RCPT TO:<%s>", to)
 	return nil
 }
 
@@ -101,7 +101,7 @@ func (d dryRunClient) Data() (io.WriteCloser, error) {
 }
 
 func (d dryRunClient) Write(p []byte) (n int, err error) {
-	d.log.Debug(fmt.Sprintf("data: %s", string(p)))
+	d.log.Debugf("data: %s", string(p))
 	return len(p), nil
 }
 
@@ -193,12 +193,12 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 func (m *MailerImpl) reconnect() {
 	for i := 0; ; i++ {
 		sleepDuration := core.RetryBackoff(i, m.reconnectBase, m.reconnectMax, 2)
-		m.log.Info(fmt.Sprintf("sleeping for %s before reconnecting mailer", sleepDuration))
+		m.log.Infof("sleeping for %s before reconnecting mailer", sleepDuration)
 		m.clk.Sleep(sleepDuration)
 		m.log.Info("attempting to reconnect mailer")
 		err := m.Connect()
 		if err != nil {
-			m.log.Warning(fmt.Sprintf("reconnect error: %s", err))
+			m.log.Warningf("reconnect error: %s", err)
 			continue
 		}
 		break

@@ -3,7 +3,6 @@ package ctpolicy
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 
 	"github.com/letsencrypt/boulder/canceled"
@@ -91,7 +90,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 			if err != nil {
 				// Only log the error if it is not a result of the context being canceled
 				if !canceled.Is(err) {
-					ctp.log.Warning(fmt.Sprintf("ct submission to %q failed: %s", l.URI, err))
+					ctp.log.Warningf("ct submission to %q failed: %s", l.URI, err)
 				}
 				results <- result{err: err}
 				return
@@ -149,7 +148,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 				Precert:      &isPrecert,
 			})
 			if err != nil {
-				ctp.log.Warning(fmt.Sprintf("ct submission to informational log %q failed: %s", l.URI, err))
+				ctp.log.Warningf("ct submission to informational log %q failed: %s", l.URI, err)
 			}
 		}(log)
 	}
@@ -182,7 +181,7 @@ func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
 				StoreSCT:     &falseVar,
 			})
 			if err != nil {
-				ctp.log.Warning(fmt.Sprintf("ct submission of final cert to log %q failed: %s", l.URI, err))
+				ctp.log.Warningf("ct submission of final cert to log %q failed: %s", l.URI, err)
 			}
 		}(log)
 	}

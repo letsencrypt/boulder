@@ -23,7 +23,7 @@ func Clock() clock.Clock {
 
 		cl := clock.NewFake()
 		cl.Set(targetTime)
-		blog.Get().Info(fmt.Sprintf("Time was set to %v via FAKECLOCK", targetTime))
+		blog.Get().Infof("Time was set to %v via FAKECLOCK", targetTime)
 		return cl
 	}
 	return clock.Default()

@@ -63,13 +63,12 @@ func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
 }
 
 func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
-	pa.log.AuditErr(fmt.Sprintf("error loading hostname policy: %s", err))
+	pa.log.AuditErrf("error loading hostname policy: %s", err)
 }
 
 func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	hash := sha256.Sum256(b)
-	pa.log.Info(fmt.Sprintf("loading hostname policy, sha256: %s",
-		hex.EncodeToString(hash[:])))
+	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
 	var bl blacklistJSON
 	err := json.Unmarshal(b, &bl)
 	if err != nil {
@@ -120,13 +119,12 @@ func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
 }
 
 func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
-	pa.log.AuditErr(fmt.Sprintf("error loading challenges whitelist: %s", err))
+	pa.log.AuditErrf("error loading challenges whitelist: %s", err)
 }
 
 func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
 	hash := sha256.Sum256(b)
-	pa.log.Info(fmt.Sprintf("loading challenges whitelist, sha256: %s",
-		hex.EncodeToString(hash[:])))
+	pa.log.Infof("loading challenges whitelist, sha256: %s", hex.EncodeToString(hash[:]))
 	var wl map[string][]int64
 	err := json.Unmarshal(b, &wl)
 	if err != nil {

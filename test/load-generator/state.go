@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/test/challtestsrv"
 )
 
 // RatePeriod describes how long a certain throughput should be maintained
@@ -211,7 +213,7 @@ type State struct {
 	// accts holds V2 account objects
 	accts []*account
 
-	challSrv    *challSrv
+	challSrv    *challtestsrv.ChallSrv
 	callLatency latencyWriter
 	client      *http.Client
 
@@ -399,10 +401,22 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
-	s.challSrv = newChallSrv(httpOneAddr, tlsOneAddr)
-	s.challSrv.run()
-	fmt.Printf("[+] Started challenge servers, http-01: %q, tls-sni-01: %q\n", httpOneAddr, tlsOneAddr)
+func (s *State) Run(httpOneAddr string, p Plan) error {
+	// Create a new challenge server for HTTP-01 challenges
+	challSrv, err := challtestsrv.New(challtestsrv.Config{
+		HTTPOneAddrs: []string{httpOneAddr},
+		// Use a logger that has a load-generator prefix
+		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
+	})
+	if err != nil {
+		return err
+	}
+	// Save the challenge server in the state
+	s.challSrv = challSrv
+
+	// Start the Challenge server in its own Go routine
+	go s.challSrv.Run()
+	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
 		go func() {
@@ -468,6 +482,8 @@ func (s *State) Run(httpOneAddr string, tlsOneAddr string, p Plan) error {
 	stop <- true
 	fmt.Println("[+] Waiting for pending flows to finish before killing challenge server")
 	s.wg.Wait()
+	fmt.Println("[+] Shutting down challenge server")
+	s.challSrv.Shutdown()
 	return nil
 }
 
