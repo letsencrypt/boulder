@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -1955,20 +1956,26 @@ func (cf *caaFailer) IsCAAValid(
 	in *vaPB.IsCAAValidRequest,
 	opts ...grpc.CallOption,
 ) (*vaPB.IsCAAValidResponse, error) {
-	name := *in.Domain
-	if name == "a.com" {
-		return nil, fmt.Errorf("Error checking CAA for a.com")
-	} else if name == "c.com" {
-		return nil, fmt.Errorf("Error checking CAA for c.com")
+	cvrpb := &vaPB.IsCAAValidResponse{}
+	switch *in.Domain {
+	case "a.com":
+		cvrpb.Problem = &corepb.ProblemDetails{
+			Detail: proto.String("CAA invalid for a.com"),
+		}
+	case "c.com":
+		cvrpb.Problem = &corepb.ProblemDetails{
+			Detail: proto.String("CAA invalid for c.com"),
+		}
+	case "d.com":
+		return nil, fmt.Errorf("Error checking CAA for d.com")
 	}
-	return &vaPB.IsCAAValidResponse{}, nil
+	return cvrpb, nil
 }
 
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	err := ra.recheckCAA(context.Background(), nil)
-	if err != nil {
+	if err := ra.recheckCAA(context.Background(), nil); err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 }
@@ -1977,8 +1984,7 @@ func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	names := []string{"a.com", "b.com", "c.com"}
-	err := ra.recheckCAA(context.Background(), names)
-	if err != nil {
+	if err := ra.recheckCAA(context.Background(), names); err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 }
@@ -1986,17 +1992,28 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
 	ra.caa = &caaFailer{}
-	err := ra.recheckCAA(context.Background(), names)
-	if err == nil {
+	names := []string{"a.com", "b.com", "c.com"}
+	if err := ra.recheckCAA(context.Background(), names); err == nil {
 		t.Errorf("expected err, got nil")
-	} else if err.(*berrors.BoulderError).Type != berrors.CAA {
-		t.Errorf("expected CAA error, got %v", err.(*berrors.BoulderError).Type)
-	} else if !strings.Contains(err.Error(), "error rechecking CAA for a.com") {
+	} else if !berrors.Is(err, berrors.CAA) {
+		t.Errorf("expected CAA error, got %T", err)
+	} else if !strings.Contains(err.Error(), "CAA invalid for a.com") {
 		t.Errorf("expected error to contain error for a.com, got %q", err)
-	} else if !strings.Contains(err.Error(), "error rechecking CAA for c.com") {
+	} else if !strings.Contains(err.Error(), "CAA invalid for c.com") {
 		t.Errorf("expected error to contain error for c.com, got %q", err)
+	}
+}
+
+func TestRecheckCAAInternalServerError(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.caa = &caaFailer{}
+	names := []string{"a.com", "b.com", "d.com"}
+	if err := ra.recheckCAA(context.Background(), names); err == nil {
+		t.Errorf("expected err, got nil")
+	} else if !berrors.Is(err, berrors.InternalServer) {
+		t.Errorf("expected InternalServer error, got %T", err)
 	}
 }
 
