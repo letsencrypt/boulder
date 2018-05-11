@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -178,7 +179,7 @@ func main() {
 		groups := make([]cmd.CTGroup, len(c.RA.CTLogGroups))
 		for i, logs := range c.RA.CTLogGroups {
 			groups[i] = cmd.CTGroup{
-				Name: fmt.Sprintf("%d", i),
+				Name: strconv.Itoa(i),
 				Logs: logs,
 			}
 		}
