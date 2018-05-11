@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -273,7 +274,7 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 			"qtype":              qtypeStr,
 			"result":             result,
 			"authenticated_data": authenticated,
-			"retries":            fmt.Sprintf("%d", tries),
+			"retries":            strconv.Itoa(tries),
 		}).Observe(dnsClient.clk.Since(start).Seconds())
 	}()
 	for {

@@ -2,9 +2,9 @@ package grpc
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -152,7 +152,7 @@ func TestTimeouts(t *testing.T) {
 		metrics: NewClientMetrics(metrics.NewNoopScope()),
 		clk:     clock.NewFake(),
 	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
+	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
@@ -169,7 +169,7 @@ func TestTimeouts(t *testing.T) {
 		{10 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
 	}
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s", tc.timeout), func(t *testing.T) {
+		t.Run(tc.timeout.String(), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.timeout)
 			defer cancel()
 			var second int64 = time.Second.Nanoseconds()
@@ -215,7 +215,7 @@ func TestRequestTimeTagging(t *testing.T) {
 		metrics: NewClientMetrics(metrics.NewNoopScope()),
 		clk:     clk,
 	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
+	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
@@ -229,9 +229,8 @@ func TestRequestTimeTagging(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var delayTime int64 = (time.Second * 5).Nanoseconds()
-	_, err = c.Chill(ctx, &test_proto.Time{Time: &delayTime})
-	if err != nil {
-		t.Fatal(fmt.Sprintf("Unexpected error calling Chill RPC: %s", err))
+	if _, err := c.Chill(ctx, &test_proto.Time{Time: &delayTime}); err != nil {
+		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
@@ -302,7 +301,7 @@ func TestInFlightRPCStat(t *testing.T) {
 		metrics: NewClientMetrics(metrics.NewNoopScope()),
 		clk:     clk,
 	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", fmt.Sprintf("%d", port)),
+	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {

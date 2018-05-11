@@ -325,7 +325,7 @@ func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	}
 
 	// Nothing worked! Fail hard.
-	t.Fatal(fmt.Sprintf("Unable to decode private key PEM bytes"))
+	t.Fatalf("Unable to decode private key PEM bytes")
 	// NOOP - the t.Fatal() call will abort before this return
 	return nil
 }
@@ -346,7 +346,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 
 	certChains := map[string][]byte{
-		"http://localhost:4000/acme/issuer-cert": []byte(fmt.Sprintf("\n%s", string(chainPEM))),
+		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
@@ -368,7 +368,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
-			"Content-Length": {fmt.Sprintf("%d", len(body))},
+			"Content-Length": {strconv.Itoa(len(body))},
 		},
 		Body: makeBody(body),
 		Host: "localhost",
@@ -764,17 +764,17 @@ func TestRelativeDirectory(t *testing.T) {
 	defer func() { core.RandReader = rand.Reader }()
 
 	expectedDirectory := func(hostname string) string {
-		var expected bytes.Buffer
+		expected := new(bytes.Buffer)
 
-		expected.WriteString("{")
-		expected.WriteString(fmt.Sprintf(`"keyChange":"%s/acme/key-change",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newNonce":"%s/acme/new-nonce",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newAccount":"%s/acme/new-acct",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newOrder":"%s/acme/new-order",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"revokeCert":"%s/acme/revoke-cert",`, hostname))
-		expected.WriteString(`"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		expected.WriteString(`"meta":{"termsOfService":"http://example.invalid/terms"}`)
-		expected.WriteString("}")
+		fmt.Fprintf(expected, "{")
+		fmt.Fprintf(expected, `"keyChange":"%s/acme/key-change",`, hostname)
+		fmt.Fprintf(expected, `"newNonce":"%s/acme/new-nonce",`, hostname)
+		fmt.Fprintf(expected, `"newAccount":"%s/acme/new-acct",`, hostname)
+		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
+		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
+		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
+		fmt.Fprintf(expected, `"meta":{"termsOfService":"http://example.invalid/terms"}`)
+		fmt.Fprintf(expected, "}")
 		return expected.String()
 	}
 
