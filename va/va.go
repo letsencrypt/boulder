@@ -171,15 +171,12 @@ type verificationRequestEvent struct {
 func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		problem := probs.DNS(err.Error())
+		problem := probs.DNS("%v", err)
 		return nil, problem
 	}
 
 	if len(addrs) == 0 {
-		problem := probs.UnknownHost(
-			fmt.Sprintf("No valid IP addresses found for %s", hostname),
-		)
-		return nil, problem
+		return nil, probs.UnknownHost("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
 	return addrs, nil
@@ -470,19 +467,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		err = closeErr
 	}
 	if err != nil {
-		va.log.Infof("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err)
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Error reading HTTP response body: %v", err))
+		va.log.Infof("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url, err, err)
+		return nil, validationRecords, probs.Unauthorized("Error reading HTTP response body: %v", err)
 	}
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body))
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: \"%s\"", url, body)
 	}
 
 	if httpResponse.StatusCode != 200 {
-		va.log.Infof("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode)
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s [%s]: %d",
-			url.String(), validationRecords[len(validationRecords)-1].AddressUsed, httpResponse.StatusCode))
+		va.log.Infof("Non-200 status code from HTTP: %s returned %d", url, httpResponse.StatusCode)
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s [%s]: %d",
+			url, validationRecords[len(validationRecords)-1].AddressUsed, httpResponse.StatusCode)
 	}
 
 	return body, validationRecords, nil
@@ -521,8 +518,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 
 	// This shouldn't happen, but be defensive about it anyway
 	if len(addresses) < 1 {
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("no IP addresses found for %q", identifier.Value))
+		return nil, validationRecords, probs.Malformed("no IP addresses found for %q", identifier.Value)
 	}
 
 	// If there is at least one IPv6 address then try it first
@@ -545,14 +541,12 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	// If there are no IPv4 addresses and we tried an IPv6 address return
 	// an error - there's nothing left to try
 	if len(v4) == 0 && len(thisRecord.AddressesTried) > 0 {
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
-				thisRecord.Hostname, thisRecord.AddressesTried[0]))
+		return nil, validationRecords, probs.Malformed("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
+			thisRecord.Hostname, thisRecord.AddressesTried[0])
 	} else if len(v4) == 0 && len(thisRecord.AddressesTried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
 		// attempts at an IPv6 address connection but be defensive about it anyway
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("No IP addresses found for %q", thisRecord.Hostname))
+		return nil, validationRecords, probs.Malformed("No IP addresses found for %q", thisRecord.Hostname)
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
@@ -578,13 +572,11 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 
 	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 	names := certNames(leafCert)
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Requested %s from %s. Received %d certificate(s), "+
-			"first certificate had names %q",
+	problem = probs.Unauthorized("Incorrect validation certificate for %s challenge. "+
+		"Requested %s from %s. Received %d certificate(s), first certificate had names %q",
 		challenge.Type, zName, hostPort, len(certs), strings.Join(names, ", "))
 	va.log.Infof("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier)
-	return validationRecords, probs.Unauthorized(errText)
+	return validationRecords, problem
 }
 
 func (va *ValidationAuthorityImpl) getTLSSNICerts(
@@ -609,7 +601,7 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
-		return nil, probs.Unauthorized(fmt.Sprintf("No certs presented for %s challenge", challenge.Type))
+		return nil, probs.Unauthorized("No certs presented for %s challenge", challenge.Type)
 	}
 	for i, cert := range certs {
 		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
@@ -663,10 +655,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
+		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Infof("%s for %s", errString, identifier)
-		return validationRecords, probs.Unauthorized(errString)
+		va.log.Infof("%s for %s", problem.Detail, identifier)
+		return validationRecords, problem
 	}
 
 	return validationRecords, nil
@@ -704,7 +696,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 
 	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
-		return probs.Malformed(fmt.Sprintf("Server only speaks HTTP, not TLS"))
+		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
 	if netErr, ok := err.(*net.OpError); ok {
@@ -724,7 +716,7 @@ func detailedError(err error) *probs.ProblemDetails {
 		} else if netErr.Timeout() && netErr.Op == "dial" {
 			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
 		} else if netErr.Timeout() {
-			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netErr.Op))
+			return probs.ConnectionFailure("Timeout during %s (your server may be slow or overloaded)", netErr.Op)
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -761,8 +753,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized(fmt.Sprintf(
-			"No TXT record found at %s", challengeSubdomain))
+		return nil, probs.Unauthorized("No TXT record found at %s", challengeSubdomain)
 	}
 
 	for _, element := range txts {
@@ -783,9 +774,8 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if len(txts) > 1 {
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
-	return nil, probs.Unauthorized(fmt.Sprintf(
-		"Incorrect TXT record %q%s found at %s",
-		invalidRecord, andMore, challengeSubdomain))
+	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }
 
 // validateChallengeAndIdentifier performs a challenge validation and, in parallel,
@@ -815,9 +805,8 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
-			ch <- probs.Unauthorized(fmt.Sprintf(
-				"%q was considered an unsafe domain by a third-party API",
-				baseIdentifier.Value))
+			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
+				baseIdentifier.Value)
 		} else {
 			ch <- nil
 		}
@@ -850,7 +839,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	}
-	return nil, probs.Malformed(fmt.Sprintf("invalid challenge type %s", challenge.Type))
+	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
 }
 
 func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
