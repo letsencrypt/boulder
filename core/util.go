@@ -102,7 +102,7 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			logger := blog.Get()
-			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
+			logger.Debugf("Problem marshaling public key: %s", err)
 			return "", err
 		}
 		spkiDigest := sha256.Sum256(keyDER)

@@ -47,7 +47,7 @@ func (c idExporter) findIDs() ([]id, error) {
 			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
 	if err != nil {
-		c.log.AuditErr(fmt.Sprintf("Error finding IDs: %s", err))
+		c.log.AuditErrf("Error finding IDs: %s", err)
 		return nil, err
 	}
 

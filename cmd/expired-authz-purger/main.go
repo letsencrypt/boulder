@@ -78,7 +78,7 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				},
 			)
 			if err != nil && err != sql.ErrNoRows {
-				p.log.AuditErr(fmt.Sprintf("Getting a batch: %s", err))
+				p.log.AuditErrf("Getting a batch: %s", err)
 				time.Sleep(10)
 				continue
 			}
@@ -88,7 +88,7 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				// Start the next query at the highest id we saw in this batch.
 				id = v
 			}
-			p.log.Info(fmt.Sprintf("Deleted %d authzs from %s so far", count, table))
+			p.log.Infof("Deleted %d authzs from %s so far", count, table)
 			if len(idBatch) < int(p.batchSize) {
 				break
 			}
@@ -105,7 +105,7 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 			for id := range work {
 				err := deleteAuthorization(p.db, table, id)
 				if err != nil {
-					p.log.AuditErr(fmt.Sprintf("Deleting %s: %s", id, err))
+					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
 			}
 		}()
@@ -114,7 +114,7 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 	count := <-done
 	wg.Wait()
 
-	p.log.Info(fmt.Sprintf("Deleted a total of %d expired authorizations from %s", count, table))
+	p.log.Infof("Deleted a total of %d expired authorizations from %s", count, table)
 	return nil
 }
 

@@ -64,7 +64,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...interface{}) {
-	m.AuditErr(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
+	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
 }
 
 // cfsslLogger provides two additional methods that are expected by CFSSL's
@@ -101,7 +101,7 @@ func (log grpcLogger) Print(args ...interface{}) {
 	log.AuditErr(fmt.Sprint(args...))
 }
 func (log grpcLogger) Printf(format string, args ...interface{}) {
-	log.AuditErr(fmt.Sprintf(format, args...))
+	log.AuditErrf(format, args...)
 }
 func (log grpcLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprintln(args...))
@@ -262,7 +262,7 @@ func CatchSignals(logger blog.Logger, callback func()) {
 
 	sig := <-sigChan
 	if logger != nil {
-		logger.Info(fmt.Sprintf("Caught %s", signalToName[sig]))
+		logger.Infof("Caught %s", signalToName[sig])
 	}
 
 	if callback != nil {

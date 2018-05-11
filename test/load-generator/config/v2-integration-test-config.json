@@ -6,7 +6,7 @@
             "fulfillOrder",
             "finalizeOrder"
         ],
-        "rate": 5,
+        "rate": 1,
         "runtime": "10s",
         "rateDelta": "5/1m"
     },
