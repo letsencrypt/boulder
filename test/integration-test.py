@@ -357,7 +357,7 @@ def fakeclock(date):
 def get_future_output(cmd, date):
     return run(cmd, env={'FAKECLOCK': fakeclock(date)})
 
-def test_zzz_expired_authz_purger():
+def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
     # authorizations added to the database during setup
     # (e.g. test_expired_authzs_404).
@@ -430,8 +430,8 @@ def test_expired_authzs_404():
     # TODO(@4a6f656c): This test is rather broken, since it cannot distinguish
     # between a 404 due to an expired authz and a 404 due to a non-existant authz.
     # Further verification is necessary in order to ensure that the 404 is actually
-    # due to an expiration. The new authzs at least provide a form of canary to
-    # detect authz purges.
+    # due to an expiration. For now, the new authzs at least provide a form of
+    # canary to detect authz purges.
     if len(old_authzs) == 0 or len(new_authzs) == 0:
         raise Exception("Old authzs not prepared for test_expired_authzs_404")
     for a in new_authzs:
@@ -582,6 +582,7 @@ def main():
         run(args.custom)
 
     run_cert_checker()
+    run_expired_authz_purger()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
@@ -590,8 +591,7 @@ def main():
     exit_status = 0
 
 def run_chisel(test_case_filter):
-    # Sort tests by name so we can force order via name.
-    for key, value in sorted(globals().items()):
+    for key, value in globals().items():
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
 
