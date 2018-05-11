@@ -63,7 +63,7 @@ func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
 	case *ecdsa.PrivateKey:
 		return k.PublicKey
 	}
-	t.Fatal(fmt.Sprintf("Unable to get public key for private key %#v", privKey))
+	t.Fatalf("Unable to get public key for private key %#v", privKey)
 	return nil
 }
 
@@ -538,7 +538,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.enforceJWSAuthType(tc.JWS, tc.ExpectedAuthType)
 			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
+				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
@@ -608,7 +608,7 @@ func TestValidNonce(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validNonce(tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
+				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
@@ -727,7 +727,7 @@ func TestValidPOSTURL(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validPOSTURL(tc.Request, tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil result, got %#v", prob))
+				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
@@ -883,7 +883,7 @@ func TestParseJWSRequest(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			_, prob := wfe.parseJWSRequest(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -927,7 +927,7 @@ func TestExtractJWK(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			jwk, prob := wfe.extractJWK(tc.JWS)
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				test.AssertMarshaledEquals(t, jwk, tc.ExpectedKey)
 			} else {
@@ -1066,7 +1066,7 @@ func TestLookupJWK(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 			jwk, acct, prob := wfe.lookupJWK(tc.JWS, context.Background(), tc.Request, inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedKey.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
@@ -1201,7 +1201,7 @@ func TestValidJWSForKey(t *testing.T) {
 			outPayload, prob := wfe.validJWSForKey(tc.JWS, tc.JWK, request, inputLogEvent)
 
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				test.AssertEquals(t, inputLogEvent.Payload, payload)
 				test.AssertEquals(t, string(outPayload), payload)
@@ -1295,7 +1295,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 			outPayload, jws, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
@@ -1399,7 +1399,7 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 			inputLogEvent := newRequestEvent()
 			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(tc.Request, inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatal(fmt.Sprintf("Expected nil problem, got %#v\n", prob))
+				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)

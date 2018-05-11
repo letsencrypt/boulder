@@ -560,7 +560,7 @@ func TestTLSSNI01FailIP(t *testing.T) {
 	port := getPort(hs)
 	_, prob := va.validateTLSSNI01(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
-		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
+		Value: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
 	}, chall)
 	if prob == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")

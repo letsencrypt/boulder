@@ -320,7 +320,7 @@ func loadPrivateKey(t *testing.T, keyBytes []byte) interface{} {
 	}
 
 	// Nothing worked! Fail hard.
-	t.Fatal(fmt.Sprintf("Unable to decode private key PEM bytes"))
+	t.Fatal("Unable to decode private key PEM bytes")
 	// NOOP - the t.Fatal() call will abort before this return
 	return nil
 }
@@ -394,7 +394,7 @@ func makePostRequest(body string) *http.Request {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
-			"Content-Length": {fmt.Sprintf("%d", len(body))},
+			"Content-Length": {strconv.Itoa(len(body))},
 		},
 		Body: makeBody(body),
 	}

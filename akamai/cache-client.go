@@ -188,7 +188,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("%s", endpoint),
+		endpoint,
 		bytes.NewBuffer(reqJSON),
 	)
 	if err != nil {

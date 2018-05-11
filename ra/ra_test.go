@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1085,7 +1086,7 @@ func TestNewCertificate(t *testing.T) {
 
 	// After issuance the issuanceExpvar should be the current timestamp
 	now := ra.clk.Now()
-	test.AssertEquals(t, issuanceExpvar.String(), fmt.Sprintf("%d", now.Unix()))
+	test.AssertEquals(t, issuanceExpvar.String(), strconv.FormatInt(now.Unix(), 10))
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
@@ -1310,11 +1311,11 @@ type mockSAWithNameCounts struct {
 
 func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	if latest != m.clk.Now() {
-		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
+		m.t.Errorf("incorrect latest: was %s, expected %s", latest, m.clk.Now())
 	}
 	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
 	if earliest != expectedEarliest {
-		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
+		m.t.Errorf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest)
 	}
 	var results []*sapb.CountByNames_MapElement
 	for _, name := range names {
@@ -1327,11 +1328,11 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, name
 
 func (m mockSAWithNameCounts) CountCertificatesByExactNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	if latest != m.clk.Now() {
-		m.t.Error(fmt.Sprintf("incorrect latest: was %s, expected %s", latest, m.clk.Now()))
+		m.t.Errorf("incorrect latest: was %s, expected %s", latest, m.clk.Now())
 	}
 	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
 	if earliest != expectedEarliest {
-		m.t.Errorf(fmt.Sprintf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest))
+		m.t.Errorf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest)
 	}
 	var results []*sapb.CountByNames_MapElement
 	for _, name := range names {
