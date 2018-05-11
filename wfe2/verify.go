@@ -371,6 +371,36 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 	return key, nil
 }
 
+// acctIDFromURL extracts the numeric int64 account ID from a ACMEv1 or ACMEv2
+// account URL. If the acctURL has an invalid URL or the account ID in the
+// acctURL is non-numeric a MalformedProblem is returned.
+func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request) (int64, *probs.ProblemDetails) {
+	// For normal ACME v2 accounts we expect the account URL has a prefix composed
+	// of the Host header and the acctPath.
+	expectedURLPrefix := web.RelativeEndpoint(request, acctPath)
+
+	// Process the acctURL to find only the trailing numeric account ID. Both the
+	// expected URL prefix and a legacy URL prefix are permitted in order to allow
+	// ACME v1 clients to use legacy accounts with unmodified account URLs for V2
+	// requests.
+	var accountIDStr string
+	if strings.HasPrefix(acctURL, expectedURLPrefix) {
+		accountIDStr = strings.TrimPrefix(acctURL, expectedURLPrefix)
+	} else if strings.HasPrefix(acctURL, wfe.LegacyKeyIDPrefix) {
+		accountIDStr = strings.TrimPrefix(acctURL, wfe.LegacyKeyIDPrefix)
+	} else {
+		return 0, probs.Malformed("KeyID header contained an invalid account URL")
+	}
+
+	// Convert the raw account ID string to an int64 for use with the SA's
+	// GetRegistration RPC
+	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	if err != nil {
+		return 0, probs.Malformed("Malformed account ID in KeyID header URL")
+	}
+	return accountID, nil
+}
+
 // lookupJWK finds a JWK associated with the Key ID present in a provided JWS,
 // returning the JWK and a pointer to the associated account, or a problem. It
 // expects that the JWS is using the embedded Key ID style of authentication
@@ -390,14 +420,10 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
-	prefix := web.RelativeEndpoint(request, acctPath)
-	accountIDStr := strings.TrimPrefix(accountURL, prefix)
-	// Convert the account ID string to an int64 for use with the SA's
-	// GetRegistration RPC
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-	if err != nil {
+	accountID, prob := wfe.acctIDFromURL(accountURL, request)
+	if prob != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidKeyID"}).Inc()
-		return nil, nil, probs.Malformed("Malformed account ID in KeyID header")
+		return nil, nil, prob
 	}
 
 	// Try to find the account for this account ID

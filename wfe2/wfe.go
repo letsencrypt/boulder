@@ -91,6 +91,11 @@ type WebFrontEndImpl struct {
 	// "website" field.
 	DirectoryWebsite string
 
+	// Allowed prefix for legacy accounts used by verify.go's `lookupJWK`.
+	// See `cmd/boulder-wfe2/main.go`'s comment on the configuration field
+	// `LegacyKeyIDPrefix` for more informaton.
+	LegacyKeyIDPrefix string
+
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
 
