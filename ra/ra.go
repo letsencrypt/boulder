@@ -789,7 +789,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 		}
 	}
 	if len(fails) > 0 {
-		return berrors.CAAError(fmt.Sprintf("Rechecking CAA: %v", strings.Join(fails, ", ")))
+		return berrors.CAAError("Rechecking CAA: %v", strings.Join(fails, ", "))
 	}
 	return nil
 }
