@@ -771,7 +771,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []str
 				Domain: &name,
 			})
 			if err != nil {
-				ra.log.AuditErr(fmt.Sprintf("Rechecking CAA: %s", err))
+				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				problem = probs.ServerInternal("Internal error rechecking CAA for " + name)
 			} else if resp.Problem != nil {
 				problem = &probs.ProblemDetails{
