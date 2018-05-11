@@ -1895,7 +1895,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (*corepb.Authorization, error) {
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).UnixNano()
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Unix() * 1e9
 	status := string(core.StatusPending)
 	authz := &corepb.Authorization{
 		Identifier:     &identifier.Value,
