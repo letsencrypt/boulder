@@ -378,7 +378,7 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 
 // acctIDFromURL extracts the numeric int64 account ID from a ACMEv1 or ACMEv2
 // account URL. If the acctURL has an invalid URL or the account ID in the
-// acctURL is non-numeric a malformed problem is returned.
+// acctURL is non-numeric a MalformedProblem is returned.
 func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request) (int64, *probs.ProblemDetails) {
 	// For normal ACME v2 accounts we expect the account URL has a prefix composed
 	// of the Host header and the acctPath.
