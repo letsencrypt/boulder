@@ -42,12 +42,12 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	identifier core.AcmeIdentifier) *probs.ProblemDetails {
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
-		return probs.DNS(err.Error())
+		return probs.DNS("%v", err)
 	}
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
 		identifier.Value, present, valid)
 	if !valid {
-		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
+		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
 	return nil
 }
