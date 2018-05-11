@@ -181,7 +181,7 @@ func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string)
 		)
 		return nil, problem
 	}
-	va.log.Debug(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
+	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
 	return addrs, nil
 }
 
@@ -329,10 +329,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		Path:   path,
 	}
 
-	va.log.AuditInfo(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
+	va.log.AuditInfof("Attempting to validate %s for %s", challenge.Type, url)
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err))
+		va.log.Infof("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err)
 		return nil, nil, probs.Malformed("URL provided for HTTP was invalid")
 	}
 
@@ -445,13 +445,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		dialer = va.newHTTP01Dialer(reqHost, reqPort, addrs)
 
 		tr.DialContext = dialer.DialContext
-		va.log.Debug(fmt.Sprintf(
-			"%s [%s] redirect from %q to %q",
-			challenge.Type,
-			identifier,
-			via[len(via)-1].URL.String(),
-			req.URL.String(),
-		))
+		va.log.Debugf("%s [%s] redirect from %q to %q", challenge.Type, identifier,
+			via[len(via)-1].URL.String(), req.URL.String())
 		return nil
 	}
 	client := http.Client{
@@ -465,7 +460,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	baseRecord.AddressUsed, baseRecord.AddressesTried = addrInfo.used, addrInfo.tried
 	validationRecords = append(validationRecords, baseRecord)
 	if err != nil {
-		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
+		va.log.Infof("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err)
 		return nil, validationRecords, detailedError(err)
 	}
 
@@ -475,7 +470,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		err = closeErr
 	}
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err))
+		va.log.Infof("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err)
 		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Error reading HTTP response body: %v", err))
 	}
 	// io.LimitedReader will silently truncate a Reader so if the
@@ -485,7 +480,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	}
 
 	if httpResponse.StatusCode != 200 {
-		va.log.Info(fmt.Sprintf("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode))
+		va.log.Infof("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode)
 		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s [%s]: %d",
 			url.String(), validationRecords[len(validationRecords)-1].AddressUsed, httpResponse.StatusCode))
 	}
@@ -588,7 +583,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 			"Requested %s from %s. Received %d certificate(s), "+
 			"first certificate had names %q",
 		challenge.Type, zName, hostPort, len(certs), strings.Join(names, ", "))
-	va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
+	va.log.Infof("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier)
 	return validationRecords, probs.Unauthorized(errText)
 }
 
@@ -599,10 +594,10 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(
 	challenge core.Challenge,
 	zName string,
 ) ([]*x509.Certificate, *probs.ProblemDetails) {
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
+	va.log.Infof("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName)
 	conn, err := tlsDial(ctx, hostPort, zName)
 	if err != nil {
-		va.log.Info(fmt.Sprintf("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err))
+		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
 		return nil, detailedError(err)
 	}
 	// close errors are not important here
@@ -613,12 +608,12 @@ func (va *ValidationAuthorityImpl) getTLSSNICerts(
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		va.log.Info(fmt.Sprintf("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value))
+		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
 		return nil, probs.Unauthorized(fmt.Sprintf("No certs presented for %s challenge", challenge.Type))
 	}
 	for i, cert := range certs {
-		va.log.AuditInfo(fmt.Sprintf("%s challenge for %s received certificate (%d of %d): cert=[%s]",
-			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
+		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
 	return certs, nil
 }
@@ -654,7 +649,7 @@ func tlsDial(ctx context.Context, hostPort, zName string) (*tls.Conn, error) {
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
-		va.log.Info(fmt.Sprintf("Got non-DNS identifier for HTTP validation: %s", identifier))
+		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
 		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
 	}
 
@@ -670,7 +665,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	if payload != challenge.ProvidedKeyAuthorization {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
+		va.log.Infof("%s for %s", errString, identifier)
 		return validationRecords, probs.Unauthorized(errString)
 	}
 
@@ -679,7 +674,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-01 was not DNS: %s", identifier))
+		va.log.Infof("Identifier type for TLS-SNI-01 was not DNS: %s", identifier)
 		return nil, probs.Malformed("Identifier type for TLS-SNI-01 was not DNS")
 	}
 
@@ -744,7 +739,7 @@ func detailedError(err error) *probs.ProblemDetails {
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
-		va.log.Info(fmt.Sprintf("Identifier type for DNS challenge was not DNS: %s", identifier))
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", identifier)
 		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
 	}
 
@@ -758,8 +753,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
-
+		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err)
 		return nil, probs.DNS(err.Error())
 	}
 
@@ -870,7 +864,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
 				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
-					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err))
+					va.log.Infof("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				} else if ok && p == nil {
 					err = nil
 				}
@@ -961,9 +955,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
 			logEvent.Error = prob.Error()
-			va.log.Info(fmt.Sprintf(
-				"Validation failed due to remote failures: identifier=%v err=%s",
-				authz.Identifier, prob))
+			va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
+				authz.Identifier, prob)
 			va.metrics.remoteValidationFailures.Inc()
 		} else {
 			challenge.Status = core.StatusValid
@@ -981,7 +974,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}).Observe(time.Since(vStart).Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
+	va.log.Infof("Validations: %+v", authz)
 	if prob == nil {
 		// This is necessary because if we just naively returned prob, it would be a
 		// non-nil interface value containing a nil pointer, rather than a nil

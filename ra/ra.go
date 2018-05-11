@@ -158,7 +158,7 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 }
 
 func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
-	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
+	ra.log.Errf("error reloading rate limit policy: %s", err)
 }
 
 var (
@@ -305,7 +305,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
 	if err != nil {
 		ra.regByIPStats.Inc("Exceeded", 1)
-		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
+		ra.log.Infof("Rate limit exceeded, RegistrationsByIP, IP: %s", ip)
 		return err
 	}
 	ra.regByIPStats.Inc("Pass", 1)
@@ -324,7 +324,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	err = ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
 	if err != nil {
 		ra.regByIPRangeStats.Inc("Exceeded", 1)
-		ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip))
+		ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip)
 		// For the fuzzyRegLimit we use a new error message that specifically
 		// mentions that the limit being exceeded is applied to a *range* of IPs
 		return berrors.RateLimitError("too many registrations for this IP range")
@@ -423,7 +423,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		noKey := ""
 		if count >= limit.GetThreshold(noKey, regID) {
 			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
-			ra.log.Info(fmt.Sprintf("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID))
+			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
 		}
 		ra.pendAuthByRegIDStats.Inc("Pass", 1)
@@ -462,7 +462,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// here.
 	noKey := ""
 	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
-		ra.log.Info(fmt.Sprintf("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID))
+		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
 	return nil
@@ -534,7 +534,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 					"unable to get existing authorization for auth ID: %s",
 					existingAuthz.ID,
 				)
-				ra.log.Warning(fmt.Sprintf("%s: %s", outErr.Error(), existingAuthz.ID))
+				ra.log.Warningf("%s: %s", outErr.Error(), existingAuthz.ID)
 				return core.Authorization{}, outErr
 			}
 			if ra.authzValidChallengeEnabled(&populatedAuthz) {
@@ -806,14 +806,14 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
 	if err != nil {
-		ra.log.AuditErr(fmt.Sprintf("Could not convert order error problem to PB: %q", err))
+		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
 		return order
 	}
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
 	if err := ra.SA.SetOrderError(ctx, order); err != nil {
-		ra.log.AuditErr(fmt.Sprintf("Could not persist order error: %q", err))
+		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
 	return order
 }
@@ -1052,8 +1052,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		// consistency violation worth logging a warning about. In this case the
 		// solvedByChallengeType will be logged as the emtpy string.
 		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
-			ra.log.Warning(fmt.Sprintf(
-				"Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status))
+			ra.log.Warningf("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
 		}
 		logEventAuthzs[name] = certificateRequestAuthz{
 			ID:            authz.ID,
@@ -1151,7 +1150,7 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) (
 			// otherwise it will be a generic serverInternalError
 			err = berrors.MissingSCTsError(err.Error())
 		}
-		ra.log.Warning(fmt.Sprintf("ctpolicy.GetSCTs failed: %s", err))
+		ra.log.Warningf("ctpolicy.GetSCTs failed: %s", err)
 		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
 		return nil, err
 	}
@@ -1280,7 +1279,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		}
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
-		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))
+		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains)
 		return berrors.RateLimitError(
 			"too many certificates already issued for: %s",
 			domains,
@@ -1509,8 +1508,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
-		ra.log.Warning(fmt.Sprintf(
-			"Error calling ra.SA.UpdatePendingAuthorization: %s\n", err.Error()))
+		ra.log.Warningf("Error calling ra.SA.UpdatePendingAuthorization: %s", err)
 		return core.Authorization{}, err
 	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
@@ -1532,7 +1530,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 			prob = p
 		} else if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
-			ra.log.AuditErr(fmt.Sprintf("Could not communicate with VA: %s", err))
+			ra.log.AuditErrf("Could not communicate with VA: %s", err)
 		}
 
 		// Save the updated records
@@ -1553,9 +1551,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.AuditErr(fmt.Sprintf(
-				"Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
-				err, authz.RegistrationID, authz.ID))
+			ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
+				err, authz.RegistrationID, authz.ID)
 		}
 	}(authz)
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
@@ -1587,11 +1584,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		//   Revocation reason
 		//   Registration ID of requester
 		//   Error (if there was one)
-		ra.log.AuditInfo(fmt.Sprintf(
-			"%s, Request by registration ID: %d",
+		ra.log.AuditInfof("%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			regID,
-		))
+			regID)
 	}()
 
 	if err != nil {
@@ -1619,11 +1614,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		//   Revocation reason
 		//   Name of admin-revoker user
 		//   Error (if there was one)
-		ra.log.AuditInfo(fmt.Sprintf(
-			"%s, admin-revoker user: %s",
+		ra.log.AuditInfof("%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			user,
-		))
+			user)
 	}()
 
 	if err != nil {
@@ -1905,7 +1898,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := berrors.InternalServerError("unable to determine if domain was safe")
-			ra.log.Warning(fmt.Sprintf("%s: %s", outErr, err))
+			ra.log.Warningf("%s: %s", outErr, err)
 			return nil, outErr
 		}
 		if !isSafeResp.GetIsSafe() {

@@ -80,14 +80,13 @@ func (m *mailer) ok() error {
 func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 	// Should never happen
 	if total <= 0 || cur < 0 || cur > total {
-		m.log.AuditErr(fmt.Sprintf(
-			"invalid cur (%d) or total (%d)\n", cur, total))
+		m.log.AuditErrf("invalid cur (%d) or total (%d)", cur, total)
 	}
 	completion := (float32(cur) / float32(total)) * 100
 	now := m.clk.Now()
 	elapsed := now.Sub(start)
-	m.log.Info(fmt.Sprintf("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s\n",
-		to, cur, total, completion, elapsed.String()))
+	m.log.Infof("Sending to %q. Message %d of %d [%.2f%%]. Elapsed: %s",
+		to, cur, total, completion, elapsed)
 }
 
 func (m *mailer) run() error {

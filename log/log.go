@@ -18,14 +18,20 @@ import (
 // implemented by a logging back-end as provided by New() or
 // NewMock().
 type Logger interface {
-	Err(m string)
-	Warning(m string)
-	Info(m string)
-	Debug(m string)
+	Err(msg string)
+	Errf(format string, a ...interface{})
+	Warning(msg string)
+	Warningf(format string, a ...interface{})
+	Info(msg string)
+	Infof(format string, a ...interface{})
+	Debug(msg string)
+	Debugf(format string, a ...interface{})
 	AuditPanic()
-	AuditInfo(string)
+	AuditInfo(msg string)
+	AuditInfof(format string, a ...interface{})
 	AuditObject(string, interface{})
 	AuditErr(string)
+	AuditErrf(format string, a ...interface{})
 }
 
 // impl implements Logger.
@@ -183,13 +189,13 @@ func caller(level int) string {
 func (log *impl) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.AuditErr(fmt.Sprintf("Panic caused by err: %s", err))
+		log.AuditErrf("Panic caused by err: %s", err)
 
 		runtime.Stack(buf, false)
-		log.AuditErr(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
+		log.AuditErrf("Stack Trace (Current frame) %s", buf)
 
 		runtime.Stack(buf, true)
-		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
+		log.Warningf("Stack Trace (All frames): %s", buf)
 	}
 }
 
@@ -199,9 +205,20 @@ func (log *impl) Err(msg string) {
 	log.auditAtLevel(syslog.LOG_ERR, msg)
 }
 
+// Errf level messages are always marked with the audit tag, for special handling
+// at the upstream system logger.
+func (log *impl) Errf(format string, a ...interface{}) {
+	log.Err(fmt.Sprintf(format, a...))
+}
+
 // Warning level messages pass through normally.
 func (log *impl) Warning(msg string) {
 	log.w.logAtLevel(syslog.LOG_WARNING, msg)
+}
+
+// Warningf level messages pass through normally.
+func (log *impl) Warningf(format string, a ...interface{}) {
+	log.Warning(fmt.Sprintf(format, a...))
 }
 
 // Info level messages pass through normally.
@@ -209,15 +226,31 @@ func (log *impl) Info(msg string) {
 	log.w.logAtLevel(syslog.LOG_INFO, msg)
 }
 
+// Infof level messages pass through normally.
+func (log *impl) Infof(format string, a ...interface{}) {
+	log.Info(fmt.Sprintf(format, a...))
+}
+
 // Debug level messages pass through normally.
 func (log *impl) Debug(msg string) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
+}
+
+// Debugf level messages pass through normally.
+func (log *impl) Debugf(format string, a ...interface{}) {
+	log.Debug(fmt.Sprintf(format, a...))
 }
 
 // AuditInfo sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditInfo(msg string) {
 	log.auditAtLevel(syslog.LOG_INFO, msg)
+}
+
+// AuditInfof sends an INFO-severity message that is prefixed with the
+// audit tag, for special handling at the upstream system logger.
+func (log *impl) AuditInfof(format string, a ...interface{}) {
+	log.AuditInfo(fmt.Sprintf(format, a...))
 }
 
 // AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
@@ -235,4 +268,9 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 // AuditErr can format an error for auditing; it does so at ERR level.
 func (log *impl) AuditErr(msg string) {
 	log.auditAtLevel(syslog.LOG_ERR, msg)
+}
+
+// AuditErrf can format an error for auditing; it does so at ERR level.
+func (log *impl) AuditErrf(format string, a ...interface{}) {
+	log.AuditErr(fmt.Sprintf(format, a...))
 }

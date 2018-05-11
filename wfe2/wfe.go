@@ -230,7 +230,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
 	}
 	return nil
@@ -646,7 +646,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
 	}
 
-	wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+	wfe.log.Debugf("Revoked %v", serial)
 	return nil
 }
 
@@ -1259,7 +1259,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 	return
 }
@@ -1270,7 +1270,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1280,7 +1280,7 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1487,8 +1487,8 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErr(fmt.Sprintf("Internal error converting order ID %d "+
-				"proto buf prob to problem details: %q", *order.Id, err))
+			wfe.log.AuditErrf("Internal error converting order ID %d "+
+				"proto buf prob to problem details: %q", *order.Id, err)
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type

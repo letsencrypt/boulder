@@ -159,7 +159,7 @@ type SQLLogger struct {
 
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.Debug(fmt.Sprintf(format, v...))
+	log.Debugf(format, v...)
 }
 
 func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
