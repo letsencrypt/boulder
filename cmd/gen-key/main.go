@@ -27,6 +27,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 
@@ -88,6 +89,7 @@ func main() {
 	rsaExp := flag.Uint("public-exponent", 65537, "Public RSA exponent. Only used if --type=RSA")
 	ecdsaCurve := flag.String("curve", "", "Type of ECDSA curve to use (P-224, P-256, P-384, P-521). Only used if --type=ECDSA")
 	compatMode := flag.Bool("compat-mode", false, "Use pre PKCS#11 v2.11 style ECDSA parameters. Only used if --type=ECDSA")
+	outputPath := flag.String("output", "", "Path to store generated PEM public key")
 	flag.Parse()
 
 	if *module == "" {
@@ -104,6 +106,9 @@ func main() {
 	}
 	if *label == "" {
 		log.Fatal("--label is required")
+	}
+	if *outputPath == "" {
+		log.Fatal("--output is required")
 	}
 
 	ctx, session, err := initialize(*module, *slot, *pin)
@@ -136,8 +141,13 @@ func main() {
 		log.Fatalf("Failed to marshal public key: %s", err)
 	}
 
-	err = pem.Encode(os.Stdout, &pem.Block{Type: "PUBLIC KEY", Bytes: der})
+	pemBytes, err := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	if err != nil {
 		log.Fatalf("Failed to encode public key as PEM object: %s", err)
 	}
+	log.Printf("Public key PEM:\n%s\n", pemBytes)
+	if err := ioutil.WriteFile(*outputPath, pemBytes, os.ModePerm); err != nil {
+		log.Fatalf("Failed to write public key to %q: %s", *outputPath, err)
+	}
+	log.Printf("Public key written to %q\n", *outputPath)
 }
