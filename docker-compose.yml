@@ -1,10 +1,5 @@
 version: '3'
 services:
-    godeprestore:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
-        volumes:
-          - .:/go/src/github.com/letsencrypt/boulder
-        working_dir: /go/src/github.com/letsencrypt/boulder
     boulder:
         # To minimize fetching this should be the same version used below
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
@@ -75,6 +70,11 @@ services:
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
+    godeprestore:
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
+        volumes:
+          - .:/go/src/github.com/letsencrypt/boulder
+        working_dir: /go/src/github.com/letsencrypt/boulder
 
 networks:
   bluenet:
