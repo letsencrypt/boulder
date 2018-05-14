@@ -135,7 +135,7 @@
         "RPCHeadroom": true,
         "WildcardDomains": true,
         "EmbedSCTs": true,
-	"AllowTLSALPN01Challenge": true
+        "AllowTLSALPN01Challenge": true
     }
   },
 

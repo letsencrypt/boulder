@@ -208,7 +208,7 @@ def do_tlsalpn_challenges(client, authzs):
         for a in authzs}
     chall_certs = {domain: tls_alpn_01_cert(client, c, domain)
         for domain, c in challs.items()}
-    # TODO: this won't be needed once acme standalone tls-alpn server servers
+    # TODO: this won't be needed once acme standalone tls-alpn server serves
     # certs correctly, not only challenge certs.
     chall_certs['localhost'] = (example_key, example_cert)
     server = standalone.TLSALPN01Server(("", port), certs, chall_certs)

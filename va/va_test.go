@@ -244,7 +244,6 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, names ...string) *httptest
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if clientHello.ServerName != names[0] {
-				time.Sleep(time.Second * 10)
 				return nil, nil
 			}
 			if len(clientHello.SupportedProtos) == 1 && clientHello.SupportedProtos[0] == ACMETLS1Protocol {

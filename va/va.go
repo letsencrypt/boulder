@@ -507,7 +507,10 @@ func certNames(cert *x509.Certificate) []string {
 	return names
 }
 
-func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
+	identifier core.AcmeIdentifier, challenge core.Challenge,
+	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
+
 	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
@@ -596,6 +599,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 	config *tls.Config,
 ) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
+	// We expect a self-signed challenge certificate, do not verify it here.
 	config.InsecureSkipVerify = true
 	conn, err := tlsDial(ctx, hostPort, config)
 
@@ -720,7 +724,6 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 				"Requested %s from %s. Received %d certificate(s), "+
 				"first certificate had names %q",
 			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
-		va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
 		return validationRecords, probs.Unauthorized(errText)
 	}
 

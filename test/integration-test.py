@@ -164,9 +164,6 @@ def wait_for_ocsp_good(cert_file, issuer_file, url):
 def wait_for_ocsp_revoked(cert_file, issuer_file, url):
     fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
 
-def test_multidomain_http():
-    auth_and_issue([random_domain(), random_domain()])
-
 def test_dns_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
 
