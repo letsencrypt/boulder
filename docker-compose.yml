@@ -1,5 +1,10 @@
 version: '3'
 services:
+    godeprestore:
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
+        volumes:
+          - .:/go/src/github.com/letsencrypt/boulder
+        working_dir: /go/src/github.com/letsencrypt/boulder
     boulder:
         # To minimize fetching this should be the same version used below
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
@@ -31,7 +36,7 @@ services:
               - publisher2.boulder
         # Use dns-test-srv as a backup to Docker's DNS server. If there's a name
         # Docker's DNS doesn't know about, it will forward the query to this IP
-        # (running dns-test-srv). We have special logic there that will return
+        # (running sd-test-srv). We have special logic there that will return
         # multiple IP addresses for service names.
         dns: 10.77.77.77
         ports:

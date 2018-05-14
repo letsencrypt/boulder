@@ -35,13 +35,14 @@ env:
     #
     # Current Go version build tasks:
     #
-    - RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+    - RUN="vet fmt migrations integration errcheck generate dashlint rpm" CONTAINER=boulder
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - RUN="unit"
-    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - RUN="coverage"
+    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next" CONTAINER=boulder
+    - RUN="unit" CONTAINER=boulder
+    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next" CONTAINER=boulder
+    - RUN="godep-restore" CONTAINER=godeprestore
+    - RUN="coverage" CONTAINER=boulder
 
 matrix:
   fast_finish: true
@@ -68,4 +69,4 @@ install:
   - $HOME/bin/docker-compose pull
 
 script:
-  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder ./test.sh
+  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER} ./test.sh
