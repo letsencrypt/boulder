@@ -163,7 +163,7 @@ func ValidSerial(serial string) bool {
 	// Originally, serial numbers were 32 hex characters long. We later increased
 	// them to 36, but we allow the shorter ones because they exist in some
 	// production databases.
-	if len(serial) < 32 && len(serial) > 36 {
+	if len(serial) != 32 && len(serial) != 36 {
 		return false
 	}
 	_, err := hex.DecodeString(serial)
