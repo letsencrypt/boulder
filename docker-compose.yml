@@ -71,7 +71,7 @@ services:
         logging:
             driver: none
     godeprestore:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.1}:2018-05-04
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.2}:2018-05-04
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
         working_dir: /go/src/github.com/letsencrypt/boulder
