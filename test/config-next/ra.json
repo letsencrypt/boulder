@@ -5,7 +5,7 @@
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
     "dnsResolvers": [
-      "127.0.0.1:53",
+      "127.0.0.1:8053",
       "127.0.0.1:8054"
     ],
     "debugAddr": ":8002",

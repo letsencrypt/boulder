@@ -40,7 +40,7 @@ def run(cmd, race_detection, fakeclock):
 
 def waitport(port, prog):
     """Wait until a port on localhost is open."""
-    while True:
+    for _ in range(1000):
         try:
             time.sleep(0.1)
             # If one of the servers has died, quit immediately.
@@ -49,13 +49,13 @@ def waitport(port, prog):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(('localhost', port))
             s.close()
-            break
+            return True
         except socket.error as e:
             if e.errno == errno.ECONNREFUSED:
                 print "Waiting for debug port %d (%s)" % (port, prog)
             else:
                 raise
-    return True
+    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
 def start(race_detection, fakeclock=None):
     """Return True if everything builds and starts.
