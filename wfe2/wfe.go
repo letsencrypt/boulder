@@ -91,6 +91,11 @@ type WebFrontEndImpl struct {
 	// "website" field.
 	DirectoryWebsite string
 
+	// Allowed prefix for legacy accounts used by verify.go's `lookupJWK`.
+	// See `cmd/boulder-wfe2/main.go`'s comment on the configuration field
+	// `LegacyKeyIDPrefix` for more informaton.
+	LegacyKeyIDPrefix string
+
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
 
@@ -335,14 +340,14 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 
 	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
-	response.Write([]byte(fmt.Sprintf(`<html>
+	fmt.Fprintf(response, `<html>
 		<body>
 			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>
 	</html>
-	`, directoryPath, directoryPath)))
+	`, directoryPath, directoryPath)
 }
 
 func addNoCacheHeader(w http.ResponseWriter) {
@@ -351,7 +356,7 @@ func addNoCacheHeader(w http.ResponseWriter) {
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
-		w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", requester))
+		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
 }
 
@@ -1599,15 +1604,15 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
 		return
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
 		return
 	}
 
@@ -1653,22 +1658,22 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
 		return
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
 		return
 	}
 
 	// If the authenticated account ID doesn't match the order's registration ID
 	// pretend it doesn't exist and abort.
 	if acct.ID != *order.RegistrationID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acct.ID), nil)
 		return
 	}
 
@@ -1691,7 +1696,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// If the order is expired we can not finalize it and must return an error
 	orderExpiry := time.Unix(*order.Expires, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", *order.Id)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("Order %d is expired", *order.Id), nil)
 		return
 	}
 

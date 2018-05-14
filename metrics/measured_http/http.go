@@ -1,8 +1,8 @@
 package measured_http
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
@@ -74,7 +74,7 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.stat.With(prometheus.Labels{
 			"endpoint": pattern,
 			"method":   method,
-			"code":     fmt.Sprintf("%d", rwws.code),
+			"code":     strconv.Itoa(rwws.code),
 		}).Observe(h.clk.Since(begin).Seconds())
 	}()
 

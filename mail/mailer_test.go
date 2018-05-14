@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net"
 	"net/mail"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -148,7 +149,7 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 			// closing the connection. This is a good way to deliver a SMTP error
 			// before closing
 			if goodbyeMsg != "" {
-				_, _ = conn.Write([]byte(fmt.Sprintf("%s\r\n", goodbyeMsg)))
+				_, _ = fmt.Fprintf(conn, "%s\r\n", goodbyeMsg)
 				fmt.Printf("Wrote goodbye msg: %s\n", goodbyeMsg)
 			}
 			fmt.Printf("Cutting off client early\n")
@@ -209,7 +210,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 
 	m := New(
 		"localhost",
-		fmt.Sprintf("%d", port),
+		strconv.Itoa(port),
 		"user@example.com",
 		"passwd",
 		smtpRoots,
