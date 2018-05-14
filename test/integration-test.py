@@ -316,7 +316,9 @@ def test_caa():
 
     auth_and_issue(["good-caa-reserved.com"])
 
-    auth_and_issue(["recheck.good-caa-reserved.com"], client=caa_client)
+    # Request issuance for recheck.good-caa-reserved.com, which should
+    # now be denied due to CAA.
+    chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
