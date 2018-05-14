@@ -79,7 +79,7 @@ def start(race_detection, fakeclock=None):
             [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     progs.extend([
-        [9053, 'sd-test-srv --listen :53'], # Service discovery DNS server
+        [53, 'sd-test-srv --listen :53'], # Service discovery DNS server
         [8003, 'boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
         [8103, 'boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
         [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
