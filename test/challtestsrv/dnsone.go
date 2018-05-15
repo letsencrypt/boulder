@@ -109,6 +109,10 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				} else {
 					value = "sad-hacker-ca.invalid"
 				}
+			case "dns-01-only.good-caa-reserved.com.":
+				value = "happy-hacker-ca.invalid; validation-methods=dns-01"
+			case "http-01-only.good-caa-reserved.com.":
+				value = "happy-hacker-ca.invalid; validation-methods=http-01"
 			default:
 				addCAARecord = false
 			}
