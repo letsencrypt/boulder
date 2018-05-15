@@ -41,6 +41,8 @@ class ProcInfo:
         self.cmd = cmd
         self.proc = proc
 
+caa_client = None
+caa_authzs = []
 old_authzs = []
 new_authzs = []
 
@@ -52,6 +54,18 @@ def setup_seventy_days_ago():
     # later that they are expired (404).
     global old_authzs
     _, old_authzs = auth_and_issue([random_domain()])
+
+def setup_twenty_days_ago():
+    """Do any setup that needs to happen 20 day in the past, for tests that
+       will run in the 'present'.
+    """
+    # Issue a certificate with the clock set back, and save the authzs to check
+    # later that they are valid (200). They should however require rechecking for
+    # CAA purposes.
+    global caa_client
+    caa_client = chisel.make_client()
+    global caa_authzs
+    _, caa_authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=caa_client)
 
 def setup_zero_days_ago():
     """Do any setup that needs to happen at the start of a test run."""
@@ -290,8 +304,21 @@ def test_revoke_by_account():
     return 0
 
 def test_caa():
-    """Request issuance for two CAA domains, one where we are permitted and one where we are not."""
+    """Request issuance for two CAA domains, one where we are permitted and one where we are not.
+    """
+    if len(caa_authzs) == 0:
+        raise Exception("CAA authzs not prepared for test_caa")
+    for a in caa_authzs:
+        response = requests.get(a.uri)
+        if response.status_code != 200:
+            raise Exception("Unexpected response for CAA authz: ",
+                response.status_code)
+
     auth_and_issue(["good-caa-reserved.com"])
+
+    # Request issuance for recheck.good-caa-reserved.com, which should
+    # now be denied due to CAA.
+    chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
@@ -562,6 +589,13 @@ def main():
     if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
         raise Exception("startservers failed (mocking seventy days ago)")
     setup_seventy_days_ago()
+    startservers.stop()
+
+    now = datetime.datetime.utcnow()
+    twenty_days_ago = now+datetime.timedelta(days=-20)
+    if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+        raise Exception("startservers failed (mocking twenty days ago)")
+    setup_twenty_days_ago()
     startservers.stop()
 
     if not startservers.start(race_detection=True):
