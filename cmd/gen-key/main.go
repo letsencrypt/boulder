@@ -141,10 +141,7 @@ func main() {
 		log.Fatalf("Failed to marshal public key: %s", err)
 	}
 
-	pemBytes, err := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
-	if err != nil {
-		log.Fatalf("Failed to encode public key as PEM object: %s", err)
-	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	log.Printf("Public key PEM:\n%s\n", pemBytes)
 	if err := ioutil.WriteFile(*outputPath, pemBytes, os.ModePerm); err != nil {
 		log.Fatalf("Failed to write public key to %q: %s", *outputPath, err)
