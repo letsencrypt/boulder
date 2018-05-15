@@ -188,7 +188,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("%s", endpoint),
+		endpoint,
 		bytes.NewBuffer(reqJSON),
 	)
 	if err != nil {
@@ -240,12 +240,8 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
-	cpc.log.Info(fmt.Sprintf(
-		"Sent successful purge request purgeID: %s, purge expected in: %ds, for URLs: %s",
-		purgeInfo.PurgeID,
-		purgeInfo.EstimatedSeconds,
-		urls,
-	))
+	cpc.log.Infof("Sent successful purge request purgeID: %s, purge expected in: %ds, for URLs: %s",
+		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, urls)
 
 	return nil
 }
@@ -263,7 +259,7 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 				cpc.stats.Inc("FatalFailures", 1)
 				return err
 			}
-			cpc.log.AuditErr(fmt.Sprintf("Akamai cache purge failed, retrying: %s", err.Error()))
+			cpc.log.AuditErrf("Akamai cache purge failed, retrying: %s", err)
 			cpc.stats.Inc("RetryableFailures", 1)
 			continue
 		}

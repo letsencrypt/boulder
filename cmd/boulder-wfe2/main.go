@@ -61,6 +61,15 @@ type config struct {
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
 		DirectoryWebsite string
+
+		// ACMEv2 requests (outside some registration/revocation messages) use a JWS with
+		// a KeyID header containing the full account URL. For new accounts this
+		// will be a KeyID based on the HTTP request's Host header and the ACMEv2
+		// account path. For legacy ACMEv1 accounts we need to whitelist the account
+		// ID prefix that legacy accounts would have been using based on the Host
+		// header of the WFE1 instance and the legacy 'reg' path component. This
+		// will differ in configuration for production and staging.
+		LegacyKeyIDPrefix string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -224,13 +233,14 @@ func main() {
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
+	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
+	logger.Infof("WFE using key policy: %#v", kp)
 
-	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
+	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
 	handler := wfe.Handler()
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,

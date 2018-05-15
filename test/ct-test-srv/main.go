@@ -81,7 +81,7 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 
 		submissions := atomic.LoadInt64(&is.submissions)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("%d", submissions)))
+		fmt.Fprintf(w, "%d", submissions)
 	default:
 		http.NotFound(w, r)
 		return

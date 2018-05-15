@@ -85,32 +85,32 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	}
 	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.AuditErr(fmt.Sprintf("Didn't match regex for cert: %s", line))
+		logger.AuditErrf("Didn't match regex for cert: %s", line)
 		return true, false
 	}
 	der, err := hex.DecodeString(derStr[1])
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Couldn't decode hex: %s, [%s]", err, line))
+		logger.AuditErrf("Couldn't decode hex: %s, [%s]", err, line)
 		return true, false
 	}
 	cert, err := checkDER(sa, der)
 	if err != nil {
-		logFunc := logger.Err
+		logFunc := logger.Errf
 		if err == errAlreadyExists {
-			logFunc = logger.Info
+			logFunc = logger.Infof
 		}
-		logFunc(fmt.Sprintf("%s, [%s]", err, line))
+		logFunc("%s, [%s]", err, line)
 		return true, false
 	}
 	// extract the regID
 	regStr := regOrphan.FindStringSubmatch(line)
 	if len(regStr) <= 1 {
-		logger.AuditErr(fmt.Sprintf("regID variable is empty, [%s]", line))
+		logger.AuditErrf("regID variable is empty, [%s]", line)
 		return true, false
 	}
 	regID, err := strconv.Atoi(regStr[1])
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
+		logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
 		return true, false
 	}
 	// OCSP-Updater will do the first response generation for this cert so pass an
@@ -122,7 +122,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	issuedDate := cert.NotBefore.Add(backdateDuration)
 	_, err = sa.AddCertificate(ctx, der, int64(regID), nil, &issuedDate)
 	if err != nil {
-		logger.AuditErr(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
+		logger.AuditErrf("Failed to store certificate: %s, [%s]", err, line)
 		return true, false
 	}
 	return true, true
@@ -196,7 +196,7 @@ func main() {
 				}
 			}
 		}
-		logger.Info(fmt.Sprintf("Found %d orphans and added %d to the database\n", orphansFound, orphansAdded))
+		logger.Infof("Found %d orphans and added %d to the database\n", orphansFound, orphansAdded)
 
 	case "parse-der":
 		ctx := context.Background()

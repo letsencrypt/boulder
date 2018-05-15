@@ -84,7 +84,7 @@ type logAdaptor struct {
 }
 
 func (la logAdaptor) Printf(s string, args ...interface{}) {
-	la.Logger.Info(fmt.Sprintf(s, args...))
+	la.Logger.Infof(s, args...)
 }
 
 // NewLog returns an initialized Log struct
@@ -208,7 +208,7 @@ func (pub *Impl) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey stri
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	cert, err := x509.ParseCertificate(req.Der)
 	if err != nil {
-		pub.log.AuditErr(fmt.Sprintf("Failed to parse certificate: %s", err))
+		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
 
@@ -219,7 +219,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	// and returned.
 	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.log)
 	if err != nil {
-		pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
+		pub.log.AuditErrf("Making Log: %s", err)
 		return nil, err
 	}
 
@@ -251,13 +251,8 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		if respErr, ok := err.(ctClient.RspError); ok && respErr.StatusCode < 500 {
 			body = string(respErr.Body)
 		}
-		pub.log.AuditErr(
-			fmt.Sprintf(
-				"Failed to submit certificate to CT log at %s: %s Body=%q",
-				ctLog.uri,
-				err,
-				body,
-			))
+		pub.log.AuditErrf("Failed to submit certificate to CT log at %s: %s Body=%q",
+			ctLog.uri, err, body)
 		return nil, err
 	}
 

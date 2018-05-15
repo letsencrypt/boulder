@@ -229,7 +229,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
 	}
 	return nil
@@ -316,14 +316,14 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 
 	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
-	response.Write([]byte(fmt.Sprintf(`<html>
+	fmt.Fprintf(response, `<html>
 		<body>
 			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>
 	</html>
-	`, directoryPath, directoryPath)))
+	`, directoryPath, directoryPath)
 }
 
 func addNoCacheHeader(w http.ResponseWriter) {
@@ -332,7 +332,7 @@ func addNoCacheHeader(w http.ResponseWriter) {
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
-		w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", requester))
+		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
 }
 
@@ -509,7 +509,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	// Only check for validity if we are actually checking the registration
 	if regCheck && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
+		return nil, nil, reg, probs.Unauthorized("Registration is not valid, has status '%s'", reg.Status)
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -536,7 +536,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
-		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonce))
+		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonce)
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -795,7 +795,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
 	} else {
-		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+		wfe.log.Debugf("Revoked %v", serial)
 		response.WriteHeader(http.StatusOK)
 	}
 }
@@ -916,7 +916,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1164,8 +1164,8 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// extraneous requests to the RA we have to add this bypass.
 	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
 		update.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+		problem := probs.Malformed("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent, problem, nil)
 		return
 	}
 
@@ -1316,7 +1316,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	}
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 	return
 }
@@ -1333,7 +1333,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1341,9 +1341,8 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
-	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
-	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	if _, err := fmt.Fprintf(response, "Boulder=(%s %s)\n", core.GetBuildID(), core.GetBuildTime()); err != nil {
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
