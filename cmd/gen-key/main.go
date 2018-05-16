@@ -50,7 +50,7 @@ func main() {
 	module := flag.String("module", "", "PKCS#11 module to use")
 	keyType := flag.String("type", "", "Type of key to generate (RSA or ECDSA)")
 	slot := flag.Uint("slot", 0, "Slot to generate key in")
-	pin := flag.String("pin", "", "PIN for slot")
+	pin := flag.String("pin", "", "PIN for slot if not using PED to login")
 	label := flag.String("label", "", "Key label")
 	rsaModLen := flag.Uint("modulus-bits", 0, "Size of RSA modulus in bits. Only used if --type=RSA")
 	rsaExp := flag.Uint("public-exponent", 65537, "Public RSA exponent. Only used if --type=RSA")
@@ -66,9 +66,6 @@ func main() {
 	}
 	if *keyType != "RSA" && *keyType != "ECDSA" {
 		log.Fatal("--type may only be RSA or ECDSA")
-	}
-	if *pin == "" {
-		log.Fatal("--pin is required")
 	}
 	if *label == "" {
 		log.Fatal("--label is required")
