@@ -43,8 +43,8 @@ env:
     # godep-restore runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
-    - RUN="godep-restore" CONTAINER=godeprestore
-    - RUN="coverage" CONTAINER=godeprestore
+    - RUN="godep-restore" CONTAINER=netaccess
+    - RUN="coverage" CONTAINER=netaccess
 
 matrix:
   fast_finish: true

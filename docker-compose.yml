@@ -30,7 +30,7 @@ services:
               - va2.boulder
               - publisher2.boulder
         # Use sd-test-srv as a backup to Docker's embedded DNS server
-        # (https://docs.docker.com/v17.09/engine/userguide/networking/#embedded-dns-server).
+        # (https://docs.docker.com/config/containers/container-networking/#dns-services).
         # If there's a name Docker's DNS server doesn't know about, it will
         # forward the query to this IP (running sd-test-srv). We have
         # special logic there that will return multiple IP addresses for
@@ -72,8 +72,10 @@ services:
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
-    godeprestore:
+    netaccess:
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.2}:2018-05-04
+        networks:
+          - bluenet
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
         working_dir: /go/src/github.com/letsencrypt/boulder
