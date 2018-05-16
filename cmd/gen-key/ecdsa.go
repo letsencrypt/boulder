@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -55,7 +56,7 @@ var hashToString = map[crypto.Hash]string{
 // type of key should be generated. compatMode is used to determine which
 // mechanism and attribute types should be used, for devices that implement
 // a pre-2.11 version of the PKCS#11 specification compatMode should be true.
-func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) generateArgs {
+func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool, keyID []byte) generateArgs {
 	encodedCurve := curveToOIDDER[curve.Name]
 	log.Printf("\tEncoded curve parameters for %s: %X\n", curve.Params().Name, encodedCurve)
 	var genMech, paramType uint
@@ -71,12 +72,14 @@ func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool) generate
 			pkcs11.NewMechanism(genMech, nil),
 		},
 		publicAttrs: []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
 			pkcs11.NewAttribute(paramType, encodedCurve),
 		},
 		privateAttrs: []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			// Prevent attributes being retrieved
@@ -196,8 +199,13 @@ func ecGenerate(ctx PKCtx, session pkcs11.SessionHandle, label, curveStr string,
 	if !present {
 		return nil, fmt.Errorf("curve %q not supported", curveStr)
 	}
-	log.Printf("Generating ECDSA key with curve %s\n", curveStr)
-	args := ecArgs(label, curve, compatMode)
+	keyID := make([]byte, 4)
+	_, err := rand.Read(keyID)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Generating ECDSA key with curve %s and ID %x\n", curveStr, keyID)
+	args := ecArgs(label, curve, compatMode, keyID)
 	pub, priv, err := ctx.GenerateKeyPair(session, args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, err
