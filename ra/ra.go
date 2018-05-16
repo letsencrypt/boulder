@@ -763,33 +763,31 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_names", int64(len(names)))
-	ch := make(chan *probs.ProblemDetails)
+	ch := make(chan error, len(names))
 	for _, name := range names {
 		go func(name string) {
-			var problem *probs.ProblemDetails
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain: &name,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
-				problem = probs.ServerInternal("Internal error rechecking CAA for " + name)
+				err = berrors.InternalServerError("Internal error rechecking CAA for %v", name)
 			} else if resp.Problem != nil {
-				problem = &probs.ProblemDetails{
-					Type:   probs.ProblemType(*resp.Problem.ProblemType),
-					Detail: *resp.Problem.Detail,
-				}
+				err = berrors.CAAError(*resp.Problem.Detail)
 			}
-			ch <- problem
+			ch <- err
 		}(name)
 	}
-	var fails []string
+	var caaFailures []string
 	for _ = range names {
-		if problem := <-ch; problem != nil {
-			fails = append(fails, problem.Detail)
+		if err := <-ch; berrors.Is(err, berrors.CAA) {
+			caaFailures = append(caaFailures, err.Error())
+		} else if err != nil {
+			return err
 		}
 	}
-	if len(fails) > 0 {
-		return berrors.CAAError("Rechecking CAA: %v", strings.Join(fails, ", "))
+	if len(caaFailures) > 0 {
+		return berrors.CAAError("Rechecking CAA: %v", strings.Join(caaFailures, ", "))
 	}
 	return nil
 }
