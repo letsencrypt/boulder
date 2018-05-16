@@ -77,6 +77,8 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
         working_dir: /go/src/github.com/letsencrypt/boulder
+        depends_on:
+          - bmysql
 
 networks:
   bluenet:
