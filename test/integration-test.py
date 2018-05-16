@@ -324,6 +324,11 @@ def test_caa():
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
+    # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
+    # default, remove this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))
 
