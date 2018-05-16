@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -14,6 +16,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -24,100 +27,119 @@ import (
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
-type keyAlg int
-
-const (
-	rsaType keyAlg = iota
-	ecdsaType
-)
-
-type p11Key struct {
+type x509Signer struct {
 	ctx pkcs11helpers.PKCtx
 
 	session      pkcs11.SessionHandle
 	objectHandle pkcs11.ObjectHandle
-	keyType      keyAlg
+	keyType      pkcs11helpers.KeyType
+
+	pub crypto.PublicKey
 }
 
-// Hash identifiers required for PKCS#11 RSA signing. Only support SHA-256, SHA-384,
-// and SHA-512
-var hashIdentifiers = map[crypto.Hash][]byte{
-	crypto.SHA256: {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20},
-	crypto.SHA384: {0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30},
-	crypto.SHA512: {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
-}
-
-func (p *p11Key) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	if len(digest) != opts.HashFunc().Size() {
-		return nil, errors.New("digest length doesn't match hash length")
+func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	signature, err := pkcs11helpers.Sign(p.ctx, p.session, p.objectHandle, p.keyType, digest, opts.HashFunc())
+	if err != nil {
+		return nil, err
 	}
 
-	mech := make([]*pkcs11.Mechanism, 1)
-	switch p.keyType {
-	case rsaType:
-		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)
-		prefix, ok := hashIdentifiers[opts.HashFunc()]
-		if !ok {
-			return nil, errors.New("unsupported hash function")
+	if p.keyType == pkcs11helpers.ECDSAKey {
+		// Convert from the PKCS#11 format to the RFC 5480 format
+		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
+		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+		signature, err = asn1.Marshal(struct {
+			R, S *big.Int
+		}{R: r, S: s})
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
 		}
-		digest = append(prefix, digest...)
-	case ecdsaType:
-		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)
 	}
-
-	err = p.ctx.SignInit(p.session, mech, p.objectHandle)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize signing operation: %s", err)
-	}
-	signature, err = p.ctx.Sign(p.session, digest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign data: %s", err)
-	}
-	return
+	return signature, nil
 }
 
-func getPrivateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, idStr string) (*p11Key, error) {
+func (p *x509Signer) Public() crypto.PublicKey {
+	return p.pub
+}
+
+func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
+	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
+		return 0, err
+	}
+	handles, more, err := ctx.FindObjects(session, 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(handles) == 0 {
+		return 0, errors.New("no objects found matching label and ID")
+	}
+	if more {
+		return 0, errors.New("more than one object matches label and ID")
+	}
+	if err := ctx.FindObjectsFinal(session); err != nil {
+		return 0, err
+	}
+	return handles[0], nil
+}
+
+func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, idStr string) (*x509Signer, error) {
 	id, err := hex.DecodeString(idStr)
 	if err != nil {
 		return nil, err
 	}
 
-	tmpl := []*pkcs11.Attribute{
+	privateHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-	}
-	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
-		return nil, err
-	}
-	handles, more, err := ctx.FindObjects(session, 1)
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
-	if len(handles) == 0 {
-		return nil, errors.New("no private keys found matching label and ID")
-	}
-	if more {
-		return nil, errors.New("more than one object matches label and ID")
-	}
-	if err := ctx.FindObjectsFinal(session); err != nil {
-		return nil, err
-	}
-
-	object := handles[0]
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)})
-	if err != nil || len(attrs) != 0 {
+	attrs, err := ctx.GetAttributeValue(session, privateHandle, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
 	}
-	var keyType keyAlg
-	switch attrs[0].Type {
-	case pkcs11.CKK_RSA:
-		keyType = rsaType
-	case pkcs11.CKK_EC:
-		keyType = ecdsaType
+	if len(attrs) == 0 {
+		return nil, errors.New("failed to retrieve key attributes")
 	}
 
-	return &p11Key{ctx: ctx, session: session, objectHandle: object, keyType: keyType}, nil
+	pubHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
+		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value), // CKK_RSA or CKK_EC
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
+	}
+	var pub crypto.PublicKey
+	var keyType pkcs11helpers.KeyType
+	switch {
+	case bytes.Compare(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}) == 0:
+		keyType = pkcs11helpers.RSAKey
+		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
+		}
+	case bytes.Compare(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}) == 0:
+		keyType = pkcs11helpers.ECDSAKey
+		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
+		}
+	default:
+		return nil, errors.New("BAD")
+	}
+
+	return &x509Signer{
+		ctx:          ctx,
+		session:      session,
+		objectHandle: privateHandle,
+		keyType:      keyType,
+		pub:          pub,
+	}, nil
 }
 
 var algToString = map[string]x509.SignatureAlgorithm{
@@ -138,8 +160,8 @@ type certProfile struct {
 		Country      string
 	}
 
-	NotAfter  string
 	NotBefore string
+	NotAfter  string
 
 	OCSPURL   string
 	CRLURL    string
@@ -242,7 +264,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to setup session and PKCS#11 context: %s", err)
 	}
-	privKey, err := getPrivateKey(ctx, session, *label, *id)
+	privKey, err := getKey(ctx, session, *label, *id)
 	if err != nil {
 		log.Fatalf("Failed to retrieve private key handle: %s", err)
 	}
@@ -251,25 +273,37 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read certificate profile %q: %s", *profilePath, err)
 	}
-	var profile *certProfile
-	err = json.Unmarshal(profileBytes, profile)
+	var profile certProfile
+	err = json.Unmarshal(profileBytes, &profile)
 	if err != nil {
 		log.Fatalf("Failed to parse certificate profile: %s", err)
 	}
 
-	pubBytes, err := ioutil.ReadFile(*pubKeyPath)
+	pubPEMBytes, err := ioutil.ReadFile(*pubKeyPath)
 	if err != nil {
 		log.Fatalf("Failed to read public key %q: %s", *pubKeyPath, err)
 	}
-	pub, err := x509.ParsePKIXPublicKey(pubBytes)
+	pubPEM, _ := pem.Decode(pubPEMBytes)
+	if pubPEM == nil {
+		log.Fatal("Failed to parse public key")
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
 	if err != nil {
 		log.Fatalf("Failed to parse public key: %s", err)
 	}
 
-	certTmpl, err := constructCert(profile)
+	certTmpl, err := constructCert(&profile)
 	if err != nil {
 		log.Fatalf("Failed to construct certificate from profile: %s", err)
 	}
+	// generate serial number
+	serial, err := ctx.GenerateRandom(session, 16)
+	if err != nil {
+		log.Fatalf("Failed to generate serial number: %s", err)
+	}
+	certTmpl.SerialNumber = big.NewInt(0).SetBytes(serial)
+	keyHash := sha256.Sum256(pubPEM.Bytes)
+	certTmpl.SubjectKeyId = keyHash[:]
 
 	// get parent cert
 	var issuer *x509.Certificate
@@ -282,6 +316,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse certificate: %s", err)
 		}
+		certTmpl.AuthorityKeyId = issuer.SubjectKeyId
 	} else {
 		issuer = certTmpl
 	}

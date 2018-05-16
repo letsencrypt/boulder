@@ -62,24 +62,27 @@ func TestRSAPub(t *testing.T) {
 func TestRSAVerify(t *testing.T) {
 	ctx := mockCtx{}
 
-	// test SignInit failing
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return errors.New("yup")
-	}
-	err := rsaVerify(ctx, 0, 0, nil)
-	test.AssertError(t, err, "rsaVerify didn't fail on SignInit error")
-
 	// test GenerateRandom failing
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return nil
-	}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("yup")
 	}
-	err = rsaVerify(ctx, 0, 0, nil)
+	err := rsaVerify(ctx, 0, 0, nil)
 	test.AssertError(t, err, "rsaVerify didn't fail on GenerateRandom error")
 
+	// test SignInit failing
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return []byte{1, 2, 3}, nil
+	}
+	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
+		return errors.New("yup")
+	}
+	err = rsaVerify(ctx, 0, 0, nil)
+	test.AssertError(t, err, "rsaVerify didn't fail on SignInit error")
+
 	// test Sign failing
+	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
+		return nil
+	}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}
@@ -134,8 +137,8 @@ func TestRSAGenerate(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{217, 226, 207, 73, 127, 217, 136, 48, 203, 2, 12, 223, 251, 130, 143, 118, 13, 186, 82, 183, 220, 178, 158, 204, 19, 255, 121, 75, 243, 84, 118, 40, 128, 29, 11, 245, 43, 246, 217, 244, 166, 208, 36, 59, 69, 34, 142, 40, 22, 230, 195, 193, 111, 202, 186, 174, 233, 175, 140, 74, 19, 135, 191, 82, 27, 41, 123, 157, 174, 219, 38, 71, 19, 138, 28, 41, 48, 52, 142, 234, 196, 242, 51, 90, 204, 10, 235, 88, 150, 156, 89, 156, 199, 152, 173, 251, 88, 67, 138, 147, 86, 190, 236, 107, 190, 169, 53, 160, 219, 71, 147, 247, 230, 24, 188, 44, 61, 92, 106, 254, 125, 145, 233, 211, 76, 13, 159, 167}),
 		}, nil
 	}
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return errors.New("yup")
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return nil, errors.New("yup")
 	}
 	_, err = rsaGenerate(ctx, 0, "", 1024, 65537)
 	test.AssertError(t, err, "rsaGenerate didn't fail on rsaVerify error")
