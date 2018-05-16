@@ -35,6 +35,10 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		Ttl:    0,
 	}
 
+	// These two hardcoded IPs correspond to the configured addresses for boulder
+	// in docker-compose.yml. In our Docker setup, boulder is present on two
+	// networks, rednet and bluenet, with a different IP address on each. This
+	// allows us to test load balance across gRPC backends.
 	m.Answer = append(m.Answer, &dns.A{
 		A:   net.ParseIP("10.77.77.77"),
 		Hdr: hdr,
@@ -48,7 +52,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func main() {
-	listen := flag.String("listen", "", "Address and port to listen on.")
+	listen := flag.String("listen", ":53", "Address and port to listen on.")
 	flag.Parse()
 	if *listen == "" {
 		flag.Usage()

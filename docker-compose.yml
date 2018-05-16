@@ -29,10 +29,12 @@ services:
               - ra2.boulder
               - va2.boulder
               - publisher2.boulder
-        # Use dns-test-srv as a backup to Docker's DNS server. If there's a name
-        # Docker's DNS doesn't know about, it will forward the query to this IP
-        # (running sd-test-srv). We have special logic there that will return
-        # multiple IP addresses for service names.
+        # Use sd-test-srv as a backup to Docker's embedded DNS server
+        # (https://docs.docker.com/v17.09/engine/userguide/networking/#embedded-dns-server).
+        # If there's a name Docker's DNS server doesn't know about, it will
+        # forward the query to this IP (running sd-test-srv). We have
+        # special logic there that will return multiple IP addresses for
+        # service names.
         dns: 10.77.77.77
         ports:
           - 4000:4000 # ACME

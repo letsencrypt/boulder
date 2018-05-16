@@ -44,7 +44,7 @@ env:
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
     - RUN="godep-restore" CONTAINER=godeprestore
-    - RUN="coverage" CONTAINER=boulder
+    - RUN="coverage" CONTAINER=godeprestore
 
 matrix:
   fast_finish: true

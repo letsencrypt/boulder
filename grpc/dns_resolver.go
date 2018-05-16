@@ -32,10 +32,10 @@ func (dr *dnsResolver) Resolve(target string) (naming.Watcher, error) {
 // Next is called in a loop by grpc.RoundRobin expecting updates. We provide a
 // single update then block forever.
 func (dr *dnsResolver) Next() ([]*naming.Update, error) {
-	// Stick a value on the channel, which has capacity 1. This will succed once,
+	// Stick a value on the channel, which has capacity 1. This will succeed once,
 	// then each subsequent call will block forever.
 	dr.ch <- true
-	addrs, err := net.DefaultResolver.LookupHost(context.TODO(), dr.host)
+	addrs, err := net.DefaultResolver.LookupHost(context.Background(), dr.host)
 	if err != nil {
 		return nil, err
 	}
