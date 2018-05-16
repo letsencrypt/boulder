@@ -11,11 +11,12 @@
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "https://boulder:4431/terms/v7",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8013",
+    "directoryCAAIdentity": "happy-hacker-ca.invalid",
+    "directoryWebsite": "https://github.com/letsencrypt/boulder",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -28,6 +29,10 @@
     "saService": {
       "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
       "timeout": "15s"
+    },
+    "certificateChains": {
+      "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
     "features": {}
   },
