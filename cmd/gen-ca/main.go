@@ -44,7 +44,8 @@ func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 	}
 
 	if p.keyType == pkcs11helpers.ECDSAKey {
-		// Convert from the PKCS#11 format to the RFC 5480 format
+		// Convert from the PKCS#11 format to the RFC 5480 format so that
+		// it can be used in a x509 certificate
 		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
 		signature, err = asn1.Marshal(struct {
@@ -109,7 +110,7 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value), // CKK_RSA or CKK_EC
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
@@ -117,12 +118,14 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 	var pub crypto.PublicKey
 	var keyType pkcs11helpers.KeyType
 	switch {
+	// CKK_RSA, 0x00000000
 	case bytes.Compare(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}) == 0:
 		keyType = pkcs11helpers.RSAKey
 		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
+	// CKK_ECDSA, 0x00000003
 	case bytes.Compare(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}) == 0:
 		keyType = pkcs11helpers.ECDSAKey
 		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
@@ -130,7 +133,7 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
 	default:
-		return nil, errors.New("BAD")
+		return nil, errors.New("unsupported key type")
 	}
 
 	return &x509Signer{
@@ -179,12 +182,15 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 		}
 		oid = append(oid, i)
 	}
+	if oid == nil {
+		return nil, fmt.Errorf("%q is not a valid OID", oidStr)
+	}
 	return oid, nil
 }
 
 const dateLayout = "2006-01-02 15:04:05"
 
-func constructCert(profile *certProfile) (*x509.Certificate, error) {
+func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte, session pkcs11.SessionHandle) (*x509.Certificate, error) {
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
 		return nil, err
@@ -207,9 +213,16 @@ func constructCert(profile *certProfile) (*x509.Certificate, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
+	// generate serial number
+	serial, err := ctx.GenerateRandom(session, 16)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %s", err)
+	}
+	keyHash := sha256.Sum256(pubKey)
 
 	cert := &x509.Certificate{
 		SignatureAlgorithm:    sigAlg,
+		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
 		IsCA: true,
 		Subject: pkix.Name{
@@ -224,6 +237,7 @@ func constructCert(profile *certProfile) (*x509.Certificate, error) {
 		IssuingCertificateURL: []string{profile.IssuerURL},
 		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              x509.KeyUsageCertSign & x509.KeyUsageCRLSign,
+		SubjectKeyId:          keyHash[:],
 	}
 
 	return cert, nil
@@ -264,10 +278,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to setup session and PKCS#11 context: %s", err)
 	}
+	log.Println("Opened PKCS#11 session")
+
 	privKey, err := getKey(ctx, session, *label, *id)
 	if err != nil {
 		log.Fatalf("Failed to retrieve private key handle: %s", err)
 	}
+	log.Println("Retrieved private key handle")
 
 	profileBytes, err := ioutil.ReadFile(*profilePath)
 	if err != nil {
@@ -292,22 +309,15 @@ func main() {
 		log.Fatalf("Failed to parse public key: %s", err)
 	}
 
-	certTmpl, err := constructCert(&profile)
+	certTmpl, err := constructCert(ctx, &profile, pubPEM.Bytes, session)
 	if err != nil {
 		log.Fatalf("Failed to construct certificate from profile: %s", err)
 	}
-	// generate serial number
-	serial, err := ctx.GenerateRandom(session, 16)
-	if err != nil {
-		log.Fatalf("Failed to generate serial number: %s", err)
-	}
-	certTmpl.SerialNumber = big.NewInt(0).SetBytes(serial)
-	keyHash := sha256.Sum256(pubPEM.Bytes)
-	certTmpl.SubjectKeyId = keyHash[:]
-
-	// get parent cert
+	log.Println("Generated tbs certificate")
 	var issuer *x509.Certificate
 	if *issuerPath != "" {
+		// If generating an intermediate load the parent issuer and
+		// set the Authority Key Identifier in the template
 		issuerBytes, err := ioutil.ReadFile(*issuerPath)
 		if err != nil {
 			log.Fatalf("Failed to read issuer certificate %q: %s", *issuerPath, err)
@@ -326,21 +336,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create certificate: %s", err)
 	}
+	log.Println("Signed certificate")
 	cert, err := x509.ParseCertificate(certBytes)
 	if err != nil {
 		log.Fatalf("Failed to parse signed certificate: %s", err)
 	}
 
-	// verify cert signature
+	// If generating a root then the signing key is the public key
+	// in the cert itself, so set the parent to itself
 	if *issuerPath == "" {
 		issuer = cert
 	}
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		log.Fatalf("Failed to verify certificate signature: %s", err)
 	}
+	log.Println("Verifed certificate signature")
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	log.Printf("Certificate PEM:\n%s\n", pemBytes)
+	log.Printf("Certificate PEM:\n%s", pemBytes)
 	if err := ioutil.WriteFile(*outputPath, pemBytes, os.ModePerm); err != nil {
 		log.Fatalf("Failed to write certificate to %q: %s", *outputPath, err)
 	}

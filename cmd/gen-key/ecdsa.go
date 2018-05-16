@@ -62,7 +62,6 @@ func ecArgs(label string, curve *elliptic.CurveParams, keyID []byte) generateArg
 			pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil),
 		},
 		publicAttrs: []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC),
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
@@ -70,7 +69,6 @@ func ecArgs(label string, curve *elliptic.CurveParams, keyID []byte) generateArg
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, encodedCurve),
 		},
 		privateAttrs: []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC),
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),

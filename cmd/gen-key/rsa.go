@@ -27,7 +27,6 @@ func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs
 			pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil),
 		},
 		publicAttrs: []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
@@ -39,7 +38,6 @@ func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, expSlice),
 		},
 		privateAttrs: []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),

@@ -81,6 +81,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to setup session and PKCS#11 context: %s", err)
 	}
+	log.Println("Opened PKCS#11 session")
 
 	var pubKey interface{}
 	switch *keyType {
