@@ -171,6 +171,10 @@ def test_http_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
 
 def test_tls_alpn_challenge():
+    # TODO(@mdebski): Once the `AllowTLSALPN01Challenge` feature flag is enabled
+    # by default, delete this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
     auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
 
 def test_issuer():
