@@ -318,13 +318,17 @@ func main() {
 	if *issuerPath != "" {
 		// If generating an intermediate load the parent issuer and
 		// set the Authority Key Identifier in the template
-		issuerBytes, err := ioutil.ReadFile(*issuerPath)
+		issuerPEMBytes, err := ioutil.ReadFile(*issuerPath)
 		if err != nil {
 			log.Fatalf("Failed to read issuer certificate %q: %s", *issuerPath, err)
 		}
-		issuer, err = x509.ParseCertificate(issuerBytes)
+		issuerPEM, _ := pem.Decode(issuerPEMBytes)
+		if issuerPEM == nil {
+			log.Fatal("Failed to parse issuer certificate PEM")
+		}
+		issuer, err = x509.ParseCertificate(issuerPEM.Bytes)
 		if err != nil {
-			log.Fatalf("Failed to parse certificate: %s", err)
+			log.Fatalf("Failed to parse issuer certificate: %s", err)
 		}
 		certTmpl.AuthorityKeyId = issuer.SubjectKeyId
 	} else {
