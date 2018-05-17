@@ -203,7 +203,7 @@ def do_http_challenges(client, authzs):
 def do_tlsalpn_challenges(client, authzs):
     port = 5001
     example_key, example_cert = load_example_cert()
-    certs = {'localhost': (example_key, example_cert)}
+    server_certs = {'localhost': (example_key, example_cert)}
     challs = {a.body.identifier.value: get_chall(a, challenges.TLSALPN01)
         for a in authzs}
     chall_certs = {domain: tls_alpn_01_cert(client, c, domain)
@@ -211,7 +211,7 @@ def do_tlsalpn_challenges(client, authzs):
     # TODO: this won't be needed once acme standalone tls-alpn server serves
     # certs correctly, not only challenge certs.
     chall_certs['localhost'] = (example_key, example_cert)
-    server = standalone.TLSALPN01Server(("", port), certs, chall_certs)
+    server = standalone.TLSALPN01Server(("", port), server_certs, chall_certs)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
 
