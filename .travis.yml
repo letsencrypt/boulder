@@ -34,12 +34,12 @@ env:
     #
     # Current Go version build tasks:
     #
-    - RUN="vet fmt migrations integration errcheck generate dashlint rpm" CONTAINER=boulder
+    - RUN="vet fmt migrations integration errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next" CONTAINER=boulder
-    - RUN="unit" CONTAINER=boulder
-    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next" CONTAINER=boulder
+    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - RUN="unit"
+    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
     # godep-restore runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
@@ -71,4 +71,4 @@ install:
   - $HOME/bin/docker-compose pull
 
 script:
-  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER} ./test.sh
+  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER:-boulder} ./test.sh

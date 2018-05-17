@@ -17,7 +17,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Compress = false
 
-	if len(r.Question) < 1 {
+	if len(r.Question) != 1 {
 		m.Rcode = dns.RcodeServerFailure
 		w.WriteMsg(m)
 		return
