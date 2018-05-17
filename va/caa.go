@@ -247,6 +247,9 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		}
 
 		if features.Enabled(features.CAAValidationMethods) {
+			// Check the validation-methods CAA parameter as defined
+			// in section 4 of the draft CAA ACME RFC:
+			// https://tools.ietf.org/html/draft-ietf-acme-caa-03
 			caaMethods, ok := caaParameters["validation-methods"]
 			if ok {
 				if challengeType == nil {
@@ -267,14 +270,14 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	return true, false
 }
 
-func isIssueSpace(r rune) bool {
-	return r == '\t' || r == ' '
-}
-
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
 // that is, a domain name with zero or more additional key-value parameters.
 // Returns the domain name, which may be "" (unsatisfiable), and a tag-value map of parameters.
 func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
+	isIssueSpace := func(r rune) bool {
+		return r == '\t' || r == ' '
+	}
+
 	v := strings.SplitN(caa.Value, ";", 2)
 	domain = strings.TrimFunc(v[0], isIssueSpace)
 	parameters = make(map[string]string)

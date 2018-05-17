@@ -769,6 +769,10 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
 			name := authz.Identifier.Value
+
+			// If an authorization has multiple valid challenges,
+			// the type of the first valid challenge is used for
+			// the purposes of CAA rechecking.
 			var method string
 			for _, challenge := range authz.Challenges {
 				if challenge.Status == core.StatusValid {
@@ -777,16 +781,23 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				}
 			}
 			if method == "" {
-				ch <- berrors.InternalServerError("Internal error getting validation method for %v", name)
+				ch <- berrors.InternalServerError(
+					"Internal error determining validation method for authorization ID %v (%v)",
+					authz.ID, name,
+				)
 				return
 			}
+
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
-				err = berrors.InternalServerError("Internal error rechecking CAA for %v", name)
+				err = berrors.InternalServerError(
+					"Internal error rechecking CAA for authorization ID %v (%v)",
+					authz.ID, name,
+				)
 			} else if resp.Problem != nil {
 				err = berrors.CAAError(*resp.Problem.Detail)
 			}
