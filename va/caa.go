@@ -84,7 +84,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	var filtered CAASet
 
 	for _, caaRecord := range CAAs {
-		switch caaRecord.Tag {
+		switch strings.ToLower(caaRecord.Tag) {
 		case "issue":
 			filtered.Issue = append(filtered.Issue, caaRecord)
 		case "issuewild":
