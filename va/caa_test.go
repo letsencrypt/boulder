@@ -44,6 +44,10 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = "ca.com"
 		results = append(results, &record)
+	case "mixedcase.com":
+		record.Tag = "iSsUe"
+		record.Value = "ca.com"
+		results = append(results, &record)
 	case "critical.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -154,6 +158,12 @@ func TestCAAChecking(t *testing.T) {
 		{
 			Name:    "Bad (Reserved)",
 			Domain:  "reserved.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (Reserved, Mixed case Issue)",
+			Domain:  "mixedcase.com",
 			Present: true,
 			Valid:   false,
 		},
