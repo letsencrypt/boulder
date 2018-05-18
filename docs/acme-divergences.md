@@ -10,6 +10,7 @@ Presently the following protocol features are not implemented:
 
 - Pre-authorization. This is an optional feature and we have no plans to implement it. V2 clients should use order based issuance without pre-authorization.
 - The “orders” field on account objects. We intend to support this non-essential feature in the near future. Please follow Boulder Issue [#3335](https://github.com/letsencrypt/boulder/issues/3335).
+- The “ready” state on order objects is not implemented. Orders remain “pending” when associated authorizations are all valid and finalization may occur. Client developers should check the authorization statuses to determine if the order is ready. Please follow Boulder Issue [#3530](https://github.com/letsencrypt/boulder/issues/3530).
 
 **ACME v1 divergences from [`draft-ietf-acme-acme-07`](https://tools.ietf.org/html/draft-ietf-acme-acme-07).**
 
