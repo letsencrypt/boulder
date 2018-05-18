@@ -4,7 +4,7 @@ While Boulder attempts to implement the ACME specification as strictly as possib
 
 Since Boulder evolved alongside the ACME specification there is not one exact ACME draft number that can be referenced in isolation to understand the protocol Boulder speaks. This document exists to detail differences between what Boulder does and the most-recently published ACME draft. Since ACME is not yet finalized it will be updated as new numbered drafts are published.
 
-**ACME v2 divergences from [`draft-ietf-acme-acme-10`](https://tools.ietf.org/html/draft-ietf-acme-acme-10).**
+**ACME v2 divergences from [`draft-ietf-acme-acme-12`](https://tools.ietf.org/html/draft-ietf-acme-acme-12).**
 
 Presently the following protocol features are not implemented:
 
