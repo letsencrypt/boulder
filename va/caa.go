@@ -1,6 +1,7 @@
 package va
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,18 +46,13 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.DNS("%v", err)
 	}
 
-	// Build a string with the DNS presentation format of each *dns.CAA record we
-	// checked (if any) separated by commas to be included in the audit log line
-	var recordsStr strings.Builder
-	for i, rec := range records {
-		fmt.Fprintf(&recordsStr, "%q", rec.String())
-		if i != len(records)-1 {
-			fmt.Fprintf(&recordsStr, ",")
-		}
+	recordsStr, err := json.Marshal(&records)
+	if err != nil {
+		return probs.CAA("CAA records for %s were malformed", identifier.Value)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=[%s]",
-		identifier.Value, present, valid, recordsStr.String())
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=%s",
+		identifier.Value, present, valid, recordsStr)
 	if !valid {
 		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
