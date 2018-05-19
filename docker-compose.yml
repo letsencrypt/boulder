@@ -79,6 +79,7 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
         working_dir: /go/src/github.com/letsencrypt/boulder
+        entrypoint: test/entrypoint.sh
         depends_on:
           - bmysql
 
