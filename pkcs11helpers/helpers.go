@@ -129,7 +129,6 @@ func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.Ob
 		}
 		x, y = elliptic.Unmarshal(pubKey.Curve, point.Bytes)
 		if x == nil {
-			fmt.Println(point.Bytes)
 			return nil, errors.New("Invalid CKA_EC_POINT value returned, point is malformed")
 		}
 	}
