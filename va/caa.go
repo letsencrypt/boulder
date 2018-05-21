@@ -43,7 +43,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
 	challengeType *string) *probs.ProblemDetails {
-	present, valid, records, err := va.checkCAARecords(ctx, identifier)
+	present, valid, records, err := va.checkCAARecords(ctx, identifier, challengeType)
 	if err != nil {
 		return probs.DNS("%v", err)
 	}
@@ -185,7 +185,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	if err != nil {
 		return false, false, nil, err
 	}
-	present, valid = va.validateCAASet(caaSet, wildcard, challengeType)
+	present, valid := va.validateCAASet(caaSet, wildcard, challengeType)
 	return present, valid, records, nil
 }
 
