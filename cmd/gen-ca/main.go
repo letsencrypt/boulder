@@ -182,13 +182,11 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 		}
 		oid = append(oid, i)
 	}
-	if oid == nil {
-		return nil, fmt.Errorf("%q is not a valid OID", oidStr)
-	}
 	return oid, nil
 }
 
 const dateLayout = "2006-01-02 15:04:05"
+const serialLength = 16
 
 func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte, session pkcs11.SessionHandle) (*x509.Certificate, error) {
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
@@ -214,7 +212,7 @@ func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte,
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
 	// generate serial number
-	serial, err := ctx.GenerateRandom(session, 16)
+	serial, err := ctx.GenerateRandom(session, serialLength)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}

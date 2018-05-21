@@ -18,9 +18,10 @@ import (
 )
 
 func TestX509Signer(t *testing.T) {
-	// Test that x509Signer.Sign properly converts the PKCS#11 format signature to
-	// the RFC 5480 format signature
 	ctx := pkcs11helpers.MockCtx{}
+
+	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
+	// the RFC 5480 format signature
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return nil
 	}
@@ -178,14 +179,102 @@ func TestGetKey(t *testing.T) {
 	test.AssertError(t, err, "getKey didn't fail when GetAttributeValue for private key returned unknown key type")
 
 	// test getKey fails when GetRSAPublicKey fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
+	}
+	_, err = getKey(ctx, 0, "label", "ffff")
+	test.AssertError(t, err, "getKey didn't fail when GetRSAPublicKey fails")
 
 	// test getKey fails when GetECDSAPublicKey fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
+	}
+	_, err = getKey(ctx, 0, "label", "ffff")
+	test.AssertError(t, err, "getKey didn't fail when GetECDSAPublicKey fails")
+
+	// test getKey works when everything... works
+	ctx.GetAttributeValueFunc = func(_ pkcs11.SessionHandle, _ pkcs11.ObjectHandle, attrs []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		var returns []*pkcs11.Attribute
+		for _, attr := range attrs {
+			switch attr.Type {
+			case pkcs11.CKA_KEY_TYPE:
+				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0}))
+			case pkcs11.CKA_PUBLIC_EXPONENT:
+				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 2, 3}))
+			case pkcs11.CKA_MODULUS:
+				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{4, 5, 6}))
+			default:
+				return nil, errors.New("GetAttributeValue got unexpected attribute type")
+			}
+		}
+		return returns, nil
+	}
+	_, err = getKey(ctx, 0, "label", "ffff")
+	test.AssertNotError(t, err, "getKey failed when everything worked properly")
 }
 
 func TestParseOID(t *testing.T) {
-
+	_, err := parseOID("")
+	test.AssertError(t, err, "parseOID accepted an empty OID")
+	_, err = parseOID("a.b.c")
+	test.AssertError(t, err, "parseOID accepted an OID containing non-ints")
+	oid, err := parseOID("1.2.3")
+	test.AssertNotError(t, err, "parseOID failed with a valid OID")
+	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
 }
 
 func TestConstructCert(t *testing.T) {
+	ctx := pkcs11helpers.MockCtx{}
+	profile := &certProfile{}
 
+	profile.NotBefore = "1234"
+	_, err := constructCert(ctx, profile, nil, 0)
+	test.AssertError(t, err, "constructCert didn't fail with invalid not before")
+
+	profile.NotBefore = "2018-05-18 11:31:00"
+	profile.NotAfter = "1234"
+	_, err = constructCert(ctx, profile, nil, 0)
+	test.AssertError(t, err, "constructCert didn't fail with invalid not after")
+
+	profile.NotAfter = "2018-05-18 11:31:00"
+	profile.PolicyOIDs = []string{""}
+	_, err = constructCert(ctx, profile, nil, 0)
+	test.AssertError(t, err, "constructCert didn't fail with invalid policy OID")
+
+	profile.PolicyOIDs = []string{"1.2.3"}
+	profile.SignatureAlgorithm = "nope"
+	_, err = constructCert(ctx, profile, nil, 0)
+	test.AssertError(t, err, "constructCert didn't fail with invalid signature algorithm")
+
+	profile.SignatureAlgorithm = "SHA256WithRSA"
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return nil, errors.New("bad")
+	}
+	_, err = constructCert(ctx, profile, nil, 0)
+	test.AssertError(t, err, "constructCert didn't fail when GenerateRandom failed")
+
+	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+		r := make([]byte, length)
+		_, err := rand.Read(r)
+		return r, err
+	}
+	profile.Subject.CommonName = "common name"
+	profile.Subject.Organization = "organization"
+	profile.Subject.Country = "country"
+	profile.OCSPURL = "ocsp"
+	profile.CRLURL = "crl"
+	profile.IssuerURL = "issuer"
+	cert, err := constructCert(ctx, profile, nil, 0)
+	test.AssertNotError(t, err, "constructCert failed when everything worked as expected")
+	test.AssertEquals(t, cert.Subject.CommonName, profile.Subject.CommonName)
+	test.AssertEquals(t, len(cert.Subject.Organization), 1)
+	test.AssertEquals(t, cert.Subject.Organization[0], profile.Subject.Organization)
+	test.AssertEquals(t, len(cert.Subject.Country), 1)
+	test.AssertEquals(t, cert.Subject.Country[0], profile.Subject.Country)
+	test.AssertEquals(t, len(cert.OCSPServer), 1)
+	test.AssertEquals(t, cert.OCSPServer[0], profile.OCSPURL)
+	test.AssertEquals(t, len(cert.CRLDistributionPoints), 1)
+	test.AssertEquals(t, cert.CRLDistributionPoints[0], profile.CRLURL)
+	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
+	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 }
