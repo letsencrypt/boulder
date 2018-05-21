@@ -1,6 +1,7 @@
 package va
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -42,12 +43,18 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
 	challengeType *string) *probs.ProblemDetails {
-	present, valid, err := va.checkCAARecords(ctx, identifier, challengeType)
+	present, valid, records, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
 		return probs.DNS("%v", err)
 	}
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
-		identifier.Value, present, valid)
+
+	recordsStr, err := json.Marshal(&records)
+	if err != nil {
+		return probs.CAA("CAA records for %s were malformed", identifier.Value)
+	}
+
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=%s",
+		identifier.Value, present, valid, recordsStr)
 	if !valid {
 		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
@@ -86,7 +93,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	var filtered CAASet
 
 	for _, caaRecord := range CAAs {
-		switch caaRecord.Tag {
+		switch strings.ToLower(caaRecord.Tag) {
 		case "issue":
 			filtered.Issue = append(filtered.Issue, caaRecord)
 		case "issuewild":
@@ -106,17 +113,17 @@ type caaResult struct {
 	err     error
 }
 
-func parseResults(results []caaResult) (*CAASet, error) {
+func parseResults(results []caaResult) (*CAASet, []*dns.CAA, error) {
 	// Return first result
 	for _, res := range results {
 		if res.err != nil {
-			return nil, res.err
+			return nil, nil, res.err
 		}
 		if len(res.records) > 0 {
-			return newCAASet(res.records), nil
+			return newCAASet(res.records), res.records, nil
 		}
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string) []caaResult {
@@ -137,7 +144,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 	return results
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
+func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, []*dns.CAA, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
 	// See RFC 6844 "Certification Authority Processing" for pseudocode, as
@@ -157,14 +164,16 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
 // domain, honouring any issueWild CAA records encountered as apppropriate.
-// checkCAARecords returns three values: the first is a bool indicating whether
-// CAA records were present. The second is a bool indicating whether issuance
-// for the identifier is valid. Any errors encountered are returned as the third
-// return value (or nil).
+// checkCAARecords returns four values: the first is a bool indicating whether
+// CAA records were present after filtering for known/supported CAA tags. The
+// second is a bool indicating whether issuance for the identifier is valid. The
+// unmodified *dns.CAA records that were processed/filtered are returned as the
+// third argument. Any  errors encountered are returned as the fourth return
+// value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challengeType *string) (present, valid bool, err error) {
+	challengeType *string) (bool, bool, []*dns.CAA, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -172,12 +181,12 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 		hostname = strings.TrimPrefix(identifier.Value, `*.`)
 		wildcard = true
 	}
-	caaSet, err := va.getCAASet(ctx, hostname)
+	caaSet, records, err := va.getCAASet(ctx, hostname)
 	if err != nil {
-		return false, false, err
+		return false, false, nil, err
 	}
 	present, valid = va.validateCAASet(caaSet, wildcard, challengeType)
-	return present, valid, nil
+	return present, valid, records, nil
 }
 
 func containsMethod(commaSeparatedMethods, method string) bool {
