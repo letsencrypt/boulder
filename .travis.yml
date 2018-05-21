@@ -43,13 +43,13 @@ env:
     # godep-restore runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
-    - RUN="godep-restore" CONTAINER=netaccess
-    - RUN="coverage" CONTAINER=netaccess
+    - RUN="godep-restore" CONTAINER="netaccess"
+    - RUN="coverage" CONTAINER="netaccess"
 
 matrix:
   fast_finish: true
   allow_failures:
-    - env: RUN="coverage"
+    - env: RUN="coverage" CONTAINER="netaccess"
   # Only do a coverage run for the current go version
   exclude:
     - go: "1.10.2"
