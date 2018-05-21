@@ -93,7 +93,26 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				m.Answer = append(m.Answer, record)
 			}
 		case dns.TypeCAA:
-			if q.Name == "bad-caa-reserved.com." || q.Name == "good-caa-reserved.com." {
+			addCAARecord := true
+
+			var value string
+			switch q.Name {
+			case "bad-caa-reserved.com.":
+				value = "sad-hacker-ca.invalid"
+			case "good-caa-reserved.com.":
+				value = "happy-hacker-ca.invalid"
+			case "recheck.good-caa-reserved.com.":
+				// Allow issuance when we're running in the past
+				// (under FAKECLOCK), otherwise deny issuance.
+				if os.Getenv("FAKECLOCK") != "" {
+					value = "happy-hacker-ca.invalid"
+				} else {
+					value = "sad-hacker-ca.invalid"
+				}
+			default:
+				addCAARecord = false
+			}
+			if addCAARecord {
 				record := new(dns.CAA)
 				record.Hdr = dns.RR_Header{
 					Name:   q.Name,
@@ -102,11 +121,7 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 					Ttl:    0,
 				}
 				record.Tag = "issue"
-				if q.Name == "bad-caa-reserved.com." {
-					record.Value = "sad-hacker-ca.invalid"
-				} else if q.Name == "good-caa-reserved.com." {
-					record.Value = "happy-hacker-ca.invalid"
-				}
+				record.Value = value
 				m.Answer = append(m.Answer, record)
 			}
 		}
