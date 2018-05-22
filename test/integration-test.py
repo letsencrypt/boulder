@@ -319,6 +319,7 @@ def test_caa():
 
     # Request issuance for recheck.good-caa-reserved.com, which should
     # now be denied due to CAA.
+    global caa_client
     chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
     chisel.expect_problem("urn:acme:error:caa",
@@ -336,9 +337,10 @@ def test_caa():
         lambda: auth_and_issue(["http-01-only.good-caa-reserved.com"], chall_type="dns-01"))
 
     # Note: the additional names are to avoid rate limiting...
-    global caa_client
     auth_and_issue(["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
     auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
+    auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
+    auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
 def test_account_update():
     """
