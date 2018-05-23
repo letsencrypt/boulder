@@ -72,16 +72,6 @@ services:
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
-    netaccess:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.10.2}:2018-05-04
-        networks:
-          - bluenet
-        volumes:
-          - .:/go/src/github.com/letsencrypt/boulder
-        working_dir: /go/src/github.com/letsencrypt/boulder
-        entrypoint: test/entrypoint.sh
-        depends_on:
-          - bmysql
 
 networks:
   bluenet:
