@@ -12,6 +12,24 @@ import (
 	"github.com/miekg/dns"
 )
 
+// proxyQuery takes an A query for a domain and proxies it to Cloudflare DNS.
+// This allows us to shim in sd-test-srv for our container without blocking
+// lookups to github.com and coveralls.io, which are used in our `godep-restore`
+// and `coverage` test phases respectively.
+func proxyQuery(w dns.ResponseWriter, r *dns.Msg) {
+	c := new(dns.Client)
+	in, _, err := c.Exchange(r, "1.1.1.1:53")
+	if err != nil {
+		log.Printf("ERROR from upstream DNS: %s", err)
+		m := new(dns.Msg)
+		m.SetReply(r)
+		m.Rcode = dns.RcodeServerFailure
+		w.WriteMsg(m)
+		return
+	}
+	w.WriteMsg(in)
+}
+
 func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -22,9 +40,13 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		w.WriteMsg(m)
 		return
 	}
-	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
+	if r.Question[0].Qtype != dns.TypeA {
 		m.Rcode = dns.RcodeServerFailure
 		w.WriteMsg(m)
+		return
+	}
+	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
+		proxyQuery(w, r)
 		return
 	}
 
