@@ -39,6 +39,8 @@ const (
 	EnforceOverlappingWildcards
 	// Set orders to status "ready" when they are awaiting finalization
 	OrderReadyStatus
+	// Check CAA and respect validation-methods parameter.
+	CAAValidationMethods
 )
 
 // List of features and their default value, protected by fMu
@@ -60,6 +62,7 @@ var features = map[FeatureFlag]bool{
 	ForceConsistentStatus:       false,
 	EnforceOverlappingWildcards: false,
 	OrderReadyStatus:            false,
+	CAAValidationMethods:        false,
 }
 
 var fMu = new(sync.RWMutex)

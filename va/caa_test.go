@@ -11,6 +11,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
@@ -90,6 +91,18 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
 		results = append(results, &record)
+	case "present-dns-only.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validation-methods=dns-01"
+		results = append(results, &record)
+	case "present-http-only.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validation-methods=http-01"
+		results = append(results, &record)
+	case "present-http-or-dns.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validation-methods=http-01,dns-01"
+		results = append(results, &record)
 	case "unsatisfiable.com":
 		record.Tag = "issue"
 		record.Value = ";"
@@ -138,7 +151,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
@@ -149,6 +162,10 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+	defer features.Reset()
 
 	testCases := []struct {
 		Name    string
@@ -235,6 +252,24 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name:    "Bad (restricts to dns-01, but tested with http-01)",
+			Domain:  "present-dns-only.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (restricts to http-01, tested with http-01)",
+			Domain:  "present-http-only.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (restricts to http-01 or dns-01, tested with http-01)",
+			Domain:  "present-http-or-dns.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
 			Name:    "Bad (unsatisfiable issue record)",
 			Domain:  "unsatisfiable.com",
 			Present: true,
@@ -278,13 +313,15 @@ func TestCAAChecking(t *testing.T) {
 		},
 	}
 
+	method := "http-01"
+
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
 	for _, caaTest := range testCases {
 		mockLog := va.log.(*blog.Mock)
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+			present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}, &method)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -297,22 +334,35 @@ func TestCAAChecking(t *testing.T) {
 		})
 	}
 
-	present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	// After resetting CAAValidationMethods, present-dns-only.com should be valid even with http-01
+	features.Reset()
+	present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, &method)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	// challengeType nil should be valid, too
+	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, nil)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
 
-	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
@@ -362,7 +412,7 @@ func TestCAALogging(t *testing.T) {
 			mockLog := va.log.(*blog.Mock)
 			mockLog.Clear()
 
-			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain})
+			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, nil)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {
@@ -435,4 +485,14 @@ func TestParseResults(t *testing.T) {
 	for i, rec := range records {
 		test.AssertEquals(t, rec.String(), r[0].records[i].String())
 	}
+}
+
+func TestContainsMethod(t *testing.T) {
+	test.AssertEquals(t, containsMethod("abc,123,xyz", "123"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "abc"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "xyz"), true)
+	test.AssertEquals(t, containsMethod("abc", "abc"), true)
+
+	test.AssertEquals(t, containsMethod("abc,xyz,123", "456"), false)
+	test.AssertEquals(t, containsMethod("abc", "123"), false)
 }

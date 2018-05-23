@@ -1980,11 +1980,22 @@ func TestRecheckCAAEmpty(t *testing.T) {
 	}
 }
 
+func makeHTTP01Authorization(domain string) *core.Authorization {
+	return &core.Authorization{
+		Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain},
+		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+	}
+}
+
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	names := []string{"a.com", "b.com", "c.com"}
-	if err := ra.recheckCAA(context.Background(), names); err != nil {
+	authzs := []*core.Authorization{
+		makeHTTP01Authorization("a.com"),
+		makeHTTP01Authorization("b.com"),
+		makeHTTP01Authorization("c.com"),
+	}
+	if err := ra.recheckCAA(context.Background(), authzs); err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 }
@@ -1993,8 +2004,12 @@ func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.caa = &caaFailer{}
-	names := []string{"a.com", "b.com", "c.com"}
-	if err := ra.recheckCAA(context.Background(), names); err == nil {
+	authzs := []*core.Authorization{
+		makeHTTP01Authorization("a.com"),
+		makeHTTP01Authorization("b.com"),
+		makeHTTP01Authorization("c.com"),
+	}
+	if err := ra.recheckCAA(context.Background(), authzs); err == nil {
 		t.Errorf("expected err, got nil")
 	} else if !berrors.Is(err, berrors.CAA) {
 		t.Errorf("expected CAA error, got %T", err)
@@ -2009,8 +2024,12 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.caa = &caaFailer{}
-	names := []string{"a.com", "b.com", "d.com"}
-	if err := ra.recheckCAA(context.Background(), names); err == nil {
+	authzs := []*core.Authorization{
+		makeHTTP01Authorization("a.com"),
+		makeHTTP01Authorization("b.com"),
+		makeHTTP01Authorization("d.com"),
+	}
+	if err := ra.recheckCAA(context.Background(), authzs); err == nil {
 		t.Errorf("expected err, got nil")
 	} else if !berrors.Is(err, berrors.InternalServer) {
 		t.Errorf("expected InternalServer error, got %T", err)

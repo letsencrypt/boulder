@@ -305,6 +305,7 @@ def test_revoke_by_account():
 
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not.
+       Two further sub-domains have restricted validation-methods.
     """
     if len(caa_authzs) == 0:
         raise Exception("CAA authzs not prepared for test_caa")
@@ -318,10 +319,28 @@ def test_caa():
 
     # Request issuance for recheck.good-caa-reserved.com, which should
     # now be denied due to CAA.
+    global caa_client
     chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
+
+    # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
+    # default, remove this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
+    chisel.expect_problem("urn:acme:error:caa",
+        lambda: auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))
+
+    chisel.expect_problem("urn:acme:error:caa",
+        lambda: auth_and_issue(["http-01-only.good-caa-reserved.com"], chall_type="dns-01"))
+
+    # Note: the additional names are to avoid rate limiting...
+    auth_and_issue(["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
+    auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
+    auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
+    auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
 def test_account_update():
     """

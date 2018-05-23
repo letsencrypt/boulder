@@ -801,7 +801,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		ch <- va.checkCAA(ctx, identifier, &challenge.Type)
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {

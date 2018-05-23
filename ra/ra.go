@@ -717,8 +717,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	now time.Time) error {
 	// badNames contains the names that were unauthorized
 	var badNames []string
-	// recheckNames is a list of names that must have their CAA records rechecked
-	var recheckNames []string
+	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
+	var recheckAuthzs []*core.Authorization
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
 	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
@@ -738,12 +738,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			badNames = append(badNames, name)
 		} else if authz.Expires.Before(caaRecheckTime) {
 			// Ensure that CAA is rechecked for this name
-			recheckNames = append(recheckNames, name)
+			recheckAuthzs = append(recheckAuthzs, authz)
 		}
 	}
 
-	if err := ra.recheckCAA(ctx, recheckNames); err != nil {
-		return err
+	if len(recheckAuthzs) > 0 {
+		if err := ra.recheckCAA(ctx, recheckAuthzs); err != nil {
+			return err
+		}
 	}
 
 	if len(badNames) > 0 {
@@ -760,26 +762,50 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 // rechecked because their associated authorizations are sufficiently old and
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
-func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, names []string) error {
+func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
 	ra.stats.Inc("recheck_caa", 1)
-	ra.stats.Inc("recheck_caa_names", int64(len(names)))
-	ch := make(chan error, len(names))
-	for _, name := range names {
-		go func(name string) {
+	ra.stats.Inc("recheck_caa_authzs", int64(len(authzs)))
+	ch := make(chan error, len(authzs))
+	for _, authz := range authzs {
+		go func(authz *core.Authorization) {
+			name := authz.Identifier.Value
+
+			// If an authorization has multiple valid challenges,
+			// the type of the first valid challenge is used for
+			// the purposes of CAA rechecking.
+			var method string
+			for _, challenge := range authz.Challenges {
+				if challenge.Status == core.StatusValid {
+					method = challenge.Type
+					break
+				}
+			}
+			if method == "" {
+				ch <- berrors.InternalServerError(
+					"Internal error determining validation method for authorization ID %v (%v)",
+					authz.ID, name,
+				)
+				return
+			}
+
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
-				Domain: &name,
+				Domain:           &name,
+				ValidationMethod: &method,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
-				err = berrors.InternalServerError("Internal error rechecking CAA for %v", name)
+				err = berrors.InternalServerError(
+					"Internal error rechecking CAA for authorization ID %v (%v)",
+					authz.ID, name,
+				)
 			} else if resp.Problem != nil {
 				err = berrors.CAAError(*resp.Problem.Detail)
 			}
 			ch <- err
-		}(name)
+		}(authz)
 	}
 	var caaFailures []string
-	for _ = range names {
+	for _ = range authzs {
 		if err := <-ch; berrors.Is(err, berrors.CAA) {
 			caaFailures = append(caaFailures, err.Error())
 		} else if err != nil {
