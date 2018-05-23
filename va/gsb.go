@@ -6,6 +6,7 @@ import (
 	safebrowsingv4 "github.com/google/safebrowsing"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/canceled"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
