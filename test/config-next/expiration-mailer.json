@@ -18,7 +18,7 @@
       "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",

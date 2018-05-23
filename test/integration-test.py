@@ -270,7 +270,7 @@ def random_domain():
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def test_expiration_mailer():
-    email_addr = "integration.%x@boulder.local" % random.randrange(2**16)
+    email_addr = "integration.%x@boulder" % random.randrange(2**16)
     cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
     expiry = datetime.datetime.strptime(cert.body.get_notAfter(), '%Y%m%d%H%M%SZ')
@@ -616,6 +616,7 @@ def main():
         run(args.custom)
 
     run_cert_checker()
+    check_balance()
     run_expired_authz_purger()
 
     if not startservers.check():
@@ -640,6 +641,30 @@ def run_loadtest():
     run("./bin/load-generator \
             -config test/load-generator/config/v2-integration-test-config.json\
             -results %s" % latency_data_file)
+
+def check_balance():
+    """Verify that gRPC load balancing across backends is working correctly.
+
+    Fetch metrics from each backend and ensure the grpc_server_handled_total
+    metric is present, which means that backend handled at least one request.
+    """
+    addresses = [
+        "sa1.boulder:8003",
+        "sa2.boulder:8103",
+        "publisher1.boulder:8009",
+        "publisher2.boulder:8109",
+        "va1.boulder:8004",
+        "va2.boulder:8104",
+        "ca1.boulder:8001",
+        "ca2.boulder:8104",
+        "ra1.boulder:8002",
+        "ra2.boulder:8102",
+    ]
+    for address in addresses:
+        metrics = requests.get("http://%s/metrics" % address)
+        if not "grpc_server_handled_total" in metrics.text:
+            raise Exception("no gRPC traffic processed by %s; load balancing problem?"
+                % address)
 
 def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)

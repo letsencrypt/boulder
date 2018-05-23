@@ -40,7 +40,7 @@ def run(cmd, race_detection, fakeclock):
 
 def waitport(port, prog):
     """Wait until a port on localhost is open."""
-    while True:
+    for _ in range(1000):
         try:
             time.sleep(0.1)
             # If one of the servers has died, quit immediately.
@@ -49,13 +49,13 @@ def waitport(port, prog):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(('localhost', port))
             s.close()
-            break
+            return True
         except socket.error as e:
             if e.errno == errno.ECONNREFUSED:
                 print "Waiting for debug port %d (%s)" % (port, prog)
             else:
                 raise
-    return True
+    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
 def start(race_detection, fakeclock=None):
     """Return True if everything builds and starts.
@@ -79,6 +79,7 @@ def start(race_detection, fakeclock=None):
             [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     progs.extend([
+        [53, 'sd-test-srv --listen :53'], # Service discovery DNS server
         [8003, 'boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
         [8103, 'boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
         [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
