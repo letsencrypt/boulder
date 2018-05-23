@@ -34,16 +34,12 @@ env:
     #
     # Current Go version build tasks:
     #
-    - RUN="vet fmt migrations integration errcheck generate dashlint rpm"
+    - RUN="vet fmt migrations integration errcheck generate dashlint rpm godep-restore"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
     - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    # godep-restore runs with a separate container because it needs to fetch
-    # packages from GitHub et. al., which is incompatible with the DNS server
-    # override in the boulder container (used for service discovery).
-    - RUN="godep-restore"
     - RUN="coverage"
 
 matrix:
