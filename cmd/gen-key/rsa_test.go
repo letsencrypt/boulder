@@ -8,12 +8,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/pkcs11"
 )
 
 func TestRSAPub(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// test attribute retrieval failing
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
@@ -60,7 +61,7 @@ func TestRSAPub(t *testing.T) {
 }
 
 func TestRSAVerify(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// test GenerateRandom failing
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
@@ -111,7 +112,7 @@ func TestRSAVerify(t *testing.T) {
 }
 
 func TestRSAGenerate(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// Test rsaGenerate fails when GenerateKeyPair fails
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {

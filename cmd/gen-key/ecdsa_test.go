@@ -8,12 +8,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/pkcs11"
 )
 
 func TestECPub(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// test attribute retrieval failing
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
@@ -98,7 +99,7 @@ func TestECPub(t *testing.T) {
 }
 
 func TestECVerify(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// test GenerateRandom failing
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
@@ -164,7 +165,7 @@ func TestECVerify(t *testing.T) {
 }
 
 func TestECGenerate(t *testing.T) {
-	ctx := mockCtx{}
+	ctx := pkcs11helpers.MockCtx{}
 
 	// Test ecGenerate fails with unknown curve
 	_, err := ecGenerate(ctx, 0, "", "bad-curve")

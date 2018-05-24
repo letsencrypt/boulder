@@ -27,6 +27,9 @@ import (
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
+// x509Signer is a convenience wrapper used for converting between the
+// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
+// for X.509 certificates
 type x509Signer struct {
 	ctx pkcs11helpers.PKCtx
 
@@ -37,6 +40,9 @@ type x509Signer struct {
 	pub crypto.PublicKey
 }
 
+// Sign wraps pkcs11helpers.Sign. If the signing key is ECDSA then the signature
+// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
+// conversion step is not needed.
 func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	signature, err := pkcs11helpers.Sign(p.ctx, p.session, p.objectHandle, p.keyType, digest, opts.HashFunc())
 	if err != nil {
@@ -45,7 +51,7 @@ func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 
 	if p.keyType == pkcs11helpers.ECDSAKey {
 		// Convert from the PKCS#11 format to the RFC 5480 format so that
-		// it can be used in a x509 certificate
+		// it can be used in a X.509 certificate
 		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
 		signature, err = asn1.Marshal(struct {
@@ -62,6 +68,9 @@ func (p *x509Signer) Public() crypto.PublicKey {
 	return p.pub
 }
 
+// findObject looks up a PKCS#11 object handle based on the provided template.
+// In the case where zero or more than one objects are found to match the
+// template an error is returned.
 func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
 	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
 		return 0, err
@@ -71,10 +80,10 @@ func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*p
 		return 0, err
 	}
 	if len(handles) == 0 {
-		return 0, errors.New("no objects found matching label and ID")
+		return 0, errors.New("no objects found matching provided template")
 	}
 	if more {
-		return 0, errors.New("more than one object matches label and ID")
+		return 0, errors.New("more than one object matches provided template")
 	}
 	if err := ctx.FindObjectsFinal(session); err != nil {
 		return 0, err
@@ -82,12 +91,16 @@ func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*p
 	return handles[0], nil
 }
 
+// getKey retrieves the private key handle and constructs the public key defined
+// by the given label and ID and constructs a x509Signer object with them.
 func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, idStr string) (*x509Signer, error) {
 	id, err := hex.DecodeString(idStr)
 	if err != nil {
 		return nil, err
 	}
 
+	// Retrieve the private key handle that will later be used for the certificate
+	// signing operation
 	privateHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
@@ -106,6 +119,8 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 		return nil, errors.New("failed to retrieve key attributes")
 	}
 
+	// Retrieve the public key handle with the same CKA_ID as the private key
+	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
 	pubHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
@@ -118,14 +133,14 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 	var pub crypto.PublicKey
 	var keyType pkcs11helpers.KeyType
 	switch {
-	// CKK_RSA, 0x00000000
+	// 0x00000000, CKK_RSA
 	case bytes.Compare(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}) == 0:
 		keyType = pkcs11helpers.RSAKey
 		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
-	// CKK_ECDSA, 0x00000003
+	// 0x00000003, CKK_ECDSA
 	case bytes.Compare(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}) == 0:
 		keyType = pkcs11helpers.ECDSAKey
 		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
@@ -185,10 +200,9 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	return oid, nil
 }
 
-const dateLayout = "2006-01-02 15:04:05"
-const serialLength = 16
-
+// constructCert generates the certificate template for use in x509.CreateCertificate
 func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte, session pkcs11.SessionHandle) (*x509.Certificate, error) {
+	dateLayout := "2006-01-02 15:04:05"
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
 		return nil, err
@@ -211,12 +225,13 @@ func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte,
 	if !ok {
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
-	// generate serial number
-	serial, err := ctx.GenerateRandom(session, serialLength)
+
+	keyHash := sha256.Sum256(pubKey)
+
+	serial, err := ctx.GenerateRandom(session, 16)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}
-	keyHash := sha256.Sum256(pubKey)
 
 	cert := &x509.Certificate{
 		SignatureAlgorithm:    sigAlg,
@@ -246,10 +261,10 @@ func main() {
 	slot := flag.Uint("slot", 0, "Slot signing key is in")
 	pin := flag.String("pin", "", "PIN for slot if not using PED to login")
 	label := flag.String("label", "", "Signing key label")
-	id := flag.String("id", "", "Signing key ID hex")
+	id := flag.String("id", "", "Signing key ID hexadecimal (simplified format, i.e. ffff")
 	profilePath := flag.String("profile", "", "Path to certificate profile")
 	pubKeyPath := flag.String("publicKey", "", "Path to public key for certificate") // this could also be in the profile
-	issuerPath := flag.String("issuer", "", "Path to issuer cert if generating a intermediate")
+	issuerPath := flag.String("issuer", "", "Path to issuer cert if generating an intermediate")
 	outputPath := flag.String("output", "", "Path to store generated PEM certificate")
 	flag.Parse()
 
@@ -352,7 +367,7 @@ func main() {
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		log.Fatalf("Failed to verify certificate signature: %s", err)
 	}
-	log.Println("Verifed certificate signature")
+	log.Println("Verified certificate signature")
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 	log.Printf("Certificate PEM:\n%s", pemBytes)
