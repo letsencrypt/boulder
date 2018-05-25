@@ -199,7 +199,7 @@ fi
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_expect_silence errcheck \
-    -ignore io:Write,os:Remove,net/http:Write \
+    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
     $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
   end_context #errcheck
 fi
