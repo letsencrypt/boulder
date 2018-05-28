@@ -875,7 +875,7 @@ func TestGSBAtValidation(t *testing.T) {
 	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", fmt.Errorf("welp"))
 	va.safeBrowsing = sbc
 
-	_, prob := va.validateChallengeAndIdentifier(ctx, dnsi("bad.com"), chall)
+	_, prob := va.validate(ctx, dnsi("bad.com"), chall, core.Authorization{})
 	if prob == nil {
 		t.Fatalf("Expected rejection for bad.com, got success")
 	}
@@ -883,12 +883,12 @@ func TestGSBAtValidation(t *testing.T) {
 		t.Errorf("Got error %q, expected an unsafe domain error.", prob.Error())
 	}
 
-	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("errorful.com"), chall)
+	_, prob = va.validate(ctx, dnsi("errorful.com"), chall, core.Authorization{})
 	if prob != nil {
 		t.Fatalf("Expected success for errorful.com, got error")
 	}
 
-	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("good.com"), chall)
+	_, prob = va.validate(ctx, dnsi("good.com"), chall, core.Authorization{})
 	if prob != nil {
 		t.Fatalf("Expected success for good.com, got %s", prob)
 	}

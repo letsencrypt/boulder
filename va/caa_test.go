@@ -103,6 +103,22 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validation-methods=http-01,dns-01"
 		results = append(results, &record)
+	case "present-correct-account-uri.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/123"
+		results = append(results, &record)
+	case "present-incorrect-account-uri.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+	case "present-multiple-account-uri.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issue"
+		secondRecord.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/123"
+		results = append(results, &secondRecord)
 	case "unsatisfiable.com":
 		record.Tag = "issue"
 		record.Value = ";"
@@ -162,7 +178,7 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
-	if err := features.Set(map[string]bool{"CAAValidationMethods": true}); err != nil {
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
 		t.Fatalf("Failed to enable feature: %v", err)
 	}
 	defer features.Reset()
@@ -270,6 +286,24 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name:    "Good (restricts to account-uri, tested with correct account)",
+			Domain:  "present-correct-account-uri.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Bad (restricts to account-uri, tested with incorrect account)",
+			Domain:  "present-incorrect-account-uri.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (restricts to multiple account-uri, tested with a correct account)",
+			Domain:  "present-multiple-account-uri.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
 			Name:    "Bad (unsatisfiable issue record)",
 			Domain:  "unsatisfiable.com",
 			Present: true,
@@ -313,7 +347,9 @@ func TestCAAChecking(t *testing.T) {
 		},
 	}
 
+	accountURI := "https://letsencrypt.org/acct/reg/123"
 	method := "http-01"
+	params := &caaParams{accountURI: &accountURI, validationMethod: &method}
 
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
@@ -321,7 +357,8 @@ func TestCAAChecking(t *testing.T) {
 		mockLog := va.log.(*blog.Mock)
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}, &method)
+			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -334,37 +371,47 @@ func TestCAAChecking(t *testing.T) {
 		})
 	}
 
-	// After resetting CAAValidationMethods, present-dns-only.com should be valid even with http-01
+	// Reset to disable CAAValidationMethods/CAAAccountURI.
 	features.Reset()
-	present, valid, _, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, &method)
+
+	// present-dns-only.com should now be valid even with http-01
+	ident := core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}
+	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
-	// challengeType nil should be valid, too
-	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}, nil)
+	// present-incorrect-account-uri.com should now be also be valid
+	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-account-uri.com"}
+	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
+	test.AssertNotError(t, err, "present-incorrect-account-uri.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	// nil params should be valid, too
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
-	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
+	ident.Value = "servfail.com"
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"}, nil)
-	if err == nil {
-		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
 	}
 
-	present, valid, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
+	ident.Value = "servfail.present.com"
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"}, nil)
-	if err == nil {
-		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
 	}
 }
 
@@ -456,7 +503,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validateChallengeAndIdentifier(ctx, dnsi("reserved.com"), chall)
+	_, prob := va.validate(ctx, dnsi("reserved.com"), chall, core.Authorization{})
 	if prob == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}

@@ -15,16 +15,21 @@ import (
 	"golang.org/x/net/context"
 )
 
-func (va *ValidationAuthorityImpl) IsCAAValid(
-	ctx context.Context,
-	req *vapb.IsCAAValidRequest,
-) (*vapb.IsCAAValidResponse, error) {
-	prob := va.checkCAA(ctx, core.AcmeIdentifier{
+type caaParams struct {
+	accountURI       *string
+	validationMethod *string
+}
+
+func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+	acmeID := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
-	}, req.ValidationMethod)
-
-	if prob != nil {
+	}
+	params := &caaParams{
+		accountURI:       req.AccountURI,
+		validationMethod: req.ValidationMethod,
+	}
+	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
 		typ := string(prob.Type)
 		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
@@ -39,24 +44,21 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
 // the CAA lookup & validation fail a problem is returned.
-func (va *ValidationAuthorityImpl) checkCAA(
-	ctx context.Context,
-	identifier core.AcmeIdentifier,
-	challengeType *string) *probs.ProblemDetails {
-	present, valid, records, err := va.checkCAARecords(ctx, identifier, challengeType)
+func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, ident core.AcmeIdentifier, params *caaParams) *probs.ProblemDetails {
+	present, valid, records, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
 		return probs.DNS("%v", err)
 	}
 
 	recordsStr, err := json.Marshal(&records)
 	if err != nil {
-		return probs.CAA("CAA records for %s were malformed", identifier.Value)
+		return probs.CAA("CAA records for %s were malformed", ident.Value)
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=%s",
-		identifier.Value, present, valid, recordsStr)
+		ident.Value, present, valid, recordsStr)
 	if !valid {
-		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
+		return probs.CAA("CAA record for %s prevents issuance", ident.Value)
 	}
 	return nil
 }
@@ -170,22 +172,19 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // unmodified *dns.CAA records that were processed/filtered are returned as the
 // third argument. Any  errors encountered are returned as the fourth return
 // value (or nil).
-func (va *ValidationAuthorityImpl) checkCAARecords(
-	ctx context.Context,
-	identifier core.AcmeIdentifier,
-	challengeType *string) (bool, bool, []*dns.CAA, error) {
-	hostname := strings.ToLower(identifier.Value)
+func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, ident core.AcmeIdentifier, params *caaParams) (bool, bool, []*dns.CAA, error) {
+	hostname := strings.ToLower(ident.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
 	if strings.HasPrefix(hostname, `*.`) {
-		hostname = strings.TrimPrefix(identifier.Value, `*.`)
+		hostname = strings.TrimPrefix(ident.Value, `*.`)
 		wildcard = true
 	}
 	caaSet, records, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, nil, err
 	}
-	present, valid := va.validateCAASet(caaSet, wildcard, challengeType)
+	present, valid := va.validateCAASet(caaSet, wildcard, params)
 	return present, valid, records, nil
 }
 
@@ -203,7 +202,7 @@ func containsMethod(commaSeparatedMethods, method string) bool {
 // function returns two booleans: the first indicates whether the CAASet was
 // empty, the second indicates whether the CAASet is valid for issuance to
 // proceed.
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, challengeType *string) (present, valid bool) {
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, params *caaParams) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("CAA.None", 1)
@@ -255,16 +254,30 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			continue
 		}
 
+		if features.Enabled(features.CAAAccountURI) {
+			// Check the account-uri CAA parameter as defined
+			// in section 3 of the draft CAA ACME RFC:
+			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
+			caaAccountURI, ok := caaParameters["account-uri"]
+			if ok {
+				if params.accountURI == nil {
+					continue
+				}
+				if *params.accountURI != caaAccountURI {
+					continue
+				}
+			}
+		}
 		if features.Enabled(features.CAAValidationMethods) {
 			// Check the validation-methods CAA parameter as defined
 			// in section 4 of the draft CAA ACME RFC:
-			// https://tools.ietf.org/html/draft-ietf-acme-caa-03
+			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
 			caaMethods, ok := caaParameters["validation-methods"]
 			if ok {
-				if challengeType == nil {
+				if params.validationMethod == nil {
 					continue
 				}
-				if !containsMethod(caaMethods, *challengeType) {
+				if !containsMethod(caaMethods, *params.validationMethod) {
 					continue
 				}
 			}

@@ -778,14 +778,16 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		invalidRecord, andMore, challengeSubdomain)
 }
 
-// validateChallengeAndIdentifier performs a challenge validation and, in parallel,
+// validate performs a challenge validation and, in parallel,
 // checks CAA and GSB for the identifier. If any of those steps fails, it
 // returns a ProblemDetails plus the validation records created during the
 // validation attempt.
-func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
+func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	challenge core.Challenge,
+	authz core.Authorization,
+) ([]core.ValidationRecord, *probs.ProblemDetails) {
 
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
@@ -801,7 +803,14 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier, &challenge.Type)
+		// TODO(jsing): This needs to be generated based on the entry
+		// point to the service...
+		accountURI := fmt.Sprintf("http://boulder:4000/acme/reg/%d", authz.RegistrationID)
+		params := &caaParams{
+			accountURI:       &accountURI,
+			validationMethod: &challenge.Type,
+		}
+		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
@@ -819,8 +828,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	}
 
 	for i := 0; i < cap(ch); i++ {
-		extraProblem := <-ch
-		if extraProblem != nil {
+		if extraProblem := <-ch; extraProblem != nil {
 			return validationRecords, extraProblem
 		}
 	}
@@ -902,8 +910,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
-//
-// TODO(#1626): remove authz parameter
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
@@ -919,10 +925,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndIdentifier(
-		ctx,
-		core.AcmeIdentifier{Type: "dns", Value: domain},
-		challenge)
+	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
 
 	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records
