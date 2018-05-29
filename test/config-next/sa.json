@@ -30,7 +30,7 @@
       "RPCHeadroom": true,
       "WildcardDomains": true,
       "AllowRenewalFirstRL": true,
-      "OrderReadyStatus": false
+      "OrderReadyStatus": true
     }
   },
 
