@@ -16,7 +16,7 @@ import (
 )
 
 type caaParams struct {
-	accountURI       *string
+	accountURIID     *int64
 	validationMethod *string
 }
 
@@ -26,7 +26,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		Value: *req.Domain,
 	}
 	params := &caaParams{
-		accountURI:       req.AccountURI,
+		accountURIID:     req.AccountURIID,
 		validationMethod: req.ValidationMethod,
 	}
 	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
@@ -260,10 +260,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
 			caaAccountURI, ok := caaParameters["account-uri"]
 			if ok {
-				if params.accountURI == nil {
+				if params.accountURIID == nil {
 					continue
 				}
-				if *params.accountURI != caaAccountURI {
+				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, *params.accountURIID) {
 					continue
 				}
 			}
@@ -290,6 +290,17 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.stats.Inc("CAA.Unauthorized", 1)
 	return true, false
+}
+
+// checkAccountURI checks the specified full account URI against the
+// given accountID and a list of valid prefixes.
+func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID int64) bool {
+	for _, prefix := range accountURIPrefixes {
+		if accountURI == fmt.Sprintf("%v%d", prefix, accountID) {
+			return true
+		}
+	}
+	return false
 }
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,

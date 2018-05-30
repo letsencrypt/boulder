@@ -788,13 +788,10 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				return
 			}
 
-			// TODO(jsing): This needs to be generated based on the entry
-			// point to the service...
-			accountURI := fmt.Sprintf("http://boulder:4000/acme/reg/%d", authz.RegistrationID)
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
-				AccountURI:       &accountURI,
+				AccountURIID:     &authz.RegistrationID,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)

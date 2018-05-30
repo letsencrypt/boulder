@@ -31,7 +31,10 @@
       "IPv6First": true,
       "CAAValidationMethods": true,
       "CAAAccountURI": true
-    }
+    },
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
+    ]
   },
 
   "syslog": {

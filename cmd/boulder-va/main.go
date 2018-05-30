@@ -38,6 +38,8 @@ type config struct {
 		MaxRemoteValidationFailures int
 
 		Features map[string]bool
+
+		AccountURIPrefixes []string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -148,7 +150,8 @@ func main() {
 		c.VA.IssuerDomain,
 		scope,
 		clk,
-		logger)
+		logger,
+		c.VA.AccountURIPrefixes)
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)

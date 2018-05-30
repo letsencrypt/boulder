@@ -47,6 +47,9 @@
         "serverAddresses": ["va1.boulder:9098"],
         "timeout": "15s"
       }
+    ],
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
     ]
   },
 

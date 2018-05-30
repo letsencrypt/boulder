@@ -96,18 +96,19 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log               blog.Logger
-	dnsClient         bdns.DNSClient
-	issuerDomain      string
-	safeBrowsing      SafeBrowsing
-	httpPort          int
-	httpsPort         int
-	tlsPort           int
-	userAgent         string
-	stats             metrics.Scope
-	clk               clock.Clock
-	remoteVAs         []RemoteVA
-	maxRemoteFailures int
+	log                blog.Logger
+	dnsClient          bdns.DNSClient
+	issuerDomain       string
+	safeBrowsing       SafeBrowsing
+	httpPort           int
+	httpsPort          int
+	tlsPort            int
+	userAgent          string
+	stats              metrics.Scope
+	clk                clock.Clock
+	remoteVAs          []RemoteVA
+	maxRemoteFailures  int
+	accountURIPrefixes []string
 
 	metrics *vaMetrics
 }
@@ -124,6 +125,7 @@ func NewValidationAuthorityImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	logger blog.Logger,
+	accountURIPrefixes []string,
 ) *ValidationAuthorityImpl {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
@@ -136,19 +138,20 @@ func NewValidationAuthorityImpl(
 	}
 
 	return &ValidationAuthorityImpl{
-		log:               logger,
-		dnsClient:         resolver,
-		issuerDomain:      issuerDomain,
-		safeBrowsing:      sbc,
-		httpPort:          pc.HTTPPort,
-		httpsPort:         pc.HTTPSPort,
-		tlsPort:           pc.TLSPort,
-		userAgent:         userAgent,
-		stats:             stats,
-		clk:               clk,
-		metrics:           initMetrics(stats),
-		remoteVAs:         remoteVAs,
-		maxRemoteFailures: maxRemoteFailures,
+		log:                logger,
+		dnsClient:          resolver,
+		issuerDomain:       issuerDomain,
+		safeBrowsing:       sbc,
+		httpPort:           pc.HTTPPort,
+		httpsPort:          pc.HTTPSPort,
+		tlsPort:            pc.TLSPort,
+		userAgent:          userAgent,
+		stats:              stats,
+		clk:                clk,
+		metrics:            initMetrics(stats),
+		remoteVAs:          remoteVAs,
+		maxRemoteFailures:  maxRemoteFailures,
+		accountURIPrefixes: accountURIPrefixes,
 	}
 }
 
@@ -803,11 +806,8 @@ func (va *ValidationAuthorityImpl) validate(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
-		// TODO(jsing): This needs to be generated based on the entry
-		// point to the service...
-		accountURI := fmt.Sprintf("http://boulder:4000/acme/reg/%d", authz.RegistrationID)
 		params := &caaParams{
-			accountURI:       &accountURI,
+			accountURIID:     &authz.RegistrationID,
 			validationMethod: &challenge.Type,
 		}
 		ch <- va.checkCAA(ctx, identifier, params)

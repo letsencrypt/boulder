@@ -38,7 +38,8 @@ func TestIsSafeDomain(t *testing.T) {
 		"letsencrypt.org",
 		stats,
 		clock.NewFake(),
-		blog.NewMock())
+		blog.NewMock(),
+		nil)
 
 	domain := "good.com"
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
@@ -82,7 +83,8 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 		"letsencrypt.org",
 		stats,
 		clock.NewFake(),
-		blog.NewMock())
+		blog.NewMock(),
+		nil)
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.

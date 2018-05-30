@@ -1232,7 +1232,8 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		"letsencrypt.org",
 		metrics.NewNoopScope(),
 		clock.Default(),
-		logger)
+		logger,
+		nil)
 	return va, logger
 }
 

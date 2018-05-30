@@ -347,12 +347,13 @@ func TestCAAChecking(t *testing.T) {
 		},
 	}
 
-	accountURI := "https://letsencrypt.org/acct/reg/123"
+	accountURIID := int64(123)
 	method := "http-01"
-	params := &caaParams{accountURI: &accountURI, validationMethod: &method}
+	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
 
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
+	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 	for _, caaTest := range testCases {
 		mockLog := va.log.(*blog.Mock)
 		mockLog.Clear()
@@ -531,6 +532,74 @@ func TestParseResults(t *testing.T) {
 	test.AssertEquals(t, len(records), len(r[0].records))
 	for i, rec := range records {
 		test.AssertEquals(t, rec.String(), r[0].records[i].String())
+	}
+}
+
+func TestCheckAccountURI(t *testing.T) {
+	tests := []struct {
+		uri      string
+		prefixes []string
+		id       int64
+		want     bool
+	}{
+		{
+			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123457,
+			want: false,
+		},
+		{
+			uri: "https://acme-staging.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-staging.api.letsencrypt.org/acme/reg/",
+				"https://acme-staging-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+				"https://acme-v03.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   654321,
+			want: false,
+		},
+	}
+	for _, test := range tests {
+		if got, want := checkAccountURI(test.uri, test.prefixes, test.id), test.want; got != want {
+			t.Errorf("checkAccountURI(%q, %v, %d) = %v, want %v", test.uri, test.prefixes, test.id, got, want)
+		}
 	}
 }
 
