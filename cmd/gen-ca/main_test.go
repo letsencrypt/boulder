@@ -223,7 +223,7 @@ func TestParseOID(t *testing.T) {
 	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
 }
 
-func TestmakeTemplate(t *testing.T) {
+func TestMakeTemplate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 	profile := &CertProfile{}
 
