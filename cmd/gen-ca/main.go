@@ -160,7 +160,8 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 	}, nil
 }
 
-var algToString = map[string]x509.SignatureAlgorithm{
+// AllowedSigAlgs contains the allowed signature algorithms
+var AllowedSigAlgs = map[string]x509.SignatureAlgorithm{
 	"SHA256WithRSA":   x509.SHA256WithRSA,
 	"SHA384WithRSA":   x509.SHA384WithRSA,
 	"SHA512WithRSA":   x509.SHA512WithRSA,
@@ -169,20 +170,43 @@ var algToString = map[string]x509.SignatureAlgorithm{
 	"ECDSAWithSHA512": x509.ECDSAWithSHA512,
 }
 
+// CertProfile contains the information required to generate a certificate
+// for signing
 type CertProfile struct {
+	// SignatureAlgorithm should contain one of the allowed signature algorithms
+	// in AllowedSigAlgs
 	SignatureAlgorithm string
 
-	CommonName   string
+	// CommonName should contain the requested subject common name
+	CommonName string
+	// CommonName should contain the requested subject organization
 	Organization string
-	Country      string
+	// CommonName should contain the requested subject country code
+	Country string
 
+	// NotBefore should contain the requested NotBefore date for the
+	// certificate in the format "2006-01-02 15:04:05". Dates will
+	// always be UTC.
 	NotBefore string
-	NotAfter  string
+	// NotAfter should contain the requested NotAfter date for the
+	// certificate in the format "2006-01-02 15:04:05". Dates will
+	// always be UTC.
+	NotAfter string
 
-	OCSPURL   string
-	CRLURL    string
+	// OCSPURL should contain the URL at which a OCSP responder that
+	// can respond to OCSP requests for this certificate operates
+	OCSPURL string
+	// OCSPURL should contain the URL at which CRLs for this certificate
+	// can be found
+	CRLURL string
+	// IssuerURL should contain the URL at which the issuing certificate
+	// can be found, this is only required if generating an intermediate
+	// certificate
 	IssuerURL string
 
+	// PolicyOIDs should contain any OIDs to be inserted in a certificate
+	// policies extension. These should be formatted in the standard OID
+	// string format (i.e. "1.2.3")
 	PolicyOIDs []string
 }
 
@@ -250,7 +274,7 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		policyOIDs = append(policyOIDs, oid)
 	}
 
-	sigAlg, ok := algToString[profile.SignatureAlgorithm]
+	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
 	if !ok {
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
