@@ -85,7 +85,12 @@ func ecArgs(label string, curve *elliptic.CurveParams, keyID []byte) generateArg
 // ecPub extracts the generated public key, specified by the provided object
 // handle, and constructs an ecdsa.PublicKey. It also checks that the key is of
 // the correct curve type.
-func ecPub(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, expectedCurve *elliptic.CurveParams) (*ecdsa.PublicKey, error) {
+func ecPub(
+	ctx pkcs11helpers.PKCtx,
+	session pkcs11.SessionHandle,
+	object pkcs11.ObjectHandle,
+	expectedCurve *elliptic.CurveParams,
+) (*ecdsa.PublicKey, error) {
 	pubKey, err := pkcs11helpers.GetECDSAPublicKey(ctx, session, object)
 	if err != nil {
 		return nil, err

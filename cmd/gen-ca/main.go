@@ -91,8 +91,8 @@ func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*p
 	return handles[0], nil
 }
 
-// getKey retrieves the private key handle and constructs the public key defined
-// by the given label and ID and constructs a x509Signer object with them.
+// getKey constructs a x509Signer for the private key object associated with the
+// given label and ID
 func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, idStr string) (*x509Signer, error) {
 	id, err := hex.DecodeString(idStr)
 	if err != nil {
@@ -169,14 +169,12 @@ var algToString = map[string]x509.SignatureAlgorithm{
 	"ECDSAWithSHA512": x509.ECDSAWithSHA512,
 }
 
-type certProfile struct {
+type CertProfile struct {
 	SignatureAlgorithm string
 
-	Subject struct {
-		CommonName   string
-		Organization string
-		Country      string
-	}
+	CommonName   string
+	Organization string
+	Country      string
 
 	NotBefore string
 	NotAfter  string
@@ -200,8 +198,39 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	return oid, nil
 }
 
-// constructCert generates the certificate template for use in x509.CreateCertificate
-func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte, session pkcs11.SessionHandle) (*x509.Certificate, error) {
+func verifyProfile(profile CertProfile, root bool) error {
+	if profile.NotBefore == "" {
+		return errors.New("NotBefore in profile is required")
+	}
+	if profile.NotAfter == "" {
+		return errors.New("NotAfter in profile is required")
+	}
+	if profile.SignatureAlgorithm == "" {
+		return errors.New("SignatureAlgorithm in profile is required")
+	}
+	if profile.CommonName == "" {
+		return errors.New("CommonName in profile is required")
+	}
+	if profile.Organization == "" {
+		return errors.New("Organization in profile is required")
+	}
+	if profile.Country == "" {
+		return errors.New("Country in profile is required")
+	}
+	if profile.OCSPURL == "" {
+		return errors.New("OCSPURL in profile is required")
+	}
+	if profile.CRLURL == "" {
+		return errors.New("CRLURL in profile is required")
+	}
+	if !root && profile.IssuerURL == "" {
+		return errors.New("IssuerURL in profile is required for intermediates")
+	}
+	return nil
+}
+
+// makeTemplate generates the certificate template for use in x509.CreateCertificate
+func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, session pkcs11.SessionHandle) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
@@ -226,7 +255,7 @@ func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte,
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
 
-	keyHash := sha256.Sum256(pubKey)
+	subjectKeyID := sha256.Sum256(pubKey)
 
 	serial, err := ctx.GenerateRandom(session, 16)
 	if err != nil {
@@ -239,9 +268,9 @@ func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte,
 		BasicConstraintsValid: true,
 		IsCA: true,
 		Subject: pkix.Name{
-			CommonName:   profile.Subject.CommonName,
-			Organization: []string{profile.Subject.Organization},
-			Country:      []string{profile.Subject.Country},
+			CommonName:   profile.CommonName,
+			Organization: []string{profile.Organization},
+			Country:      []string{profile.Country},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -250,20 +279,26 @@ func constructCert(ctx pkcs11helpers.PKCtx, profile *certProfile, pubKey []byte,
 		IssuingCertificateURL: []string{profile.IssuerURL},
 		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              x509.KeyUsageCertSign & x509.KeyUsageCRLSign,
-		SubjectKeyId:          keyHash[:],
+		SubjectKeyId:          subjectKeyID[:],
 	}
 
 	return cert, nil
 }
 
+type failReader struct{}
+
+func (fr *failReader) Read([]byte) (int, error) {
+	return 0, errors.New("Empty reader used by x509.CreateCertificate")
+}
+
 func main() {
 	module := flag.String("module", "", "PKCS#11 module to use")
-	slot := flag.Uint("slot", 0, "Slot signing key is in")
-	pin := flag.String("pin", "", "PIN for slot if not using PED to login")
-	label := flag.String("label", "", "Signing key label")
-	id := flag.String("id", "", "Signing key ID hexadecimal (simplified format, i.e. ffff")
-	profilePath := flag.String("profile", "", "Path to certificate profile")
-	pubKeyPath := flag.String("publicKey", "", "Path to public key for certificate") // this could also be in the profile
+	slot := flag.Uint("slot", 0, "ID of PKCS#11 slot containing token with signing key.")
+	pin := flag.String("pin", "", "PKCS#11 token PIN. If empty, will assume PED based login.")
+	label := flag.String("label", "", "PKCS#11 key label")
+	id := flag.String("id", "", "PKCS#11 hex key ID (simplified format, i.e. ffff")
+	profilePath := flag.String("profile", "", "Path to file containing certificate profile in JSON format. See https://godoc.org/github.com/letsencrypt/boulder/cmd/gen-ca#CertProfile for details.")
+	pubKeyPath := flag.String("publicKey", "", "Path to file containing the subject public key in PEM format")
 	issuerPath := flag.String("issuer", "", "Path to issuer cert if generating an intermediate")
 	outputPath := flag.String("output", "", "Path to store generated PEM certificate")
 	flag.Parse()
@@ -303,10 +338,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read certificate profile %q: %s", *profilePath, err)
 	}
-	var profile certProfile
+	var profile CertProfile
 	err = json.Unmarshal(profileBytes, &profile)
 	if err != nil {
 		log.Fatalf("Failed to parse certificate profile: %s", err)
+	}
+	if err = verifyProfile(profile, *issuerPath == ""); err != nil {
+		log.Fatalf("Invalid certificate profile: %s", err)
 	}
 
 	pubPEMBytes, err := ioutil.ReadFile(*pubKeyPath)
@@ -322,15 +360,15 @@ func main() {
 		log.Fatalf("Failed to parse public key: %s", err)
 	}
 
-	certTmpl, err := constructCert(ctx, &profile, pubPEM.Bytes, session)
+	certTemplate, err := makeTemplate(ctx, &profile, pubPEM.Bytes, session)
 	if err != nil {
-		log.Fatalf("Failed to construct certificate from profile: %s", err)
+		log.Fatalf("Failed to construct certificate template from profile: %s", err)
 	}
-	log.Println("Generated tbs certificate")
+	log.Println("Generated certificate template from profile")
 	var issuer *x509.Certificate
 	if *issuerPath != "" {
-		// If generating an intermediate load the parent issuer and
-		// set the Authority Key Identifier in the template
+		// If generating an intermediate, load the parent issuer and
+		// set the Authority Key Identifier in the template.
 		issuerPEMBytes, err := ioutil.ReadFile(*issuerPath)
 		if err != nil {
 			log.Fatalf("Failed to read issuer certificate %q: %s", *issuerPath, err)
@@ -343,17 +381,21 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse issuer certificate: %s", err)
 		}
-		certTmpl.AuthorityKeyId = issuer.SubjectKeyId
+		certTemplate.AuthorityKeyId = issuer.SubjectKeyId
 	} else {
-		issuer = certTmpl
+		issuer = certTemplate
 	}
 
-	// We don't pass a random io.Reader here as the PKCS#11 wrapper doesn't use it
-	certBytes, err := x509.CreateCertificate(nil, certTmpl, issuer, pub, privKey)
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, certTemplate, issuer, pub, privKey)
 	if err != nil {
 		log.Fatalf("Failed to create certificate: %s", err)
 	}
-	log.Println("Signed certificate")
+	log.Printf("Signed certificate: %x\n", certBytes)
 	cert, err := x509.ParseCertificate(certBytes)
 	if err != nil {
 		log.Fatalf("Failed to parse signed certificate: %s", err)
@@ -361,10 +403,13 @@ func main() {
 
 	// If generating a root then the signing key is the public key
 	// in the cert itself, so set the parent to itself
+	var parent *x509.Certificate
 	if *issuerPath == "" {
-		issuer = cert
+		parent = cert
+	} else {
+		parent = issuer
 	}
-	if err := cert.CheckSignatureFrom(issuer); err != nil {
+	if err := cert.CheckSignatureFrom(parent); err != nil {
 		log.Fatalf("Failed to verify certificate signature: %s", err)
 	}
 	log.Println("Verified certificate signature")
