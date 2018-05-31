@@ -33,6 +33,10 @@
     "ocspGeneratorService": {
       "serverAddresses": ["ca1.boulder:9096", "ca2.boulder:9096"],
       "timeout": "15s"
+    },
+    "features": {
+      "RPCHeadroom": true,
+      "EmbedSCTs": true
     }
   },
 
