@@ -34,7 +34,7 @@
     "features": {
       "RPCHeadroom": true,
       "VAChecksGSB": true,
-      "IPv6First": true,
+      "IPv6First": true
     }
   },
 
