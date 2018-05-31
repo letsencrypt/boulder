@@ -53,8 +53,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.CAA("CAA records for %s were malformed", identifier.Value)
 	}
 	if challengeType == nil {
-		noneChallenge := "none"
-		challengeType = &noneChallenge
+		unknownChallenge := "unknown"
+		challengeType = &unknownChallenge
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Challenge: %s, Valid for issuance: %t] Records=%s",
