@@ -9,6 +9,10 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
+    "dnsResolvers": [
+      "127.0.0.1:8053",
+      "127.0.0.1:8054"
+    ],
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
@@ -17,6 +21,7 @@
     },
     "grpc": {
       "address": ":9092",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -27,7 +32,9 @@
       "ServerURL": "http://va1.boulder:6000"
     },
     "features": {
-      "IPv6First": true
+      "RPCHeadroom": true,
+      "VAChecksGSB": true,
+      "IPv6First": true,
     }
   },
 
@@ -37,7 +44,6 @@
   },
 
   "common": {
-    "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }
