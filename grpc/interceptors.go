@@ -46,7 +46,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	// Extract the grpc metadata from the context. If the context has
 	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
 	// latency with Prometheus.
-	if md, ok := metadata.FromContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
+	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
 		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
 			return nil, err
 		}
@@ -157,7 +157,7 @@ func (ci *clientInterceptor) intercept(
 	// Initialize it with the request time.
 	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
 	// Configure the localCtx with the metadata so it gets sent along in the request
-	localCtx = metadata.NewContext(localCtx, reqMD)
+	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)

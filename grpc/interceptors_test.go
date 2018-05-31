@@ -46,7 +46,7 @@ func TestServerInterceptor(t *testing.T) {
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 
 	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
-	ctxWithMetadata := metadata.NewContext(context.Background(), md)
+	ctxWithMetadata := metadata.NewIncomingContext(context.Background(), md)
 
 	_, err := si.intercept(context.Background(), nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a context missing metadata")
