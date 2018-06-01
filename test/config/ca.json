@@ -11,11 +11,12 @@
       "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "grpcCA": {
       "address": ":9093",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -36,10 +37,12 @@
       "NumSessions": 2
     }],
     "expiry": "2160h",
+    "backdate": "1h",
     "lifespanOCSP": "96h",
     "maxNames": 100,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "enablePrecertificateFlow": true,
     "cfssl": {
       "signing": {
         "profiles": {
@@ -129,7 +132,9 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "features": {
-        "WildcardDomains": true
+        "RPCHeadroom": true,
+        "WildcardDomains": true,
+        "EmbedSCTs": true
     }
   },
 

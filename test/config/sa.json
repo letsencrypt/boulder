@@ -1,7 +1,7 @@
 {
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
-    "maxDBConns": 10,
+    "maxDBConns": 100,
     "maxConcurrentRPCServerRequests": 100000,
     "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
@@ -12,6 +12,7 @@
     },
     "grpc": {
       "address": ":9095",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "admin-revoker.boulder",
         "ca.boulder",
@@ -25,6 +26,7 @@
       ]
     },
     "features": {
+      "RPCHeadroom": true,
       "WildcardDomains": true
     }
   },
