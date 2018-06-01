@@ -389,14 +389,15 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 	} else if strings.HasPrefix(acctURL, wfe.LegacyKeyIDPrefix) {
 		accountIDStr = strings.TrimPrefix(acctURL, wfe.LegacyKeyIDPrefix)
 	} else {
-		return 0, probs.Malformed("KeyID header contained an invalid account URL")
+		return 0, probs.Malformed(
+			fmt.Sprintf("KeyID header contained an invalid account URL: %q", acctURL))
 	}
 
 	// Convert the raw account ID string to an int64 for use with the SA's
 	// GetRegistration RPC
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
-		return 0, probs.Malformed("Malformed account ID in KeyID header URL")
+		return 0, probs.Malformed("Malformed account ID in KeyID header URL: %q", acctURL)
 	}
 	return accountID, nil
 }
