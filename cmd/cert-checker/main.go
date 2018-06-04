@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -184,6 +185,26 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	wg.Done()
 }
 
+// Extensions that we allow in certificates
+var allowedExtensions = map[string]bool{
+	"1.3.6.1.5.5.7.1.1":       true, // Authority info access
+	"2.5.29.35":               true, // Authority key identifier
+	"2.5.29.19":               true, // Basic constraints
+	"2.5.29.32":               true, // Certificate policies
+	"2.5.29.31":               true, // CRL distribution points
+	"2.5.29.37":               true, // Extended key usage
+	"2.5.29.15":               true, // Key usage
+	"2.5.29.17":               true, // Subject alternative name
+	"2.5.29.14":               true, // Subject key identifier
+	"1.3.6.1.4.1.11129.2.4.2": true, // SCT list
+	"1.3.6.1.5.5.7.1.24":      true, // TLS feature
+}
+
+// For extensions that have a fixed value we check that it contains that value
+var expectedExtensionContent = map[string][]byte{
+	"1.3.6.1.5.5.7.1.24": []byte{0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
+}
+
 func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
@@ -200,7 +221,11 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		for name, res := range results.Results {
 			// ignore notices and warnings
 			if res.Status >= lints.Error {
-				problems = append(problems, fmt.Sprintf("zlint %s: %s", res.Status, name))
+				prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
+				if res.Details != "" {
+					prob = fmt.Sprintf("%s %s", prob, res.Details)
+				}
+				problems = append(problems, prob)
 			}
 		}
 		// Check stored serial is correct
@@ -266,6 +291,17 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		// Check the cert has the correct key usage extensions
 		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
+		}
+
+		for _, ext := range parsedCert.Extensions {
+			if _, ok := allowedExtensions[ext.Id.String()]; !ok {
+				problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
+			}
+			if expectedContent, ok := expectedExtensionContent[ext.Id.String()]; ok {
+				if !bytes.Equal(ext.Value, expectedContent) {
+					problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
+				}
+			}
 		}
 	}
 	return problems
