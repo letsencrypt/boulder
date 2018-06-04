@@ -5,6 +5,7 @@
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder",
         "ocsp-updater.boulder"
@@ -16,8 +17,11 @@
       "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
+    },
+    "features": {
+      "RPCHeadroom": true
     }
   },
 
