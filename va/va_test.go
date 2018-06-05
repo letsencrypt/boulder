@@ -258,7 +258,7 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, names ...string) *httptest
 	hs.TLS = tlsConfig
 	hs.Config.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){
 		ACMETLS1Protocol: func(_ *http.Server, conn *tls.Conn, _ http.Handler) {
-			conn.Close()
+			_ = conn.Close()
 		},
 	}
 	hs.StartTLS()
