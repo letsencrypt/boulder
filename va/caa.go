@@ -44,25 +44,29 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
 // the CAA lookup & validation fail a problem is returned.
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, ident core.AcmeIdentifier, params *caaParams) *probs.ProblemDetails {
-	present, valid, records, err := va.checkCAARecords(ctx, ident, params)
+func (va *ValidationAuthorityImpl) checkCAA(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	params *caaParams) *probs.ProblemDetails {
+	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS("%v", err)
 	}
 
 	recordsStr, err := json.Marshal(&records)
 	if err != nil {
-		return probs.CAA("CAA records for %s were malformed", ident.Value)
+		return probs.CAA("CAA records for %s were malformed", identifier.Value)
 	}
-	if challengeType == nil {
-		unknownChallenge := "unknown"
-		challengeType = &unknownChallenge
+
+	challengeType := "unknown"
+	if params.validationMethod != nil {
+		challengeType = *params.validationMethod
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Challenge: %s, Valid for issuance: %t] Records=%s",
-		identifier.Value, present, *challengeType, valid, recordsStr)
+		identifier.Value, present, challengeType, valid, recordsStr)
 	if !valid {
-		return probs.CAA("CAA record for %s prevents issuance", ident.Value)
+		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
 	return nil
 }
@@ -176,12 +180,15 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // unmodified *dns.CAA records that were processed/filtered are returned as the
 // third argument. Any  errors encountered are returned as the fourth return
 // value (or nil).
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, ident core.AcmeIdentifier, params *caaParams) (bool, bool, []*dns.CAA, error) {
-	hostname := strings.ToLower(ident.Value)
+func (va *ValidationAuthorityImpl) checkCAARecords(
+	ctx context.Context,
+	identifier core.AcmeIdentifier,
+	params *caaParams) (bool, bool, []*dns.CAA, error) {
+	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
 	if strings.HasPrefix(hostname, `*.`) {
-		hostname = strings.TrimPrefix(ident.Value, `*.`)
+		hostname = strings.TrimPrefix(identifier.Value, `*.`)
 		wildcard = true
 	}
 	caaSet, records, err := va.getCAASet(ctx, hostname)
@@ -300,7 +307,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 // given accountID and a list of valid prefixes.
 func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID int64) bool {
 	for _, prefix := range accountURIPrefixes {
-		if accountURI == fmt.Sprintf("%v%d", prefix, accountID) {
+		if accountURI == fmt.Sprintf("%s%d", prefix, accountID) {
 			return true
 		}
 	}

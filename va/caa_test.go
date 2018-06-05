@@ -481,7 +481,10 @@ func TestCAALogging(t *testing.T) {
 			mockLog := va.log.(*blog.Mock)
 			mockLog.Clear()
 
-			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, tc.ChallengeType)
+			params := &caaParams{
+				validationMethod: tc.ChallengeType,
+			}
+			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {
