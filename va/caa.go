@@ -54,9 +54,13 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, ident core.Acme
 	if err != nil {
 		return probs.CAA("CAA records for %s were malformed", ident.Value)
 	}
+	if challengeType == nil {
+		unknownChallenge := "unknown"
+		challengeType = &unknownChallenge
+	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=%s",
-		ident.Value, present, valid, recordsStr)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Challenge: %s, Valid for issuance: %t] Records=%s",
+		identifier.Value, present, *challengeType, valid, recordsStr)
 	if !valid {
 		return probs.CAA("CAA record for %s prevents issuance", ident.Value)
 	}

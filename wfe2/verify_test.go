@@ -1023,7 +1023,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", invalidKeyIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
-				Detail:     "KeyID header contained an invalid account URL",
+				Detail:     "KeyID header contained an invalid account URL: \"https://acme-99.lettuceencrypt.org/acme/reg/1\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSInvalidKeyID",
@@ -1034,7 +1034,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", nonNumericKeyIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
-				Detail:     "Malformed account ID in KeyID header URL",
+				Detail:     "Malformed account ID in KeyID header URL: \"https://acme-v00.lettuceencrypt.org/acme/reg/abcd\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSInvalidKeyID",

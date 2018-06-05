@@ -184,7 +184,9 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   cp Godeps/Godeps.json /tmp/Godeps.json.head
   run_and_expect_silence rm -rf Godeps/ vendor/
   run_and_expect_silence godep save ./...
-  run_and_expect_silence diff <(sed /GodepVersion/d /tmp/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
+  run_and_expect_silence diff \
+    <(sed '/GodepVersion/d;/Comment/d' /tmp/Godeps.json.head) \
+    <(sed '/GodepVersion/d;/Comment/d' Godeps/Godeps.json)
   run_and_expect_silence git diff --exit-code -- ./vendor/
   end_context #godep-restore
 fi
@@ -199,7 +201,7 @@ fi
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_expect_silence errcheck \
-    -ignore io:Write,os:Remove,net/http:Write \
+    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
     $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
   end_context #errcheck
 fi

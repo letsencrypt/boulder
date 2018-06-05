@@ -23,18 +23,21 @@
       "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
-      "serverAddresses": ["ra1.boulder:9094", "ra2.boulder:9094"],
+      "serverAddresses": ["ra.boulder:9094"],
       "timeout": "15s"
     },
     "saService": {
-      "serverAddresses": ["sa1.boulder:9095", "sa2.boulder:9095"],
+      "serverAddresses": ["sa.boulder:9095"],
       "timeout": "15s"
     },
     "certificateChains": {
       "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
-    "features": {}
+    "features": {
+      "EnforceV2ContentType": true,
+      "RPCHeadroom": true
+    }
   },
 
   "syslog": {

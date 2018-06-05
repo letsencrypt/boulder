@@ -7,248 +7,93 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/asaskevich/govalidator",
+			"Comment": "v6-25-g73945b6",
+			"Rev": "73945b6115bfbbcc57d89b7316e28109364124e1"
+		},
+		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "3ac7bf7a47d159a033b107610db8a1b6575507a4"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb/dbconf",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/certdb/sql",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers/derhelpers",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp/config",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer/local",
-			"Comment": "1.3.1-12-g8d76cdf",
+			"Comment": "1.3.1-12-g8d76cdf7",
 			"Rev": "8d76cdf742f917ba01551bf7ca41f8a7f82da15a"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/asn1",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/certdata",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/aiaissuers",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/all",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/basicconstraints",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extensions",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/extkeyusage",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/internal",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/issuerdn",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/keyusage",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publickey/goodkey",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/publicsuffix",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/revocation",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/serialnumber",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/signaturealgorithm",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subject",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/subjectaltname",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/validity",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/version",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/certificate/wildcard",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/adobetimestamp",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/all",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authorityinfoaccess",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/authoritykeyid",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/basicconstraints",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/crldistributionpoints",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ct",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/extkeyusage",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/keyusage",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/nameconstraints",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspmuststaple",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/ocspnocheck",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/pdfrevocation",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/policyidentifiers",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/smimecapabilities",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectaltname",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/checks/extensions/subjectkeyid",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
-		},
-		{
-			"ImportPath": "github.com/globalsign/certlint/errors",
-			"Rev": "d4a45be06892f3e664f69892aca79a48df510be0"
 		},
 		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
@@ -342,7 +187,7 @@
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
-			"Comment": "v1.1",
+			"Comment": "v1.0-4-g880ee4c",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
 		},
 		{
@@ -418,6 +263,34 @@
 			"Rev": "67ec7c1b9678b719e579f2118c36fca4e11a0fb1"
 		},
 		{
+			"ImportPath": "github.com/zmap/zcrypto/json",
+			"Rev": "cf96f6a8516687d345fe4ba98b5defa4e823f736"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509",
+			"Rev": "cf96f6a8516687d345fe4ba98b5defa4e823f736"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509/ct",
+			"Rev": "cf96f6a8516687d345fe4ba98b5defa4e823f736"
+		},
+		{
+			"ImportPath": "github.com/zmap/zcrypto/x509/pkix",
+			"Rev": "cf96f6a8516687d345fe4ba98b5defa4e823f736"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint",
+			"Rev": "9bebe5e32c2c4b27892021e8e2f0459ef3b075ab"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint/lints",
+			"Rev": "9bebe5e32c2c4b27892021e8e2f0459ef3b075ab"
+		},
+		{
+			"ImportPath": "github.com/zmap/zlint/util",
+			"Rev": "9bebe5e32c2c4b27892021e8e2f0459ef3b075ab"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/cryptobyte",
 			"Rev": "650f4a345ab4e5b245a3034b110ebc7299e68186"
 		},
@@ -471,10 +344,6 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
-		},
-		{
-			"ImportPath": "golang.org/x/net/publicsuffix",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
