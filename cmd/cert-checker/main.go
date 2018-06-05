@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/x509"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,6 +16,9 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zlint"
+	"github.com/zmap/zlint/lints"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -24,30 +27,16 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
-
-	lintasn1 "github.com/globalsign/certlint/asn1"
-	"github.com/globalsign/certlint/certdata"
-	"github.com/globalsign/certlint/checks"
-	_ "github.com/globalsign/certlint/checks/certificate/all"
-	_ "github.com/globalsign/certlint/checks/extensions/all"
 )
 
 const (
 	good = "valid"
 	bad  = "invalid"
 
-	certlintCNError = "commonName field is deprecated"
-
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
-
-// certlintPSLErrPattern is a regex for matching Certlint error strings
-// complaining about a CN or SAN matching a public suffix list entry.
-var certlintPSLErrPattern = regexp.MustCompile(
-	`^Certificate (?:CommonName|subjectAltName) "[a-z0-9*][a-z0-9-.]+" ` +
-		`equals "[a-z0-9][a-z0-9-.]+" from the public suffix list$`)
 
 // For defense-in-depth in addition to using the PA & its hostnamePolicy to
 // check domain names we also perform a check against the regex's from the
@@ -196,47 +185,30 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	wg.Done()
 }
 
+// Extensions that we allow in certificates
+var allowedExtensions = map[string]bool{
+	"1.3.6.1.5.5.7.1.1":       true, // Authority info access
+	"2.5.29.35":               true, // Authority key identifier
+	"2.5.29.19":               true, // Basic constraints
+	"2.5.29.32":               true, // Certificate policies
+	"2.5.29.31":               true, // CRL distribution points
+	"2.5.29.37":               true, // Extended key usage
+	"2.5.29.15":               true, // Key usage
+	"2.5.29.17":               true, // Subject alternative name
+	"2.5.29.14":               true, // Subject key identifier
+	"1.3.6.1.4.1.11129.2.4.2": true, // SCT list
+	"1.3.6.1.5.5.7.1.24":      true, // TLS feature
+}
+
+// For extensions that have a fixed value we check that it contains that value
+var expectedExtensionContent = map[string][]byte{
+	"1.3.6.1.5.5.7.1.24": []byte{0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
+}
+
 func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
-	}
-
-	// Run linter
-	linter := new(lintasn1.Linter)
-	errs := linter.CheckStruct(cert.DER)
-	if errs != nil {
-		for _, err := range errs.List() {
-			problems = append(problems, err.Error())
-		}
-	}
-	d, err := certdata.Load(cert.DER)
-	if err != nil {
-		problems = append(problems, err.Error())
-	}
-	errs = checks.Certificate.Check(d)
-	if errs != nil {
-		for _, err := range errs.List() {
-			// commonName has been deprecated for years, but common practice is still
-			// to include it for compatibility reasons. For instance, Chrome on macOS
-			// until very recently would error on an empty Subject (which is what we
-			// would have if we omitted CommonName). There have been proposals at
-			// CA/Browser Forum for an alternate contentless field whose purpose would
-			// just be to make Subject non-empty, but so far they have not been
-			// successful. If the check error is `certlintCNError`, ignore it.
-			if err.Error() == certlintCNError {
-				continue
-			}
-			// certlint incorrectly flags certificates that have a subj. CN or SAN
-			// exactly equal to a *private* entry on the public suffix list. Since
-			// this is allowed and LE issues certificates for such names we ignore
-			// errors of this form until the upstream bug can be addressed. See
-			// https://github.com/globalsign/certlint/issues/17
-			if certlintPSLErrPattern.MatchString(err.Error()) {
-				continue
-			}
-			problems = append(problems, err.Error())
-		}
 	}
 
 	// Parse certificate
@@ -244,6 +216,18 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
+		// Run zlint checks
+		results := zlint.LintCertificate(parsedCert)
+		for name, res := range results.Results {
+			// ignore notices and warnings
+			if res.Status >= lints.Error {
+				prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
+				if res.Details != "" {
+					prob = fmt.Sprintf("%s %s", prob, res.Details)
+				}
+				problems = append(problems, prob)
+			}
+		}
 		// Check stored serial is correct
 		storedSerial, err := core.StringToSerial(cert.Serial)
 		if err != nil {
@@ -307,6 +291,17 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		// Check the cert has the correct key usage extensions
 		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
+		}
+
+		for _, ext := range parsedCert.Extensions {
+			if _, ok := allowedExtensions[ext.Id.String()]; !ok {
+				problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
+			}
+			if expectedContent, ok := expectedExtensionContent[ext.Id.String()]; ok {
+				if !bytes.Equal(ext.Value, expectedContent) {
+					problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
+				}
+			}
 		}
 	}
 	return problems
