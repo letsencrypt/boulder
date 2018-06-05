@@ -58,13 +58,16 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.CAA("CAA records for %s were malformed", identifier.Value)
 	}
 
-	challengeType := "unknown"
+	accountID, challengeType := "unknown", "unknown"
+	if params.accountURIID != nil {
+		accountID = fmt.Sprintf("%d", *params.accountURIID)
+	}
 	if params.validationMethod != nil {
 		challengeType = *params.validationMethod
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Challenge: %s, Valid for issuance: %t] Records=%s",
-		identifier.Value, present, challengeType, valid, recordsStr)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
+		identifier.Value, present, accountID, challengeType, valid, recordsStr)
 	if !valid {
 		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
