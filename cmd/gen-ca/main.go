@@ -179,9 +179,9 @@ type CertProfile struct {
 
 	// CommonName should contain the requested subject common name
 	CommonName string
-	// CommonName should contain the requested subject organization
+	// Organization should contain the requested subject organization
 	Organization string
-	// CommonName should contain the requested subject country code
+	// Country should contain the requested subject country code
 	Country string
 
 	// NotBefore should contain the requested NotBefore date for the
@@ -196,7 +196,7 @@ type CertProfile struct {
 	// OCSPURL should contain the URL at which a OCSP responder that
 	// can respond to OCSP requests for this certificate operates
 	OCSPURL string
-	// OCSPURL should contain the URL at which CRLs for this certificate
+	// CRLURL should contain the URL at which CRLs for this certificate
 	// can be found
 	CRLURL string
 	// IssuerURL should contain the URL at which the issuing certificate
