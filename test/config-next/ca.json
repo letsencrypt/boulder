@@ -134,8 +134,7 @@
     "features": {
         "RPCHeadroom": true,
         "WildcardDomains": true,
-        "EmbedSCTs": true,
-        "AllowTLSALPN01Challenge": true
+        "EmbedSCTs": true
     }
   },
 

@@ -52,8 +52,7 @@
       "ReusePendingAuthz": true,
       "EmbedSCTs": true,
       "EnforceOverlappingWildcards": true,
-      "VAChecksGSB": true,
-      "AllowTLSALPN01Challenge": true
+      "VAChecksGSB": true
     },
     "CTLogGroups2": [
       {

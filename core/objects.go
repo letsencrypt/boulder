@@ -12,7 +12,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -78,15 +77,11 @@ const (
 // ValidChallenge tests whether the provided string names a known challenge
 func ValidChallenge(name string) bool {
 	switch name {
-	case ChallengeTypeHTTP01:
-		fallthrough
-	case ChallengeTypeTLSSNI01:
-		fallthrough
-	case ChallengeTypeDNS01:
+	case ChallengeTypeHTTP01,
+		ChallengeTypeTLSSNI01,
+		ChallengeTypeDNS01,
+		ChallengeTypeTLSALPN01:
 		return true
-	case ChallengeTypeTLSALPN01:
-		return features.Enabled(features.AllowTLSALPN01Challenge)
-
 	default:
 		return false
 	}

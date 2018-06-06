@@ -2,10 +2,7 @@
   "certChecker": {
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10,
-    "hostnamePolicyFile": "test/hostname-policy.json",
-    "features": {
-      "AllowTLSALPN01Challenge": true
-    }
+    "hostnamePolicyFile": "test/hostname-policy.json"
   },
 
   "pa": {
