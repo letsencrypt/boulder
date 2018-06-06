@@ -43,8 +43,8 @@ const (
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
 
-	// Constant for ALPN for TLS-ALPN-01 challenge
-	// https://rolandshoemaker.github.io/acme-tls-alpn/draft-ietf-acme-tls-alpn.html#rfc.section.3.1
+	// ALPN protocol ID for TLS-ALPN-01 challenge
+	// https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.2
 	ACMETLS1Protocol = "acme-tls/1"
 )
 
@@ -54,7 +54,7 @@ const (
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
 const singleDialTimeout = time.Second * 10
 
-// As defined in https://rolandshoemaker.github.io/acme-tls-alpn/draft-ietf-acme-tls-alpn.html#tls-with-application-level-protocol-negotiation-tls-alpn-challenge
+// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
 // id-pe OID + 30 (acmeIdentifier) + 1 (v1)
 var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
 
@@ -730,13 +730,18 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	// Verify key authorization in acmeValidation extension
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifierV1.Equal(ext.Id) && ext.Critical {
-			if subtle.ConstantTimeCompare(h[:], ext.Value) == 1 {
-				return validationRecords, nil
+		if IdPeAcmeIdentifierV1.Equal(ext.Id) {
+			if !ext.Critical {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
 			}
-			errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-				"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
-			return validationRecords, probs.Unauthorized(errText)
+			if subtle.ConstantTimeCompare(h[:], ext.Value) != 1 {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			return validationRecords, nil
 		}
 	}
 
