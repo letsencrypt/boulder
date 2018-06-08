@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -135,7 +136,7 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
-) *ValidationAuthorityImpl {
+) (*ValidationAuthorityImpl, error) {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
 	}
@@ -144,6 +145,10 @@ func NewValidationAuthorityImpl(
 	}
 	if pc.TLSPort == 0 {
 		pc.TLSPort = 443
+	}
+
+	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
+		return nil, errors.New("no account URI prefixes configured")
 	}
 
 	return &ValidationAuthorityImpl{
@@ -161,7 +166,7 @@ func NewValidationAuthorityImpl(
 		remoteVAs:          remoteVAs,
 		maxRemoteFailures:  maxRemoteFailures,
 		accountURIPrefixes: accountURIPrefixes,
-	}
+	}, nil
 }
 
 // Used for audit logging

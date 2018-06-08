@@ -140,7 +140,7 @@ func main() {
 		}
 	}
 
-	vai := va.NewValidationAuthorityImpl(
+	vai, err := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
 		resolver,
@@ -152,6 +152,7 @@ func main() {
 		clk,
 		logger,
 		c.VA.AccountURIPrefixes)
+	cmd.FailOnError(err, "Unable to create VA server")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)
