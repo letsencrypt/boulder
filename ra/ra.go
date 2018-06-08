@@ -367,6 +367,18 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return reg, nil
 }
 
+// forbiddenMailDomains is a map of domain names we do not allow after the
+// @ symbol in contact mailto addresses. These are frequently used when
+// copy-pasting example configurations and would not result in expiration
+// messages and subscriber communications reaching the user that created the
+// registration if allowed.
+var forbiddenMailDomains = map[string]bool{
+	// https://tools.ietf.org/html/rfc2606#section-3
+	"example.com": true,
+	"example.net": true,
+	"example.org": true,
+}
+
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
@@ -389,6 +401,12 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		}
 		if parsed.Scheme != "mailto" {
 			return berrors.MalformedError("contact method %s is not supported", parsed.Scheme)
+		}
+		if addressComponents := strings.Split(contact, "@"); len(addressComponents) != 2 {
+			return berrors.MalformedError("invalid contact")
+		} else if _, present := forbiddenMailDomains[addressComponents[1]]; present {
+			return berrors.MalformedError("invalid contact domain. Contact emails @%s are forbidden",
+				addressComponents[1])
 		}
 		if !core.IsASCII(contact) {
 			return berrors.MalformedError(

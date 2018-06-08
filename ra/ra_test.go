@@ -351,6 +351,12 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
+
+	for domain, _ := range forbiddenMailDomains {
+		emails := &[]string{fmt.Sprintf("mailto:test@%s", domain)}
+		err = ra.validateContacts(context.Background(), emails)
+		test.AssertError(t, err, "Forbidden mail domain")
+	}
 }
 
 func TestValidateEmail(t *testing.T) {
