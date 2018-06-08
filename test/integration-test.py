@@ -164,14 +164,18 @@ def wait_for_ocsp_good(cert_file, issuer_file, url):
 def wait_for_ocsp_revoked(cert_file, issuer_file, url):
     fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
 
-def test_multidomain():
-    auth_and_issue([random_domain(), random_domain()])
-
 def test_dns_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
 
 def test_http_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
+
+def test_tls_alpn_challenge():
+    # TODO(@mdebski): Once the tls-alpn-01 challenge is enabled in pa.challenges
+    # by default, delete this early return.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+    auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
 
 def test_issuer():
     """

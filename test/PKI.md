@@ -42,3 +42,7 @@ Intermediate 1 (happy hacker fake CA):
 
 Intermediate 2 (h2ppy h2cker fake CA):
    test-ca2.key test-ca2.pem
+
+Certificate test-example.pem, together with test-example.key are self-signed
+certs used in tests. They were generated using:
+   openssl req -x509 -newkey rsa:4096 -keyout test-example.key -out test-example.pem -days 36500 -nodes  -subj "/CN=www.example.com"

@@ -22,3 +22,8 @@ func TLSSNIChallenge01() Challenge {
 func DNSChallenge01() Challenge {
 	return newChallenge(ChallengeTypeDNS01)
 }
+
+// TLSALPNChallenge01 constructs a random tls-alpn-01 challenge
+func TLSALPNChallenge01() Challenge {
+	return newChallenge(ChallengeTypeTLSALPN01)
+}
