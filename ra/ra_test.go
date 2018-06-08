@@ -351,12 +351,6 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
-
-	for domain, _ := range forbiddenMailDomains {
-		emails := &[]string{fmt.Sprintf("mailto:test@%s", domain)}
-		err = ra.validateContacts(context.Background(), emails)
-		test.AssertError(t, err, "Forbidden mail domain")
-	}
 }
 
 func TestValidateEmail(t *testing.T) {
@@ -368,7 +362,11 @@ func TestValidateEmail(t *testing.T) {
 		{"a@always.invalid", emptyDNSResponseError.Error()},
 		{"a@email.com, b@email.com", unparseableEmailError.Error()},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
+		{"a@example.com", "invalid contact domain. Contact emails @example.com are forbidden"},
+		{"a@example.net", "invalid contact domain. Contact emails @example.net are forbidden"},
+		{"a@example.org", "invalid contact domain. Contact emails @example.org are forbidden"},
 	}
+
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
