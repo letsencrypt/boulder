@@ -351,7 +351,7 @@ def test_account_update():
     Create a new ACME client/account with one contact email. Then update the
     account to a different contact emails.
     """
-    emails=("initial-email@example.com", "updated-email@example.com", "another-update@example.com")
+    emails=("initial-email@not-example.com", "updated-email@not-example.com", "another-update@not-example.com")
     client = chisel.make_client(email=emails[0])
 
     for email in emails[1:]:
