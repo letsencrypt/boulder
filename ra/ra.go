@@ -195,7 +195,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if _, present := forbiddenMailDomains[domain]; present {
+	if forbiddenMailDomains[domain] {
 		return berrors.InvalidEmailError(
 			"invalid contact domain. Contact emails @%s are forbidden",
 			domain)
