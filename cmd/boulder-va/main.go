@@ -38,6 +38,8 @@ type config struct {
 		MaxRemoteValidationFailures int
 
 		Features map[string]bool
+
+		AccountURIPrefixes []string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -138,7 +140,7 @@ func main() {
 		}
 	}
 
-	vai := va.NewValidationAuthorityImpl(
+	vai, err := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
 		resolver,
@@ -148,7 +150,9 @@ func main() {
 		c.VA.IssuerDomain,
 		scope,
 		clk,
-		logger)
+		logger,
+		c.VA.AccountURIPrefixes)
+	cmd.FailOnError(err, "Unable to create VA server")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)

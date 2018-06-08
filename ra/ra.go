@@ -808,6 +808,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
+				AccountURIID:     &authz.RegistrationID,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)

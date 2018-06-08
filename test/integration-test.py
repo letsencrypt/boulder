@@ -323,7 +323,6 @@ def test_caa():
 
     # Request issuance for recheck.good-caa-reserved.com, which should
     # now be denied due to CAA.
-    global caa_client
     chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
     chisel.expect_problem("urn:acme:error:caa",
@@ -345,6 +344,10 @@ def test_caa():
     auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
+
+    # CAA should fail with an arbitrary account, but succeed with the caa_client.
+    chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["account-uri.good-caa-reserved.com"]))
+    auth_and_issue(["account-uri.good-caa-reserved.com"], client=caa_client)
 
 def test_account_update():
     """
@@ -621,7 +624,7 @@ def main():
     setup_twenty_days_ago()
     startservers.stop()
 
-    if not startservers.start(race_detection=True):
+    if not startservers.start(race_detection=True, account_uri=caa_client.account.uri):
         raise Exception("startservers failed")
 
     setup_zero_days_ago()

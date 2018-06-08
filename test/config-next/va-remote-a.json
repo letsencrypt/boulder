@@ -29,8 +29,12 @@
     "features": {
       "RPCHeadroom": true,
       "IPv6First": true,
-      "CAAValidationMethods": true
-    }
+      "CAAValidationMethods": true,
+      "CAAAccountURI": true
+    },
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
+    ]
   },
 
   "syslog": {

@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -105,18 +106,19 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log               blog.Logger
-	dnsClient         bdns.DNSClient
-	issuerDomain      string
-	safeBrowsing      SafeBrowsing
-	httpPort          int
-	httpsPort         int
-	tlsPort           int
-	userAgent         string
-	stats             metrics.Scope
-	clk               clock.Clock
-	remoteVAs         []RemoteVA
-	maxRemoteFailures int
+	log                blog.Logger
+	dnsClient          bdns.DNSClient
+	issuerDomain       string
+	safeBrowsing       SafeBrowsing
+	httpPort           int
+	httpsPort          int
+	tlsPort            int
+	userAgent          string
+	stats              metrics.Scope
+	clk                clock.Clock
+	remoteVAs          []RemoteVA
+	maxRemoteFailures  int
+	accountURIPrefixes []string
 
 	metrics *vaMetrics
 }
@@ -133,7 +135,8 @@ func NewValidationAuthorityImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	logger blog.Logger,
-) *ValidationAuthorityImpl {
+	accountURIPrefixes []string,
+) (*ValidationAuthorityImpl, error) {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
 	}
@@ -144,21 +147,26 @@ func NewValidationAuthorityImpl(
 		pc.TLSPort = 443
 	}
 
-	return &ValidationAuthorityImpl{
-		log:               logger,
-		dnsClient:         resolver,
-		issuerDomain:      issuerDomain,
-		safeBrowsing:      sbc,
-		httpPort:          pc.HTTPPort,
-		httpsPort:         pc.HTTPSPort,
-		tlsPort:           pc.TLSPort,
-		userAgent:         userAgent,
-		stats:             stats,
-		clk:               clk,
-		metrics:           initMetrics(stats),
-		remoteVAs:         remoteVAs,
-		maxRemoteFailures: maxRemoteFailures,
+	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
+		return nil, errors.New("no account URI prefixes configured")
 	}
+
+	return &ValidationAuthorityImpl{
+		log:                logger,
+		dnsClient:          resolver,
+		issuerDomain:       issuerDomain,
+		safeBrowsing:       sbc,
+		httpPort:           pc.HTTPPort,
+		httpsPort:          pc.HTTPSPort,
+		tlsPort:            pc.TLSPort,
+		userAgent:          userAgent,
+		stats:              stats,
+		clk:                clk,
+		metrics:            initMetrics(stats),
+		remoteVAs:          remoteVAs,
+		maxRemoteFailures:  maxRemoteFailures,
+		accountURIPrefixes: accountURIPrefixes,
+	}, nil
 }
 
 // Used for audit logging
@@ -852,14 +860,16 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		invalidRecord, andMore, challengeSubdomain)
 }
 
-// validateChallengeAndIdentifier performs a challenge validation and, in parallel,
+// validate performs a challenge validation and, in parallel,
 // checks CAA and GSB for the identifier. If any of those steps fails, it
 // returns a ProblemDetails plus the validation records created during the
 // validation attempt.
-func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
+func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	challenge core.Challenge,
+	authz core.Authorization,
+) ([]core.ValidationRecord, *probs.ProblemDetails) {
 
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
@@ -875,7 +885,11 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier, &challenge.Type)
+		params := &caaParams{
+			accountURIID:     &authz.RegistrationID,
+			validationMethod: &challenge.Type,
+		}
+		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
@@ -893,8 +907,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	}
 
 	for i := 0; i < cap(ch); i++ {
-		extraProblem := <-ch
-		if extraProblem != nil {
+		if extraProblem := <-ch; extraProblem != nil {
 			return validationRecords, extraProblem
 		}
 	}
@@ -978,8 +991,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
-//
-// TODO(#1626): remove authz parameter
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
@@ -995,10 +1006,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndIdentifier(
-		ctx,
-		core.AcmeIdentifier{Type: "dns", Value: domain},
-		challenge)
+	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
 
 	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records
