@@ -288,7 +288,7 @@ def test_sct_embedding():
 
 def test_only_return_existing_reg():
     client = chisel2.uninitialized_client()
-    email = "test@example.com"
+    email = "test@not-example.com"
     client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     
