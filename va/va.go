@@ -744,7 +744,14 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
 				return validationRecords, probs.Unauthorized(errText)
 			}
-			if subtle.ConstantTimeCompare(h[:], ext.Value) != 1 {
+			var extValue []byte
+			rest, err := asn1.Unmarshal(ext.Value, &extValue)
+			if err != nil || len(rest) > 0 {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Malformed acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
 				return validationRecords, probs.Unauthorized(errText)

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -228,10 +229,11 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, names ...string) *httptest
 	}
 
 	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, _ := asn1.Marshal(shasum[:])
 	acmeExtension := pkix.Extension{
 		Id:       IdPeAcmeIdentifierV1,
 		Critical: true,
-		Value:    shasum[:],
+		Value:    encHash,
 	}
 
 	template.ExtraExtensions = []pkix.Extension{acmeExtension}
