@@ -19,7 +19,7 @@ do
   # would be cleaner if we could just output the `sed` directly to the `docker
   # build` stdin but that requires Docker 17+ too! :'(
   DOCKERFILE="golang.$GO_VERSION.Dockerfile"
-  gsed -r \
+  sed -r \
     -e 's!%%GO_VERSION%%!'"$GO_VERSION"'!g' \
     "Dockerfile.tmpl" > "$DOCKERFILE"
 
