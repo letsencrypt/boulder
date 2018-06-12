@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
 )
 
@@ -54,43 +55,19 @@ func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs
 // handle, and constructs a rsa.PublicKey. It also checks that the key has the
 // correct length modulus and that the public exponent is what was requested in
 // the public key template.
-func rsaPub(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, modulusLen, exponent uint) (*rsa.PublicKey, error) {
-	// Retrieve the public exponent and modulus for the generated public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
-	})
+func rsaPub(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, modulusLen, exponent uint) (*rsa.PublicKey, error) {
+	pubKey, err := pkcs11helpers.GetRSAPublicKey(ctx, session, object)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve key attributes: %s", err)
+		return nil, err
 	}
-
-	// Attempt to build the public key from the retrieved attributes
-	pubKey := &rsa.PublicKey{}
-	gotMod, gotExp := false, false
-	for _, a := range attrs {
-		switch a.Type {
-		case pkcs11.CKA_PUBLIC_EXPONENT:
-			pubKey.E = int(big.NewInt(0).SetBytes(a.Value).Int64())
-			// Check the provided public exponent was used
-			if pubKey.E != int(exponent) {
-				return nil, errors.New("Returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
-			}
-			gotExp = true
-			log.Printf("\tPublic exponent: %d\n", pubKey.E)
-		case pkcs11.CKA_MODULUS:
-			pubKey.N = big.NewInt(0).SetBytes(a.Value)
-			// Check the right length modulus was generated on the device
-			if pubKey.N.BitLen() != int(modulusLen) {
-				return nil, errors.New("Returned CKA_MODULUS isn't of the expected bit length")
-			}
-			gotMod = true
-			log.Printf("\tModulus: (%d bits) %X\n", pubKey.N.BitLen(), pubKey.N.Bytes())
-		}
+	if pubKey.E != int(exponent) {
+		return nil, errors.New("returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
 	}
-	// Fail if we are missing either the public exponent or modulus
-	if !gotExp || !gotMod {
-		return nil, errors.New("Couldn't retrieve modulus and exponent")
+	if pubKey.N.BitLen() != int(modulusLen) {
+		return nil, errors.New("returned CKA_MODULUS isn't of the expected bit length")
 	}
+	log.Printf("\tPublic exponent: %d\n", pubKey.E)
+	log.Printf("\tModulus: (%d bits) %X\n", pubKey.N.BitLen(), pubKey.N.Bytes())
 	return pubKey, nil
 }
 
@@ -98,30 +75,20 @@ func rsaPub(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle,
 // private key on the device, specified by the provided object handle, by signing
 // a nonce generated on the device and verifying the returned signature using the
 // public key.
-func rsaVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
-	// Initialize a signing operation
-	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)}, object)
-	if err != nil {
-		return fmt.Errorf("Failed to initialize signing operation: %s", err)
-	}
-	// PKCS#11 requires a hash identifier prefix to the message in order to determine which hash was used.
-	// This prefix indicates SHA-256.
-	input := []byte{0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20}
+func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
 	nonce, err := getRandomBytes(ctx, session)
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve nonce: %s", err)
 	}
 	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
-	hash := sha256.Sum256(nonce)
-	log.Printf("\tMessage SHA-256 hash: %X\n", hash)
-	input = append(input, hash[:]...)
-	log.Println("\tSigning message")
-	signature, err := ctx.Sign(session, input)
+	digest := sha256.Sum256(nonce)
+	log.Printf("\tMessage SHA-256 hash: %X\n", digest)
+	signature, err := pkcs11helpers.Sign(ctx, session, object, pkcs11helpers.RSAKey, digest[:], crypto.SHA256)
 	if err != nil {
 		return fmt.Errorf("Failed to sign data: %s", err)
 	}
 	log.Printf("\tMessage signature: %X\n", signature)
-	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash[:], signature)
+	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], signature)
 	if err != nil {
 		return fmt.Errorf("Failed to verify signature: %s", err)
 	}
@@ -132,7 +99,7 @@ func rsaVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHand
 // rsaGenerate is used to generate and verify a RSA key pair of the size
 // specified by modulusLen and with the exponent specified by pubExponent.
 // It returns the public part of the generated key pair as a rsa.PublicKey.
-func rsaGenerate(ctx PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, error) {
+func rsaGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, error) {
 	keyID := make([]byte, 4)
 	_, err := rand.Read(keyID)
 	if err != nil {

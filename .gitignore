@@ -36,3 +36,4 @@ tags
 # IDE support files
 .idea
 
+.vscode/*
