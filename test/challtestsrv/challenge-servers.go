@@ -53,7 +53,7 @@ type Config struct {
 // specify a bind address for at least one challenge type. If there is no
 // configured log in the config a default is provided.
 func (c *Config) validate() error {
-	// There needs to be at least one challenge time with a bind address
+	// There needs to be at least one challenge type with a bind address
 	if len(c.HTTPOneAddrs) < 1 && len(c.DNSOneAddrs) < 1 && len(c.TLSALPNOneAddrs) < 1 {
 		return fmt.Errorf(
 			"config must specify at least one HTTPOneAddrs entry, one DNSOneAddrs entry, or one TLSALPNOneAddrs entry")
