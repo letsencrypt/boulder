@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -42,44 +43,41 @@ func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 	return content, present
 }
 
-func (s *ChallSrv) ServeChallengeCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	if len(hello.SupportedProtos) != 0 || hello.SupportedProtos[0] != va.ACMETLS1Protocol {
-		return nil, nil
-	}
+func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		if len(hello.SupportedProtos) != 0 || hello.SupportedProtos[0] != va.ACMETLS1Protocol {
+			return nil, fmt.Errorf("ALPN failed, ClientHelloInfo.SupportedProtos: %s", hello.SupportedProtos)
+		}
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil
-	}
+		ka, found := s.GetTLSALPNChallenge(hello.ServerName)
+		if !found {
+			return nil, fmt.Errorf("unknown ClientHelloInfo.ServerName: %s", hello.ServerName)
+		}
 
-	ka, found := s.GetTLSALPNChallenge(hello.ServerName)
-	if !found {
-		return nil, nil
-	}
-
-	kaHash := sha256.Sum256([]byte(ka))
-	extValue, err := asn1.Marshal(kaHash[:])
-	if err != nil {
-		return nil, nil
-	}
-	certTmpl := x509.Certificate{
-		DNSNames: []string{hello.ServerName},
-		Extensions: []pkix.Extension{
-			{
-				Id:       va.IdPeAcmeIdentifierV1,
-				Critical: true,
-				Value:    extValue,
+		kaHash := sha256.Sum256([]byte(ka))
+		extValue, err := asn1.Marshal(kaHash[:])
+		if err != nil {
+			return nil, fmt.Errorf("failed marshalling hash OCTET STRING: %s", err)
+		}
+		certTmpl := x509.Certificate{
+			DNSNames: []string{hello.ServerName},
+			Extensions: []pkix.Extension{
+				{
+					Id:       va.IdPeAcmeIdentifierV1,
+					Critical: true,
+					Value:    extValue,
+				},
 			},
-		},
+		}
+		certBytes, err := x509.CreateCertificate(rand.Reader, &certTmpl, &certTmpl, k.Public(), k)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating challenge certificate: %s", err)
+		}
+		return &tls.Certificate{
+			Certificate: [][]byte{certBytes},
+			PrivateKey:  k,
+		}, nil
 	}
-	certBytes, err := x509.CreateCertificate(rand.Reader, &certTmpl, &certTmpl, k.Public(), k)
-	if err != nil {
-		return nil, nil
-	}
-	return &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  k,
-	}, nil
 }
 
 type challTLSServer struct {
@@ -91,15 +89,25 @@ func (c challTLSServer) Shutdown() error {
 }
 
 func (c challTLSServer) ListenAndServe() error {
+	// We never want to serve a plain cert so leave certFile and keyFile
+	// empty. If we don't know the SNI name/ALPN fails the handshake will
+	// fail anyway.
 	return c.Server.ListenAndServeTLS("", "")
 }
 
 func taOneServer(address string, challSrv *ChallSrv) challengeServer {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
 	srv := &http.Server{
 		Addr:         address,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		TLSConfig:    &tls.Config{GetCertificate: challSrv.ServeChallengeCert},
+		TLSConfig: &tls.Config{
+			NextProtos:     []string{va.ACMETLS1Protocol},
+			GetCertificate: challSrv.ServeChallengeCertFunc(key),
+		},
 	}
 	srv.SetKeepAlivesEnabled(false)
 	return challTLSServer{srv}
