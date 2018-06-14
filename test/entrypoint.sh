@@ -21,6 +21,10 @@ wait_tcp_port() {
         echo "$(date) - still trying to connect to $host:$port"
         sleep 1
       fi
+      if [ "$n" -eq "30" ]; then
+        echo "unable to connect"
+        exit 1
+      fi
     done
     exec 6>&-
     echo "Connected to $host:$port"
