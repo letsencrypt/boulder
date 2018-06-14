@@ -227,7 +227,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 	authz.Challenges, err = ssa.getChallenges(authz.ID)
 	if err != nil {
-		return authz, err
+		return authz, Rollback(tx, err)
 	}
 
 	return authz, tx.Commit()
@@ -1363,7 +1363,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		}
 		if authzObj == nil {
 			// InternalServerError because existingPending already told us it existed
-			return berrors.InternalServerError("failure retrieving pending authorization")
+			return Rollback(tx, berrors.InternalServerError("failure retrieving pending authorization"))
 		}
 		authz := authzObj.(*pendingauthzModel)
 		if authz.Status != core.StatusPending {
@@ -1513,7 +1513,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 
 	om, err := orderToModel(order)
 	if err != nil {
-		return err
+		return Rollback(tx, err)
 	}
 
 	result, err := tx.Exec(`
