@@ -948,10 +948,21 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// returned error can be a nil *probs.ProblemDetails which breaks the
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
-				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
+				if p, ok := err.(*probs.ProblemDetails); ok || p != nil {
+					// If the non-nil err was a non-nil problem then we can log it at an
+					// info level, it's a normal non-success validation result and the
+					// remote VA will have logged more detail.
 					va.log.Infof("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				} else if ok && p == nil {
+					// If the non-nil err was a nil problem then we don't need to do
+					// anything, there isn't really an error here.
 					err = nil
+				} else if !ok {
+					// Otherwise, the non-nil err was *not* a problem and represents
+					// something that will later be returned as a server internal error
+					// without detail. Log it at the error level so we can debug from
+					// logs.
+					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
 			errors <- err
@@ -984,6 +995,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// instances.
 				result <- prob
 			} else {
+				// Otherwise the error was not an expected non-sucess problem result and
+				// represents an internal error. The real error has already been logged
+				// so return a server internal problem result without detail.
 				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")
 			}
 			break
