@@ -33,9 +33,9 @@ type ChallSrv struct {
 	// responses
 	dnsOne map[string][]string
 
-	// taOne is a map of token values to key authorizations used for TLS-ALPN-01
+	// tlsALPNOne is a map of token values to key authorizations used for TLS-ALPN-01
 	// responses
-	taOne map[string]string
+	tlsALPNOne map[string]string
 }
 
 // Config holds challenge server configuration
@@ -77,7 +77,7 @@ func New(config Config) (*ChallSrv, error) {
 
 		httpOne: make(map[string]string),
 		dnsOne:  make(map[string][]string),
-		taOne:   make(map[string]string),
+		tlsALPNOne:   make(map[string]string),
 	}
 
 	// If there are HTTP-01 addresses configured, create HTTP-01 servers
@@ -96,7 +96,7 @@ func New(config Config) (*ChallSrv, error) {
 	// If there are TLS-ALPN-01 addresses configured, create TLS-ALPN-01 servers
 	for _, address := range config.TLSALPNOneAddrs {
 		challSrv.log.Printf("Creating TLS-ALPN-01 challenge server on %s\n", address)
-		challSrv.servers = append(challSrv.servers, taOneServer(address, challSrv))
+		challSrv.servers = append(challSrv.servers, tlsALPNOneServer(address, challSrv))
 	}
 
 	return challSrv, nil

@@ -21,31 +21,31 @@ import (
 func (s *ChallSrv) AddTLSALPNChallenge(host, content string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	s.taOne[host] = content
+	s.tlsALPNOne[host] = content
 }
 
 // DeleteTLSALPNChallenge deletes the key authorization for a given host
 func (s *ChallSrv) DeleteTLSALPNChallenge(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if _, ok := s.taOne[host]; ok {
-		delete(s.taOne, host)
+	if _, ok := s.tlsALPNOne[host]; ok {
+		delete(s.tlsALPNOne, host)
 	}
 }
 
-// GetTLSALPNChallenge returns the TLS-ALPN-01 key authorization for the given host
-// (if it exists) and a true bool. If the host does not exist then an empty
-// string and a false bool are returned.
+// GetTLSALPNChallenge checks the s.tlsALPNOne map for the given host,
+// if it is present is returns the key authorization and true, if not
+// it returns an empty string and false.
 func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	content, present := s.taOne[host]
+	content, present := s.tlsALPNOne[host]
 	return content, present
 }
 
 func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		if len(hello.SupportedProtos) != 0 || hello.SupportedProtos[0] != va.ACMETLS1Protocol {
+		if len(hello.SupportedProtos) != 1 || hello.SupportedProtos[0] != va.ACMETLS1Protocol {
 			return nil, fmt.Errorf("ALPN failed, ClientHelloInfo.SupportedProtos: %s", hello.SupportedProtos)
 		}
 
@@ -95,7 +95,7 @@ func (c challTLSServer) ListenAndServe() error {
 	return c.Server.ListenAndServeTLS("", "")
 }
 
-func taOneServer(address string, challSrv *ChallSrv) challengeServer {
+func tlsALPNOneServer(address string, challSrv *ChallSrv) challengeServer {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)
