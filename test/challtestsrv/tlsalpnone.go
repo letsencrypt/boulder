@@ -33,8 +33,8 @@ func (s *ChallSrv) DeleteTLSALPNChallenge(host string) {
 	}
 }
 
-// GetTLSALPNChallenge checks the s.tlsALPNOne map for the given host,
-// if it is present is returns the key authorization and true, if not
+// GetTLSALPNChallenge checks the s.tlsALPNOne map for the given host.
+// If it is present it returns the key authorization and true, if not
 // it returns an empty string and false.
 func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 	s.challMu.RLock()
