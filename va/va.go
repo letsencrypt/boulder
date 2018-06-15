@@ -960,8 +960,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				} else if !ok {
 					// Otherwise, the non-nil err was *not* a problem and represents
 					// something that will later be returned as a server internal error
-					// without detail. Log it at the error level so we can debug from
-					// logs.
+					// without detail if the number of errors is >= va.maxRemoteFailures.
+					// Log it at the error level so we can debug from logs.
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
