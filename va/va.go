@@ -949,17 +949,17 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
 				if p, ok := err.(*probs.ProblemDetails); ok || p != nil {
-					// If the non-nil err was a non-nil problem then we can log it at an
-					// info level, it's a normal non-success validation result and the
-					// remote VA will have logged more detail.
+					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
+					// log it at an info level. It's a normal non-success validation
+					// result and the remote VA will have logged more detail.
 					va.log.Infof("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				} else if ok && p == nil {
-					// If the non-nil err was a nil problem then we don't need to do
-					// anything, there isn't really an error here.
+					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
+					// anything. There isn't really an error here.
 					err = nil
 				} else if !ok {
-					// Otherwise, the non-nil err was *not* a problem and represents
-					// something that will later be returned as a server internal error
+					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
+					// represents something that will later be returned as a server internal error
 					// without detail if the number of errors is >= va.maxRemoteFailures.
 					// Log it at the error level so we can debug from logs.
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
