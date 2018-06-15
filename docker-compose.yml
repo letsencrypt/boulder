@@ -62,7 +62,7 @@ services:
             aliases:
               - boulder-hsm
     bmysql:
-        image: mariadb:10.1
+        image: mariadb:10.3
         networks:
           bluenet:
             aliases:
