@@ -75,9 +75,9 @@ func New(config Config) (*ChallSrv, error) {
 	challSrv := &ChallSrv{
 		log: config.Log,
 
-		httpOne: make(map[string]string),
-		dnsOne:  make(map[string][]string),
-		tlsALPNOne:   make(map[string]string),
+		httpOne:    make(map[string]string),
+		dnsOne:     make(map[string][]string),
+		tlsALPNOne: make(map[string]string),
 	}
 
 	// If there are HTTP-01 addresses configured, create HTTP-01 servers
