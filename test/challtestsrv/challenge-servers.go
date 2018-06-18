@@ -32,6 +32,10 @@ type ChallSrv struct {
 	// dnsOne is a map of DNS host values to key authorizations used for DNS-01
 	// responses
 	dnsOne map[string][]string
+
+	// tlsALPNOne is a map of token values to key authorizations used for TLS-ALPN-01
+	// responses
+	tlsALPNOne map[string]string
 }
 
 // Config holds challenge server configuration
@@ -41,16 +45,18 @@ type Config struct {
 	HTTPOneAddrs []string
 	// DNSOneAddrs are the DNS-01 challenge server bind addresses/ports
 	DNSOneAddrs []string
+	// TLSALPNOneAddrs are the TLS-ALPN-01 challenge server bind addresses/ports
+	TLSALPNOneAddrs []string
 }
 
 // validate checks that a challenge server Config is valid. To be valid it must
 // specify a bind address for at least one challenge type. If there is no
 // configured log in the config a default is provided.
 func (c *Config) validate() error {
-	// There needs to be at least one challenge time with a bind address
-	if len(c.HTTPOneAddrs) < 1 && len(c.DNSOneAddrs) < 1 {
+	// There needs to be at least one challenge type with a bind address
+	if len(c.HTTPOneAddrs) < 1 && len(c.DNSOneAddrs) < 1 && len(c.TLSALPNOneAddrs) < 1 {
 		return fmt.Errorf(
-			"config must specify at least one HTTPOneAddrs entry or one DNSOneAddrs entry")
+			"config must specify at least one HTTPOneAddrs entry, one DNSOneAddrs entry, or one TLSALPNOneAddrs entry")
 	}
 	// If there is no configured log make a default with a prefix
 	if c.Log == nil {
@@ -69,8 +75,9 @@ func New(config Config) (*ChallSrv, error) {
 	challSrv := &ChallSrv{
 		log: config.Log,
 
-		httpOne: make(map[string]string),
-		dnsOne:  make(map[string][]string),
+		httpOne:    make(map[string]string),
+		dnsOne:     make(map[string][]string),
+		tlsALPNOne: make(map[string]string),
 	}
 
 	// If there are HTTP-01 addresses configured, create HTTP-01 servers
@@ -84,6 +91,12 @@ func New(config Config) (*ChallSrv, error) {
 		challSrv.log.Printf("Creating TCP and UDP DNS-01 challenge server on %s\n", address)
 		challSrv.servers = append(challSrv.servers,
 			dnsOneServer(address, challSrv.dnsHandler)...)
+	}
+
+	// If there are TLS-ALPN-01 addresses configured, create TLS-ALPN-01 servers
+	for _, address := range config.TLSALPNOneAddrs {
+		challSrv.log.Printf("Creating TLS-ALPN-01 challenge server on %s\n", address)
+		challSrv.servers = append(challSrv.servers, tlsALPNOneServer(address, challSrv))
 	}
 
 	return challSrv, nil
