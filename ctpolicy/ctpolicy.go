@@ -9,7 +9,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -75,7 +74,7 @@ type result struct {
 // getting a single SCT.
 func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
-	isPrecert := features.Enabled(features.EmbedSCTs)
+	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
 	// so we maximize the distribution of logs we get SCTs from.
 	for _, i := range rand.Perm(len(group.Logs)) {
@@ -134,7 +133,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			results <- result{sct: sct}
 		}(i, g)
 	}
-	isPrecert := features.Enabled(features.EmbedSCTs)
+	isPrecert := true
 	for _, log := range ctp.informational {
 		go func(l cmd.LogDescription) {
 			// We use a context.Background() here instead of subCtx because these

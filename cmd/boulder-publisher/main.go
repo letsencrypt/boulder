@@ -12,14 +12,12 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		SAService *cmd.GRPCClientConfig
-		Features  map[string]bool
+		Features map[string]bool
 	}
 
 	Syslog cmd.SyslogConfig
@@ -81,17 +79,11 @@ func main() {
 
 	clk := cmd.Clock()
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tlsConfig, clientMetrics, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-
 	pubi := publisher.New(
 		bundle,
 		logs,
 		logger,
-		scope,
-		sac)
+		scope)
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)

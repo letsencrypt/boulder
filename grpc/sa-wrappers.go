@@ -273,19 +273,6 @@ func (sac StorageAuthorityClientWrapper) GetPendingAuthorization(ctx context.Con
 	return &authz, nil
 }
 
-func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
-	response, err := sac.inner.GetSCTReceipt(ctx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
-	if err != nil {
-		return core.SignedCertificateTimestamp{}, err
-	}
-
-	if response == nil || !sctValid(response) {
-		return core.SignedCertificateTimestamp{}, errIncompleteResponse
-	}
-
-	return pbToSCT(response), nil
-}
-
 func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
 	windowNanos := window.Nanoseconds()
 
@@ -448,15 +435,6 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 	}
 
 	return *response.Digest, nil
-}
-
-func (sac StorageAuthorityClientWrapper) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
-	_, err := sac.inner.AddSCTReceipt(ctx, sctToPB(sct))
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain core.AcmeIdentifier) (int64, int64, error) {
@@ -836,19 +814,6 @@ func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Con
 	return authzPB, err
 }
 
-func (sas StorageAuthorityServerWrapper) GetSCTReceipt(ctx context.Context, request *sapb.GetSCTReceiptRequest) (*sapb.SignedCertificateTimestamp, error) {
-	if request == nil || request.Serial == nil || request.LogID == nil {
-		return nil, errIncompleteRequest
-	}
-
-	sct, err := sas.inner.GetSCTReceipt(ctx, *request.Serial, *request.LogID)
-	if err != nil {
-		return nil, err
-	}
-
-	return sctToPB(sct), nil
-}
-
 func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, request *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
 	if request == nil || request.Window == nil || request.Domains == nil {
 		return nil, errIncompleteRequest
@@ -1003,19 +968,6 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 	}
 
 	return &sapb.AddCertificateResponse{Digest: &digest}, nil
-}
-
-func (sas StorageAuthorityServerWrapper) AddSCTReceipt(ctx context.Context, request *sapb.SignedCertificateTimestamp) (*corepb.Empty, error) {
-	if request == nil || !sctValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	err := sas.inner.AddSCTReceipt(ctx, pbToSCT(request))
-	if err != nil {
-		return nil, err
-	}
-
-	return &corepb.Empty{}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain(ctx context.Context, request *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {

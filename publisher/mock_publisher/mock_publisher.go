@@ -34,30 +34,6 @@ func (m *MockPublisher) EXPECT() *MockPublisherMockRecorder {
 	return m.recorder
 }
 
-// SubmitToCT mocks base method
-func (m *MockPublisher) SubmitToCT(arg0 context.Context, arg1 []byte) error {
-	ret := m.ctrl.Call(m, "SubmitToCT", arg0, arg1)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SubmitToCT indicates an expected call of SubmitToCT
-func (mr *MockPublisherMockRecorder) SubmitToCT(arg0, arg1 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToCT", reflect.TypeOf((*MockPublisher)(nil).SubmitToCT), arg0, arg1)
-}
-
-// SubmitToSingleCT mocks base method
-func (m *MockPublisher) SubmitToSingleCT(arg0 context.Context, arg1, arg2 string, arg3 []byte) error {
-	ret := m.ctrl.Call(m, "SubmitToSingleCT", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SubmitToSingleCT indicates an expected call of SubmitToSingleCT
-func (mr *MockPublisherMockRecorder) SubmitToSingleCT(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToSingleCT", reflect.TypeOf((*MockPublisher)(nil).SubmitToSingleCT), arg0, arg1, arg2, arg3)
-}
-
 // SubmitToSingleCTWithResult mocks base method
 func (m *MockPublisher) SubmitToSingleCTWithResult(arg0 context.Context, arg1 *proto.Request) (*proto.Result, error) {
 	ret := m.ctrl.Call(m, "SubmitToSingleCTWithResult", arg0, arg1)

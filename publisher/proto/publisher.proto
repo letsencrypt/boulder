@@ -1,8 +1,6 @@
 syntax = "proto2";
 
 service Publisher {
-        rpc SubmitToCT(Request) returns (Empty) {}
-        rpc SubmitToSingleCT(Request) returns (Empty) {}
         rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
 }
 
@@ -17,7 +15,3 @@ message Request {
 message Result {
         optional bytes sct = 1;
 }
-
-message Empty {
-}
-

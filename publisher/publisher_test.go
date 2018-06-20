@@ -23,13 +23,10 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
-	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -267,8 +264,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	pub := New(nil,
 		nil,
 		log,
-		metrics.NewNoopScope(),
-		mocks.NewStorageAuthority(clock.NewFake()))
+		metrics.NewNoopScope())
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert{Data: intermediatePEM.Bytes})
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
@@ -289,41 +285,6 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 	test.AssertNotError(t, err, "Couldn't create log")
 	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	pub.ctLogs = append(pub.ctLogs, newLog)
-}
-
-func TestBasicSuccessful(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	server := logSrv(k)
-	defer server.Close()
-	port, err := getPort(server.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
-	test.AssertEquals(t, 1, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":    pub.ctLogs[0].uri,
-		"status": "success",
-	})))
-
-	// No Intermediate
-	pub.issuerBundle = []ct.ASN1Cert{}
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
-
-	// Precert
-	trueBool := true
-	issuerBundle, precert, err := makePrecert(k)
-	test.AssertNotError(t, err, "Failed to create test leaf")
-	pub.issuerBundle = issuerBundle
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
 
 func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
@@ -402,114 +363,6 @@ func TestTimestampVerificationPast(t *testing.T) {
 	}
 }
 
-func TestGoodRetry(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	server := retryableLogSrv(k, 1, nil)
-	defer server.Close()
-	port, err := getPort(server.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	fmt.Println(strings.Join(log.GetAllMatching(".*"), "\n"))
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
-}
-
-func TestUnexpectedError(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	srv := errorLogSrv()
-	defer srv.Close()
-	port, err := getPort(srv.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
-	test.AssertEquals(t, 1, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":    pub.ctLogs[0].uri,
-		"status": "error",
-	})))
-}
-
-func TestRetryAfter(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	retryAfter := 2
-	server := retryableLogSrv(k, 2, &retryAfter)
-	defer server.Close()
-	port, err := getPort(server.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	startedWaiting := time.Now()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
-	test.Assert(t, time.Since(startedWaiting) > time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
-}
-
-func TestRetryAfterContext(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	retryAfter := 2
-	server := retryableLogSrv(k, 2, &retryAfter)
-	defer server.Close()
-	port, err := getPort(server.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	s := time.Now()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Failed to submit to CT")
-	took := time.Since(s)
-	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
-	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))
-}
-
-func TestMultiLog(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	srvA := logSrv(k)
-	defer srvA.Close()
-	srvB := logSrv(k)
-	defer srvB.Close()
-	portA, err := getPort(srvA.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	portB, err := getPort(srvB.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, portA, &k.PublicKey)
-	addLog(t, pub, portB, &k.PublicKey)
-
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
-}
-
-func TestBadServer(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	srv := badLogSrv()
-	defer srv.Close()
-	port, err := getPort(srv.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
-
-	log.Clear()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	test.AssertEquals(t, len(log.GetAllMatching("failed to verify ECDSA signature")), 1)
-}
-
 func TestLogCache(t *testing.T) {
 	cache := logCache{
 		logs: make(map[string]*Log),
@@ -557,43 +410,6 @@ func TestLogCache(t *testing.T) {
 	test.AssertEquals(t, cache.Len(), 2)
 	test.AssertEquals(t, l2.uri, "http://log.two.example.com")
 	test.AssertEquals(t, l2.logID, k2b64)
-}
-
-func TestSubmitToCTParallel(t *testing.T) {
-	pub, leaf, k := setup(t)
-
-	// Create a server that will timeout on submission
-	retryAfter := 2
-	srvA := retryableLogSrv(k, 2, &retryAfter)
-	defer srvA.Close()
-
-	// Create a server that will instantly accept a submission
-	k2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Couldn't generate test key")
-	srvB := logSrv(k2)
-	defer srvB.Close()
-
-	portA, err := getPort(srvA.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	portB, err := getPort(srvB.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	// We add the two logs with the slow log we expect to timeout first
-	// and the fast log second. In a serial submission scenario this would
-	// cause the first log to eat up the entire time budget for submission
-	// and we would never get to submitting to the second log.
-	addLog(t, pub, portA, &k.PublicKey)
-	addLog(t, pub, portB, &k2.PublicKey)
-
-	log.Clear()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
-	defer cancel()
-	err = pub.SubmitToCT(ctx, leaf.Raw)
-	test.AssertNotError(t, err, "Certificate submission failed")
-	// Check that we got both a submission to the fast log and a timeout from
-	// the slow log so that we know we are submitting in parallel and that the
-	// time budget isn't being consumed by one and depriving the other.
-	test.AssertEquals(t, srvB.submissions, int64(1))
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to submit.*")), 1)
 }
 
 func TestLogErrorBody(t *testing.T) {

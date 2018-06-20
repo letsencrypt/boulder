@@ -20,12 +20,6 @@ import (
 type mockPub struct {
 }
 
-func (mp *mockPub) SubmitToCT(ctx context.Context, der []byte) error {
-	return nil
-}
-func (mp *mockPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	return nil
-}
 func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }

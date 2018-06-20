@@ -1126,35 +1126,25 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return fmt.Errorf("%s: %s", prefix, e)
 	}
 
-	var cert core.Certificate
-	if features.Enabled(features.EmbedSCTs) {
-		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
-		if err != nil {
-			return emptyCert, wrapError(err, "issuing precertificate")
-		}
-		scts, err := ra.getSCTs(ctx, precert.DER)
-		if err != nil {
-			return emptyCert, wrapError(err, "getting SCTs")
-		}
-		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
-			DER:            precert.DER,
-			SCTs:           scts,
-			RegistrationID: &acctIDInt,
-			OrderID:        &orderIDInt,
-		})
-		if err != nil {
-			return emptyCert, wrapError(err, "issuing certificate for precertificate")
-		}
-		// Asynchronously submit the final certificate to any configured logs
-		go ra.ctpolicy.SubmitFinalCert(cert.DER)
-	} else {
-		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
-		if err != nil {
-			return emptyCert, wrapError(err, "issuing certificate")
-		}
-
-		_, _ = ra.getSCTs(ctx, cert.DER)
+	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+	if err != nil {
+		return emptyCert, wrapError(err, "issuing precertificate")
 	}
+	scts, err := ra.getSCTs(ctx, precert.DER)
+	if err != nil {
+		return emptyCert, wrapError(err, "getting SCTs")
+	}
+	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+		DER:            precert.DER,
+		SCTs:           scts,
+		RegistrationID: &acctIDInt,
+		OrderID:        &orderIDInt,
+	})
+	if err != nil {
+		return emptyCert, wrapError(err, "issuing certificate for precertificate")
+	}
+	// Asynchronously submit the final certificate to any configured logs
+	go ra.ctpolicy.SubmitFinalCert(cert.DER)
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {

@@ -23,7 +23,6 @@ service StorageAuthority {
         // Return a count of authorizations with status "invalid" that belong to
         // a given registration ID and expire in the given time range.
         rpc CountInvalidAuthorizations(CountInvalidAuthorizationsRequest) returns (Count) {}
-        rpc GetSCTReceipt(GetSCTReceiptRequest) returns (SignedCertificateTimestamp) {}
         rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
         rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
         rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
@@ -35,7 +34,6 @@ service StorageAuthority {
         rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
         rpc MarkCertificateRevoked(MarkCertificateRevokedRequest) returns (core.Empty) {}
         rpc AddCertificate(AddCertificateRequest) returns (AddCertificateResponse) {}
-        rpc AddSCTReceipt(SignedCertificateTimestamp) returns (core.Empty) {}
         rpc RevokeAuthorizationsByDomain(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
@@ -140,11 +138,6 @@ message CountOrdersRequest {
         optional Range range = 2;
 }
 
-message GetSCTReceiptRequest {
-        optional string serial = 1;
-        optional string logID = 2;
-}
-
 message CountFQDNSetsRequest {
         optional int64 window = 1;
         repeated string domains = 2;
@@ -182,16 +175,6 @@ message AddCertificateRequest {
 
 message AddCertificateResponse {
         optional string digest = 1;
-}
-
-message SignedCertificateTimestamp {
-        optional int64 id = 1;
-        optional int64 sctVersion = 2;
-        optional string logID = 3;
-        optional int64 timestamp = 4;
-        optional bytes extensions = 5;
-        optional bytes signature = 6;
-        optional string certificateSerial = 7;
 }
 
 message RevokeAuthorizationsByDomainRequest {

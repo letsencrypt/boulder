@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -648,57 +647,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 		expectedCount := int64(expected[domain])
 		test.AssertEquals(t, actualCount, expectedCount)
 	}
-}
-
-const (
-	sctVersion    = 0
-	sctTimestamp  = 1435787268907
-	sctLogID      = "aPaY+B9kgr46jO65KB1M/HFRXWeT1ETRCmesu09P+8Q="
-	sctSignature  = "BAMASDBGAiEA/4kz9wQq3NhvZ6VlOmjq2Z9MVHGrUjF8uxUG9n1uRc4CIQD2FYnnszKXrR9AP5kBWmTgh3fXy+VlHK8HZXfbzdFf7g=="
-	sctCertSerial = "ff000000000000012607e11a78ac01f9"
-)
-
-func TestAddSCTReceipt(t *testing.T) {
-	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
-	test.AssertNotError(t, err, "Failed to decode SCT signature")
-	sct := core.SignedCertificateTimestamp{
-		SCTVersion:        sctVersion,
-		LogID:             sctLogID,
-		Timestamp:         sctTimestamp,
-		Signature:         sigBytes,
-		CertificateSerial: sctCertSerial,
-	}
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Failed to add SCT receipt")
-	// Append only and unique on signature and across LogID and CertificateSerial
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Incorrectly returned error on duplicate SCT receipt")
-}
-
-func TestGetSCTReceipt(t *testing.T) {
-	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
-	test.AssertNotError(t, err, "Failed to decode SCT signature")
-	sct := core.SignedCertificateTimestamp{
-		SCTVersion:        sctVersion,
-		LogID:             sctLogID,
-		Timestamp:         sctTimestamp,
-		Signature:         sigBytes,
-		CertificateSerial: sctCertSerial,
-	}
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Failed to add SCT receipt")
-
-	sqlSCT, err := sa.GetSCTReceipt(ctx, sctCertSerial, sctLogID)
-	test.AssertNotError(t, err, "Failed to get existing SCT receipt")
-	test.Assert(t, sqlSCT.SCTVersion == sct.SCTVersion, "Invalid SCT version")
-	test.Assert(t, sqlSCT.LogID == sct.LogID, "Invalid log ID")
-	test.Assert(t, sqlSCT.Timestamp == sct.Timestamp, "Invalid timestamp")
-	test.Assert(t, bytes.Compare(sqlSCT.Signature, sct.Signature) == 0, "Invalid signature")
-	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
 }
 
 func TestMarkCertificateRevoked(t *testing.T) {
