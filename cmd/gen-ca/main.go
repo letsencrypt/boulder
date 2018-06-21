@@ -315,7 +315,7 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		PolicyIdentifiers:     policyOIDs,
-		KeyUsage:              x509.KeyUsageCertSign & x509.KeyUsageCRLSign,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		SubjectKeyId:          subjectKeyID[:],
 	}
 
