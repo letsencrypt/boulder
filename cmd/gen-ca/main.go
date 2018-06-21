@@ -265,6 +265,19 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		return nil, err
 	}
 
+	var ocspServer []string
+	if profile.OCSPURL != "" {
+		ocspServer = []string{profile.OCSPURL}
+	}
+	var crlDistributionPoints []string
+	if profile.CRLURL != "" {
+		crlDistributionPoints = []string{profile.CRLURL}
+	}
+	var issuingCertificateURL []string
+	if profile.IssuerURL != "" {
+		issuingCertificateURL = []string{profile.IssuerURL}
+	}
+
 	var policyOIDs []asn1.ObjectIdentifier
 	for _, oidStr := range profile.PolicyOIDs {
 		oid, err := parseOID(oidStr)
@@ -298,9 +311,9 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		OCSPServer:            []string{profile.OCSPURL},
-		CRLDistributionPoints: []string{profile.CRLURL},
-		IssuingCertificateURL: []string{profile.IssuerURL},
+		OCSPServer:            ocspServer,
+		CRLDistributionPoints: crlDistributionPoints,
+		IssuingCertificateURL: issuingCertificateURL,
 		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              x509.KeyUsageCertSign & x509.KeyUsageCRLSign,
 		SubjectKeyId:          subjectKeyID[:],
