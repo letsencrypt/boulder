@@ -309,7 +309,7 @@ def test_revoke_by_account():
 
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not.
-       Two further sub-domains have restricted validation-methods.
+       Two further sub-domains have restricted validationmethods.
     """
     if len(caa_authzs) == 0:
         raise Exception("CAA authzs not prepared for test_caa")
@@ -346,8 +346,8 @@ def test_caa():
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
     # CAA should fail with an arbitrary account, but succeed with the caa_client.
-    chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["account-uri.good-caa-reserved.com"]))
-    auth_and_issue(["account-uri.good-caa-reserved.com"], client=caa_client)
+    chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["accounturi.good-caa-reserved.com"]))
+    auth_and_issue(["accounturi.good-caa-reserved.com"], client=caa_client)
 
 def test_account_update():
     """
