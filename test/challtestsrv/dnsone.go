@@ -102,9 +102,9 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				value = "sad-hacker-ca.invalid"
 			case "good-caa-reserved.com.":
 				value = "happy-hacker-ca.invalid"
-			case "account-uri.good-caa-reserved.com.":
+			case "accounturi.good-caa-reserved.com.":
 				uri := os.Getenv("ACCOUNT_URI")
-				value = fmt.Sprintf("happy-hacker-ca.invalid; account-uri=%s", uri)
+				value = fmt.Sprintf("happy-hacker-ca.invalid; accounturi=%s", uri)
 			case "recheck.good-caa-reserved.com.":
 				// Allow issuance when we're running in the past
 				// (under FAKECLOCK), otherwise deny issuance.
@@ -114,11 +114,11 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 					value = "sad-hacker-ca.invalid"
 				}
 			case "dns-01-only.good-caa-reserved.com.":
-				value = "happy-hacker-ca.invalid; validation-methods=dns-01"
+				value = "happy-hacker-ca.invalid; validationmethods=dns-01"
 			case "http-01-only.good-caa-reserved.com.":
-				value = "happy-hacker-ca.invalid; validation-methods=http-01"
+				value = "happy-hacker-ca.invalid; validationmethods=http-01"
 			case "dns-01-or-http-01.good-caa-reserved.com.":
-				value = "happy-hacker-ca.invalid; validation-methods=dns-01,http-01"
+				value = "happy-hacker-ca.invalid; validationmethods=dns-01,http-01"
 			default:
 				addCAARecord = false
 			}
