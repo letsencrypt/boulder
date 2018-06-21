@@ -345,7 +345,7 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 			},
 			root:        false,
-			expectedErr: "OCSPURL in profile is required",
+			expectedErr: "OCSPURL in profile is required for intermediates",
 		},
 		{
 			profile: CertProfile{
@@ -358,7 +358,7 @@ func TestVerifyProfile(t *testing.T) {
 				OCSPURL:            "g",
 			},
 			root:        false,
-			expectedErr: "CRLURL in profile is required",
+			expectedErr: "CRLURL in profile is required for intermediates",
 		},
 		{
 			profile: CertProfile{
@@ -382,8 +382,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-				OCSPURL:            "g",
-				CRLURL:             "h",
 			},
 			root: true,
 		},

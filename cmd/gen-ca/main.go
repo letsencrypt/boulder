@@ -241,11 +241,11 @@ func verifyProfile(profile CertProfile, root bool) error {
 	if profile.Country == "" {
 		return errors.New("Country in profile is required")
 	}
-	if profile.OCSPURL == "" {
-		return errors.New("OCSPURL in profile is required")
+	if !root && profile.OCSPURL == "" {
+		return errors.New("OCSPURL in profile is required for intermediates")
 	}
-	if profile.CRLURL == "" {
-		return errors.New("CRLURL in profile is required")
+	if !root && profile.CRLURL == "" {
+		return errors.New("CRLURL in profile is required for intermediates")
 	}
 	if !root && profile.IssuerURL == "" {
 		return errors.New("IssuerURL in profile is required for intermediates")
