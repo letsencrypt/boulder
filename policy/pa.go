@@ -280,7 +280,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 			if err != nil {
 				return errMalformedIDN
 			}
-			if !norm.NFKC.IsNormalString(ulabel) {
+			if !norm.NFC.IsNormalString(ulabel) {
 				return errMalformedIDN
 			}
 		} else if idnReservedRegexp.MatchString(label) {
