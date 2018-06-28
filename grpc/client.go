@@ -40,7 +40,8 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
 	return grpc.Dial(
-		c.ServerAddresses[0],
+		"dns:///"+c.ServerAddresses[0],
+		grpc.WithBalancerName("round_robin"),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithUnaryInterceptor(ci.intercept),
 	)
