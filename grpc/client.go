@@ -25,33 +25,25 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	if tls == nil {
 		return nil, errNilTLS
 	}
+	if len(c.ServerAddresses) != 1 {
+		return nil, fmt.Errorf("ServerAddresses must have exactly one address.")
+	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	// When there's only one server address, we use our custom newDNSResolver,
 	// intended as a temporary shim until we upgrade to a version of gRPC that has
 	// its own built-in DNS resolver. This works equally well when there's only
 	// one IP for a hostname or when there are multiple IPs for the hostname.
-	if len(c.ServerAddresses) == 1 {
-		host, port, err := net.SplitHostPort(c.ServerAddresses[0])
-		if err != nil {
-			return nil, err
-		}
-		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
-		return grpc.Dial(
-			c.ServerAddresses[0],
-			grpc.WithTransportCredentials(creds),
-			grpc.WithBalancer(grpc.RoundRobin(newDNSResolver(host, port))),
-			grpc.WithUnaryInterceptor(ci.intercept),
-		)
-	} else {
-		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, "")
-		return grpc.Dial(
-			"", // Since our staticResolver provides addresses we don't need to pass an address here
-			grpc.WithTransportCredentials(creds),
-			grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
-			grpc.WithUnaryInterceptor(ci.intercept),
-		)
+	host, _, err := net.SplitHostPort(c.ServerAddresses[0])
+	if err != nil {
+		return nil, err
 	}
+	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
+	return grpc.Dial(
+		c.ServerAddresses[0],
+		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(ci.intercept),
+	)
 }
 
 type registry interface {
