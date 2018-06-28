@@ -57,8 +57,8 @@ var features = map[FeatureFlag]bool{
 	EnforceChallengeDisable:     false, // deprecated
 	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
-	EmbedSCTs:                   false,
-	CancelCTSubmissions:         true, // deprecated
+	EmbedSCTs:                   false, // deprecated
+	CancelCTSubmissions:         true,  // deprecated
 	VAChecksGSB:                 false,
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,

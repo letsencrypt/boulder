@@ -20,7 +20,6 @@
         "expiration-mailer.boulder",
         "ocsp-updater.boulder",
         "orphan-finder.boulder",
-        "publisher.boulder",
         "ra.boulder",
         "sa.boulder",
         "wfe.boulder"

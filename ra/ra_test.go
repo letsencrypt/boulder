@@ -3524,12 +3524,6 @@ func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
 type timeoutPub struct {
 }
 
-func (mp *timeoutPub) SubmitToCT(ctx context.Context, der []byte) error {
-	return nil
-}
-func (mp *timeoutPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	return nil
-}
 func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
 	return nil, context.DeadlineExceeded
 }
@@ -3579,7 +3573,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	_, err = ra.issueCertificate(ctx, core.CertificateRequest{
 		CSR: ExampleCSR,
 	}, accountID(Registration.ID), 0)
-	test.AssertNotError(t, err, "ra.issueCertificate failed when CTPolicy.GetSCTs timed out")
+	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
 	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
 }
 
@@ -3732,7 +3726,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}, testKey)
 	test.AssertNotError(t, err, "Could not create test order CSR")
 
-	// Enable the EmbedSCTs feature so that IssuePrecertificate is used
 	csrOb, err := x509.ParseCertificateRequest(csr)
 	test.AssertNotError(t, err, "Error pasring generated CSR")
 
@@ -3745,7 +3738,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	testCases := []struct {
 		Name         string
 		Mock         core.CertificateAuthority
-		Features     map[string]bool
 		ExpectedErr  error
 		ExpectedProb *berrors.BoulderError
 	}{
@@ -3754,7 +3746,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			Mock: &mockCAFailPrecert{
 				err: fmt.Errorf("bad bad not good"),
 			},
-			Features:    map[string]bool{"EmbedSCTs": true},
 			ExpectedErr: fmt.Errorf("issuing precertificate: bad bad not good"),
 		},
 		{
@@ -3762,7 +3753,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			Mock: &mockCAFailPrecert{
 				err: berrors.MalformedError("detected 1x whack attack"),
 			},
-			Features: map[string]bool{"EmbedSCTs": true},
 			ExpectedProb: &berrors.BoulderError{
 				Detail: "issuing precertificate: detected 1x whack attack",
 				Type:   berrors.Malformed,
@@ -3773,7 +3763,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			Mock: &mockCAFailCertForPrecert{
 				err: fmt.Errorf("aaaaaaaaaaaaaaaaaaaa!!"),
 			},
-			Features:    map[string]bool{"EmbedSCTs": true},
 			ExpectedErr: fmt.Errorf("issuing certificate for precertificate: aaaaaaaaaaaaaaaaaaaa!!"),
 		},
 		{
@@ -3781,28 +3770,8 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			Mock: &mockCAFailCertForPrecert{
 				err: berrors.MalformedError("provided DER is DERanged"),
 			},
-			Features: map[string]bool{"EmbedSCTs": true},
 			ExpectedProb: &berrors.BoulderError{
 				Detail: "issuing certificate for precertificate: provided DER is DERanged",
-				Type:   berrors.Malformed,
-			},
-		},
-		{
-			Name: "vanilla error during IssueCertificate",
-			Mock: &mockCAFailIssueCert{
-				err: fmt.Errorf("CA is out of certificates, try again later"),
-			},
-			Features:    map[string]bool{"EmbedSCTs": false},
-			ExpectedErr: fmt.Errorf("issuing certificate: CA is out of certificates, try again later"),
-		},
-		{
-			Name: "malformed problem during IssueCertificate",
-			Mock: &mockCAFailIssueCert{
-				err: berrors.MalformedError("CSR had a jillion and one names"),
-			},
-			Features: map[string]bool{"EmbedSCTs": false},
-			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing certificate: CSR had a jillion and one names",
 				Type:   berrors.Malformed,
 			},
 		},
@@ -3812,9 +3781,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
-			// Set feature flags
-			_ = features.Set(tc.Features)
-			defer features.Reset()
 			// Attempt issuance
 			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(*order.Id), logEvent)
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
