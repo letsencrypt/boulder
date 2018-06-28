@@ -98,13 +98,10 @@ func (log grpcLogger) Fatalln(args ...interface{}) {
 	os.Exit(1)
 }
 func (log grpcLogger) Print(args ...interface{}) {
-	log.AuditErr(fmt.Sprint(args...))
 }
 func (log grpcLogger) Printf(format string, args ...interface{}) {
-	log.AuditErrf(format, args...)
 }
 func (log grpcLogger) Println(args ...interface{}) {
-	log.AuditErr(fmt.Sprintln(args...))
 }
 
 type promLogger struct {
