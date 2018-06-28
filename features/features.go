@@ -41,6 +41,8 @@ const (
 	OrderReadyStatus
 	// Check CAA and respect validation-methods parameter.
 	CAAValidationMethods
+	// Check CAA and respect account-uri parameter.
+	CAAAccountURI
 )
 
 // List of features and their default value, protected by fMu
@@ -63,6 +65,7 @@ var features = map[FeatureFlag]bool{
 	EnforceOverlappingWildcards: false,
 	OrderReadyStatus:            false,
 	CAAValidationMethods:        false,
+	CAAAccountURI:               false,
 }
 
 var fMu = new(sync.RWMutex)

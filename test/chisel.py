@@ -10,15 +10,19 @@ $ python chisel.py foo.com bar.com
 import json
 import logging
 import os
+import socket
 import sys
 import threading
 import time
 import urllib2
 
+from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 import OpenSSL
+from OpenSSL import SSL
 import josepy
 
 from acme import challenges
@@ -144,6 +148,12 @@ def http_01_answer(client, chall_body):
           chall=chall_body.chall, response=response,
           validation=validation)
 
+def tls_alpn_01_cert(client, chall_body, domain):
+    """Return x509 certificate for tls-alpn-01 challenge"""
+    response = chall_body.response(client.key)
+    cert, key = response.gen_cert(domain)
+    return key, cert
+
 def do_dns_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
@@ -190,6 +200,53 @@ def do_http_challenges(client, authzs):
         thread.join()
     return cleanup
 
+def do_tlsalpn_challenges(client, authzs):
+    port = 5001
+    example_key, example_cert = load_example_cert()
+    server_certs = {'localhost': (example_key, example_cert)}
+    challs = {a.body.identifier.value: get_chall(a, challenges.TLSALPN01)
+        for a in authzs}
+    chall_certs = {domain: tls_alpn_01_cert(client, c, domain)
+        for domain, c in challs.items()}
+    # TODO: this won't be needed once acme standalone tls-alpn server serves
+    # certs correctly, not only challenge certs.
+    chall_certs['localhost'] = (example_key, example_cert)
+    server = standalone.TLSALPN01Server(("", port), server_certs, chall_certs)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+
+    # Loop until the TLSALPN01Server is ready.
+    while True:
+        try:
+            s = socket.socket()
+            s.connect(("localhost", port))
+            client_ssl = SSL.Connection(SSL.Context(SSL.TLSv1_METHOD), s)
+            client_ssl.set_connect_state()
+            client_ssl.set_tlsext_host_name("localhost")
+            client_ssl.set_alpn_protos([b'acme-tls/1'])
+            client_ssl.do_handshake()
+            break
+        except (socket.error, SSL.Error):
+            time.sleep(0.1)
+        finally:
+            s.close()
+
+    for chall_body in challs.values():
+        client.answer_challenge(chall_body, chall_body.response(client.key))
+
+    def cleanup():
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    return cleanup
+
+def load_example_cert():
+    keypem = open('test/test-example.key', 'rb').read()
+    key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, keypem)
+    crtpem = open('test/test-example.pem', 'rb').read()
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, crtpem)
+    return (key, cert)
+
 def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, client=None):
     """Make authzs for each of the given domains, set up a server to answer the
        challenges in those authzs, tell the ACME server to validate the challenges,
@@ -202,6 +259,8 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "tls-alpn-01":
+        cleanup = do_tlsalpn_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 

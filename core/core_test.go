@@ -33,9 +33,13 @@ func TestChallenges(t *testing.T) {
 	dns01 := DNSChallenge01()
 	test.AssertNotError(t, dns01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
+	tlsalpn01 := TLSALPNChallenge01()
+	test.AssertNotError(t, tlsalpn01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
+
 	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeDNS01), "Refused valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeTLSALPN01), "Refused valid challenge")
 	test.Assert(t, !ValidChallenge("nonsense-71"), "Accepted invalid challenge")
 }
 

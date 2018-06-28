@@ -176,6 +176,18 @@ func problemIsTimeout(err error) bool {
 	return false
 }
 
+// forbiddenMailDomains is a map of domain names we do not allow after the
+// @ symbol in contact mailto addresses. These are frequently used when
+// copy-pasting example configurations and would not result in expiration
+// messages and subscriber communications reaching the user that created the
+// registration if allowed.
+var forbiddenMailDomains = map[string]bool{
+	// https://tools.ietf.org/html/rfc2606#section-3
+	"example.com": true,
+	"example.net": true,
+	"example.org": true,
+}
+
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
@@ -183,6 +195,11 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	if forbiddenMailDomains[domain] {
+		return berrors.InvalidEmailError(
+			"invalid contact domain. Contact emails @%s are forbidden",
+			domain)
+	}
 	var resultMX []string
 	var resultA []net.IP
 	var errMX, errA error
@@ -791,6 +808,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
+				AccountURIID:     &authz.RegistrationID,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)

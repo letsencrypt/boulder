@@ -142,7 +142,8 @@
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
-      "dns-01": true
+      "dns-01": true,
+      "tls-alpn-01": true
     }
   },
 

@@ -5,12 +5,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/asn1"
 	"errors"
 	"fmt"
 	"log"
 	"math/big"
 
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
 )
 
@@ -53,30 +53,20 @@ var hashToString = map[crypto.Hash]string{
 
 // ecArgs constructs the private and public key template attributes sent to the
 // device and specifies which mechanism should be used. curve determines which
-// type of key should be generated. compatMode is used to determine which
-// mechanism and attribute types should be used, for devices that implement
-// a pre-2.11 version of the PKCS#11 specification compatMode should be true.
-func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool, keyID []byte) generateArgs {
+// type of key should be generated.
+func ecArgs(label string, curve *elliptic.CurveParams, keyID []byte) generateArgs {
 	encodedCurve := curveToOIDDER[curve.Name]
 	log.Printf("\tEncoded curve parameters for %s: %X\n", curve.Params().Name, encodedCurve)
-	var genMech, paramType uint
-	if compatMode {
-		genMech = pkcs11.CKM_ECDSA_KEY_PAIR_GEN
-		paramType = pkcs11.CKA_ECDSA_PARAMS
-	} else {
-		genMech = pkcs11.CKM_EC_KEY_PAIR_GEN
-		paramType = pkcs11.CKA_EC_PARAMS
-	}
 	return generateArgs{
 		mechanism: []*pkcs11.Mechanism{
-			pkcs11.NewMechanism(genMech, nil),
+			pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil),
 		},
 		publicAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
 			pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
-			pkcs11.NewAttribute(paramType, encodedCurve),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, encodedCurve),
 		},
 		privateAttrs: []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
@@ -94,67 +84,22 @@ func ecArgs(label string, curve *elliptic.CurveParams, compatMode bool, keyID []
 
 // ecPub extracts the generated public key, specified by the provided object
 // handle, and constructs an ecdsa.PublicKey. It also checks that the key is of
-// the correct curve type. For devices that implement a pre-2.11 version of the
-// PKCS#11 specification compatMode should be true.
-func ecPub(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, expectedCurve *elliptic.CurveParams, compatMode bool) (*ecdsa.PublicKey, error) {
-	var paramType uint
-	if compatMode {
-		paramType = pkcs11.CKA_ECDSA_PARAMS
-	} else {
-		paramType = pkcs11.CKA_EC_PARAMS
-	}
-	// Retrieve the curve and public point for the generated public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(paramType, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
-	})
+// the correct curve type.
+func ecPub(
+	ctx pkcs11helpers.PKCtx,
+	session pkcs11.SessionHandle,
+	object pkcs11.ObjectHandle,
+	expectedCurve *elliptic.CurveParams,
+) (*ecdsa.PublicKey, error) {
+	pubKey, err := pkcs11helpers.GetECDSAPublicKey(ctx, session, object)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve key attributes: %s", err)
+		return nil, err
 	}
-
-	pubKey := &ecdsa.PublicKey{}
-	gotCurve, gotPoint := false, false
-	for _, a := range attrs {
-		switch a.Type {
-		case paramType:
-			rCurve, present := oidDERToCurve[fmt.Sprintf("%X", a.Value)]
-			if !present {
-				return nil, errors.New("Unknown curve OID value returned")
-			}
-			pubKey.Curve = rCurve
-			if pubKey.Curve != expectedCurve {
-				return nil, errors.New("Returned EC parameters doesn't match expected curve")
-			}
-			gotCurve = true
-		case pkcs11.CKA_EC_POINT:
-			x, y := elliptic.Unmarshal(expectedCurve, a.Value)
-			if x == nil {
-				// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html#_ftn1
-				// PKCS#11 v2.20 specified that the CKA_EC_POINT was to be stored in a DER-encoded
-				// OCTET STRING.
-				var point asn1.RawValue
-				_, err = asn1.Unmarshal(a.Value, &point)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to unmarshal returned CKA_EC_POINT: %s", err)
-				}
-				if len(point.Bytes) == 0 {
-					return nil, errors.New("Invalid CKA_EC_POINT value returned, OCTET string is empty")
-				}
-				x, y = elliptic.Unmarshal(expectedCurve, point.Bytes)
-				if x == nil {
-					fmt.Println(point.Bytes)
-					return nil, errors.New("Invalid CKA_EC_POINT value returned, point is malformed")
-				}
-			}
-			pubKey.X, pubKey.Y = x, y
-			gotPoint = true
-			log.Printf("\tX: %X\n", pubKey.X.Bytes())
-			log.Printf("\tY: %X\n", pubKey.Y.Bytes())
-		}
+	if pubKey.Curve != expectedCurve {
+		return nil, errors.New("Returned EC parameters doesn't match expected curve")
 	}
-	if !gotPoint || !gotCurve {
-		return nil, errors.New("Couldn't retrieve EC point and EC parameters")
-	}
+	log.Printf("\tX: %X\n", pubKey.X.Bytes())
+	log.Printf("\tY: %X\n", pubKey.Y.Bytes())
 	return pubKey, nil
 }
 
@@ -162,11 +107,7 @@ func ecPub(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, 
 // private key on the device, specified by the provided object handle, by signing
 // a nonce generated on the device and verifying the returned signature using the
 // public key.
-func ecVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
-	err := ctx.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)}, object)
-	if err != nil {
-		return fmt.Errorf("failed to initialize signing operation: %s", err)
-	}
+func ecVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
 	nonce, err := getRandomBytes(ctx, session)
 	if err != nil {
 		return fmt.Errorf("failed to construct nonce: %s", err)
@@ -174,16 +115,16 @@ func ecVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandl
 	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
 	hashFunc := curveToHash[pub.Curve.Params()].New()
 	hashFunc.Write(nonce)
-	hash := hashFunc.Sum(nil)
-	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve.Params()]], hash)
-	signature, err := ctx.Sign(session, hash)
+	digest := hashFunc.Sum(nil)
+	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve.Params()]], digest)
+	signature, err := pkcs11helpers.Sign(ctx, session, object, pkcs11helpers.ECDSAKey, digest, curveToHash[pub.Curve.Params()])
 	if err != nil {
-		return fmt.Errorf("failed to sign data: %s", err)
+		return err
 	}
 	log.Printf("\tMessage signature: %X\n", signature)
 	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
 	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-	if !ecdsa.Verify(pub, hash[:], r, s) {
+	if !ecdsa.Verify(pub, digest[:], r, s) {
 		return errors.New("failed to verify ECDSA signature over test data")
 	}
 	log.Println("\tSignature verified")
@@ -191,10 +132,9 @@ func ecVerify(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandl
 }
 
 // ecGenerate is used to generate and verify a ECDSA key pair of the type
-// specified by curveStr and with the provided label. For devices that implement
-// a pre-2.11 version of the PKCS#11 specification compatMode should be true.
-// It returns the public part of the generated key pair as a ecdsa.PublicKey.
-func ecGenerate(ctx PKCtx, session pkcs11.SessionHandle, label, curveStr string, compatMode bool) (*ecdsa.PublicKey, error) {
+// specified by curveStr and with the provided label. It returns the public
+// part of the generated key pair as a ecdsa.PublicKey.
+func ecGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label, curveStr string) (*ecdsa.PublicKey, error) {
 	curve, present := stringToCurve[curveStr]
 	if !present {
 		return nil, fmt.Errorf("curve %q not supported", curveStr)
@@ -205,14 +145,14 @@ func ecGenerate(ctx PKCtx, session pkcs11.SessionHandle, label, curveStr string,
 		return nil, err
 	}
 	log.Printf("Generating ECDSA key with curve %s and ID %x\n", curveStr, keyID)
-	args := ecArgs(label, curve, compatMode, keyID)
+	args := ecArgs(label, curve, keyID)
 	pub, priv, err := ctx.GenerateKeyPair(session, args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, err
 	}
 	log.Println("Key generated")
 	log.Println("Extracting public key")
-	pk, err := ecPub(ctx, session, pub, curve, compatMode)
+	pk, err := ecPub(ctx, session, pub, curve)
 	if err != nil {
 		return nil, err
 	}

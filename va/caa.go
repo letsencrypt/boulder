@@ -15,16 +15,21 @@ import (
 	"golang.org/x/net/context"
 )
 
-func (va *ValidationAuthorityImpl) IsCAAValid(
-	ctx context.Context,
-	req *vapb.IsCAAValidRequest,
-) (*vapb.IsCAAValidResponse, error) {
-	prob := va.checkCAA(ctx, core.AcmeIdentifier{
+type caaParams struct {
+	accountURIID     *int64
+	validationMethod *string
+}
+
+func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+	acmeID := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
-	}, req.ValidationMethod)
-
-	if prob != nil {
+	}
+	params := &caaParams{
+		accountURIID:     req.AccountURIID,
+		validationMethod: req.ValidationMethod,
+	}
+	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
 		typ := string(prob.Type)
 		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
@@ -42,8 +47,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challengeType *string) *probs.ProblemDetails {
-	present, valid, records, err := va.checkCAARecords(ctx, identifier, challengeType)
+	params *caaParams) *probs.ProblemDetails {
+	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS("%v", err)
 	}
@@ -53,8 +58,16 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.CAA("CAA records for %s were malformed", identifier.Value)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Valid for issuance: %t] Records=%s",
-		identifier.Value, present, valid, recordsStr)
+	accountID, challengeType := "unknown", "unknown"
+	if params.accountURIID != nil {
+		accountID = fmt.Sprintf("%d", *params.accountURIID)
+	}
+	if params.validationMethod != nil {
+		challengeType = *params.validationMethod
+	}
+
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
+		identifier.Value, present, accountID, challengeType, valid, recordsStr)
 	if !valid {
 		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
 	}
@@ -173,7 +186,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challengeType *string) (bool, bool, []*dns.CAA, error) {
+	params *caaParams) (bool, bool, []*dns.CAA, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -185,7 +198,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	if err != nil {
 		return false, false, nil, err
 	}
-	present, valid := va.validateCAASet(caaSet, wildcard, challengeType)
+	present, valid := va.validateCAASet(caaSet, wildcard, params)
 	return present, valid, records, nil
 }
 
@@ -203,7 +216,7 @@ func containsMethod(commaSeparatedMethods, method string) bool {
 // function returns two booleans: the first indicates whether the CAASet was
 // empty, the second indicates whether the CAASet is valid for issuance to
 // proceed.
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, challengeType *string) (present, valid bool) {
+func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, params *caaParams) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("CAA.None", 1)
@@ -255,16 +268,30 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			continue
 		}
 
+		if features.Enabled(features.CAAAccountURI) {
+			// Check the account-uri CAA parameter as defined
+			// in section 3 of the draft CAA ACME RFC:
+			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
+			caaAccountURI, ok := caaParameters["account-uri"]
+			if ok {
+				if params.accountURIID == nil {
+					continue
+				}
+				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, *params.accountURIID) {
+					continue
+				}
+			}
+		}
 		if features.Enabled(features.CAAValidationMethods) {
 			// Check the validation-methods CAA parameter as defined
 			// in section 4 of the draft CAA ACME RFC:
-			// https://tools.ietf.org/html/draft-ietf-acme-caa-03
+			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
 			caaMethods, ok := caaParameters["validation-methods"]
 			if ok {
-				if challengeType == nil {
+				if params.validationMethod == nil {
 					continue
 				}
-				if !containsMethod(caaMethods, *challengeType) {
+				if !containsMethod(caaMethods, *params.validationMethod) {
 					continue
 				}
 			}
@@ -277,6 +304,17 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.stats.Inc("CAA.Unauthorized", 1)
 	return true, false
+}
+
+// checkAccountURI checks the specified full account URI against the
+// given accountID and a list of valid prefixes.
+func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID int64) bool {
+	for _, prefix := range accountURIPrefixes {
+		if accountURI == fmt.Sprintf("%s%d", prefix, accountID) {
+			return true
+		}
+	}
+	return false
 }
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,

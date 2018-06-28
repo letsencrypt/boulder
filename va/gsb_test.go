@@ -28,7 +28,7 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed(gomock.Any(), "good.com").Return("", nil)
 	sbc.EXPECT().IsListed(gomock.Any(), "bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", errors.New("welp"))
-	va := NewValidationAuthorityImpl(
+	va, err := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		sbc,
 		nil,
@@ -38,7 +38,11 @@ func TestIsSafeDomain(t *testing.T) {
 		"letsencrypt.org",
 		stats,
 		clock.NewFake(),
-		blog.NewMock())
+		blog.NewMock(),
+		accountURIPrefixes)
+	if err != nil {
+		t.Fatalf("Failed to create validation authority: %v", err)
+	}
 
 	domain := "good.com"
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
@@ -72,7 +76,7 @@ func TestIsSafeDomain(t *testing.T) {
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats := metrics.NewNoopScope()
-	va := NewValidationAuthorityImpl(
+	va, err := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
 		nil,
@@ -82,7 +86,11 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 		"letsencrypt.org",
 		stats,
 		clock.NewFake(),
-		blog.NewMock())
+		blog.NewMock(),
+		accountURIPrefixes)
+	if err != nil {
+		t.Fatalf("Failed to create validation authority: %v", err)
+	}
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.

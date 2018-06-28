@@ -362,7 +362,11 @@ func TestValidateEmail(t *testing.T) {
 		{"a@always.invalid", emptyDNSResponseError.Error()},
 		{"a@email.com, b@email.com", unparseableEmailError.Error()},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
+		{"a@example.com", "invalid contact domain. Contact emails @example.com are forbidden"},
+		{"a@example.net", "invalid contact domain. Contact emails @example.net are forbidden"},
+		{"a@example.org", "invalid contact domain. Contact emails @example.org are forbidden"},
 	}
+
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",

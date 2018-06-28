@@ -27,11 +27,13 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(cmd, race_detection, fakeclock):
+def run(cmd, race_detection, fakeclock, account_uri):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
-    if fakeclock is not None:
+    if fakeclock:
         e.setdefault("FAKECLOCK", fakeclock)
+    if account_uri:
+        e.setdefault("ACCOUNT_URI", account_uri)
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec ./bin/%s""" % cmd
     p = subprocess.Popen(cmd, shell=True, env=e)
@@ -57,7 +59,7 @@ def waitport(port, prog):
                 raise
     raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
-def start(race_detection, fakeclock=None):
+def start(race_detection, fakeclock=None, account_uri=None):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -104,7 +106,7 @@ def start(race_detection, fakeclock=None):
     for (port, prog) in progs:
         try:
             global processes
-            processes.append(run(prog, race_detection, fakeclock))
+            processes.append(run(prog, race_detection, fakeclock, account_uri))
             if not waitport(port, prog):
                 return False
         except Exception as e:
