@@ -479,25 +479,6 @@ def test_certificates_per_name():
     chisel.expect_problem("urn:acme:error:rateLimited",
         lambda: auth_and_issue([random_domain() + ".lim.it"]))
 
-def test_expired_authzs_404():
-    # TODO(@4a6f656c): This test is rather broken, since it cannot distinguish
-    # between a 404 due to an expired authz and a 404 due to a non-existant authz.
-    # Further verification is necessary in order to ensure that the 404 is actually
-    # due to an expiration. For now, the new authzs at least provide a form of
-    # canary to detect authz purges.
-    if len(old_authzs) == 0 or len(new_authzs) == 0:
-        raise Exception("Old authzs not prepared for test_expired_authzs_404")
-    for a in new_authzs:
-        response = requests.get(a.uri)
-        if response.status_code != 200:
-            raise Exception("Unexpected response for valid authz: ",
-                response.status_code)
-    for a in old_authzs:
-        response = requests.get(a.uri)
-        if response.status_code != 404:
-            raise Exception("Unexpected response for expired authz: ",
-                response.status_code)
-
 def test_oversized_csr():
     # Number of names is chosen to be one greater than the configured RA/CA maxNames
     numNames = 101

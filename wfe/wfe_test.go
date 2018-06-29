@@ -1731,9 +1731,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
