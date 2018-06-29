@@ -5,7 +5,7 @@
 # Otherwise it would race with boulder container's entrypoint.sh to run
 # migrations, and one or the other would fail randomly. Also, it would compete
 # with the boulder container for ports. This is a variant of entrypoint.sh that
-# exists if it is not given an argument.
+# exits if it is not given an argument.
 if [[ "$@" = "" ]]; then
   echo "Not needed as part of 'docker-compse up'. Exiting normally."
   exit 0
