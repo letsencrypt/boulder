@@ -58,6 +58,8 @@ func main() {
 		"Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable.")
 	dnsOneBind := flag.String("dns01", ":8053",
 		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
+	tlsAlpnOneBind := flag.String("tlsalpn01", ":5001",
+		"Comma separated bind addresses/ports for TLS-ALPN-01 challenges. Set empty to disable.")
 	managementBind := flag.String("management", ":8055",
 		"Bind address/port for management HTTP interface")
 
@@ -65,14 +67,16 @@ func main() {
 
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
+	tlsAlpnOneAddresses := filterEmpty(strings.Split(*tlsAlpnOneBind, ","))
 
 	logger := log.New(os.Stdout, "challtestsrv - ", log.Ldate|log.Ltime)
 
 	// Create a new challenge server with the provided config
 	srv, err := challtestsrv.New(challtestsrv.Config{
-		HTTPOneAddrs: httpOneAddresses,
-		DNSOneAddrs:  dnsOneAddresses,
-		Log:          logger,
+		HTTPOneAddrs:    httpOneAddresses,
+		DNSOneAddrs:     dnsOneAddresses,
+		TLSALPNOneAddrs: tlsAlpnOneAddresses,
+		Log:             logger,
 	})
 	cmd.FailOnError(err, "Unable to construct challenge server")
 
@@ -93,6 +97,10 @@ func main() {
 	if *dnsOneBind != "" {
 		http.HandleFunc("/set-txt", oobSrv.addDNS01)
 		http.HandleFunc("/clear-txt", oobSrv.delDNS01)
+	}
+	if *tlsAlpnOneBind != "" {
+		http.HandleFunc("/add-tlsalpn01", oobSrv.addTLSALPN01)
+		http.HandleFunc("/del-tlsalpn01", oobSrv.delTLSALPN01)
 	}
 
 	// Start all of the sub-servers in their own Go routines so that the main Go

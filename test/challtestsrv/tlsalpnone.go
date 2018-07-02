@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	"math/big"
 	"net/http"
 	"time"
 
@@ -60,8 +61,9 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 			return nil, fmt.Errorf("failed marshalling hash OCTET STRING: %s", err)
 		}
 		certTmpl := x509.Certificate{
-			DNSNames: []string{hello.ServerName},
-			Extensions: []pkix.Extension{
+			SerialNumber: big.NewInt(1729),
+			DNSNames:     []string{hello.ServerName},
+			ExtraExtensions: []pkix.Extension{
 				{
 					Id:       va.IdPeAcmeIdentifierV1,
 					Critical: true,
