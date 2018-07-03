@@ -11,7 +11,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	UseAIAIssuerURL
 	// For new-authz requests, if there is no valid authz, but there is a pending
 	// authz, return that instead of creating a new one.
 	ReusePendingAuthz
@@ -48,7 +47,6 @@ const (
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                      false,
-	UseAIAIssuerURL:             false,
 	ReusePendingAuthz:           false,
 	CountCertificatesExact:      false,
 	IPv6First:                   false, // deprecated

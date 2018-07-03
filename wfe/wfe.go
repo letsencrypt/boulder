@@ -904,15 +904,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	if features.Enabled(features.UseAIAIssuerURL) {
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
-	}
+	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -1294,20 +1287,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	if features.Enabled(features.UseAIAIssuerURL) {
-		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
-			return
-		}
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
-	}
+	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
