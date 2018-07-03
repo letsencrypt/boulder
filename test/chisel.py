@@ -40,6 +40,8 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 # URLs for management interface of challtestsrv
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
+ADD_ALPN = "http://localhost:8055/add-tlsalpn01"
+DEL_ALPN = "http://localhost:8055/del-tlsalpn01"
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 
@@ -148,12 +150,6 @@ def http_01_answer(client, chall_body):
           chall=chall_body.chall, response=response,
           validation=validation)
 
-def tls_alpn_01_cert(client, chall_body, domain):
-    """Return x509 certificate for tls-alpn-01 challenge"""
-    response = chall_body.response(client.key)
-    cert, key = response.gen_cert(domain)
-    return key, cert
-
 def do_dns_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
@@ -201,43 +197,23 @@ def do_http_challenges(client, authzs):
     return cleanup
 
 def do_tlsalpn_challenges(client, authzs):
-    port = 5001
-    example_key, example_cert = load_example_cert()
-    server_certs = {'localhost': (example_key, example_cert)}
-    challs = {a.body.identifier.value: get_chall(a, challenges.TLSALPN01)
-        for a in authzs}
-    chall_certs = {domain: tls_alpn_01_cert(client, c, domain)
-        for domain, c in challs.items()}
-    # TODO: this won't be needed once acme standalone tls-alpn server serves
-    # certs correctly, not only challenge certs.
-    chall_certs['localhost'] = (example_key, example_cert)
-    server = standalone.TLSALPN01Server(("", port), server_certs, chall_certs)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-
-    # Loop until the TLSALPN01Server is ready.
-    while True:
-        try:
-            s = socket.socket()
-            s.connect(("localhost", port))
-            client_ssl = SSL.Connection(SSL.Context(SSL.TLSv1_METHOD), s)
-            client_ssl.set_connect_state()
-            client_ssl.set_tlsext_host_name("localhost")
-            client_ssl.set_alpn_protos([b'acme-tls/1'])
-            client_ssl.do_handshake()
-            break
-        except (socket.error, SSL.Error):
-            time.sleep(0.1)
-        finally:
-            s.close()
-
-    for chall_body in challs.values():
-        client.answer_challenge(chall_body, chall_body.response(client.key))
-
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.TLSALPN01)
+        name, value = (a.body.identifier.value, c.key_authorization(client.key))
+        cleanup_hosts.append(name)
+        urllib2.urlopen(ADD_ALPN,
+            data=json.dumps({
+                "host": name,
+                "content": value,
+            })).read()
+        client.answer_challenge(c, c.response(client.key))
     def cleanup():
-        server.shutdown()
-        server.server_close()
-        thread.join()
+        for host in cleanup_hosts:
+            urllib2.urlopen(DEL_ALPN,
+                data=json.dumps({
+                    "host": host,
+                })).read()
     return cleanup
 
 def load_example_cert():
