@@ -887,8 +887,6 @@ func TestRelativeDirectory(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
-	defer features.Reset()
 	wfe, fc := setupWFE(t)
 	mux := wfe.Handler()
 	mockLog := wfe.log.(*blog.Mock)
@@ -1046,7 +1044,6 @@ func TestIssueCertificate(t *testing.T) {
 
 	mockLog.Clear()
 	responseWriter.HeaderMap = http.Header{}
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, `{
 			"resource":"new-cert",
@@ -1054,7 +1051,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, wfe.nonceService)))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
+		`<http://localhost/acme/issuer-cert>;rel="up"`)
 
 	mockLog.Clear()
 	responseWriter.Body.Reset()
@@ -1920,8 +1917,6 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": false})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
@@ -1945,23 +1940,6 @@ func TestGetCertificate(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/issuer-cert>;rel="up"`)
 
-	// Valid serial, UseAIAIssuerURL: true
-	mockLog.Clear()
-	responseWriter = httptest.NewRecorder()
-	_ = features.Set(map[string]bool{"UseAIAIssuerURL": true})
-	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
-	req.RemoteAddr = "192.168.0.1"
-	mux.ServeHTTP(responseWriter, req)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
-
-	reqlogs := mockLog.GetAllMatching(`INFO: JSON=.*"Code":200.*`)
-	if len(reqlogs) != 1 {
-		t.Errorf("Didn't find info logs with code 200. Instead got:\n%s\n",
-			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
-	}
-
 	// Unused serial, no cache
 	mockLog.Clear()
 	responseWriter = httptest.NewRecorder()
@@ -1973,7 +1951,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
 
-	reqlogs = mockLog.GetAllMatching(`INFO: JSON=.*"Code":404.*`)
+	reqlogs := mockLog.GetAllMatching(`INFO: JSON=.*"Code":404.*`)
 	if len(reqlogs) != 1 {
 		t.Errorf("Didn't find info logs with code 404. Instead got:\n%s\n",
 			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))

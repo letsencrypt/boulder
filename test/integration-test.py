@@ -185,9 +185,9 @@ def test_issuer():
     """
     certr, authzs = auth_and_issue([random_domain()])
     cert = urllib2.urlopen(certr.uri).read()
-    # The chain URI uses HTTPS when UseAIAIssuerURL is set, so include the root
-    # certificate for the WFE's PKI. Note: We use the requests library here so
-    # we honor the REQUESTS_CA_BUNDLE passed by test.sh.
+    # In the future the chain URI will use HTTPS so include the root certificate
+    # for the WFE's PKI. Note: We use the requests library here so we honor the
+    # REQUESTS_CA_BUNDLE passed by test.sh.
     chain = requests.get(certr.cert_chain_uri).content
     parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
     parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)

@@ -31,8 +31,7 @@
       "timeout": "15s"
     },
     "features": {
-      "RPCHeadroom": true,
-      "UseAIAIssuerURL": true
+      "RPCHeadroom": true
     }
   },
 
