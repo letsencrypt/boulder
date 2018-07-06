@@ -86,7 +86,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	for _, i := range rand.Perm(len(group.Logs)) {
 		l := group.Logs[i]
 		go func(i int, l cmd.LogDescription) {
-			// Each submission waits 500ms longer than the previous one, to give the
+			// Each submission waits a bit longer than the previous one, to give the
 			// previous log a chance to reply. If the context is already done by the
 			// time we get here, don't bother submitting. That generally means the
 			// context was canceled because another log returned a success already.
