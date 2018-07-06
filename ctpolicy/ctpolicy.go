@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
@@ -28,7 +29,12 @@ type CTPolicy struct {
 }
 
 // New creates a new CTPolicy struct
-func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger, stats metrics.Scope) *CTPolicy {
+func New(pub core.Publisher,
+	groups []cmd.CTGroup,
+	informational []cmd.LogDescription,
+	log blog.Logger,
+	stats metrics.Scope,
+) *CTPolicy {
 	var finalLogs []cmd.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
@@ -79,7 +85,15 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	// so we maximize the distribution of logs we get SCTs from.
 	for _, i := range rand.Perm(len(group.Logs)) {
 		l := group.Logs[i]
-		go func(l cmd.LogDescription) {
+		go func(i int, l cmd.LogDescription) {
+			// Each submission waits 500ms longer than the previous one, to give the
+			// previous log a chance to reply. If the context is already done by the
+			// time we get here, don't bother submitting. That generally means the
+			// context was canceled because another log returned a success already.
+			time.Sleep(time.Duration(i) * group.Stagger.Duration)
+			if ctx.Err() != nil {
+				return
+			}
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
 				LogURL:       &l.URI,
 				LogPublicKey: &l.Key,
@@ -95,7 +109,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 				return
 			}
 			results <- result{sct: sct.Sct, log: l.URI}
-		}(l)
+		}(i, l)
 	}
 
 	for i := 0; i < len(group.Logs); i++ {
