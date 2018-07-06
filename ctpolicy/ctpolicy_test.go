@@ -183,7 +183,7 @@ func TestStagger(t *testing.T) {
 	ctp := New(countingPub, []cmd.CTGroup{
 		{
 			Name:    "a",
-			Stagger: cmd.ConfigDuration{500 * time.Millisecond},
+			Stagger: cmd.ConfigDuration{Duration: 500 * time.Millisecond},
 			Logs: []cmd.LogDescription{
 				{URI: "abc", Key: "def"},
 				{URI: "ghi", Key: "jkl"},
