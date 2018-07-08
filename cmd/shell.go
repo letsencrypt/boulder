@@ -85,26 +85,53 @@ type grpcLogger struct {
 	blog.Logger
 }
 
+// V returns true if the verbosity level l is less than the verbosity we want to
+// log at.
+func (log grpcLogger) V(l int) bool {
+	return l < 0
+}
+
 func (log grpcLogger) Fatal(args ...interface{}) {
-	log.Print(args...)
+	log.Error(args...)
 	os.Exit(1)
 }
 func (log grpcLogger) Fatalf(format string, args ...interface{}) {
-	log.Printf(format, args...)
+	log.Error(args...)
 	os.Exit(1)
 }
 func (log grpcLogger) Fatalln(args ...interface{}) {
-	log.Println(args...)
+	log.Error(args...)
 	os.Exit(1)
 }
-func (log grpcLogger) Print(args ...interface{}) {
-	log.AuditErr(fmt.Sprint(args...))
+
+func (log grpcLogger) Error(args ...interface{}) {
+	log.Logger.AuditErr(fmt.Sprintln(args...))
 }
-func (log grpcLogger) Printf(format string, args ...interface{}) {
-	log.AuditErrf(format, args...)
+func (log grpcLogger) Errorf(format string, args ...interface{}) {
+	log.Logger.AuditErrf(format, args...)
 }
-func (log grpcLogger) Println(args ...interface{}) {
-	log.AuditErr(fmt.Sprintln(args...))
+func (log grpcLogger) Errorln(args ...interface{}) {
+	log.Logger.AuditErr(fmt.Sprintln(args...))
+}
+
+func (log grpcLogger) Warning(args ...interface{}) {
+	log.Error(args...)
+}
+func (log grpcLogger) Warningf(format string, args ...interface{}) {
+	log.Errorf(format, args...)
+}
+func (log grpcLogger) Warningln(args ...interface{}) {
+	log.Errorln(args...)
+}
+
+func (log grpcLogger) Info(args ...interface{}) {
+	log.Logger.Info(fmt.Sprintln(args...))
+}
+func (log grpcLogger) Infof(format string, args ...interface{}) {
+	log.Logger.Infof(format, args...)
+}
+func (log grpcLogger) Infoln(args ...interface{}) {
+	log.Logger.Info(fmt.Sprintln(args...))
 }
 
 type promLogger struct {
@@ -147,7 +174,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
-	grpclog.SetLogger(grpcLogger{logger})
+	grpclog.SetLoggerV2(grpcLogger{logger})
 	return logger
 }
 
