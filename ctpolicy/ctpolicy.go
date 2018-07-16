@@ -83,9 +83,9 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
 	// so we maximize the distribution of logs we get SCTs from.
-	for _, i := range rand.Perm(len(group.Logs)) {
-		l := group.Logs[i]
-		go func(i int, l cmd.LogDescription) {
+	for i, logNum := range rand.Perm(len(group.Logs)) {
+		ld := group.Logs[logNum]
+		go func(i int, ld cmd.LogDescription) {
 			// Each submission waits a bit longer than the previous one, to give the
 			// previous log a chance to reply. If the context is already done by the
 			// time we get here, don't bother submitting. That generally means the
@@ -95,21 +95,21 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 				return
 			}
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-				LogURL:       &l.URI,
-				LogPublicKey: &l.Key,
+				LogURL:       &ld.URI,
+				LogPublicKey: &ld.Key,
 				Der:          cert,
 				Precert:      &isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of the context being canceled
 				if !canceled.Is(err) {
-					ctp.log.Warningf("ct submission to %q failed: %s", l.URI, err)
+					ctp.log.Warningf("ct submission to %q failed: %s", ld.URI, err)
 				}
 				results <- result{err: err}
 				return
 			}
-			results <- result{sct: sct.Sct, log: l.URI}
-		}(i, l)
+			results <- result{sct: sct.Sct, log: ld.URI}
+		}(i, ld)
 	}
 
 	for i := 0; i < len(group.Logs); i++ {
