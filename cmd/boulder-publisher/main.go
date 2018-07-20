@@ -24,7 +24,6 @@ type config struct {
 
 	Common struct {
 		CT struct {
-			Logs                       []cmd.LogDescription
 			IntermediateBundleFilename string
 		}
 	}
@@ -57,12 +56,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
-	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key, logger)
-		cmd.FailOnError(err, "Unable to parse CT log description")
-	}
-
 	if c.Common.CT.IntermediateBundleFilename == "" {
 		logger.AuditErr("No CT submission bundle provided")
 		os.Exit(1)
@@ -81,7 +74,6 @@ func main() {
 
 	pubi := publisher.New(
 		bundle,
-		logs,
 		logger,
 		scope)
 

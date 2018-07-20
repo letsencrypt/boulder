@@ -164,17 +164,13 @@ type Impl struct {
 	client       *http.Client
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
-	// ctLogs is slightly redundant with the logCache, and should be removed. See
-	// issue https://github.com/letsencrypt/boulder/issues/2357
-	ctLogs  []*Log
-	metrics *pubMetrics
+	metrics      *pubMetrics
 }
 
 // New creates a Publisher that will submit certificates
-// to any CT logs configured in CTConfig
+// to requested CT logs
 func New(
 	bundle []ct.ASN1Cert,
-	logs []*Log,
 	logger blog.Logger,
 	stats metrics.Scope,
 ) *Impl {
@@ -183,7 +179,6 @@ func New(
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
-		ctLogs:  logs,
 		log:     logger,
 		metrics: initMetrics(stats),
 	}
