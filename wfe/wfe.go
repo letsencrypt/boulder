@@ -1237,6 +1237,12 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	logEvent.Extra["Identifier"] = authz.Identifier
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
 
+	// After expiring, authorizations are inaccessible
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
+		return
+	}
+
 	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
