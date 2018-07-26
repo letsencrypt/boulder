@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -102,6 +103,18 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 	case "present-http-or-dns.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=http-01,dns-01"
+		results = append(results, &record)
+	case "present-dns-only-correct-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123; validationmethods=dns-01"
+		results = append(results, &record)
+	case "present-http-only-correct-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123; validationmethods=http-01"
+		results = append(results, &record)
+	case "present-http-only-incorrect-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321; validationmethods=http-01"
 		results = append(results, &record)
 	case "present-correct-accounturi.com":
 		record.Tag = "issue"
@@ -290,6 +303,24 @@ func TestCAAChecking(t *testing.T) {
 			Domain:  "present-correct-accounturi.com",
 			Present: true,
 			Valid:   true,
+		},
+		{
+			Name:    "Good (restricts to http-01 and accounturi, tested with correct account)",
+			Domain:  "present-http-only-correct-accounturi.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Bad (restricts to dns-01 and accounturi, tested with http-01)",
+			Domain:  "present-dns-only-correct-accounturi.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (restricts to http-01 and accounturi, tested with incorrect account)",
+			Domain:  "present-http-only-incorrect-accounturi.com",
+			Present: true,
+			Valid:   false,
 		},
 		{
 			Name:    "Bad (restricts to accounturi, tested with incorrect account)",
@@ -646,4 +677,108 @@ func TestContainsMethod(t *testing.T) {
 
 	test.AssertEquals(t, containsMethod("abc,xyz,123", "456"), false)
 	test.AssertEquals(t, containsMethod("abc", "123"), false)
+}
+
+func TestExtractIssuerDomainAndParameters(t *testing.T) {
+	tests := []struct {
+		value          string
+		wantDomain     string
+		wantParameters map[string]string
+	}{
+		{
+			value:          "",
+			wantDomain:     "",
+			wantParameters: map[string]string{},
+		},
+		{
+			value:          ";",
+			wantDomain:     "",
+			wantParameters: map[string]string{},
+		},
+		{
+			value:          " ; ",
+			wantDomain:     "",
+			wantParameters: map[string]string{},
+		},
+		{
+			value:          "letsencrypt.org",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{},
+		},
+		{
+			value:          "letsencrypt.org;",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{},
+		},
+		{
+			value: "  letsencrypt.org	;foo=bar;baz=bar",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
+		},
+		{
+			value: "	letsencrypt.org ;foo=bar;baz=bar",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
+		},
+		{
+			value: "letsencrypt.org; foo=; baz =	bar",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "", "baz": "bar"},
+		},
+		{
+			value: "letsencrypt.org; foo=	; baz =	bar",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "", "baz": "bar"},
+		},
+		{
+			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a=b	",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "b1,b2,b3", "baz": "a=b"},
+		},
+		{
+			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a = b	",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "b1,b2,b3"},
+		},
+		{
+			value: "letsencrypt.org; foo=b1,b2,b3	; baz=a=	b",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "b1,b2,b3"},
+		},
+		{
+			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a;b	",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"foo": "b1,b2,b3", "baz": "a"},
+		},
+		{
+			value:          "letsencrypt.org; 1=2; baz=a-b",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"1": "2", "baz": "a-b"},
+		},
+		{
+			value:          "letsencrypt.org; 1=2; a-b=c",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{"1": "2"},
+		},
+		{
+			value:          "letsencrypt.org; foo=a\u2615b",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{},
+		},
+		{
+			value:          "letsencrypt.org; foo=b1,b2,b3 baz=a",
+			wantDomain:     "letsencrypt.org",
+			wantParameters: map[string]string{},
+		},
+	}
+	for _, test := range tests {
+		caa := &dns.CAA{Value: test.value}
+		gotDomain, gotParameters := extractIssuerDomainAndParameters(caa)
+		if got, want := gotDomain, test.wantDomain; got != want {
+			t.Errorf("CAA value %q - got domain %q, want %q", test.value, got, want)
+		}
+		if got, want := gotParameters, test.wantParameters; !reflect.DeepEqual(got, want) {
+			t.Errorf("CAA value %q - got parameters %v, want %v", test.value, got, want)
+		}
+	}
 }
