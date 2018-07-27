@@ -262,7 +262,6 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
 	pub := New(nil,
-		nil,
 		log,
 		metrics.NewNoopScope())
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert{Data: intermediatePEM.Bytes})
@@ -277,14 +276,14 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	return pub, leaf, k
 }
 
-func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
+func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) *Log {
 	uri := fmt.Sprintf("http://localhost:%d", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), log)
 	test.AssertNotError(t, err, "Couldn't create log")
 	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
-	pub.ctLogs = append(pub.ctLogs, newLog)
+	return newLog
 }
 
 func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
@@ -322,7 +321,7 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
+	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
 	trueBool := true
@@ -330,7 +329,7 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -346,7 +345,7 @@ func TestTimestampVerificationPast(t *testing.T) {
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
-	addLog(t, pub, port, &k.PublicKey)
+	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
 	trueBool := true
@@ -354,7 +353,7 @@ func TestTimestampVerificationPast(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &pub.ctLogs[0].uri, LogPublicKey: &pub.ctLogs[0].logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
