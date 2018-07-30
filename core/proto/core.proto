@@ -26,6 +26,8 @@ message ValidationRecord {
         // core/objects.go and the comment on the ValidationRecord structure
         // definition for more information.
         repeated bytes addressesTried = 7; // net.IP.MarshalText()
+
+        optional string caaStatus = 8;
 }
 
 message ProblemDetails {

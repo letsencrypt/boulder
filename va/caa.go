@@ -29,7 +29,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		accountURIID:     req.AccountURIID,
 		validationMethod: req.ValidationMethod,
 	}
-	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
+	if response := va.checkCAA(ctx, acmeID, params); response.problemDetails != nil {
+		prob := response.problemDetails
 		typ := string(prob.Type)
 		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
@@ -47,15 +48,25 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	params *caaParams) *probs.ProblemDetails {
+	params *caaParams) *validationRecordsProblems {
 	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
+	var validationError []core.ValidationRecord
+	if features.Enabled(features.CAAValidationRecord) {
+		validationError = []core.ValidationRecord{{CAAStatus: core.CAAStatusInvalid}}
+	}
 	if err != nil {
-		return probs.DNS("%v", err)
+		return &validationRecordsProblems{
+			validationRecords: validationError,
+			problemDetails:    probs.DNS("%v", err),
+		}
 	}
 
 	recordsStr, err := json.Marshal(&records)
 	if err != nil {
-		return probs.CAA("CAA records for %s were malformed", identifier.Value)
+		return &validationRecordsProblems{
+			validationRecords: validationError,
+			problemDetails:    probs.CAA("CAA records for %s were malformed", identifier.Value),
+		}
 	}
 
 	accountID, challengeType := "unknown", "unknown"
@@ -69,9 +80,24 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
 		identifier.Value, present, accountID, challengeType, valid, recordsStr)
 	if !valid {
-		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
+		return &validationRecordsProblems{
+			validationRecords: validationError,
+			problemDetails:    probs.CAA("CAA record for %s prevents issuance", identifier.Value),
+		}
 	}
-	return nil
+
+	var caaStatus []core.ValidationRecord
+	if features.Enabled(features.CAAValidationRecord) {
+		if present {
+			caaStatus = []core.ValidationRecord{{CAAStatus: core.CAAStatusFoundValid}}
+		} else {
+			caaStatus = []core.ValidationRecord{{CAAStatus: core.CAAStatusNoneFound}}
+		}
+	}
+	return &validationRecordsProblems{
+		validationRecords: caaStatus,
+		problemDetails:    nil,
+	}
 }
 
 // CAASet consists of filtered CAA records

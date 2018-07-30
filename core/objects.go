@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -30,6 +31,9 @@ type IdentifierType string
 
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
+
+// CAAStatus defines the result of the CAA check recorded in validation records
+type CAAStatus string
 
 // These statuses are the states of authorizations, challenges, and registrations
 const (
@@ -72,6 +76,13 @@ const (
 	ChallengeTypeTLSSNI01  = "tls-sni-01"
 	ChallengeTypeDNS01     = "dns-01"
 	ChallengeTypeTLSALPN01 = "tls-alpn-01"
+)
+
+// These status are the CAA types recorded in validation records
+const (
+	CAAStatusNoneFound  = CAAStatus("none-found")
+	CAAStatusFoundValid = CAAStatus("found-valid")
+	CAAStatusInvalid    = CAAStatus("invalid")
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
@@ -174,7 +185,7 @@ type ValidationRecord struct {
 	URL string `json:"url,omitempty"`
 
 	// Shared
-	Hostname          string   `json:"hostname"`
+	Hostname          string   `json:"hostname,omitempty"`
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
@@ -193,6 +204,9 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+
+	// CAA
+	CAAStatus CAAStatus `json:"caaStatus,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -270,30 +284,44 @@ func (ch Challenge) RecordsSane() bool {
 		return false
 	}
 
+	challengeRecords := make([]ValidationRecord, 0, cap(ch.ValidationRecord))
+	caaRecords := make([]ValidationRecord, 0, cap(ch.ValidationRecord))
+	for _, rec := range ch.ValidationRecord {
+		if rec.CAAStatus != "" {
+			caaRecords = append(caaRecords, rec)
+		} else {
+			challengeRecords = append(challengeRecords, rec)
+		}
+	}
+
+	if len(challengeRecords) == 0 || features.Enabled(features.CAAValidationRecord) && len(caaRecords) == 0 {
+		return false
+	}
+
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
-		for _, rec := range ch.ValidationRecord {
+		for _, rec := range challengeRecords {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
 		}
 	case ChallengeTypeTLSSNI01, ChallengeTypeTLSALPN01:
-		if len(ch.ValidationRecord) > 1 {
+		if len(challengeRecords) > 1 {
 			return false
 		}
-		if ch.ValidationRecord[0].URL != "" {
+		if challengeRecords[0].URL != "" {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
-			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
+		if challengeRecords[0].Hostname == "" || challengeRecords[0].Port == "" ||
+			challengeRecords[0].AddressUsed == nil || len(challengeRecords[0].AddressesResolved) == 0 {
 			return false
 		}
 	case ChallengeTypeDNS01:
-		if len(ch.ValidationRecord) > 1 {
+		if len(challengeRecords) > 1 {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" {
+		if challengeRecords[0].Hostname == "" {
 			return false
 		}
 		return true

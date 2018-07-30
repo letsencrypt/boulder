@@ -167,7 +167,8 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
+	response := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
+	err := response.problemDetails
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
@@ -636,6 +637,125 @@ func TestCheckAccountURI(t *testing.T) {
 			t.Errorf("checkAccountURI(%q, %v, %d) = %v, want %v", test.uri, test.prefixes, test.id, got, want)
 		}
 	}
+}
+
+func TestCAAValidationRecords(t *testing.T) {
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+	defer features.Reset()
+
+	testCases := []struct {
+		Name    string
+		Domain  string
+		Status  core.CAAStatus
+		Problem bool
+	}{
+		{
+			Name:    "Bad (Reserved)",
+			Domain:  "reserved.com",
+			Status:  core.CAAStatusInvalid,
+			Problem: true,
+		},
+		{
+			Name:    "Good (absent)",
+			Domain:  "absent.com",
+			Status:  core.CAAStatusNoneFound,
+			Problem: false,
+		},
+		{
+			Name:    "Good (present and valid)",
+			Domain:  "present.com",
+			Status:  core.CAAStatusFoundValid,
+			Problem: false,
+		},
+		{
+			Name:    "Bad (restricts to dns-01, but tested with http-01)",
+			Domain:  "present-dns-only.com",
+			Status:  core.CAAStatusInvalid,
+			Problem: true,
+		},
+		{
+			Name:    "Good (restricts to http-01, tested with http-01)",
+			Domain:  "present-http-only.com",
+			Status:  core.CAAStatusFoundValid,
+			Problem: false,
+		},
+		{
+			Name:    "Good (restricts to accounturi, tested with correct account)",
+			Domain:  "present-correct-accounturi.com",
+			Status:  core.CAAStatusFoundValid,
+			Problem: false,
+		},
+		{
+			Name:    "Bad (restricts to accounturi, tested with incorrect account)",
+			Domain:  "present-incorrect-accounturi.com",
+			Status:  core.CAAStatusInvalid,
+			Problem: true,
+		},
+		{
+			Name:    "Bad (timeout)",
+			Domain:  "caa-timeout.com",
+			Status:  core.CAAStatusInvalid,
+			Problem: true,
+		},
+	}
+
+	accountURIID := int64(123)
+	method := "http-01"
+	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
+
+	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
+	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
+
+	for _, caaTest := range testCases {
+		mockLog := va.log.(*blog.Mock)
+		mockLog.Clear()
+		t.Run(caaTest.Name+"flag disabled", func(t *testing.T) {
+			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			recordAndProblem := va.checkCAA(ctx, ident, params)
+			if caaTest.Problem && recordAndProblem.problemDetails == nil {
+				t.Errorf("checkCAA validationRecordProblem missing problem for %s", caaTest.Domain)
+			} else if !caaTest.Problem && recordAndProblem.problemDetails != nil {
+				t.Errorf("checkCAA validationRecordProblem unexpected problem for %s: %s", caaTest.Domain, recordAndProblem.problemDetails)
+			}
+			if recordAndProblem.validationRecords != nil {
+				t.Errorf("CAA validation records present for %s when flag disabled", caaTest.Domain)
+			}
+		})
+	}
+
+	if err := features.Set(map[string]bool{"CAAValidationRecord": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+
+	for _, caaTest := range testCases {
+		mockLog := va.log.(*blog.Mock)
+		mockLog.Clear()
+		t.Run(caaTest.Name+"flag enabled", func(t *testing.T) {
+			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			recordAndProblem := va.checkCAA(ctx, ident, params)
+			if caaTest.Problem && recordAndProblem.problemDetails == nil {
+				t.Errorf("checkCAA validationRecordProblem missing problem for %s", caaTest.Domain)
+			} else if !caaTest.Problem && recordAndProblem.problemDetails != nil {
+				t.Errorf("checkCAA validationRecordProblem unexpected problem for %s: %s", caaTest.Domain, recordAndProblem.problemDetails)
+			}
+			if recordAndProblem.validationRecords == nil {
+				t.Errorf("Missing CAA validation record for %s", caaTest.Domain)
+			} else if len(recordAndProblem.validationRecords) != 1 {
+				t.Errorf("CAA validation records length was not 1 for %s, was instead %d", caaTest.Domain, len(recordAndProblem.validationRecords))
+			} else {
+				validationRecord := recordAndProblem.validationRecords[0]
+				if validationRecord.CAAStatus == "" {
+					t.Errorf("checkCAA validationRecord status missing for %s", caaTest.Domain)
+				} else if validationRecord.CAAStatus != caaTest.Status {
+					t.Errorf("checkCAA validationRecord status mismatch for %s: got %s expected %s", caaTest.Domain, validationRecord.CAAStatus, caaTest.Status)
+				}
+			}
+		})
+	}
+
 }
 
 func TestContainsMethod(t *testing.T) {
