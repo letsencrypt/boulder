@@ -42,6 +42,8 @@ const (
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
+	// Record CAA staus in validation records
+	CAAValidationRecord
 )
 
 // List of features and their default value, protected by fMu
@@ -64,6 +66,7 @@ var features = map[FeatureFlag]bool{
 	OrderReadyStatus:            false,
 	CAAValidationMethods:        false,
 	CAAAccountURI:               false,
+	CAAValidationRecord:         false,
 }
 
 var fMu = new(sync.RWMutex)

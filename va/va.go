@@ -867,6 +867,11 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		invalidRecord, andMore, challengeSubdomain)
 }
 
+type validationRecordsProblems struct {
+	validationRecords []core.ValidationRecord
+	problemDetails    *probs.ProblemDetails
+}
+
 // validate performs a challenge validation and, in parallel,
 // checks CAA and GSB for the identifier. If any of those steps fails, it
 // returns a ProblemDetails plus the validation records created during the
@@ -890,7 +895,7 @@ func (va *ValidationAuthorityImpl) validate(
 	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
 	// we can dispatch `checkCAA` with the provided `identifier` instead of
 	// `baseIdentifier`
-	ch := make(chan *probs.ProblemDetails, 2)
+	ch := make(chan *validationRecordsProblems, 2)
 	go func() {
 		params := &caaParams{
 			accountURIID:     &authz.RegistrationID,
@@ -900,8 +905,11 @@ func (va *ValidationAuthorityImpl) validate(
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
-			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
-				baseIdentifier.Value)
+			ch <- &validationRecordsProblems{
+				validationRecords: nil,
+				problemDetails: probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
+					baseIdentifier.Value),
+			}
 		} else {
 			ch <- nil
 		}
@@ -914,8 +922,12 @@ func (va *ValidationAuthorityImpl) validate(
 	}
 
 	for i := 0; i < cap(ch); i++ {
-		if extraProblem := <-ch; extraProblem != nil {
-			return validationRecords, extraProblem
+		response := <-ch
+		if response != nil {
+			validationRecords = append(validationRecords, response.validationRecords...)
+			if response.problemDetails != nil {
+				return validationRecords, response.problemDetails
+			}
 		}
 	}
 	return validationRecords, nil

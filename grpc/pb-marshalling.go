@@ -144,6 +144,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 }
 
 func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
+	status := string(record.CAAStatus)
 	addrs := make([][]byte, len(record.AddressesResolved))
 	addrsTried := make([][]byte, len(record.AddressesTried))
 	var err error
@@ -165,6 +166,7 @@ func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		Authorities:       record.Authorities,
 		Url:               &record.URL,
 		AddressesTried:    addrsTried,
+		CaaStatus:         &status,
 	}, nil
 }
 
@@ -196,6 +198,7 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		Authorities:       in.Authorities,
 		URL:               *in.Url,
 		AddressesTried:    addrsTried,
+		CAAStatus:         core.CAAStatus(*in.CaaStatus),
 	}, nil
 }
 
