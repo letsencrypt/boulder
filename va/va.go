@@ -803,7 +803,7 @@ func detailedError(err error) *probs.ProblemDetails {
 			syscallErr.Err == syscall.ECONNRESET {
 			return probs.ConnectionFailure("Connection reset by peer")
 		} else if netErr.Timeout() && netErr.Op == "dial" {
-			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			return probs.ConnectionFailure("Timeout during connect (likely a DNS or firewall problem)")
 		} else if netErr.Timeout() {
 			return probs.ConnectionFailure("Timeout during %s (your server may be slow or overloaded)", netErr.Op)
 		}
