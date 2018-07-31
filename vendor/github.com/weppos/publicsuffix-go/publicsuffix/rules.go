@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 53ef89 (Mon May 14 15:36:24 2018)"
+const defaultListVersion = "PSL version 267707 (Thu Jul 19 16:32:46 2018)"
 
 func init() {
-	r := [8602]Rule{
+	r := [8615]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -855,7 +855,15 @@ func init() {
 		{1, "mil.gt", 2, false},
 		{1, "net.gt", 2, false},
 		{1, "org.gt", 2, false},
-		{2, "gu", 2, false},
+		{1, "gu", 1, false},
+		{1, "com.gu", 2, false},
+		{1, "edu.gu", 2, false},
+		{1, "gov.gu", 2, false},
+		{1, "guam.gu", 2, false},
+		{1, "info.gu", 2, false},
+		{1, "net.gu", 2, false},
+		{1, "org.gu", 2, false},
+		{1, "web.gu", 2, false},
 		{1, "gw", 1, false},
 		{1, "gy", 1, false},
 		{1, "co.gy", 2, false},
@@ -3323,7 +3331,14 @@ func init() {
 		{1, "jeonnam.kr", 2, false},
 		{1, "seoul.kr", 2, false},
 		{1, "ulsan.kr", 2, false},
-		{2, "kw", 2, false},
+		{1, "kw", 1, false},
+		{1, "com.kw", 2, false},
+		{1, "edu.kw", 2, false},
+		{1, "emb.kw", 2, false},
+		{1, "gov.kw", 2, false},
+		{1, "ind.kw", 2, false},
+		{1, "net.kw", 2, false},
+		{1, "org.kw", 2, false},
 		{1, "ky", 1, false},
 		{1, "edu.ky", 2, false},
 		{1, "gov.ky", 2, false},
@@ -6631,7 +6646,6 @@ func init() {
 		{1, "itau", 1, false},
 		{1, "itv", 1, false},
 		{1, "iveco", 1, false},
-		{1, "iwc", 1, false},
 		{1, "jaguar", 1, false},
 		{1, "java", 1, false},
 		{1, "jcb", 1, false},
@@ -6758,7 +6772,6 @@ func init() {
 		{1, "memorial", 1, false},
 		{1, "men", 1, false},
 		{1, "menu", 1, false},
-		{1, "meo", 1, false},
 		{1, "merckmsd", 1, false},
 		{1, "metlife", 1, false},
 		{1, "miami", 1, false},
@@ -6973,7 +6986,6 @@ func init() {
 		{1, "sandvikcoromant", 1, false},
 		{1, "sanofi", 1, false},
 		{1, "sap", 1, false},
-		{1, "sapo", 1, false},
 		{1, "sarl", 1, false},
 		{1, "sas", 1, false},
 		{1, "save", 1, false},
@@ -8136,6 +8148,7 @@ func init() {
 		{1, "withgoogle.com", 2, true},
 		{1, "withyoutube.com", 2, true},
 		{1, "hashbang.sh", 2, true},
+		{1, "hasura.app", 2, true},
 		{1, "hasura-app.io", 2, true},
 		{1, "hepforge.org", 2, true},
 		{1, "herokuapp.com", 2, true},
