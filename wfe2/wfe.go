@@ -469,7 +469,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		response.WriteHeader(http.StatusOK)
+
+		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
+		if err != nil {
+			// ServerInternal because we just created this account, and it
+			// should be OK.
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
+			return
+		}
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)

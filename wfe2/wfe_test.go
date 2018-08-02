@@ -1323,7 +1323,7 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
 }
 
 func TestGetAuthorization(t *testing.T) {
