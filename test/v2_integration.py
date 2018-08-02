@@ -307,7 +307,7 @@ def test_only_return_existing_reg():
         "onlyReturnExisting": True
     })
     resp = client.net.post(client.directory['newAccount'], acct, acme_version=2)
-    if resp.status_code != 200 or len(resp.content) != 0:
+    if resp.status_code != 200:
         raise Exception("incorrect response returned for onlyReturnExisting")
 
     other_client = chisel2.uninitialized_client()
