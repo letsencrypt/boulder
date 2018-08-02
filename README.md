@@ -6,7 +6,7 @@ This is an implementation of an ACME-based CA. The [ACME protocol](https://githu
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
 
-Quickstart
+Development Setup
 ------
 
 Boulder has a Dockerfile to make it easy to install and set up all its
@@ -87,78 +87,6 @@ images for both the boulder and bhsm containers and re-create them. The quickest
 to do this is with this command:
 
     ./docker-rebuild.sh
-
-Slow start
-----------
-
-If you can't use the Docker setup, here are instructions for setting up a
-Boulder development environment without it.
-
-We recommend setting git's [fsckObjects
-setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
-for better integrity guarantees when getting updates.
-
-Boulder requires an installation of libtool-ltdl, goose, SoftHSM, and MariaDB 10.1 to work correctly. If you want to save some trouble installing MariaDB and SoftHSM you can run them using Docker:
-
-    docker-compose up -d bmysql bhsm
-
-Boulder is only supported on Go 1.10 or above. This version may not be
-available in OS repositories. If so, you will have to install from https://golang.org/dl/.
-Add ```${GOPATH}/bin``` to your path.
-
-Ubuntu:
-
-    sudo apt-get install libltdl3-dev mariadb-server
-
-CentOS:
-
-    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client
-
-Arch Linux:
-
-    sudo pacman -S libtool mariadb --needed
-
-OS X:
-
-    brew install libtool mariadb
-
-or
-
-    sudo port install libtool mariadb-server
-
-(On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
-
-Edit /etc/hosts to add this line:
-
-    127.0.0.1 boulder boulder-mysql
-
-Resolve Go-dependencies, set up a database:
-
-    ./test/setup.sh
-
-**Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB
-user with the default password, so if you have disabled that account
-or changed the password you may have to adjust the file or recreate the commands.
-
-Install SoftHSM to store the CA private key in a way that can be accessed using
-PKCS#11. Then run ./test/make-softhsm.sh and follow its instructions.
-
-Install Python packages for integration test:
-
-    virtualenv venv
-    . venv/bin/activate
-    pip install -r test/requirements.txt
-    # If you want to develop against a locally modified Python acme package,
-    # this will install the package such that updates are reflected immediately:
-    pip install -e ~/certbot/acme[dev]
-
-Start all boulder components with test configs (Ctrl-C kills all):
-
-    ./start.py
-
-Run tests:
-
-    ./test.sh
 
 Working with a client:
 ----------------------
