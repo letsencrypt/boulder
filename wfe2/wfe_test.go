@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -2052,11 +2053,12 @@ func TestKeyRollover(t *testing.T) {
 		}`)
 
 	testCases := []struct {
-		Name             string
-		Payload          string
-		ExpectedResponse string
-		NewKey           crypto.Signer
-		ErrorStatType    string
+		Name              string
+		ACME13KeyRollover bool
+		Payload           string
+		ExpectedResponse  string
+		NewKey            crypto.Signer
+		ErrorStatType     string
 	}{
 		{
 			Name:    "Missing account URL",
@@ -2125,10 +2127,78 @@ func TestKeyRollover(t *testing.T) {
 		   }`,
 			NewKey: newKeyPriv,
 		},
+		{
+			Name:              "ACME13KeyRollover, legacy rollover request",
+			ACME13KeyRollover: true,
+			Payload:           `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverWrongOldKey",
+		},
+		{
+			Name:              "ACME13KeyRollover, Missing account URL",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverMismatchedAccount",
+		},
+		{
+			Name:              "ACME13KeyRollover, incorrect old key",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverWrongOldKey",
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request, key exists",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+                          "type": "urn:ietf:params:acme:error:malformed",
+                          "detail": "New key is already in use for a different account",
+                          "status": 409
+                        }`,
+			NewKey: existingKey,
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if tc.ACME13KeyRollover {
+				_ = features.Set(map[string]bool{"ACME13KeyRollover": true})
+				defer features.Reset()
+			}
 			wfe.stats.joseErrorCount.Reset()
 			responseWriter.Body.Reset()
 			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)

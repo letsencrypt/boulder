@@ -1373,6 +1373,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
+	oldKey := acct.Key
 
 	// Parse the inner JWS from the validated outer JWS body
 	innerJWS, prob := wfe.parseJWS(outerBody)
@@ -1382,21 +1383,21 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverRequest, prob := wfe.validKeyRollover(outerJWS, innerJWS, logEvent)
+	rolloverOperation, prob := wfe.validKeyRollover(outerJWS, innerJWS, oldKey, logEvent)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
-	newKey := rolloverRequest.NewKey
+	newKey := rolloverOperation.NewKey
 
 	// Check that the rollover request's account URL matches the account URL used
 	// to validate the outer JWS
 	header := outerJWS.Signatures[0].Header
-	if rolloverRequest.Account != header.KeyID {
+	if rolloverOperation.Account != header.KeyID {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedAccount"}).Inc()
 		wfe.sendError(response, logEvent, probs.Malformed(
 			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
-				rolloverRequest.Account, header.KeyID)), nil)
+				rolloverOperation.Account, header.KeyID)), nil)
 		return
 	}
 
@@ -1405,7 +1406,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// will find the old account if its equal to the old account key. We
 	// check new key against old key explicitly to save an RPC round trip and a DB
 	// query for this easy rejection case
-	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
+	keysEqual, err := core.PublicKeysEqual(newKey.Key, oldKey.Key)
 	if err != nil {
 		// This should not happen - both the old and new key have been validated by now
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), err)

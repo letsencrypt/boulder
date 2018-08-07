@@ -37,7 +37,8 @@
     },
     "features": {
       "EnforceV2ContentType": true,
-      "RPCHeadroom": true
+      "RPCHeadroom": true,
+      "ACME13KeyRollover": true
     }
   },
 
