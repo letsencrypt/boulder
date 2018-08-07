@@ -603,9 +603,30 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
 }
 
-// rolloverRequest is a struct representing an ACME key rollover request
+// rolloverOperation is a struct representing a requested rollover operation
+// from the specified old key to the new key for the given account ID. It is
+// composed based on a rolloverRequest or a rolloverRequestDraft13 based on the
+// `features.ACME13KeyRollover` feature flag.
+type rolloverOperation struct {
+	OldKey  jose.JSONWebKey
+	NewKey  jose.JSONWebKey
+	Account string
+}
+
+// rolloverRequest is a client request to change the account ID provided to the
+// new key provided. This is the legacy format used by ACMEv2 pre-draft13.
+// TODO(@cpu): Delete this type once features.ACME13KeyRollover is active
+// everywhere.
 type rolloverRequest struct {
 	NewKey  jose.JSONWebKey
+	Account string
+}
+
+// rolloverRequestDraft13 is a client request to change the key for the account
+// ID provided from the specified old key to a new key (the embedded JWK in the
+// inner JWS). This type is used when features.ACME13KeyRollover is enabled.
+type rolloverRequestDraft13 struct {
+	OldKey  jose.JSONWebKey
 	Account string
 }
 
@@ -617,17 +638,26 @@ type rolloverRequest struct {
 // 1) the inner JWS is valid and well formed
 // 2) the inner JWS has the same "url" header as the outer JWS
 // 3) the inner JWS is self-authenticated with an embedded JWK
-// 4) the payload of the inner JWS is a valid JSON key change object
-// 5) that the key specified in the key change object *also* verifies the inner JWS
-// A *rolloverRequest object and is returned if successfully validated,
-// otherwise a problem is returned. The caller is left to verify whether the
-// new key is appropriate (e.g. isn't being used by another existing account)
-// and that the account field of the rollover object matches the account that
-// verified the outer JWS.
+//
+// If features.ACME13KeyRollover is enabled this function verifies that the
+// inner JWS' body is a rolloverRequestDraft13 instance that specifies the
+// correct oldKey. The returned rolloverOperation's NewKey field will be set to
+// the JWK from the inner JWS.
+// If features.ACME13KeyRollover is disabled this function verifies that the
+// inner JWS' body is a rolloverRequest instance and that the key in newKey
+// validates the inner JWS signature. The returned rolloverOperations' NewKey
+// field will be set to the JWK from the rolloverRequest.
+//
+// In both cases A *rolloverOperation object and is returned if successfully
+// validated, otherwise a problem is returned. The caller is left to verify
+// whether the new key is appropriate (e.g. isn't being used by another existing
+// account) and that the account field of the rollover object matches the
+// account that verified the outer JWS.
 func (wfe *WebFrontEndImpl) validKeyRollover(
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
-	logEvent *web.RequestEvent) (*rolloverRequest, *probs.ProblemDetails) {
+	oldKey *jose.JSONWebKey,
+	logEvent *web.RequestEvent) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS
 	jwk, prob := wfe.extractJWK(innerJWS)
@@ -664,21 +694,53 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		return nil, prob
 	}
 
-	// Unmarshal the inner JWS' key roll over request
-	var req rolloverRequest
-	if json.Unmarshal(innerPayload, &req) != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
-		return nil, probs.Malformed(
-			"Inner JWS payload did not parse as JSON key rollover object")
+	result := &rolloverOperation{OldKey: *oldKey}
+	if !features.Enabled(features.ACME13KeyRollover) {
+		// Unmarshal the inner JWS' key roll over request
+		var req rolloverRequest
+		if json.Unmarshal(innerPayload, &req) != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
+			return nil, probs.Malformed(
+				"Inner JWS payload did not parse as JSON key rollover object")
+		}
+
+		// Verify that the key roll over request's NewKey *also* validates the inner
+		// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
+		// the JWS.
+		if _, err := innerJWS.Verify(req.NewKey); err != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSNewKeyVerifyFailed"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not verify with specified new key")
+		}
+		result.Account = req.Account
+		// Use the JWK specified in the key rollover request in pre-draft-13 key rollovers
+		result.NewKey = req.NewKey
+	} else {
+		var req rolloverRequestDraft13
+		if json.Unmarshal(innerPayload, &req) != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
+			return nil, probs.Malformed(
+				"Inner JWS payload did not parse as JSON key rollover object")
+		}
+
+		// If there's no oldkey specified fail before trying to use
+		// core.PublicKeyEqual on a nil argument.
+		if req.OldKey.Key == nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverWrongOldKey"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not contain old key field matching current account key")
+		}
+
+		// If ACME13KeyRollover is enabled then we must validate that the inner JWS'
+		// rollover request specifies the correct oldKey.
+		if keysEqual, err := core.PublicKeysEqual(req.OldKey.Key, oldKey.Key); err != nil {
+			return nil, probs.Malformed("Unable to compare new and old keys: %s", err.Error())
+		} else if !keysEqual {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverWrongOldKey"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not contain old key field matching current account key")
+		}
+		result.Account = req.Account
+		// Use the JWK pulled from the inner JWS as the new key for draft-13 key rollovers
+		result.NewKey = *jwk
 	}
 
-	// Verify that the key roll over request's NewKey *also* validates the inner
-	// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
-	// the JWS.
-	if _, err := innerJWS.Verify(req.NewKey); err != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSNewKeyVerifyFailed"}).Inc()
-		return nil, probs.Malformed("Inner JWS does not verify with specified new key")
-	}
-
-	return &req, nil
+	return result, nil
 }
