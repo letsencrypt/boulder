@@ -684,96 +684,111 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		value          string
 		wantDomain     string
 		wantParameters map[string]string
+		wantValid      bool
 	}{
 		{
 			value:          "",
 			wantDomain:     "",
 			wantParameters: map[string]string{},
+			wantValid:      true,
 		},
 		{
 			value:          ";",
 			wantDomain:     "",
 			wantParameters: map[string]string{},
+			wantValid:      true,
 		},
 		{
 			value:          " ; ",
 			wantDomain:     "",
 			wantParameters: map[string]string{},
+			wantValid:      true,
 		},
 		{
 			value:          "letsencrypt.org",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{},
+			wantValid:      true,
 		},
 		{
 			value:          "letsencrypt.org;",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{},
+			wantValid:      true,
 		},
 		{
 			value: "  letsencrypt.org	;foo=bar;baz=bar",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
+			wantValid:      true,
 		},
 		{
 			value: "	letsencrypt.org ;foo=bar;baz=bar",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
+			wantValid:      true,
 		},
 		{
 			value: "letsencrypt.org; foo=; baz =	bar",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"foo": "", "baz": "bar"},
+			wantValid:      true,
 		},
 		{
 			value: "letsencrypt.org; foo=	; baz =	bar",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"foo": "", "baz": "bar"},
+			wantValid:      true,
 		},
 		{
 			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a=b	",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"foo": "b1,b2,b3", "baz": "a=b"},
+			wantValid:      true,
 		},
 		{
 			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a = b	",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "b1,b2,b3"},
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
 			value: "letsencrypt.org; foo=b1,b2,b3	; baz=a=	b",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "b1,b2,b3"},
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
 			value: "letsencrypt.org; foo=b1,b2,b3	; baz =		a;b	",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "b1,b2,b3", "baz": "a"},
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
 			value:          "letsencrypt.org; 1=2; baz=a-b",
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"1": "2", "baz": "a-b"},
+			wantValid:      true,
 		},
 		{
-			value:          "letsencrypt.org; 1=2; a-b=c",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"1": "2"},
+			value:      "letsencrypt.org; 1=2; a-b=c",
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
-			value:          "letsencrypt.org; foo=a\u2615b",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{},
+			value:      "letsencrypt.org; foo=a\u2615b",
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
-			value:          "letsencrypt.org; foo=b1,b2,b3 baz=a",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{},
+			value:      "letsencrypt.org; foo=b1,b2,b3 baz=a",
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 	}
 	for _, test := range tests {
 		caa := &dns.CAA{Value: test.value}
-		gotDomain, gotParameters := extractIssuerDomainAndParameters(caa)
+		gotDomain, gotParameters, gotValid := extractIssuerDomainAndParameters(caa)
+		if got, want := gotValid, test.wantValid; got != want {
+			t.Errorf("CAA value %q - got valid %v, want %v", test.value, got, want)
+		}
 		if got, want := gotDomain, test.wantDomain; got != want {
 			t.Errorf("CAA value %q - got domain %q, want %q", test.value, got, want)
 		}

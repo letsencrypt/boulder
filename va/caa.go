@@ -263,8 +263,8 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range records {
-		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
-		if caaIssuerDomain != va.issuerDomain {
+		caaIssuerDomain, caaParameters, caaValid := extractIssuerDomainAndParameters(caa)
+		if !caaValid || caaIssuerDomain != va.issuerDomain {
 			continue
 		}
 
@@ -322,8 +322,8 @@ func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID i
 // RFC 6844bis draft (https://tools.ietf.org/html/draft-ietf-lamps-rfc6844bis-00),
 // where all components are semi-colon separated. The domain name (which may be
 // an empty string in the unsatisfiable case) and a tag-value map of parameters
-// are returned.
-func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
+// are returned, along with a bool indicating if the CAA record is valid.
+func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string, valid bool) {
 	isIssueSpace := func(r rune) bool {
 		return r == '\t' || r == ' '
 	}
@@ -332,40 +332,42 @@ func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters m
 	// parameter tag or value, hence we can simply split on semi-colons.
 	parts := strings.Split(caa.Value, ";")
 	domain = strings.TrimFunc(parts[0], isIssueSpace)
-
 	parameters = make(map[string]string)
-	for _, parameter := range parts[1:] {
-		valid := true
 
+	// Handle the case where a semi-colon is specified following the domain
+	// but no parameters are given.
+	if len(parts[1:]) == 1 && strings.TrimFunc(parts[1], isIssueSpace) == "" {
+		return domain, parameters, true
+	}
+
+	for _, parameter := range parts[1:] {
 		// A parameter tag cannot include equal signs (ASCII 0x3D),
-		// however they are permitted in the value.
+		// however they are permitted in the value itself.
 		tv := strings.SplitN(parameter, "=", 2)
 		if len(tv) != 2 {
-			// TODO(4a6f656c): Should we be silently ignoring incorrectly
-			// formatted parameters?
-			continue
+			return domain, nil, false
 		}
 
 		tag := strings.TrimFunc(tv[0], isIssueSpace)
 		for _, r := range []rune(tag) {
 			// ASCII alpha/digits.
+			// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
 			if r < 0x30 || r > 0x39 && r < 0x41 || r > 0x5a && r < 0x61 || r > 0x7a {
-				valid = false
+				return domain, nil, false
 			}
 		}
 
 		value := strings.TrimFunc(tv[1], isIssueSpace)
 		for _, r := range []rune(value) {
 			// ASCII without whitespace/semi-colons.
+			// value = *(%x21-3A / %x3C-7E)
 			if r < 0x21 || r > 0x3a && r < 0x3c || r > 0x7e {
-				valid = false
+				return domain, nil, false
 			}
 		}
 
-		if valid {
-			parameters[tag] = value
-		}
+		parameters[tag] = value
 	}
 
-	return domain, parameters
+	return domain, parameters, true
 }
