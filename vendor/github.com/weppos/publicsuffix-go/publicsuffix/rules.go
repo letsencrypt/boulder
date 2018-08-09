@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 267707 (Thu Jul 19 16:32:46 2018)"
+const defaultListVersion = "PSL version f8ccab (Wed Aug  8 09:06:53 2018)"
 
 func init() {
-	r := [8615]Rule{
+	r := [8618]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -302,7 +302,12 @@ func init() {
 		{1, "gov.bm", 2, false},
 		{1, "net.bm", 2, false},
 		{1, "org.bm", 2, false},
-		{2, "bn", 2, false},
+		{1, "bn", 1, false},
+		{1, "com.bn", 2, false},
+		{1, "edu.bn", 2, false},
+		{1, "gov.bn", 2, false},
+		{1, "net.bn", 2, false},
+		{1, "org.bn", 2, false},
 		{1, "bo", 1, false},
 		{1, "com.bo", 2, false},
 		{1, "edu.bo", 2, false},
@@ -7321,7 +7326,6 @@ func init() {
 		{1, "xn--w4rs40l", 1, false},
 		{1, "xn--xhq521b", 1, false},
 		{1, "xn--zfr164b", 1, false},
-		{1, "xperia", 1, false},
 		{1, "xyz", 1, false},
 		{1, "yachts", 1, false},
 		{1, "yahoo", 1, false},
@@ -8516,7 +8520,6 @@ func init() {
 		{2, "stolos.io", 3, true},
 		{1, "spacekit.io", 2, true},
 		{1, "customer.speedpartner.de", 3, true},
-		{1, "stackspace.space", 2, true},
 		{1, "storj.farm", 2, true},
 		{1, "utwente.io", 2, true},
 		{1, "temp-dns.com", 2, true},
