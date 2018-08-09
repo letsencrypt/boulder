@@ -104,7 +104,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	shouldBeTLDError := []string{
 		`co.uk`,
-		`foo.bn`,
+		`foo.bd`,
 	}
 
 	shouldBeBlacklisted := []string{
