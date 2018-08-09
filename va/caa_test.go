@@ -92,6 +92,14 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
 		results = append(results, &record)
+	case "present-with-invalid-tag.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; a_b=123"
+		results = append(results, &record)
+	case "present-with-invalid-value.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; ab=1 2 3"
+		results = append(results, &record)
 	case "present-dns-only.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=dns-01"
@@ -233,7 +241,7 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
-			Name:    "Good (Example.co.uk, absent)",
+			Name:    "Good (example.co.uk, absent)",
 			Domain:  "example.co.uk",
 			Present: false,
 			Valid:   true,
@@ -245,7 +253,7 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
-			Name:    "Good (Present w/ servfail exception?)",
+			Name:    "Good (present w/ servfail exception?)",
 			Domain:  "present.servfail.com",
 			Present: true,
 			Valid:   true,
@@ -279,6 +287,18 @@ func TestCAAChecking(t *testing.T) {
 			Domain:  "present-with-parameter.com",
 			Present: true,
 			Valid:   true,
+		},
+		{
+			Name:    "Bad (issue rec with invalid tag)",
+			Domain:  "present-with-invalid-tag.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (issue rec with invalid value)",
+			Domain:  "present-with-invalid-value.com",
+			Present: true,
+			Valid:   false,
 		},
 		{
 			Name:    "Bad (restricts to dns-01, but tested with http-01)",
@@ -766,6 +786,16 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 			wantDomain:     "letsencrypt.org",
 			wantParameters: map[string]string{"1": "2", "baz": "a-b"},
 			wantValid:      true,
+		},
+		{
+			value:      "letsencrypt.org; a_b=123",
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
+		},
+		{
+			value:      "letsencrypt.org; ab=1 2 3",
+			wantDomain: "letsencrypt.org",
+			wantValid:  false,
 		},
 		{
 			value:      "letsencrypt.org; 1=2; a-b=c",
