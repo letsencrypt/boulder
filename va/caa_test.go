@@ -814,16 +814,18 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		caa := &dns.CAA{Value: test.value}
-		gotDomain, gotParameters, gotValid := extractIssuerDomainAndParameters(caa)
-		if got, want := gotValid, test.wantValid; got != want {
-			t.Errorf("CAA value %q - got valid %v, want %v", test.value, got, want)
-		}
-		if got, want := gotDomain, test.wantDomain; got != want {
-			t.Errorf("CAA value %q - got domain %q, want %q", test.value, got, want)
-		}
-		if got, want := gotParameters, test.wantParameters; !reflect.DeepEqual(got, want) {
-			t.Errorf("CAA value %q - got parameters %v, want %v", test.value, got, want)
-		}
+		t.Run("", func(t *testing.T) {
+			caa := &dns.CAA{Value: test.value}
+			gotDomain, gotParameters, gotValid := extractIssuerDomainAndParameters(caa)
+			if got, want := gotValid, test.wantValid; got != want {
+				t.Errorf("CAA value %q - got valid %v, want %v", test.value, got, want)
+			}
+			if got, want := gotDomain, test.wantDomain; got != want {
+				t.Errorf("CAA value %q - got domain %q, want %q", test.value, got, want)
+			}
+			if got, want := gotParameters, test.wantParameters; !reflect.DeepEqual(got, want) {
+				t.Errorf("CAA value %q - got parameters %v, want %v", test.value, got, want)
+			}
+		})
 	}
 }
