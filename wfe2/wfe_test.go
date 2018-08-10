@@ -2128,6 +2128,22 @@ func TestKeyRollover(t *testing.T) {
 			NewKey: newKeyPriv,
 		},
 		{
+			Name:    "Valid key rollover request, added ACME13KeyRollover compat",
+			Payload: `{"newKey":` + string(newJWKJSON) + `, "oldKey":` + test1KeyPublicJSON + `, "account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
+		{
 			Name:              "ACME13KeyRollover, legacy rollover request",
 			ACME13KeyRollover: true,
 			Payload:           `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
@@ -2178,6 +2194,23 @@ func TestKeyRollover(t *testing.T) {
 			Name:              "ACME13KeyRollover, Valid key rollover request",
 			ACME13KeyRollover: true,
 			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request, legacy compat",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `, "newKey":` + string(newJWKJSON) + `, "account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "id": 1,
 		     "key": ` + string(newJWKJSON) + `,
