@@ -164,43 +164,24 @@ type Impl struct {
 	client       *http.Client
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
-	// ctLogs is slightly redundant with the logCache, and should be removed. See
-	// issue https://github.com/letsencrypt/boulder/issues/2357
-	ctLogs  []*Log
-	metrics *pubMetrics
-
-	sa core.StorageAuthority
+	metrics      *pubMetrics
 }
 
 // New creates a Publisher that will submit certificates
-// to any CT logs configured in CTConfig
+// to requested CT logs
 func New(
 	bundle []ct.ASN1Cert,
-	logs []*Log,
 	logger blog.Logger,
 	stats metrics.Scope,
-	sa core.StorageAuthority,
 ) *Impl {
 	return &Impl{
 		issuerBundle: bundle,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
-		ctLogs:  logs,
 		log:     logger,
-		sa:      sa,
 		metrics: initMetrics(stats),
 	}
-}
-
-// SubmitToSingleCT will submit the certificate represented by certDER to the CT
-// log specified by log URL and public key (base64)
-func (pub *Impl) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	// NOTE(@roland): historically we've always thrown any errors away when
-	// using this method. In order to preserve this behaviour we just ignore
-	// any returns and return nil.
-	_, _ = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &logURL, LogPublicKey: &logPublicKey, Der: der})
-	return nil
 }
 
 // SubmitToSingleCTWithResult will submit the certificate represented by certDER to the CT
@@ -228,19 +209,10 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		isPrecert = *req.Precert
 	}
 
-	// Historically if a cert wasn't a precert we wanted to store the SCT,
-	// but for SCTs for final certificates generated from precerts we don't
-	// want to store those SCTs.
-	storeSCT := !isPrecert
-	if req.StoreSCT != nil {
-		storeSCT = *req.StoreSCT
-	}
-
 	sct, err := pub.singleLogSubmit(
 		ctx,
 		chain,
 		isPrecert,
-		storeSCT,
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
@@ -263,31 +235,10 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	return &pubpb.Result{Sct: sctBytes}, nil
 }
 
-// SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs.
-func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
-	wg := new(sync.WaitGroup)
-	for _, ctLog := range pub.ctLogs {
-		wg.Add(1)
-		// Do each submission in a goroutine so a single slow log doesn't eat
-		// all of the context and prevent submission to the rest of the logs
-		go func(ctLog *Log) {
-			defer wg.Done()
-			// Nothing actually consumes the errors returned from SubmitToCT
-			// so instead of using a channel to collect them we just throw
-			// it away here.
-			_ = pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
-		}(ctLog)
-	}
-	wg.Wait()
-	return nil
-}
-
 func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
 	isPrecert bool,
-	storeSCT bool,
 	serial string,
 	ctLog *Log,
 ) (*ct.SignedCertificateTimestamp, error) {
@@ -341,12 +292,6 @@ func (pub *Impl) singleLogSubmit(
 		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
 	}
 
-	if storeSCT {
-		err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
-		if err != nil {
-			return nil, err
-		}
-	}
 	return sct, nil
 }
 

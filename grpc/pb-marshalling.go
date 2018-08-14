@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -426,37 +425,6 @@ func newOrderValid(order *corepb.Order) bool {
 
 func authorizationValid(authz *corepb.Authorization) bool {
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
-}
-
-func sctToPB(sct core.SignedCertificateTimestamp) *sapb.SignedCertificateTimestamp {
-	id := int64(sct.ID)
-	version := int64(sct.SCTVersion)
-	timestamp := int64(sct.Timestamp)
-	return &sapb.SignedCertificateTimestamp{
-		Id:                &id,
-		SctVersion:        &version,
-		LogID:             &sct.LogID,
-		Timestamp:         &timestamp,
-		Extensions:        sct.Extensions,
-		Signature:         sct.Signature,
-		CertificateSerial: &sct.CertificateSerial,
-	}
-}
-
-func pbToSCT(pb *sapb.SignedCertificateTimestamp) core.SignedCertificateTimestamp {
-	return core.SignedCertificateTimestamp{
-		ID:                int(*pb.Id),
-		SCTVersion:        uint8(*pb.SctVersion),
-		LogID:             *pb.LogID,
-		Timestamp:         uint64(*pb.Timestamp),
-		Extensions:        pb.Extensions,
-		Signature:         pb.Signature,
-		CertificateSerial: *pb.CertificateSerial,
-	}
-}
-
-func sctValid(sct *sapb.SignedCertificateTimestamp) bool {
-	return !(sct.Id == nil || sct.SctVersion == nil || sct.LogID == nil || sct.Timestamp == nil || sct.Signature == nil || sct.CertificateSerial == nil)
 }
 
 func certToPB(cert core.Certificate) *corepb.Certificate {

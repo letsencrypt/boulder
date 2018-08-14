@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -29,7 +29,12 @@ type CTPolicy struct {
 }
 
 // New creates a new CTPolicy struct
-func New(pub core.Publisher, groups []cmd.CTGroup, informational []cmd.LogDescription, log blog.Logger, stats metrics.Scope) *CTPolicy {
+func New(pub core.Publisher,
+	groups []cmd.CTGroup,
+	informational []cmd.LogDescription,
+	log blog.Logger,
+	stats metrics.Scope,
+) *CTPolicy {
 	var finalLogs []cmd.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
@@ -75,28 +80,36 @@ type result struct {
 // getting a single SCT.
 func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
-	isPrecert := features.Enabled(features.EmbedSCTs)
+	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
 	// so we maximize the distribution of logs we get SCTs from.
-	for _, i := range rand.Perm(len(group.Logs)) {
-		l := group.Logs[i]
-		go func(l cmd.LogDescription) {
+	for i, logNum := range rand.Perm(len(group.Logs)) {
+		ld := group.Logs[logNum]
+		go func(i int, ld cmd.LogDescription) {
+			// Each submission waits a bit longer than the previous one, to give the
+			// previous log a chance to reply. If the context is already done by the
+			// time we get here, don't bother submitting. That generally means the
+			// context was canceled because another log returned a success already.
+			time.Sleep(time.Duration(i) * group.Stagger.Duration)
+			if ctx.Err() != nil {
+				return
+			}
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-				LogURL:       &l.URI,
-				LogPublicKey: &l.Key,
+				LogURL:       &ld.URI,
+				LogPublicKey: &ld.Key,
 				Der:          cert,
 				Precert:      &isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of the context being canceled
 				if !canceled.Is(err) {
-					ctp.log.Warningf("ct submission to %q failed: %s", l.URI, err)
+					ctp.log.Warningf("ct submission to %q failed: %s", ld.URI, err)
 				}
 				results <- result{err: err}
 				return
 			}
-			results <- result{sct: sct.Sct, log: l.URI}
-		}(l)
+			results <- result{sct: sct.Sct, log: ld.URI}
+		}(i, ld)
 	}
 
 	for i := 0; i < len(group.Logs); i++ {
@@ -134,7 +147,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			results <- result{sct: sct}
 		}(i, g)
 	}
-	isPrecert := features.Enabled(features.EmbedSCTs)
+	isPrecert := true
 	for _, log := range ctp.informational {
 		go func(l cmd.LogDescription) {
 			// We use a context.Background() here instead of subCtx because these

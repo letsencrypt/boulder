@@ -1,3 +1,5 @@
+//go:generate go run ../cmd/gen/gen.go
+
 // Package publicsuffix provides a domain name parser
 // based on data from the public suffix list http://publicsuffix.org/.
 // A public suffix is one under which Internet users can directly register names.

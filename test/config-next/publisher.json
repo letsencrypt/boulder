@@ -16,10 +16,6 @@
       "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
       "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
-    "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
-      "timeout": "15s"
-    },
     "features": {
       "RPCHeadroom": true
     }
@@ -32,12 +28,6 @@
 
   "common": {
     "ct": {
-      "logs": [
-        {
-          "uri": "http://boulder:4500",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
-        }
-      ],
       "intermediateBundleFilename": "test/test-ca2.pem"
     }
   }

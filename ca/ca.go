@@ -33,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -116,22 +115,21 @@ type CertificateAuthorityImpl struct {
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
-	defaultIssuer            *internalIssuer
-	sa                       certificateStorage
-	pa                       core.PolicyAuthority
-	keyPolicy                goodkey.KeyPolicy
-	clk                      clock.Clock
-	log                      blog.Logger
-	stats                    metrics.Scope
-	prefix                   int // Prepended to the serial number
-	validityPeriod           time.Duration
-	backdate                 time.Duration
-	maxNames                 int
-	forceCNFromSAN           bool
-	enableMustStaple         bool
-	enablePrecertificateFlow bool
-	signatureCount           *prometheus.CounterVec
-	csrExtensionCount        *prometheus.CounterVec
+	defaultIssuer     *internalIssuer
+	sa                certificateStorage
+	pa                core.PolicyAuthority
+	keyPolicy         goodkey.KeyPolicy
+	clk               clock.Clock
+	log               blog.Logger
+	stats             metrics.Scope
+	prefix            int // Prepended to the serial number
+	validityPeriod    time.Duration
+	backdate          time.Duration
+	maxNames          int
+	forceCNFromSAN    bool
+	enableMustStaple  bool
+	signatureCount    *prometheus.CounterVec
+	csrExtensionCount *prometheus.CounterVec
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -260,22 +258,21 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
-		sa:                       sa,
-		pa:                       pa,
-		issuers:                  internalIssuers,
-		defaultIssuer:            defaultIssuer,
-		rsaProfile:               rsaProfile,
-		ecdsaProfile:             ecdsaProfile,
-		prefix:                   config.SerialPrefix,
-		clk:                      clk,
-		log:                      logger,
-		stats:                    stats,
-		keyPolicy:                keyPolicy,
-		forceCNFromSAN:           !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple:         config.EnableMustStaple,
-		enablePrecertificateFlow: config.EnablePrecertificateFlow,
-		signatureCount:           signatureCount,
-		csrExtensionCount:        csrExtensionCount,
+		sa:                sa,
+		pa:                pa,
+		issuers:           internalIssuers,
+		defaultIssuer:     defaultIssuer,
+		rsaProfile:        rsaProfile,
+		ecdsaProfile:      ecdsaProfile,
+		prefix:            config.SerialPrefix,
+		clk:               clk,
+		log:               logger,
+		stats:             stats,
+		keyPolicy:         keyPolicy,
+		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple:  config.EnableMustStaple,
+		signatureCount:    signatureCount,
+		csrExtensionCount: csrExtensionCount,
 	}
 
 	if config.Expiry == "" {
@@ -450,10 +447,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	if !ca.enablePrecertificateFlow {
-		return nil, berrors.InternalServerError("Precertificate flow is disabled")
-	}
-
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
@@ -475,9 +468,6 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // and the response and certificate are stored in the database.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
-	if !features.Enabled(features.EmbedSCTs) {
-		return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
-	}
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return emptyCert, err

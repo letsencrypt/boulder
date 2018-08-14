@@ -62,7 +62,7 @@ services:
             aliases:
               - boulder-hsm
     bmysql:
-        image: mariadb:10.1
+        image: mariadb:10.3
         networks:
           bluenet:
             aliases:
@@ -79,7 +79,7 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
         working_dir: /go/src/github.com/letsencrypt/boulder
-        entrypoint: test/entrypoint.sh
+        entrypoint: test/entrypoint-netaccess.sh
         depends_on:
           - bmysql
 

@@ -45,6 +45,8 @@ os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 # URLs for management interface of challtestsrv
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
+ADD_ALPN = "http://localhost:8055/add-tlsalpn01"
+DEL_ALPN = "http://localhost:8055/del-tlsalpn01"
 
 def uninitialized_client(key=None):
     if key is None:
@@ -108,6 +110,8 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "tls-alpn-01":
+        cleanup = do_tlsalpn_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
@@ -169,6 +173,26 @@ def do_http_challenges(client, authzs):
         cleanup()
         raise
 
+    return cleanup
+
+def do_tlsalpn_challenges(client, authzs):
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.TLSALPN01)
+        name, value = (a.body.identifier.value, c.key_authorization(client.key))
+        cleanup_hosts.append(name)
+        urllib2.urlopen(ADD_ALPN,
+            data=json.dumps({
+                "host": name,
+                "content": value,
+            })).read()
+        client.answer_challenge(c, c.response(client.key))
+    def cleanup():
+        for host in cleanup_hosts:
+            urllib2.urlopen(DEL_ALPN,
+                data=json.dumps({
+                    "host": host,
+                })).read()
     return cleanup
 
 def expect_problem(problem_type, func):

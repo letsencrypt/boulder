@@ -269,10 +269,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		}
 
 		if features.Enabled(features.CAAAccountURI) {
-			// Check the account-uri CAA parameter as defined
+			// Check the accounturi CAA parameter as defined
 			// in section 3 of the draft CAA ACME RFC:
 			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
-			caaAccountURI, ok := caaParameters["account-uri"]
+			caaAccountURI, ok := caaParameters["accounturi"]
 			if ok {
 				if params.accountURIID == nil {
 					continue
@@ -283,10 +283,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			}
 		}
 		if features.Enabled(features.CAAValidationMethods) {
-			// Check the validation-methods CAA parameter as defined
+			// Check the validationmethods CAA parameter as defined
 			// in section 4 of the draft CAA ACME RFC:
 			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
-			caaMethods, ok := caaParameters["validation-methods"]
+			caaMethods, ok := caaParameters["validationmethods"]
 			if ok {
 				if params.validationMethod == nil {
 					continue

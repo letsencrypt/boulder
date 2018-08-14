@@ -20,12 +20,6 @@ import (
 type mockPub struct {
 }
 
-func (mp *mockPub) SubmitToCT(ctx context.Context, der []byte) error {
-	return nil
-}
-func (mp *mockPub) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	return nil
-}
 func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
@@ -172,4 +166,33 @@ func TestGetSCTsMetrics(t *testing.T) {
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "a"})), 1)
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "b"})), 1)
+}
+
+// A mock publisher that counts submissions
+type countEm struct {
+	count int
+}
+
+func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+	ce.count++
+	return &pubpb.Result{Sct: []byte{0}}, nil
+}
+
+func TestStagger(t *testing.T) {
+	countingPub := &countEm{}
+	ctp := New(countingPub, []cmd.CTGroup{
+		{
+			Name:    "a",
+			Stagger: cmd.ConfigDuration{Duration: 500 * time.Millisecond},
+			Logs: []cmd.LogDescription{
+				{URI: "abc", Key: "def"},
+				{URI: "ghi", Key: "jkl"},
+			},
+		},
+	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	_, err := ctp.GetSCTs(context.Background(), []byte{0})
+	test.AssertNotError(t, err, "GetSCTs failed")
+	if countingPub.count != 1 {
+		t.Errorf("wrong number of requests to publisher. got %d, expected 1", countingPub.count)
+	}
 }

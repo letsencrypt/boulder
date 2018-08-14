@@ -241,11 +241,11 @@ func verifyProfile(profile CertProfile, root bool) error {
 	if profile.Country == "" {
 		return errors.New("Country in profile is required")
 	}
-	if profile.OCSPURL == "" {
-		return errors.New("OCSPURL in profile is required")
+	if !root && profile.OCSPURL == "" {
+		return errors.New("OCSPURL in profile is required for intermediates")
 	}
-	if profile.CRLURL == "" {
-		return errors.New("CRLURL in profile is required")
+	if !root && profile.CRLURL == "" {
+		return errors.New("CRLURL in profile is required for intermediates")
 	}
 	if !root && profile.IssuerURL == "" {
 		return errors.New("IssuerURL in profile is required for intermediates")
@@ -263,6 +263,19 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 	notAfter, err := time.Parse(dateLayout, profile.NotAfter)
 	if err != nil {
 		return nil, err
+	}
+
+	var ocspServer []string
+	if profile.OCSPURL != "" {
+		ocspServer = []string{profile.OCSPURL}
+	}
+	var crlDistributionPoints []string
+	if profile.CRLURL != "" {
+		crlDistributionPoints = []string{profile.CRLURL}
+	}
+	var issuingCertificateURL []string
+	if profile.IssuerURL != "" {
+		issuingCertificateURL = []string{profile.IssuerURL}
 	}
 
 	var policyOIDs []asn1.ObjectIdentifier
@@ -298,11 +311,11 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		OCSPServer:            []string{profile.OCSPURL},
-		CRLDistributionPoints: []string{profile.CRLURL},
-		IssuingCertificateURL: []string{profile.IssuerURL},
+		OCSPServer:            ocspServer,
+		CRLDistributionPoints: crlDistributionPoints,
+		IssuingCertificateURL: issuingCertificateURL,
 		PolicyIdentifiers:     policyOIDs,
-		KeyUsage:              x509.KeyUsageCertSign & x509.KeyUsageCRLSign,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		SubjectKeyId:          subjectKeyID[:],
 	}
 

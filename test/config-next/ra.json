@@ -50,13 +50,13 @@
       "WildcardDomains": true,
       "TLSSNIRevalidation": true,
       "ReusePendingAuthz": true,
-      "EmbedSCTs": true,
       "EnforceOverlappingWildcards": true,
       "VAChecksGSB": true
     },
     "CTLogGroups2": [
       {
         "name": "a",
+        "stagger": "500ms",
         "logs": [
           {
             "uri": "http://boulder:4500",
@@ -72,6 +72,7 @@
       },
       {
         "name": "b",
+        "stagger": "500ms",
         "logs": [
           {
             "uri": "http://boulder:4510",

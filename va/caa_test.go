@@ -93,31 +93,31 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		results = append(results, &record)
 	case "present-dns-only.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; validation-methods=dns-01"
+		record.Value = "letsencrypt.org; validationmethods=dns-01"
 		results = append(results, &record)
 	case "present-http-only.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; validation-methods=http-01"
+		record.Value = "letsencrypt.org; validationmethods=http-01"
 		results = append(results, &record)
 	case "present-http-or-dns.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; validation-methods=http-01,dns-01"
+		record.Value = "letsencrypt.org; validationmethods=http-01,dns-01"
 		results = append(results, &record)
-	case "present-correct-account-uri.com":
+	case "present-correct-accounturi.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/123"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
 		results = append(results, &record)
-	case "present-incorrect-account-uri.com":
+	case "present-incorrect-accounturi.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/321"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
 		results = append(results, &record)
-	case "present-multiple-account-uri.com":
+	case "present-multiple-accounturi.com":
 		record.Tag = "issue"
-		record.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/321"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
 		results = append(results, &record)
 		secondRecord := record
 		secondRecord.Tag = "issue"
-		secondRecord.Value = "letsencrypt.org; account-uri=https://letsencrypt.org/acct/reg/123"
+		secondRecord.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
 		results = append(results, &secondRecord)
 	case "unsatisfiable.com":
 		record.Tag = "issue"
@@ -286,20 +286,20 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
-			Name:    "Good (restricts to account-uri, tested with correct account)",
-			Domain:  "present-correct-account-uri.com",
+			Name:    "Good (restricts to accounturi, tested with correct account)",
+			Domain:  "present-correct-accounturi.com",
 			Present: true,
 			Valid:   true,
 		},
 		{
-			Name:    "Bad (restricts to account-uri, tested with incorrect account)",
-			Domain:  "present-incorrect-account-uri.com",
+			Name:    "Bad (restricts to accounturi, tested with incorrect account)",
+			Domain:  "present-incorrect-accounturi.com",
 			Present: true,
 			Valid:   false,
 		},
 		{
-			Name:    "Good (restricts to multiple account-uri, tested with a correct account)",
-			Domain:  "present-multiple-account-uri.com",
+			Name:    "Good (restricts to multiple accounturi, tested with a correct account)",
+			Domain:  "present-multiple-accounturi.com",
 			Present: true,
 			Valid:   true,
 		},
@@ -382,10 +382,10 @@ func TestCAAChecking(t *testing.T) {
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
-	// present-incorrect-account-uri.com should now be also be valid
-	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-account-uri.com"}
+	// present-incorrect-accounturi.com should now be also be valid
+	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-accounturi.com"}
 	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
-	test.AssertNotError(t, err, "present-incorrect-account-uri.com")
+	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 

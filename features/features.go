@@ -11,7 +11,6 @@ type FeatureFlag int
 
 const (
 	unused FeatureFlag = iota // unused is used for testing
-	UseAIAIssuerURL
 	// For new-authz requests, if there is no valid authz, but there is a pending
 	// authz, return that instead of creating a new one.
 	ReusePendingAuthz
@@ -39,16 +38,17 @@ const (
 	EnforceOverlappingWildcards
 	// Set orders to status "ready" when they are awaiting finalization
 	OrderReadyStatus
-	// Check CAA and respect validation-methods parameter.
+	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
-	// Check CAA and respect account-uri parameter.
+	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
+	// Honour draft-ietf-acme-13's keyrollover
+	ACME13KeyRollover
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                      false,
-	UseAIAIssuerURL:             false,
 	ReusePendingAuthz:           false,
 	CountCertificatesExact:      false,
 	IPv6First:                   false, // deprecated
@@ -57,8 +57,8 @@ var features = map[FeatureFlag]bool{
 	EnforceChallengeDisable:     false, // deprecated
 	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
-	EmbedSCTs:                   false,
-	CancelCTSubmissions:         true, // deprecated
+	EmbedSCTs:                   false, // deprecated
+	CancelCTSubmissions:         true,  // deprecated
 	VAChecksGSB:                 false,
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,
@@ -66,6 +66,7 @@ var features = map[FeatureFlag]bool{
 	OrderReadyStatus:            false,
 	CAAValidationMethods:        false,
 	CAAAccountURI:               false,
+	ACME13KeyRollover:           false,
 }
 
 var fMu = new(sync.RWMutex)

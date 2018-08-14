@@ -1031,36 +1031,6 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	return
 }
 
-// ErrNoReceipt is an error type for non-existent SCT receipt
-type ErrNoReceipt string
-
-func (e ErrNoReceipt) Error() string {
-	return string(e)
-}
-
-// GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
-// CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (core.SignedCertificateTimestamp, error) {
-	receipt, err := selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
-	if err == sql.ErrNoRows {
-		return receipt, ErrNoReceipt(err.Error())
-	}
-	return receipt, err
-}
-
-// AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
-func (ssa *SQLStorageAuthority) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
-	err := ssa.dbMap.Insert(&sct)
-	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
-	// based on duplicates, especially because we currently retry all submissions
-	// for a certificate if even one of them fails. Once https://github.com/letsencrypt/boulder/issues/891
-	// is fixed, we may want to start returning this as an error, or logging it.
-	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-		return nil
-	}
-	return err
-}
-
 func hashNames(names []string) []byte {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))

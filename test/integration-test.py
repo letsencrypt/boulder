@@ -185,9 +185,9 @@ def test_issuer():
     """
     certr, authzs = auth_and_issue([random_domain()])
     cert = urllib2.urlopen(certr.uri).read()
-    # The chain URI uses HTTPS when UseAIAIssuerURL is set, so include the root
-    # certificate for the WFE's PKI. Note: We use the requests library here so
-    # we honor the REQUESTS_CA_BUNDLE passed by test.sh.
+    # In the future the chain URI will use HTTPS so include the root certificate
+    # for the WFE's PKI. Note: We use the requests library here so we honor the
+    # REQUESTS_CA_BUNDLE passed by test.sh.
     chain = requests.get(certr.cert_chain_uri).content
     parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
     parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
@@ -309,7 +309,7 @@ def test_revoke_by_account():
 
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not.
-       Two further sub-domains have restricted validation-methods.
+       Two further sub-domains have restricted validationmethods.
     """
     if len(caa_authzs) == 0:
         raise Exception("CAA authzs not prepared for test_caa")
@@ -346,8 +346,8 @@ def test_caa():
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
     # CAA should fail with an arbitrary account, but succeed with the caa_client.
-    chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["account-uri.good-caa-reserved.com"]))
-    auth_and_issue(["account-uri.good-caa-reserved.com"], client=caa_client)
+    chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["accounturi.good-caa-reserved.com"]))
+    auth_and_issue(["accounturi.good-caa-reserved.com"], client=caa_client)
 
 def test_account_update():
     """

@@ -12,21 +12,18 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/publisher"
 	pubPB "github.com/letsencrypt/boulder/publisher/proto"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		SAService *cmd.GRPCClientConfig
-		Features  map[string]bool
+		Features map[string]bool
 	}
 
 	Syslog cmd.SyslogConfig
 
 	Common struct {
 		CT struct {
-			Logs                       []cmd.LogDescription
 			IntermediateBundleFilename string
 		}
 	}
@@ -59,12 +56,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	logs := make([]*publisher.Log, len(c.Common.CT.Logs))
-	for i, ld := range c.Common.CT.Logs {
-		logs[i], err = publisher.NewLog(ld.URI, ld.Key, logger)
-		cmd.FailOnError(err, "Unable to parse CT log description")
-	}
-
 	if c.Common.CT.IntermediateBundleFilename == "" {
 		logger.AuditErr("No CT submission bundle provided")
 		os.Exit(1)
@@ -81,17 +72,10 @@ func main() {
 
 	clk := cmd.Clock()
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Publisher.SAService, tlsConfig, clientMetrics, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
-
 	pubi := publisher.New(
 		bundle,
-		logs,
 		logger,
-		scope,
-		sac)
+		scope)
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)

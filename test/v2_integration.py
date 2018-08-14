@@ -41,6 +41,11 @@ def test_wildcardmultidomain():
 def test_http_challenge():
     chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
 
+def test_tls_alpn_challenge():
+    if not default_config_dir.startswith("test/config-next"):
+        return
+    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
+
 def test_overlapping_wildcard():
     """
     Test issuance for a random domain and a wildcard version of the same domain
@@ -302,7 +307,7 @@ def test_only_return_existing_reg():
         "onlyReturnExisting": True
     })
     resp = client.net.post(client.directory['newAccount'], acct, acme_version=2)
-    if resp.status_code != 200 or len(resp.content) != 0:
+    if resp.status_code != 200:
         raise Exception("incorrect response returned for onlyReturnExisting")
 
     other_client = chisel2.uninitialized_client()

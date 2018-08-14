@@ -343,19 +343,6 @@ func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Regis
 	return
 }
 
-// GetSCTReceipt  is a mock
-func (sa *StorageAuthority) GetSCTReceipt(_ context.Context, serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
-	return
-}
-
-// AddSCTReceipt is a mock
-func (sa *StorageAuthority) AddSCTReceipt(_ context.Context, sct core.SignedCertificateTimestamp) (err error) {
-	if sct.Signature == nil {
-		err = fmt.Errorf("Bad times")
-	}
-	return
-}
-
 // CountFQDNSets is a mock
 func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration, names []string) (int64, error) {
 	return 0, nil
@@ -556,16 +543,6 @@ func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *s
 // Publisher is a mock
 type Publisher struct {
 	// empty
-}
-
-// SubmitToCT is a mock
-func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
-	return nil
-}
-
-// SubmitToSingleCT is a mock
-func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
-	return nil
 }
 
 // SubmitToSingleCTWithResult is a mock

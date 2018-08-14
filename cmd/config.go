@@ -310,4 +310,7 @@ type CAADistributedResolverConfig struct {
 type CTGroup struct {
 	Name string
 	Logs []LogDescription
+	// How long to wait for one log to accept a certificate before moving on to
+	// the next.
+	Stagger ConfigDuration
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	mrand "math/rand"
@@ -41,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -1714,6 +1716,95 @@ func TestPerformRemoteValidation(t *testing.T) {
 	took = time.Since(s)
 	if took >= (time.Second * 5) {
 		t.Errorf("PerformValidation didn't return early on failure: took %s, expected <5s", took)
+	}
+}
+
+// brokenRemoteVA is a mock for the core.ValidationAuthority interface mocked to
+// always return errors.
+type brokenRemoteVA struct{}
+
+// brokenRemoteVAError is the error returned by a brokenRemoteVA's
+// PerformValidation and IsSafeDomain functions.
+var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
+
+// PerformValidation returns brokenRemoteVAError unconditionally
+func (b *brokenRemoteVA) PerformValidation(
+	_ context.Context,
+	_ string,
+	_ core.Challenge,
+	_ core.Authorization) ([]core.ValidationRecord, error) {
+	return nil, brokenRemoteVAError
+}
+
+// IsSafeDomain returns brokenRemoteVAError unconditionally
+func (b *brokenRemoteVA) IsSafeDomain(
+	_ context.Context,
+	_ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	return nil, brokenRemoteVAError
+}
+
+func TestPerformRemoteValidationFailure(t *testing.T) {
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
+	defer ms.Close()
+
+	// Create a local test VA configured with a mock logger
+	mockLog := blog.NewMock()
+	localVA, _ := setup(ms.Server, 0)
+	localVA.userAgent = "local"
+	localVA.log = mockLog
+
+	// Create a remote test VA
+	remoteVA, _ := setup(ms.Server, 0)
+
+	// Create a broken remote test VA
+	brokenVA := &brokenRemoteVA{}
+	brokenVAAddr := "broken"
+
+	// Set the local VA to use the two remotes
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA, "good"},
+		{brokenVA, brokenVAAddr},
+	}
+
+	// Performing a validation should return a problem on the channel because of
+	// the broken remote VA.
+	probCh := make(chan *probs.ProblemDetails, 1)
+	localVA.performRemoteValidation(
+		context.Background(),
+		"localhost",
+		chall,
+		core.Authorization{},
+		probCh)
+	prob := <-probCh
+	if prob == nil {
+		t.Fatalf("performRemoteValidation with a broken remote VA did not " +
+			"return a problem")
+	}
+
+	// The problem returned should be a server internal problem with the correct
+	// user facing detail message.
+	if prob.Type != "serverInternal" {
+		t.Errorf("performRemoteValidation with a broken remote VA did not " +
+			"return a serverInternal problem")
+	}
+	if prob.Detail != "Remote PerformValidation RPCs failed" {
+		t.Errorf("performRemoteValidation with a broken remote VA did not " +
+			"return a serverInternal problem with the correct detail")
+	}
+
+	// The mock logger should have an audit err log line that includes the true
+	// underlying error that caused the server internal problem.
+	expectedLine := fmt.Sprintf(
+		`ERR: \[AUDIT\] Remote VA %q.PerformValidation failed: %s`,
+		brokenVAAddr, brokenRemoteVAError.Error())
+	failLogs := mockLog.GetAllMatching(expectedLine)
+	if len(failLogs) == 0 {
+		t.Error("Expected log line with broken remote VA error message. Found none")
 	}
 }
 
