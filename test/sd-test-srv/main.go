@@ -16,6 +16,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
+	m.Rcode = dns.RcodeSuccess
 
 	if len(r.Question) != 1 {
 		m.Rcode = dns.RcodeServerFailure
@@ -24,6 +25,11 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	}
 	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
 		m.Rcode = dns.RcodeServerFailure
+		w.WriteMsg(m)
+		return
+	}
+	if r.Question[0].Qtype != dns.TypeA {
+		// Just return a NOERROR message for non-A questions
 		w.WriteMsg(m)
 		return
 	}
