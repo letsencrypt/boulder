@@ -531,8 +531,7 @@ def test_admin_revoker_authz():
     # Revoke authorization by domain
     output = run(
             "./bin/admin-revoker auth-revoke --config %s/admin-revoker.json ar-auth-test.com" % (default_config_dir))
-    if not output.rstrip().endswith("Revoked 1 pending authorizations and 0 final authorizations"):
-        print(output.rstrip())
+    if "Revoked 1 pending authorizations and 0 final authorizations" not in output:
         raise Exception("admin-revoker didn't revoke the expected number of pending and finalized authorizations")
     # Check authorization has actually been revoked
     response = urllib2.urlopen(url)
