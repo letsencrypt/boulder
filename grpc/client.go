@@ -32,10 +32,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
-	// When there's only one server address, we use our custom newDNSResolver,
-	// intended as a temporary shim until we upgrade to a version of gRPC that has
-	// its own built-in DNS resolver. This works equally well when there's only
-	// one IP for a hostname or when there are multiple IPs for the hostname.
 	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
 		return nil, err
