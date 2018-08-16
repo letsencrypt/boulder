@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"net"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -19,14 +19,16 @@ import (
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
-	if len(c.ServerAddresses) == 0 {
-		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
+	if c.ServerAddress == "" {
+		if len(c.ServerAddresses) == 0 {
+			return nil, errors.New("Both ServerAddress and ServerAddresses are empty")
+		} else if len(c.ServerAddresses) != 1 {
+			return nil, errors.New("If ServerAddress is empty ServerAddresses can only contain one address")
+		}
+		c.ServerAddress = c.ServerAddresses[0]
 	}
 	if tls == nil {
 		return nil, errNilTLS
-	}
-	if len(c.ServerAddresses) != 1 {
-		return nil, fmt.Errorf("ServerAddresses must have exactly one address.")
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
@@ -34,13 +36,13 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 	// intended as a temporary shim until we upgrade to a version of gRPC that has
 	// its own built-in DNS resolver. This works equally well when there's only
 	// one IP for a hostname or when there are multiple IPs for the hostname.
-	host, _, err := net.SplitHostPort(c.ServerAddresses[0])
+	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
 		return nil, err
 	}
 	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
 	return grpc.Dial(
-		"dns:///"+c.ServerAddresses[0],
+		"dns:///"+c.ServerAddress,
 		grpc.WithBalancerName("round_robin"),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithUnaryInterceptor(ci.intercept),

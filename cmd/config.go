@@ -271,8 +271,10 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	// Note: As of July 2018, this field may only contain a single ServerAddress.
+	// NOTE: this field is deprecated in favor of ServerAddress, as we only ever
+	// expect a single address
 	ServerAddresses []string
+	ServerAddress   string
 	Timeout         ConfigDuration
 }
 
