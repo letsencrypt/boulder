@@ -149,12 +149,27 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range challenges {
-		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
+		if challs[i].AuthorizationID != authID {
+			return fmt.Errorf("challenge authorization ID %q didn't match %q", challs[i].AuthorizationID, authID)
+		}
+		chall, err := challengeToModel(&authChall, authID)
 		if err != nil {
 			return err
 		}
 		chall.ID = challs[i].ID
-		_, err = tx.Update(chall)
+		_, err = tx.Exec(
+			`UPDATE challenges SET
+				status = ?,
+				error = ?,
+				keyAuthorization = ?,
+				validationRecord = ?
+			WHERE status = ? AND id = ?`,
+			chall.Status,
+			chall.Error,
+			chall.KeyAuthorization,
+			chall.ValidationRecord,
+			string(core.StatusPending),
+			chall.ID)
 		if err != nil {
 			return err
 		}
