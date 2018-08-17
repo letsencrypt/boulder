@@ -985,7 +985,7 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 
 func TestValidateTLSALPN01(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1, "localhost")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
 
 	va, _ := setup(hs, 0)
 
@@ -1013,7 +1013,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	chall2 := chall
 	setChallengeToken(&chall2, "bad token")
 
-	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifierV1, "localhost")
+	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
 	va, _ := setup(hs, 0)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
