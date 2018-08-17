@@ -164,7 +164,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 				keyAuthorization = ?,
 				validationRecord = ?
 			WHERE status = ? AND id = ?`,
-			chall.Status,
+			string(chall.Status),
 			chall.Error,
 			chall.KeyAuthorization,
 			chall.ValidationRecord,
