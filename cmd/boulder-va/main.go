@@ -130,11 +130,15 @@ func main() {
 		for _, rva := range c.VA.RemoteVAs {
 			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
+			addr := rva.ServerAddress
+			if addr == "" {
+				addr = strings.Join(rva.ServerAddresses, ",")
+			}
 			remotes = append(
 				remotes,
 				va.RemoteVA{
 					ValidationAuthority: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
-					Addresses:           strings.Join(rva.ServerAddresses, ","),
+					Addresses:           addr,
 				},
 			)
 		}
