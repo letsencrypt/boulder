@@ -65,7 +65,7 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 			DNSNames:     []string{hello.ServerName},
 			ExtraExtensions: []pkix.Extension{
 				{
-					Id:       va.IdPeAcmeIdentifierV1,
+					Id:       va.IdPeAcmeIdentifier,
 					Critical: true,
 					Value:    extValue,
 				},

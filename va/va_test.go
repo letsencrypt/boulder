@@ -222,7 +222,7 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 	return hs
 }
 
-func tlsalpn01Srv(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
+func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names ...string) *httptest.Server {
 	template := tlsCertTemplate(names)
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	cert := &tls.Certificate{
@@ -233,7 +233,7 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, names ...string) *httptest
 	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
 	encHash, _ := asn1.Marshal(shasum[:])
 	acmeExtension := pkix.Extension{
-		Id:       IdPeAcmeIdentifierV1,
+		Id:       oid,
 		Critical: true,
 		Value:    encHash,
 	}
@@ -985,12 +985,23 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 
 func TestValidateTLSALPN01(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, "localhost")
-	defer hs.Close()
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
 
 	va, _ := setup(hs, 0)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+
+	if prob != nil {
+		t.Errorf("Validation failed: %v", prob)
+	}
+
+	hs.Close()
+	chall = createChallenge(core.ChallengeTypeTLSALPN01)
+	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, "localhost")
+
+	va, _ = setup(hs, 0)
+
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
 
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
@@ -1002,7 +1013,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	chall2 := chall
 	setChallengeToken(&chall2, "bad token")
 
-	hs := tlsalpn01Srv(t, chall2, "localhost")
+	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
 	va, _ := setup(hs, 0)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
