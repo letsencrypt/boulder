@@ -27,6 +27,7 @@ var (
 	RFC2459Date                = time.Date(1999, time.January, 1, 0, 0, 0, 0, time.UTC)
 	RFC3280Date                = time.Date(2002, time.April, 1, 0, 0, 0, 0, time.UTC)
 	RFC3490Date                = time.Date(2003, time.March, 1, 0, 0, 0, 0, time.UTC)
+	RFC8399Date                = time.Date(2018, time.May, 1, 0, 0, 0, 0, time.UTC)
 	RFC4325Date                = time.Date(2005, time.December, 1, 0, 0, 0, 0, time.UTC)
 	RFC4630Date                = time.Date(2006, time.August, 1, 0, 0, 0, 0, time.UTC)
 	RFC5280Date                = time.Date(2008, time.May, 1, 0, 0, 0, 0, time.UTC)
