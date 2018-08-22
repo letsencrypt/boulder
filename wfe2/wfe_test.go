@@ -2513,9 +2513,9 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 400)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
+		`{"type":"`+probs.V2ErrorNS+`alreadyRevoked","detail":"Certificate already revoked","status":400}`)
 }
 
 func TestRevokeCertificateWithAuthz(t *testing.T) {
