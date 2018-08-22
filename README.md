@@ -82,6 +82,9 @@ to match how the VA operates in production and staging environments. If you use
 a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow connections
 from the Docker instance to your host on the required ports.
 
+By default Boulder runs the legacy ACME v1 API endpoint on port `4000` and the
+ACME v2 API endpoint on port `4001`.
+
 If a base image changes (i.e. `letsencrypt/boulder-tools`) you will need to rebuild
 images for both the boulder and bhsm containers and re-create them. The quickest way
 to do this is with this command:
@@ -99,6 +102,8 @@ Check out the Certbot client from https://github.com/certbot/certbot and follow 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for
 any query, so you can use any value for the -d flag. You can also override that
 value by setting the environment variable FAKE_DNS=1.2.3.4
+
+By default `certbot_test` will use `-server 127.0.0.1:4000/directory`, the ACME v1 API endpoint. To test ACME v2 (e.g. for wildcard issuance) please use `--server 127.0.0.1:4001/directory` to access the ACME v2 endpoint on port `4001`.
 
 Component Model
 ---------------
