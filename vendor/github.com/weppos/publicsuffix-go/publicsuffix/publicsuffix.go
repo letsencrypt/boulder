@@ -199,16 +199,20 @@ func (l *List) Find(name string, options *FindOptions) *Rule {
 		options = DefaultFindOptions
 	}
 
+	part := name
 	for {
-		rule, ok := l.rules[name]
-		if ok && (!options.IgnorePrivate || !rule.Private) {
+		rule, ok := l.rules[part]
+
+		if ok && rule.Match(name) && !(options.IgnorePrivate && rule.Private) {
 			return rule
 		}
-		i := strings.IndexRune(name, '.')
+
+		i := strings.IndexRune(part, '.')
 		if i < 0 {
 			return options.DefaultRule
 		}
-		name = name[i+1:]
+
+		part = part[i+1:]
 	}
 
 	return nil
