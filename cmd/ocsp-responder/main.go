@@ -81,7 +81,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	if len(src.reqSerialPrefixes) > 0 {
 		match := false
 		for _, prefix := range src.reqSerialPrefixes {
-			match = strings.HasPrefix(serialString, prefix)
+			if match = strings.HasPrefix(serialString, prefix); match {
+				break
+			}
 		}
 		if !match {
 			return nil, nil, cfocsp.ErrNotFound
