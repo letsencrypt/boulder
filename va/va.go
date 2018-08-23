@@ -972,7 +972,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 					// we didn't care about its result.
 					err = nil
 				} else if !ok {
-					fmt.Printf("Err: %#v\n", err)
 					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
 					// was *not* a context cancelleded error and represents something that
 					// will later be returned as a server internal error
