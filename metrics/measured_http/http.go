@@ -22,6 +22,15 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Write writes the body and sets the status code to 200 if a status code
+// has not already been set.
+func (r *responseWriterWithStatus) Write(body []byte) (int, error) {
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	return r.ResponseWriter.Write(body)
+}
+
 // serveMux is a partial interface wrapper for the method http.ServeMux
 // exposes that we use. This is needed so that we can replace the default
 // http.ServeMux in ocsp-responder where we don't want to use its path
