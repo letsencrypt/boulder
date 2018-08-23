@@ -20,6 +20,7 @@ const (
 	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
 	CAAProblem                 = ProblemType("caa")
 	DNSProblem                 = ProblemType("dns")
+	AlreadyRevokedProblem      = ProblemType("alreadyRevoked")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -104,6 +105,16 @@ func Conflict(detail string, a ...interface{}) *ProblemDetails {
 		Type:       MalformedProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// AlreadyRevoked returns a ProblemDetails with a AlreadyRevokedProblem and a 400 Bad
+// Request status code.
+func AlreadyRevoked(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AlreadyRevokedProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 

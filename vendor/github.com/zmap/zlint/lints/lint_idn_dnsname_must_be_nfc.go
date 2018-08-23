@@ -23,17 +23,17 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-type IDNNotNFKC struct{}
+type IDNNotNFC struct{}
 
-func (l *IDNNotNFKC) Initialize() error {
+func (l *IDNNotNFC) Initialize() error {
 	return nil
 }
 
-func (l *IDNNotNFKC) CheckApplies(c *x509.Certificate) bool {
+func (l *IDNNotNFC) CheckApplies(c *x509.Certificate) bool {
 	return util.IsExtInCert(c, util.SubjectAlternateNameOID)
 }
 
-func (l *IDNNotNFKC) Execute(c *x509.Certificate) *LintResult {
+func (l *IDNNotNFC) Execute(c *x509.Certificate) *LintResult {
 	for _, dns := range c.DNSNames {
 		labels := strings.Split(dns, ".")
 		for _, label := range labels {
@@ -42,7 +42,7 @@ func (l *IDNNotNFKC) Execute(c *x509.Certificate) *LintResult {
 				if err != nil {
 					return &LintResult{Status: NA}
 				}
-				if !norm.NFKC.IsNormalString(unicodeLabel) {
+				if !norm.NFC.IsNormalString(unicodeLabel) {
 					return &LintResult{Status: Error}
 				}
 			}
@@ -53,11 +53,11 @@ func (l *IDNNotNFKC) Execute(c *x509.Certificate) *LintResult {
 
 func init() {
 	RegisterLint(&Lint{
-		Name:          "e_international_dns_name_not_nfkc",
-		Description:   "Internationalized DNSNames must be normalized by unicode normalization form KC",
-		Citation:      "RFC 3490",
-		Source:        RFC5280,
-		EffectiveDate: util.RFC3490Date,
-		Lint:          &IDNNotNFKC{},
+		Name:          "e_international_dns_name_not_nfc",
+		Description:   "Internationalized DNSNames must be normalized by unicode normalization form C",
+		Citation:      "RFC 8399",
+		Source:        RFC5891,
+		EffectiveDate: util.RFC8399Date,
+		Lint:          &IDNNotNFC{},
 	})
 }

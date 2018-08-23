@@ -634,7 +634,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
 	if certStatus.Status == core.OCSPStatusRevoked {
-		return probs.Conflict("Certificate already revoked")
+		return probs.AlreadyRevoked("Certificate already revoked")
 	}
 
 	// Validate that the requester is authenticated to revoke the given certificate
