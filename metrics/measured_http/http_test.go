@@ -127,3 +127,84 @@ func TestUnknownMethod(t *testing.T) {
 		t.Errorf("Some labels were expected, but not observed: %v", expectedLabels)
 	}
 }
+
+func TestWrite(t *testing.T) {
+	clk := clock.NewFake()
+
+	// Create a local histogram stat with the same labels as the real one, but
+	// don't register it; we will collect its data here in the test to verify it.
+	stat := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "fake",
+			Help: "fake",
+		},
+		[]string{"endpoint", "method", "code"})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/foo", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte{})
+	})
+	mh := MeasuredHandler{
+		serveMux: mux,
+		clk:      clk,
+		stat:     stat,
+	}
+	mh.ServeHTTP(httptest.NewRecorder(), &http.Request{
+		URL:    &url.URL{Path: "/foo"},
+		Method: "GET",
+	})
+	iom := collect(stat)
+
+	stat = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "fake",
+			Help: "fake",
+		},
+		[]string{"endpoint", "method", "code"})
+	mh.stat = stat
+	expectedLabels := map[string]string{
+		"endpoint": "/foo",
+		"method":   "GET",
+		"code":     "200",
+	}
+	for _, labelPair := range iom.Label {
+		if expectedLabels[*labelPair.Name] == "" {
+			t.Errorf("Unexpected label %s", *labelPair.Name)
+		} else if expectedLabels[*labelPair.Name] != *labelPair.Value {
+			t.Errorf("labels[%q] = %q (expected %q)", *labelPair.Name, *labelPair.Value,
+				expectedLabels[*labelPair.Name])
+		}
+		delete(expectedLabels, *labelPair.Name)
+	}
+	if len(expectedLabels) != 0 {
+		t.Errorf("Some labels were expected, but not observed: %v", expectedLabels)
+	}
+
+	mux.HandleFunc("/bar", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(202)
+		w.Write([]byte{})
+	})
+	mh.ServeHTTP(httptest.NewRecorder(), &http.Request{
+		URL:    &url.URL{Path: "/bar"},
+		Method: "GET",
+	})
+	iom = collect(stat)
+
+	expectedLabels = map[string]string{
+		"endpoint": "/bar",
+		"method":   "GET",
+		"code":     "202",
+	}
+	for _, labelPair := range iom.Label {
+		if expectedLabels[*labelPair.Name] == "" {
+			t.Errorf("Unexpected label %s", *labelPair.Name)
+		} else if expectedLabels[*labelPair.Name] != *labelPair.Value {
+			t.Errorf("labels[%q] = %q (expected %q)", *labelPair.Name, *labelPair.Value,
+				expectedLabels[*labelPair.Name])
+		}
+		delete(expectedLabels, *labelPair.Name)
+	}
+	if len(expectedLabels) != 0 {
+		t.Errorf("Some labels were expected, but not observed: %v", expectedLabels)
+	}
+}
