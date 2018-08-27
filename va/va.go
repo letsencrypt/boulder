@@ -968,8 +968,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 					err = nil
 				} else if canceled.Is(err) {
 					// If the non-nil err was a canceled error, ignore it. That's fine it
-					// just means we stopped the remote VA before it was finished because
-					// we didn't care about its result.
+					// just means we cancelled the remote VA request before it was
+					// finished because we didn't care about its result.
 					err = nil
 				} else if !ok {
 					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
