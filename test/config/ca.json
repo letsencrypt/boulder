@@ -16,6 +16,7 @@
     },
     "grpcCA": {
       "address": ":9093",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -36,9 +37,9 @@
       "NumSessions": 2
     }],
     "expiry": "2160h",
+    "backdate": "1h",
     "lifespanOCSP": "96h",
     "maxNames": 100,
-    "doNotForceCN": true,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
     "cfssl": {
@@ -130,6 +131,7 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "features": {
+        "RPCHeadroom": true,
         "WildcardDomains": true
     }
   },

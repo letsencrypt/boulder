@@ -9,8 +9,11 @@ command -v minica >/dev/null 2>&1 || {
   exit 1;
 }
 
-for HOSTNAME in admin-revoker.boulder ca.boulder expiration-mailer.boulder \
-  ocsp-updater.boulder orphan-finder.boulder publisher.boulder ra.boulder \
-  sa.boulder va.boulder wfe.boulder ; do
+for HOSTNAME in admin-revoker.boulder expiration-mailer.boulder \
+  ocsp-updater.boulder orphan-finder.boulder wfe.boulder ; do
   minica -domains ${HOSTNAME}
+done
+
+for SERVICE in publisher ra ca sa va ; do
+  minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
 done

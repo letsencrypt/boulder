@@ -7,8 +7,6 @@
 package grpc
 
 import (
-	"errors"
-
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/publisher"
@@ -24,24 +22,6 @@ type PublisherClientWrapper struct {
 // NewPublisherClientWrapper returns an initialized PublisherClientWrapper
 func NewPublisherClientWrapper(inner pubpb.PublisherClient) *PublisherClientWrapper {
 	return &PublisherClientWrapper{inner}
-}
-
-// SubmitToCT makes a call to the gRPC version of the publisher
-func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) error {
-	_, err := pc.inner.SubmitToCT(ctx, &pubpb.Request{Der: der})
-	return err
-}
-
-// SubmitToSingleCT makes a call to the gRPC version of the publisher to send
-// the provided certificate to the log specified by log URI and public key
-func (pc *PublisherClientWrapper) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	_, err := pc.inner.SubmitToSingleCT(
-		ctx,
-		&pubpb.Request{
-			LogURL:       &logURL,
-			LogPublicKey: &logPublicKey,
-			Der:          der})
-	return err
 }
 
 // SubmitToSingleCTWithResult is a wrapper
@@ -66,27 +46,10 @@ func NewPublisherServerWrapper(inner *publisher.Impl) *PublisherServerWrapper {
 	return &PublisherServerWrapper{inner}
 }
 
-// SubmitToCT calls the same method on the wrapped publisher.Impl since their interfaces
-// are different
-func (pub *PublisherServerWrapper) SubmitToCT(ctx context.Context, request *pubpb.Request) (*pubpb.Empty, error) {
-	if request == nil || request.Der == nil {
-		return nil, errors.New("incomplete SubmitToCT gRPC message")
-	}
-	return &pubpb.Empty{}, pub.inner.SubmitToCT(ctx, request.Der)
-}
-
-func (pub *PublisherServerWrapper) SubmitToSingleCT(ctx context.Context, request *pubpb.Request) (*pubpb.Empty, error) {
-	if request == nil || request.Der == nil || request.LogURL == nil || request.LogPublicKey == nil {
-		return nil, errors.New("incomplete SubmitToSingleCT gRPC message")
-	}
-	err := pub.inner.SubmitToSingleCT(ctx, *request.LogURL, *request.LogPublicKey, request.Der)
-	return &pubpb.Empty{}, err
-}
-
 // SubmitToSingleCTWithResult is a wrapper
-func (pc *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	if req == nil || req.Der == nil || req.LogURL == nil || req.LogPublicKey == nil {
 		return nil, errIncompleteRequest
 	}
-	return pc.inner.SubmitToSingleCTWithResult(ctx, req)
+	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
 }

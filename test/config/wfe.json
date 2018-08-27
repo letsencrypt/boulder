@@ -11,11 +11,12 @@
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "acceptRevocationReason": true,
     "allowAuthzDeactivation": true,
     "debugAddr": ":8000",
+    "directoryCAAIdentity": "happy-hacker-ca.invalid",
+    "directoryWebsite": "https://github.com/letsencrypt/boulder",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -30,11 +31,12 @@
       "timeout": "15s"
     },
     "features": {
+      "RPCHeadroom": true
     }
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 5,
     "sysloglevel": 4
   },
 

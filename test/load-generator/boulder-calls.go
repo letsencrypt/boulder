@@ -35,7 +35,6 @@ var (
 		"getRegistration":   getRegistration,
 		"newAuthorization":  newAuthorization,
 		"solveHTTPOne":      solveHTTPOne,
-		"solveTLSOne":       solveTLSOne,
 		"newCertificate":    newCertificate,
 		"revokeCertificate": revokeCertificate,
 
@@ -523,9 +522,9 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	authStr := fmt.Sprintf("%s.%s", chalToSolve.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
 
 	// Add the challenge response to the state's test server
-	s.challSrv.addHTTPOneChallenge(chalToSolve.Token, authStr)
+	s.challSrv.AddHTTPOneChallenge(chalToSolve.Token, authStr)
 	// Clean up after we're done
-	defer s.challSrv.deleteHTTPOneChallenge(chalToSolve.Token)
+	defer s.challSrv.DeleteHTTPOneChallenge(chalToSolve.Token)
 
 	// Prepare the Challenge POST body
 	update := fmt.Sprintf(`{"keyAuthorization":"%s"}`, authStr)
@@ -662,8 +661,8 @@ func solveHTTPOne(s *State, ctx *context) error {
 		return err
 	}
 	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
-	s.challSrv.addHTTPOneChallenge(chall.Token, authStr)
-	defer s.challSrv.deleteHTTPOneChallenge(chall.Token)
+	s.challSrv.AddHTTPOneChallenge(chall.Token, authStr)
+	defer s.challSrv.DeleteHTTPOneChallenge(chall.Token)
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
 	requestPayload, err := s.signWithNonce([]byte(update), ctx.reg.signer)
@@ -720,93 +719,6 @@ func solveHTTPOne(s *State, ctx *context) error {
 	}
 	if ident == "" {
 		return errors.New("HTTP-01 challenge validation timed out")
-	}
-
-	ctx.finalizedAuthz = append(ctx.finalizedAuthz, ident)
-	return nil
-}
-
-// solveTLSOne removes a pending authorization from the context and solves the
-// TLS-SNI-01 challenge associated with it, polling until the authorization
-// changes state.
-func solveTLSOne(s *State, ctx *context) error {
-	if len(ctx.pendingAuthz) == 0 {
-		return errors.New("no pending authorizations to complete")
-	}
-	authz := popPending(ctx)
-	var chall *core.Challenge
-	for _, c := range authz.Challenges {
-		if c.Type == "tls-sni-01" {
-			chall = &c
-			break
-		}
-	}
-	if chall == nil {
-		return errors.New("no http-01 challenges to complete")
-	}
-
-	jwk := &jose.JSONWebKey{Key: &ctx.reg.key.PublicKey}
-	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return err
-	}
-	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
-
-	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
-	requestPayload, err := s.signWithNonce([]byte(update), ctx.reg.signer)
-	if err != nil {
-		return err
-	}
-
-	cStarted := time.Now()
-	resp, err := s.post(chall.URI, requestPayload, ctx.ns)
-	cFinished := time.Now()
-	cState := "good"
-	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
-	if err != nil {
-		cState = "error"
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		cState = "error"
-		return fmt.Errorf("Unexpected error code")
-	}
-	// Sit and spin until status valid or invalid
-	ident := ""
-	for i := 0; i < 3; i++ {
-		aStarted := time.Now()
-		resp, err = s.get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
-		aFinished := time.Now()
-		aState := "good"
-		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
-		if err != nil {
-			aState = "error"
-			return fmt.Errorf("/acme/authz bad response: %s", err)
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			aState = "error"
-			return fmt.Errorf("/acme/authz bad response: %s", err)
-		}
-		var newAuthz core.Authorization
-		err = json.Unmarshal(body, &newAuthz)
-		if err != nil {
-			aState = "error"
-			return fmt.Errorf("/acme/authz bad response: %s", string(body))
-		}
-		if newAuthz.Status == "valid" {
-			ident = newAuthz.Identifier.Value
-			break
-		}
-		if newAuthz.Status == "invalid" {
-			return fmt.Errorf("TLS-SNI-01 challenge invalid: %s", string(body))
-		}
-		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
-	}
-	if ident == "" {
-		return errors.New("failed to complete tls-sni-01 challenge")
 	}
 
 	ctx.finalizedAuthz = append(ctx.finalizedAuthz, ident)

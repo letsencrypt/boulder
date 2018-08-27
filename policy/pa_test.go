@@ -98,13 +98,13 @@ func TestWillingToIssue(t *testing.T) {
 		{`example.internal`, errNonPublic},
 		// All-numeric final label not okay.
 		{`www.zombo.163`, errNonPublic},
-		{`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`, errMalformedIDN}, // Not in Unicode NFKC
+		{`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`, errMalformedIDN}, // Not in Unicode NFC
 		{`bq--abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
 	}
 
 	shouldBeTLDError := []string{
 		`co.uk`,
-		`foo.bn`,
+		`foo.bd`,
 	}
 
 	shouldBeBlacklisted := []string{

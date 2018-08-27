@@ -27,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -130,11 +129,8 @@ var (
 	// |TestIssueCertificate| quite a bit, and since it isn't clear that that
 	// would be useful, we've avoided adding that case, at least for now.
 	issuanceModes = []IssuanceMode{
-		{name: "non-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
-		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: true},
-		{name: "precertificate-disabled", issuePrecertificate: true, issueCertificateForPrecertificate: false, enablePrecertificateFlow: false},
-		{name: "certificate-for-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: true},
-		{name: "certificate-for-precertificate-disabled", issuePrecertificate: false, issueCertificateForPrecertificate: true, enablePrecertificateFlow: false},
+		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false},
+		{name: "certificate-for-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: true},
 	}
 )
 
@@ -166,7 +162,7 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte) (string, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
 	m.certificate.DER = der
 	return "", nil
 }
@@ -317,7 +313,6 @@ type IssuanceMode struct {
 	name                              string
 	issuePrecertificate               bool
 	issueCertificateForPrecertificate bool
-	enablePrecertificateFlow          bool
 }
 
 func TestIssueCertificate(t *testing.T) {
@@ -345,10 +340,8 @@ func TestIssueCertificate(t *testing.T) {
 		// |testCases| because the "certificate-for-precertificate" tests use
 		// the precertificates previously generated from the preceding
 		// "precertificate" test. See also the comment above |issuanceModes|.
-		precertDER := []byte{}
 		for _, mode := range issuanceModes {
 			ca, sa := testCase.setup(t)
-			ca.enablePrecertificateFlow = mode.enablePrecertificateFlow
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -360,29 +353,10 @@ func TestIssueCertificate(t *testing.T) {
 				if mode.issuePrecertificate {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
 
-					if !mode.enablePrecertificateFlow {
-						test.AssertError(t, err, "Precertificate flow not disabled as expected")
-						return
-					}
-
 					test.AssertNotError(t, err, "Failed to issue precertificate")
 					certDER = response.DER
-					precertDER = certDER
 				} else {
-					coreCert := core.Certificate{}
-					if mode.issueCertificateForPrecertificate {
-						coreCert, err = ca.IssueCertificateForPrecertificate(ctx,
-							&caPB.IssueCertificateForPrecertificateRequest{
-								DER: precertDER,
-							})
-
-						if true { // TODO(briansmith): !mode.enablePrecertificateFlow
-							test.AssertError(t, err, "Precertificate flow not disabled as expected")
-							return
-						}
-					} else {
-						coreCert, err = ca.IssueCertificate(ctx, issueReq)
-					}
+					coreCert, err := ca.IssueCertificate(ctx, issueReq)
 					test.AssertNotError(t, err, "Failed to issue certificate")
 					certDER = coreCert.DER
 
@@ -662,7 +636,6 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.logger,
 				nil)
 			test.AssertNotError(t, err, "Failed to create CA")
-			ca.enablePrecertificateFlow = mode.issuePrecertificate
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				serializedCSR := mustRead(testCase.csrPath)
@@ -676,13 +649,9 @@ func TestInvalidCSRs(t *testing.T) {
 				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
 				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 
-				if mode.issuePrecertificate == mode.enablePrecertificateFlow {
-					test.AssertError(t, err, testCase.errorMessage)
-					if testCase.check != nil {
-						testCase.check(t, ca, sa)
-					}
-				} else {
-					test.AssertError(t, err, "Precertificate flow not disabled as expected")
+				test.AssertError(t, err, testCase.errorMessage)
+				if testCase.check != nil {
+					testCase.check(t, ca, sa)
 				}
 			})
 		}
@@ -914,9 +883,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.logger,
 		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.enablePrecertificateFlow = true
-	_ = features.Set(map[string]bool{"EmbedSCTs": true})
-	defer features.Reset()
 
 	orderID := int64(0)
 	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID, OrderID: &orderID}

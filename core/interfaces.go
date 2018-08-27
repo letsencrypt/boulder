@@ -121,14 +121,12 @@ type StorageGetter interface {
 	GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
-	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
 	CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
 	CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error)
-	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
 	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
@@ -147,8 +145,7 @@ type StorageAdder interface {
 	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
-	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte) (digest string, err error)
-	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
+	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
@@ -169,7 +166,5 @@ type StorageAuthority interface {
 
 // Publisher defines the public interface for the Boulder Publisher
 type Publisher interface {
-	SubmitToCT(ctx context.Context, der []byte) error
-	SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error
 	SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error)
 }

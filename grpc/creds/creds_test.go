@@ -113,7 +113,7 @@ func TestClientTransportCredentials(t *testing.T) {
 	serverB := httptest.NewUnstartedServer(nil)
 	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
-	tc := NewClientCredentials(roots, []tls.Certificate{})
+	tc := NewClientCredentials(roots, []tls.Certificate{}, "")
 
 	serverA.StartTLS()
 	defer serverA.Close()
@@ -195,7 +195,7 @@ func (bc *brokenConn) SetReadDeadline(time.Time) error  { return nil }
 func (bc *brokenConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestClientReset(t *testing.T) {
-	tc := NewClientCredentials(nil, []tls.Certificate{})
+	tc := NewClientCredentials(nil, []tls.Certificate{}, "")
 	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
 	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
 	_, ok := err.(interface {

@@ -6,8 +6,8 @@
             "solveHTTPOne",
             "newCertificate"
         ],
-        "rate": 5,
-        "runtime": "15s",
+        "rate": 1,
+        "runtime": "10s",
         "rateDelta": "5/1m"
     },
     "apiBase": "http://boulder:4000",

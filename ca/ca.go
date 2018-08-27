@@ -34,7 +34,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -99,7 +98,7 @@ const (
 )
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte) (string, error)
+	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 }
 
 type certificateType string
@@ -117,23 +116,22 @@ type CertificateAuthorityImpl struct {
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
-	defaultIssuer            *internalIssuer
-	sa                       certificateStorage
-	pa                       core.PolicyAuthority
-	keyPolicy                goodkey.KeyPolicy
-	clk                      clock.Clock
-	log                      blog.Logger
-	stats                    metrics.Scope
-	prefix                   int // Prepended to the serial number
-	validityPeriod           time.Duration
-	backdate                 time.Duration
-	maxNames                 int
-	forceCNFromSAN           bool
-	enableMustStaple         bool
-	enablePrecertificateFlow bool
-	signatureCount           *prometheus.CounterVec
-	csrExtensionCount        *prometheus.CounterVec
-	orphanQueue              *goque.Queue
+	defaultIssuer     *internalIssuer
+	sa                certificateStorage
+	pa                core.PolicyAuthority
+	keyPolicy         goodkey.KeyPolicy
+	clk               clock.Clock
+	log               blog.Logger
+	stats             metrics.Scope
+	prefix            int // Prepended to the serial number
+	validityPeriod    time.Duration
+	backdate          time.Duration
+	maxNames          int
+	forceCNFromSAN    bool
+	enableMustStaple  bool
+	signatureCount    *prometheus.CounterVec
+	csrExtensionCount *prometheus.CounterVec
+	orphanQueue       *goque.Queue
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -263,23 +261,22 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(signatureCount)
 
 	ca = &CertificateAuthorityImpl{
-		sa:                       sa,
-		pa:                       pa,
-		issuers:                  internalIssuers,
-		defaultIssuer:            defaultIssuer,
-		rsaProfile:               rsaProfile,
-		ecdsaProfile:             ecdsaProfile,
-		prefix:                   config.SerialPrefix,
-		clk:                      clk,
-		log:                      logger,
-		stats:                    stats,
-		keyPolicy:                keyPolicy,
-		forceCNFromSAN:           !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple:         config.EnableMustStaple,
-		enablePrecertificateFlow: config.EnablePrecertificateFlow,
-		signatureCount:           signatureCount,
-		csrExtensionCount:        csrExtensionCount,
-		orphanQueue:              orphanQueue,
+		sa:                sa,
+		pa:                pa,
+		issuers:           internalIssuers,
+		defaultIssuer:     defaultIssuer,
+		rsaProfile:        rsaProfile,
+		ecdsaProfile:      ecdsaProfile,
+		prefix:            config.SerialPrefix,
+		clk:               clk,
+		log:               logger,
+		stats:             stats,
+		keyPolicy:         keyPolicy,
+		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple:  config.EnableMustStaple,
+		signatureCount:    signatureCount,
+		csrExtensionCount: csrExtensionCount,
+		orphanQueue:       orphanQueue,
 	}
 
 	if config.Expiry == "" {
@@ -454,10 +451,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	if !ca.enablePrecertificateFlow {
-		return nil, berrors.InternalServerError("Precertificate flow is disabled")
-	}
-
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
@@ -479,9 +472,6 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // and the response and certificate are stored in the database.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
-	if !features.Enabled(features.EmbedSCTs) {
-		return emptyCert, berrors.InternalServerError("IssueCertificateForPrecertificate is not implemented")
-	}
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return emptyCert, err
@@ -503,14 +493,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
 		return emptyCert, err
 	}
 	certDER := block.Bytes
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
-		hex.EncodeToString(certDER)))
+		hex.EncodeToString(certDER))
 	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
@@ -527,7 +516,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
+		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
 		return nil, validity{}, err
 	}
 	serialBigInt := big.NewInt(0)
@@ -615,36 +604,35 @@ func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw)))
+	ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
 		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErr(fmt.Sprintf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
 	}
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType)}).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
-		ca.log.AuditErr(fmt.Sprintf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErrf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErr(fmt.Sprintf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
-			serialHex, certPEM, err))
+		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
 		return nil, err
 	}
 	certDER := block.Bytes
 
-	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw), certType,
-		hex.EncodeToString(certDER)))
+		hex.EncodeToString(certDER))
 
 	return certDER, nil
 }
@@ -661,25 +649,20 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfo(fmt.Sprintf("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err))
+		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
 		// Ignore errors here to avoid orphaning the certificate. The
 		// ocsp-updater will look for certs with a zero ocspLastUpdated
 		// and generate the initial response in this case.
 	}
 
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp)
+	now := ca.clk.Now()
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp, &now)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErr(fmt.Sprintf(
-			"Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			core.SerialToString(serialBigInt),
-			hex.EncodeToString(certDER),
-			err,
-			regID,
-			orderID,
-		))
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
+			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      certDER,

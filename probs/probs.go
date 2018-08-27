@@ -20,6 +20,7 @@ const (
 	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
 	CAAProblem                 = ProblemType("caa")
 	DNSProblem                 = ProblemType("dns")
+	AlreadyRevokedProblem      = ProblemType("alreadyRevoked")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -79,73 +80,80 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 
 // BadNonce returns a ProblemDetails with a BadNonceProblem and a 400 Bad
 // Request status code.
-func BadNonce(detail string) *ProblemDetails {
+func BadNonce(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadNonceProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
 // Request status code.
-func RejectedIdentifier(detail string) *ProblemDetails {
+func RejectedIdentifier(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       RejectedIdentifierProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // Conflict returns a ProblemDetails with a MalformedProblem and a 409 Conflict
 // status code.
-func Conflict(detail string) *ProblemDetails {
+func Conflict(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       MalformedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// AlreadyRevoked returns a ProblemDetails with a AlreadyRevokedProblem and a 400 Bad
+// Request status code.
+func AlreadyRevoked(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AlreadyRevokedProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // Malformed returns a ProblemDetails with a MalformedProblem and a 400 Bad
 // Request status code.
-func Malformed(detail string, args ...interface{}) *ProblemDetails {
-	if len(args) > 0 {
-		detail = fmt.Sprintf(detail, args...)
-	}
+func Malformed(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       MalformedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // NotFound returns a ProblemDetails with a MalformedProblem and a 404 Not Found
 // status code.
-func NotFound(detail string) *ProblemDetails {
+func NotFound(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       MalformedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusNotFound,
 	}
 }
 
 // ServerInternal returns a ProblemDetails with a ServerInternalProblem and a
 // 500 Internal Server Failure status code.
-func ServerInternal(detail string) *ProblemDetails {
+func ServerInternal(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       ServerInternalProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusInternalServerError,
 	}
 }
 
 // Unauthorized returns a ProblemDetails with an UnauthorizedProblem and a 403
 // Forbidden status code.
-func Unauthorized(detail string) *ProblemDetails {
+func Unauthorized(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       UnauthorizedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusForbidden,
 	}
 }
@@ -172,85 +180,85 @@ func ContentLengthRequired() *ProblemDetails {
 
 // InvalidContentType returns a ProblemDetails suitable for a missing
 // ContentType header, or an incorrect ContentType header
-func InvalidContentType(detail string) *ProblemDetails {
+func InvalidContentType(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       MalformedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusUnsupportedMediaType,
 	}
 }
 
 // InvalidEmail returns a ProblemDetails representing an invalid email address
 // error
-func InvalidEmail(detail string) *ProblemDetails {
+func InvalidEmail(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       InvalidEmailProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // ConnectionFailure returns a ProblemDetails representing a ConnectionProblem
 // error
-func ConnectionFailure(detail string) *ProblemDetails {
+func ConnectionFailure(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       ConnectionProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // UnknownHost returns a ProblemDetails representing an UnknownHostProblem error
-func UnknownHost(detail string) *ProblemDetails {
+func UnknownHost(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       UnknownHostProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // RateLimited returns a ProblemDetails representing a RateLimitedProblem error
-func RateLimited(detail string) *ProblemDetails {
+func RateLimited(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       RateLimitedProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: statusTooManyRequests,
 	}
 }
 
 // TLSError returns a ProblemDetails representing a TLSProblem error
-func TLSError(detail string) *ProblemDetails {
+func TLSError(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       TLSProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // AccountDoesNotExist returns a ProblemDetails representing an
 // AccountDoesNotExistProblem error
-func AccountDoesNotExist(detail string) *ProblemDetails {
+func AccountDoesNotExist(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       AccountDoesNotExistProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // CAA returns a ProblemDetails representing a CAAProblem
-func CAA(detail string) *ProblemDetails {
+func CAA(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       CAAProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusForbidden,
 	}
 }
 
 // DNS returns a ProblemDetails representing a DNSProblem
-func DNS(detail string) *ProblemDetails {
+func DNS(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       DNSProblem,
-		Detail:     detail,
+		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }

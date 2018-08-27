@@ -1,8 +1,8 @@
 package measured_http
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
@@ -20,6 +20,15 @@ type responseWriterWithStatus struct {
 func (r *responseWriterWithStatus) WriteHeader(code int) {
 	r.code = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Write writes the body and sets the status code to 200 if a status code
+// has not already been set.
+func (r *responseWriterWithStatus) Write(body []byte) (int, error) {
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	return r.ResponseWriter.Write(body)
 }
 
 // serveMux is a partial interface wrapper for the method http.ServeMux
@@ -74,7 +83,7 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.stat.With(prometheus.Labels{
 			"endpoint": pattern,
 			"method":   method,
-			"code":     fmt.Sprintf("%d", rwws.code),
+			"code":     strconv.Itoa(rwws.code),
 		}).Observe(h.clk.Since(begin).Seconds())
 	}()
 

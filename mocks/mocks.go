@@ -309,7 +309,7 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte, _ *time.Time) (digest string, err error) {
 	return
 }
 
@@ -340,19 +340,6 @@ func (sa *StorageAuthority) UpdatePendingAuthorization(_ context.Context, authz 
 
 // UpdateRegistration is a mock
 func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
-	return
-}
-
-// GetSCTReceipt  is a mock
-func (sa *StorageAuthority) GetSCTReceipt(_ context.Context, serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
-	return
-}
-
-// AddSCTReceipt is a mock
-func (sa *StorageAuthority) AddSCTReceipt(_ context.Context, sct core.SignedCertificateTimestamp) (err error) {
-	if sct.Signature == nil {
-		err = fmt.Errorf("Bad times")
-	}
 	return
 }
 
@@ -412,11 +399,6 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 		return map[string]*core.Authorization{"bad.example.com": nil}, nil
 	}
 	return nil, nil
-}
-
-// CountCertificatesRange is a mock
-func (sa *StorageAuthority) CountCertificatesRange(_ context.Context, _, _ time.Time) (int64, error) {
-	return 0, nil
 }
 
 // CountCertificatesByNames is a mock
@@ -527,6 +509,11 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		validOrder.Expires = &exp
 	}
 
+	if *req.Id == 8 {
+		ready := string(core.StatusReady)
+		validOrder.Status = &ready
+	}
+
 	return validOrder, nil
 }
 
@@ -556,16 +543,6 @@ func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *s
 // Publisher is a mock
 type Publisher struct {
 	// empty
-}
-
-// SubmitToCT is a mock
-func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
-	return nil
-}
-
-// SubmitToSingleCT is a mock
-func (*Publisher) SubmitToSingleCT(_ context.Context, _, _ string, _ []byte) error {
-	return nil
 }
 
 // SubmitToSingleCTWithResult is a mock

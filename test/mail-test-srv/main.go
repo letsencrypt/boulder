@@ -57,7 +57,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 	srv.connNumber++
 	srv.connNumberMutex.Unlock()
 	auditlogger := blog.Get()
-	auditlogger.Info(fmt.Sprintf("mail-test-srv: Got connection from %s", conn.RemoteAddr()))
+	auditlogger.Infof("mail-test-srv: Got connection from %s", conn.RemoteAddr())
 
 	readBuf := bufio.NewReader(conn)
 	conn.Write([]byte("220 smtp.example.com ESMTP\r\n"))
@@ -73,7 +73,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 		return
 	}
 	conn.Write([]byte("235 2.7.0 Authentication successful\r\n"))
-	auditlogger.Info(fmt.Sprintf("mail-test-srv: Successful auth from %s", conn.RemoteAddr()))
+	auditlogger.Infof("mail-test-srv: Successful auth from %s", conn.RemoteAddr())
 
 	// necessary commands:
 	// MAIL RCPT DATA QUIT

@@ -17,17 +17,18 @@
     "debugAddr": ":8013",
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
+    "legacyKeyIDPrefix": "http://boulder:4000/reg/",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
       "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
-      "serverAddresses": ["ra.boulder:9094"],
+      "serverAddress": "ra.boulder:9094",
       "timeout": "15s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
     "certificateChains": {
@@ -35,13 +36,14 @@
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
     "features": {
+      "EnforceV2ContentType": true,
       "RPCHeadroom": true,
-      "EnforceV2ContentType": true
+      "ACME13KeyRollover": true
     }
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 5,
     "sysloglevel": 4
   },
 

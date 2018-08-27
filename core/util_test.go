@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"strings"
 	"testing"
 
 	"gopkg.in/square/go-jose.v2"
@@ -111,4 +112,16 @@ func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
+}
+
+func TestValidSerial(t *testing.T) {
+	notLength32Or36 := "A"
+	length32 := strings.Repeat("A", 32)
+	length36 := strings.Repeat("A", 36)
+	isValidSerial := ValidSerial(notLength32Or36)
+	test.AssertEquals(t, isValidSerial, false)
+	isValidSerial = ValidSerial(length32)
+	test.AssertEquals(t, isValidSerial, true)
+	isValidSerial = ValidSerial(length36)
+	test.AssertEquals(t, isValidSerial, true)
 }

@@ -12,21 +12,23 @@ import (
 )
 
 type RequestEvent struct {
-	RealIP    string    `json:",omitempty"`
-	Endpoint  string    `json:",omitempty"`
-	Method    string    `json:",omitempty"`
-	Errors    []string  `json:",omitempty"`
-	Requester int64     `json:",omitempty"`
-	Contacts  *[]string `json:",omitempty"`
-	UserAgent string    `json:",omitempty"`
-	Latency   float64
-	Code      int
-	Payload   string                 `json:",omitempty"`
-	Extra     map[string]interface{} `json:",omitempty"`
+	RealIP         string    `json:",omitempty"`
+	Endpoint       string    `json:",omitempty"`
+	Slug           string    `json:",omitempty"`
+	Method         string    `json:",omitempty"`
+	InternalErrors []string  `json:",omitempty"`
+	Error          string    `json:",omitempty"`
+	Requester      int64     `json:",omitempty"`
+	Contacts       *[]string `json:",omitempty"`
+	UserAgent      string    `json:",omitempty"`
+	Latency        float64
+	Code           int
+	Payload        string                 `json:",omitempty"`
+	Extra          map[string]interface{} `json:",omitempty"`
 }
 
 func (e *RequestEvent) AddError(msg string, args ...interface{}) {
-	e.Errors = append(e.Errors, fmt.Sprintf(msg, args...))
+	e.InternalErrors = append(e.InternalErrors, fmt.Sprintf(msg, args...))
 }
 
 type WFEHandlerFunc func(context.Context, *RequestEvent, http.ResponseWriter, *http.Request)
@@ -87,10 +89,10 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	var msg string
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErr(fmt.Sprintf("failed to marshal logEvent - %s - %#v", msg, err))
+		th.log.AuditErrf("failed to marshal logEvent - %s - %#v", msg, err)
 		return
 	}
-	th.log.Info(fmt.Sprintf("JSON=%s", jsonEvent))
+	th.log.Infof("JSON=%s", jsonEvent)
 }
 
 // Comma-separated list of HTTP clients involved in making this

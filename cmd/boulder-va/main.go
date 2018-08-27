@@ -38,6 +38,8 @@ type config struct {
 		MaxRemoteValidationFailures int
 
 		Features map[string]bool
+
+		AccountURIPrefixes []string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -50,6 +52,8 @@ type config struct {
 }
 
 func main() {
+	grpcAddr := flag.String("addr", "", "gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -63,6 +67,13 @@ func main() {
 
 	err = features.Set(c.VA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *grpcAddr != "" {
+		c.VA.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		c.VA.DebugAddr = *debugAddr
+	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.VA.DebugAddr)
 	defer logger.AuditPanic()
@@ -117,19 +128,23 @@ func main() {
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
-			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics)
+			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
+			addr := rva.ServerAddress
+			if addr == "" {
+				addr = strings.Join(rva.ServerAddresses, ",")
+			}
 			remotes = append(
 				remotes,
 				va.RemoteVA{
 					ValidationAuthority: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
-					Addresses:           strings.Join(rva.ServerAddresses, ","),
+					Addresses:           addr,
 				},
 			)
 		}
 	}
 
-	vai := va.NewValidationAuthorityImpl(
+	vai, err := va.NewValidationAuthorityImpl(
 		pc,
 		sbc,
 		resolver,
@@ -139,10 +154,12 @@ func main() {
 		c.VA.IssuerDomain,
 		scope,
 		clk,
-		logger)
+		logger,
+		c.VA.AccountURIPrefixes)
+	cmd.FailOnError(err, "Unable to create VA server")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics)
+	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register VA gRPC server")

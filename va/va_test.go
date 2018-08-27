@@ -7,8 +7,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	mrand "math/rand"
@@ -40,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -73,6 +76,8 @@ func dnsi(hostname string) core.AcmeIdentifier {
 }
 
 var ctx = context.Background()
+
+var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
 // All paths that get assigned to tokens MUST be valid tokens
 const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
@@ -174,20 +179,8 @@ func tlssni01Srv(t *testing.T, chall core.Challenge) *httptest.Server {
 	return tlssniSrvWithNames(t, chall, ZName)
 }
 
-func tlssni02Srv(t *testing.T, chall core.Challenge) *httptest.Server {
-	ha := sha256.Sum256([]byte(chall.Token))
-	za := hex.EncodeToString(ha[:])
-	sanAName := fmt.Sprintf("%s.%s.token.acme.invalid", za[:32], za[32:])
-
-	hb := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
-	zb := hex.EncodeToString(hb[:])
-	sanBName := fmt.Sprintf("%s.%s.ka.acme.invalid", zb[:32], zb[32:])
-
-	return tlssniSrvWithNames(t, chall, sanAName, sanBName)
-}
-
-func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
-	template := &x509.Certificate{
+func tlsCertTemplate(names []string) *x509.Certificate {
+	return &x509.Certificate{
 		SerialNumber: big.NewInt(1337),
 		Subject: pkix.Name{
 			Organization: []string{"tests"},
@@ -201,21 +194,23 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 
 		DNSNames: names,
 	}
+}
 
+func makeACert(names []string) *tls.Certificate {
+	template := tlsCertTemplate(names)
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	cert := &tls.Certificate{
+	return &tls.Certificate{
 		Certificate: [][]byte{certBytes},
 		PrivateKey:  &TheKey,
 	}
+}
 
+func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
+	cert := makeACert(names)
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if clientHello.ServerName != names[0] {
-				time.Sleep(time.Second * 10)
-				return nil, nil
-			}
 			return cert, nil
 		},
 		NextProtos: []string{"http/1.1"},
@@ -223,6 +218,55 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 
 	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
 	hs.TLS = tlsConfig
+	hs.StartTLS()
+	return hs
+}
+
+func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names ...string) *httptest.Server {
+	template := tlsCertTemplate(names)
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, _ := asn1.Marshal(shasum[:])
+	acmeExtension := pkix.Extension{
+		Id:       oid,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	template.ExtraExtensions = []pkix.Extension{acmeExtension}
+	certBytes, _ = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{},
+		ClientAuth:   tls.NoClientCert,
+		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if clientHello.ServerName != names[0] {
+				return nil, nil
+			}
+			if len(clientHello.SupportedProtos) == 1 && clientHello.SupportedProtos[0] == ACMETLS1Protocol {
+				return acmeCert, nil
+			}
+			return cert, nil
+		},
+		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
+	}
+
+	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
+	hs.TLS = tlsConfig
+	hs.Config.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){
+		ACMETLS1Protocol: func(_ *http.Server, conn *tls.Conn, _ http.Handler) {
+			_ = conn.Close()
+		},
+	}
 	hs.StartTLS()
 	return hs
 }
@@ -338,23 +382,84 @@ func TestHTTPTimeout(t *testing.T) {
 
 	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
-	took := time.Since(started)
-	// Check that the HTTP connection does't return before a timeout, and times
-	// out after the expected time
-	test.Assert(t,
-		(took > (time.Second * singleDialTimeout)),
-		fmt.Sprintf("HTTP timed out before %d seconds", singleDialTimeout))
-	test.Assert(t,
-		(took < (time.Second * (singleDialTimeout * 2))),
-		fmt.Sprintf("HTTP connection didn't timeout after %d seconds",
-			singleDialTimeout))
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return before a timeout, and times
+	// out after the expected time
+	if took < timeout {
+		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
+	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
-		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout")
+		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
+}
+
+// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
+// unroutable address for LookupHost. This is useful in testing connect
+// timeouts.
+type dnsMockReturnsUnroutable struct {
+	*bdns.MockDNSClient
+}
+
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, nil
+}
+
+// TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
+// error when dial fails. We do this by using a mock DNS client that resolves
+// everything to an unroutable IP address.
+func TestHTTPDialTimeout(t *testing.T) {
+	va, _ := setup(nil, 0)
+
+	started := time.Now()
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	// The only method I've found so far to trigger a connect timeout is to
+	// connect to an unrouteable IP address. This usuall generates a connection
+	// timeout, but will rarely return "Network unreachable" instead. If we get
+	// that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < timeout/2 {
+		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expectMatch := regexp.MustCompile(
+		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
 	if !expectMatch.MatchString(prob.Detail) {
 		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
 			prob.Detail, expectMatch)
@@ -375,7 +480,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
@@ -385,13 +490,13 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
 	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`No valid IP addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
@@ -401,8 +506,8 @@ func TestHTTPRedirectLookup(t *testing.T) {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectInvalidPort)
@@ -476,82 +581,196 @@ func getPort(hs *httptest.Server) int {
 	return int(port)
 }
 
-func TestTLSSNI01(t *testing.T) {
+func TestTLSSNI01Success(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
-
 	hs := tlssni01Srv(t, chall)
-
 	va, log := setup(hs, 0)
 
 	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failure in validate TLS-SNI-01: %s", prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
 	if len(log.GetAllMatching(`challenge for localhost received certificate \(1 of 1\): cert=\[`)) != 1 {
 		t.Errorf("Didn't get log message with validated certificate. Instead got:\n%s",
 			strings.Join(log.GetAllMatching(".*"), "\n"))
 	}
+}
 
-	log.Clear()
+func TestTLSSNI01FailIP(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	va, _ := setup(hs, 0)
+
 	port := getPort(hs)
-	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{
+	_, prob := va.validateTLSSNI01(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
-		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
+		Value: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
 	}, chall)
 	if prob == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
 
-	log.Clear()
-	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+func TestTLSSNI01Invalid(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateTLSSNI01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
 	if prob == nil {
 		t.Fatalf("Domain name was supposed to be invalid.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnknownHostProblem)
+	expected := "No valid IP addresses found for always.invalid"
+	if prob.Detail != expected {
+		t.Errorf("Got wrong error detail. Expected %q, got %q",
+			expected, prob.Detail)
+	}
+}
 
-	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
-	chall.Token = core.NewToken()
-	chall.ProvidedKeyAuthorization = "invalid"
+func slowTLSSrv() *httptest.Server {
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+	server.TLS = &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			time.Sleep(100 * time.Millisecond)
+			return makeACert([]string{"nomatter"}), nil
+		},
+	}
+	server.StartTLS()
+	return server
+}
 
-	log.Clear()
+func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := slowTLSSrv()
+	va, _ := setup(hs, 0)
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	started := time.Now()
-	_, prob = va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
-	took := time.Since(started)
+	_, prob := va.validateTLSSNI01(ctx, dnsi("slow.server"), chall)
 	if prob == nil {
 		t.Fatalf("Validation should've failed")
 	}
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	// Check that the TLS connection doesn't return before a timeout, and times
 	// out after the expected time
-	test.Assert(t,
-		(took > (time.Second * singleDialTimeout)),
-		fmt.Sprintf("TLS connection returned before %d seconds", singleDialTimeout))
-	test.Assert(t,
-		(took < (time.Second * (2 * singleDialTimeout))),
-		fmt.Sprintf("TLS connection didn't timeout after %d seconds",
-			singleDialTimeout))
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < timeout/2 {
+		t.Fatalf("TLSSNI returned before %s (%s) with %#v", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("TLSSNI didn't timeout after %s (took %s to return %#v)", timeout,
+			took, prob)
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expected := "Timeout after connect (your server may be slow or overloaded)"
+	if prob.Detail != expected {
+		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
+}
 
+func TestTLSSNI01DialTimeout(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := slowTLSSrv()
+	va, _ := setup(hs, 0)
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	started := time.Now()
+
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// The only method I've found so far to trigger a connect timeout is to
+	// connect to an unrouteable IP address. This usuall generates a connection
+	// timeout, but will rarely return "Network unreachable" instead. If we get
+	// that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, prob = va.validateTLSSNI01(ctx, dnsi("unroutable.invalid"), chall)
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
+
+	if prob == nil {
+		t.Fatalf("Validation should've failed")
+	}
+	// Check that the TLS connection doesn't return before a timeout, and times
+	// out after the expected time
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < timeout/2 {
+		t.Fatalf("TLSSNI returned before %s (%s) with %#v", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("TLSSNI didn't timeout after %s", timeout)
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expected := "Timeout during connect (likely firewall problem)"
+	if prob.Detail != expected {
+		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
+}
+
+func TestTLSSNI01InvalidResponse(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	va, _ := setup(hs, 0)
+
+	differentChall := createChallenge(core.ChallengeTypeTLSSNI01)
+	differentChall.ProvidedKeyAuthorization = "invalid.keyAuthorization"
+
+	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), differentChall)
+	if prob == nil {
+		t.Fatalf("Validation should've failed")
+	}
+	expected := "Incorrect validation certificate for tls-sni-01 challenge."
+	if !strings.HasPrefix(prob.Detail, expected) {
+		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
+}
+
+func TestTLSSNI01Refused(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	va, _ := setup(hs, 0)
 	// Take down validation server and check that validation fails.
 	hs.Close()
-	_, err := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
-	if err == nil {
+	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+}
 
+func TestTLSSNI01TalkingToHTTP(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssni01Srv(t, chall)
+	va, _ := setup(hs, 0)
 	httpOnly := httpSrv(t, "")
 	va.tlsPort = getPort(httpOnly)
 
-	log.Clear()
-	_, err = va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
-	test.AssertError(t, err, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
-	test.Assert(t, strings.HasSuffix(
-		err.Error(),
-		"Server only speaks HTTP, not TLS",
-	), "validate TLS-SNI-01 didn't return useful error")
+	_, prob := va.validateTLSSNI01(ctx, dnsi("localhost"), chall)
+	test.AssertError(t, prob, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
+	expected := "Server only speaks HTTP, not TLS"
+	if !strings.HasSuffix(prob.Detail, expected) {
+		t.Errorf("Got wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
 }
 
 func brokenTLSSrv() *httptest.Server {
@@ -701,7 +920,7 @@ func TestGSBAtValidation(t *testing.T) {
 	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", fmt.Errorf("welp"))
 	va.safeBrowsing = sbc
 
-	_, prob := va.validateChallengeAndIdentifier(ctx, dnsi("bad.com"), chall)
+	_, prob := va.validate(ctx, dnsi("bad.com"), chall, core.Authorization{})
 	if prob == nil {
 		t.Fatalf("Expected rejection for bad.com, got success")
 	}
@@ -709,12 +928,12 @@ func TestGSBAtValidation(t *testing.T) {
 		t.Errorf("Got error %q, expected an unsafe domain error.", prob.Error())
 	}
 
-	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("errorful.com"), chall)
+	_, prob = va.validate(ctx, dnsi("errorful.com"), chall, core.Authorization{})
 	if prob != nil {
 		t.Fatalf("Expected success for errorful.com, got error")
 	}
 
-	_, prob = va.validateChallengeAndIdentifier(ctx, dnsi("good.com"), chall)
+	_, prob = va.validate(ctx, dnsi("good.com"), chall, core.Authorization{})
 	if prob != nil {
 		t.Fatalf("Expected success for good.com, got %s", prob)
 	}
@@ -762,6 +981,73 @@ func TestValidateTLSSNI01NotSane(t *testing.T) {
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestValidateTLSALPN01(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
+
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+
+	if prob != nil {
+		t.Errorf("Validation failed: %v", prob)
+	}
+
+	hs.Close()
+	chall = createChallenge(core.ChallengeTypeTLSALPN01)
+	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, "localhost")
+
+	va, _ = setup(hs, 0)
+
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
+
+	if prob != nil {
+		t.Errorf("Validation failed: %v", prob)
+	}
+}
+
+func TestValidateTLSALPN01BadChallenge(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall2 := chall
+	setChallengeToken(&chall2, "bad token")
+
+	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+
+	if prob == nil {
+		t.Fatalf("TLS ALPN validation should have failed.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+}
+
+func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := brokenTLSSrv()
+
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("TLS ALPN validation should have failed.")
+	}
+	test.AssertEquals(t, prob.Type, probs.TLSProblem)
+}
+
+func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssniSrvWithNames(t, chall, "localhost")
+
+	va, _ := setup(hs, 0)
+
+	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("TLS ALPN validation should have failed.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
@@ -1047,7 +1333,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 			TLSPort:  port,
 		}
 	}
-	va := NewValidationAuthorityImpl(
+	va, err := NewValidationAuthorityImpl(
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
 		nil,
@@ -1058,7 +1344,11 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		"letsencrypt.org",
 		metrics.NewNoopScope(),
 		clock.Default(),
-		logger)
+		logger,
+		accountURIPrefixes)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
+	}
 	return va, logger
 }
 
@@ -1069,53 +1359,43 @@ func TestAvailableAddresses(t *testing.T) {
 	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
 
 	testcases := []struct {
-		input core.ValidationRecord
+		input []net.IP
 		v4    []net.IP
 		v6    []net.IP
 	}{
 		// An empty validation record
 		{
-			core.ValidationRecord{},
+			[]net.IP{},
 			[]net.IP{},
 			[]net.IP{},
 		},
 		// A validation record with one IPv4 address
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v4a},
-			},
+			[]net.IP{v4a},
 			[]net.IP{v4a},
 			[]net.IP{},
 		},
 		// A dual homed record with an IPv4 and IPv6 address
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v4a, v6a},
-			},
+			[]net.IP{v4a, v6a},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
 		// The same as above but with the v4/v6 order flipped
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v4a},
-			},
+			[]net.IP{v6a, v4a},
 			[]net.IP{v4a},
 			[]net.IP{v6a},
 		},
 		// A validation record with just IPv6 addresses
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v6b},
-			},
+			[]net.IP{v6a, v6b},
 			[]net.IP{},
 			[]net.IP{v6a, v6b},
 		},
 		// A validation record with interleaved IPv4/IPv6 records
 		{
-			core.ValidationRecord{
-				AddressesResolved: []net.IP{v6a, v4a, v6b, v4b},
-			},
+			[]net.IP{v6a, v4a, v6b, v4b},
 			[]net.IP{v4a, v4b},
 			[]net.IP{v6a, v6b},
 		},
@@ -1159,19 +1439,16 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	// Set the IPv6First feature flag
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
 	// Create a test dialer for the dual homed host. There is only an IPv4 httpSrv
 	// so the IPv6 address returned in the AAAA record will always fail.
-	d, _ := va.resolveAndConstructDialer(context.Background(), "ipv4.and.ipv6.localhost", va.httpPort)
+	addrs, _ := va.getAddrs(context.Background(), "ipv4.and.ipv6.localhost")
+	d := va.newHTTP01Dialer("ipv4.and.ipv6.localhost", va.httpPort, addrs)
 
 	// Try to dial the dialer
-	_, dialProb := d.Dial("", "ipv4.and.ipv6.localhost")
+	_, dialProb := d.DialContext(context.Background(), "", "ipv4.and.ipv6.localhost")
 
 	// There shouldn't be a problem from this dial
 	test.AssertEquals(t, dialProb, nil)
@@ -1180,13 +1457,14 @@ func TestHTTP01DialerFallback(t *testing.T) {
 	test.AssertEquals(t, d.dialerCount, 2)
 
 	// We expect one validation record to be present
-	test.AssertNotNil(t, d.record, "there should be a non-nil validaiton record on the dialer")
+	test.Assert(t, len(d.addrInfoChan) == 1, "there should be one address info struct in the dialer.addrInfoChan chan")
+	addrInfo := <-d.addrInfoChan
 	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, d.record.AddressUsed.String(), "127.0.0.1")
+	test.AssertEquals(t, addrInfo.used.String(), "127.0.0.1")
 	// We expect that one address was tried before the address used
-	test.AssertEquals(t, len(d.record.AddressesTried), 1)
+	test.AssertEquals(t, len(addrInfo.tried), 1)
 	// We expect that IPv6 address was tried before the address used
-	test.AssertEquals(t, d.record.AddressesTried[0].String(), "::1")
+	test.AssertEquals(t, addrInfo.tried[0].String(), "::1")
 }
 
 func TestFallbackDialer(t *testing.T) {
@@ -1201,24 +1479,6 @@ func TestFallbackDialer(t *testing.T) {
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
-	// Create an identifier for a host that has an IPv6 and an IPv4 address.
-	// Since the IPv6First feature flag is not enabled we expect that the IPv4
-	// address will be used and validation will succeed using the httpSrv we
-	// created earlier.
-	ident := dnsi("ipv4.and.ipv6.localhost")
-	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob == nil, "validation failed for an dual homed host with IPv6First disabled")
-	// We expect one validation record to be present
-	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv4 address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
-	// We expect that zero addresses were tried before the address used
-	test.AssertEquals(t, len(records[0].AddressesTried), 0)
-
-	// Enable the IPv6 First feature
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	scope := mock_metrics.NewMockScope(ctrl)
@@ -1227,9 +1487,10 @@ func TestFallbackDialer(t *testing.T) {
 	// We expect the IPV4 Fallback stat to be incremented
 	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
-	// The validation is expected to succeed with IPv6First enabled even though
-	// the V6 server doesn't exist because we fallback to the IPv4 address.
-	records, prob = va.validateChallenge(ctx, ident, chall)
+	// The validation is expected to succeed even though the V6 server
+	// doesn't exist because we fallback to the IPv4 address.
+	ident := dnsi("ipv4.and.ipv6.localhost")
+	records, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
@@ -1253,24 +1514,6 @@ func TestFallbackTLS(t *testing.T) {
 	// Create a test VA
 	va, _ := setup(hs, 0)
 
-	// Create an identifier for a host that has an IPv6 and an IPv4 address.
-	// Since the IPv6First feature flag is not enabled we expect that the IPv4
-	// address will be used and validation will succeed using the httpSrv we
-	// created earlier.
-	ident := dnsi("ipv4.and.ipv6.localhost")
-	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob == nil, "validation failed for a dual-homed address with an IPv4 server")
-	// We expect one validation record to be present
-	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
-	// We expect that no addresses were tried before the address used
-	test.AssertEquals(t, len(records[0].AddressesTried), 0)
-
-	// Enable the IPv6 First feature
-	_ = features.Set(map[string]bool{"IPv6First": true})
-	defer features.Reset()
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	scope := mock_metrics.NewMockScope(ctrl)
@@ -1279,9 +1522,10 @@ func TestFallbackTLS(t *testing.T) {
 	// We expect the IPV4 Fallback stat to be incremented
 	scope.EXPECT().Inc("IPv4Fallback", int64(1))
 
-	// The validation is expected to succeed now that IPv6First is enabled by the
-	// fallback to the IPv4 address that has a test server waiting
-	records, prob = va.validateChallenge(ctx, ident, chall)
+	// The validation is expected to succeed  by the fallback to the IPv4 address
+	// that has a test server waiting
+	ident := dnsi("ipv4.and.ipv6.localhost")
+	records, prob := va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
 	// We expect one validation record to be present
 	test.AssertEquals(t, len(records), 1)
@@ -1349,6 +1593,18 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 	return ms
 }
 
+// cancelledVA is a mock that always returns context.Canceled for
+// PerformValidation or IsSafeDomain calls
+type cancelledVA struct{}
+
+func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Challenge, _ core.Authorization) ([]core.ValidationRecord, error) {
+	return nil, context.Canceled
+}
+
+func (v cancelledVA) IsSafeDomain(_ context.Context, _ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	return nil, context.Canceled
+}
+
 func TestPerformRemoteValidation(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01()
@@ -1394,6 +1650,35 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.allowedUAs["remote 1"] = struct{}{}
 	ms.allowedUAs["remote 2"] = struct{}{}
 	ms.mu.Unlock()
+
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{cancelledVA{}, "remote 2"},
+	}
+
+	// One remote cancelled, should return no err
+	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	prob = <-probCh
+	if prob != nil {
+		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
+	}
+
+	localVA.remoteVAs = []RemoteVA{
+		{cancelledVA{}, "remote 1"},
+		{cancelledVA{}, "remote 2"},
+	}
+
+	// Both remotes cancelled, should return no err
+	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	prob = <-probCh
+	if prob != nil {
+		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
+	}
+
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{remoteVA2, "remote 2"},
+	}
 
 	// Both local and remotes working, should succeed
 	_, err := localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
@@ -1483,6 +1768,95 @@ func TestPerformRemoteValidation(t *testing.T) {
 	took = time.Since(s)
 	if took >= (time.Second * 5) {
 		t.Errorf("PerformValidation didn't return early on failure: took %s, expected <5s", took)
+	}
+}
+
+// brokenRemoteVA is a mock for the core.ValidationAuthority interface mocked to
+// always return errors.
+type brokenRemoteVA struct{}
+
+// brokenRemoteVAError is the error returned by a brokenRemoteVA's
+// PerformValidation and IsSafeDomain functions.
+var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
+
+// PerformValidation returns brokenRemoteVAError unconditionally
+func (b *brokenRemoteVA) PerformValidation(
+	_ context.Context,
+	_ string,
+	_ core.Challenge,
+	_ core.Authorization) ([]core.ValidationRecord, error) {
+	return nil, brokenRemoteVAError
+}
+
+// IsSafeDomain returns brokenRemoteVAError unconditionally
+func (b *brokenRemoteVA) IsSafeDomain(
+	_ context.Context,
+	_ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	return nil, brokenRemoteVAError
+}
+
+func TestPerformRemoteValidationFailure(t *testing.T) {
+	// Create a new challenge to use for the httpSrv
+	chall := core.HTTPChallenge01()
+	setChallengeToken(&chall, core.NewToken())
+
+	// Create an IPv4 test server
+	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
+	defer ms.Close()
+
+	// Create a local test VA configured with a mock logger
+	mockLog := blog.NewMock()
+	localVA, _ := setup(ms.Server, 0)
+	localVA.userAgent = "local"
+	localVA.log = mockLog
+
+	// Create a remote test VA
+	remoteVA, _ := setup(ms.Server, 0)
+
+	// Create a broken remote test VA
+	brokenVA := &brokenRemoteVA{}
+	brokenVAAddr := "broken"
+
+	// Set the local VA to use the two remotes
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA, "good"},
+		{brokenVA, brokenVAAddr},
+	}
+
+	// Performing a validation should return a problem on the channel because of
+	// the broken remote VA.
+	probCh := make(chan *probs.ProblemDetails, 1)
+	localVA.performRemoteValidation(
+		context.Background(),
+		"localhost",
+		chall,
+		core.Authorization{},
+		probCh)
+	prob := <-probCh
+	if prob == nil {
+		t.Fatalf("performRemoteValidation with a broken remote VA did not " +
+			"return a problem")
+	}
+
+	// The problem returned should be a server internal problem with the correct
+	// user facing detail message.
+	if prob.Type != "serverInternal" {
+		t.Errorf("performRemoteValidation with a broken remote VA did not " +
+			"return a serverInternal problem")
+	}
+	if prob.Detail != "Remote PerformValidation RPCs failed" {
+		t.Errorf("performRemoteValidation with a broken remote VA did not " +
+			"return a serverInternal problem with the correct detail")
+	}
+
+	// The mock logger should have an audit err log line that includes the true
+	// underlying error that caused the server internal problem.
+	expectedLine := fmt.Sprintf(
+		`ERR: \[AUDIT\] Remote VA %q.PerformValidation failed: %s`,
+		brokenVAAddr, brokenRemoteVAError.Error())
+	failLogs := mockLog.GetAllMatching(expectedLine)
+	if len(failLogs) == 0 {
+		t.Error("Expected log line with broken remote VA error message. Found none")
 	}
 }
 

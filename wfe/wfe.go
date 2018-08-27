@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -175,7 +174,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
-				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
+				logEvent.Slug = request.URL.Path
 			}
 
 			switch request.Method {
@@ -230,7 +229,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
 	}
 	return nil
@@ -317,14 +316,14 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 
 	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
-	response.Write([]byte(fmt.Sprintf(`<html>
+	fmt.Fprintf(response, `<html>
 		<body>
 			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>
 	</html>
-	`, directoryPath, directoryPath)))
+	`, directoryPath, directoryPath)
 }
 
 func addNoCacheHeader(w http.ResponseWriter) {
@@ -333,7 +332,7 @@ func addNoCacheHeader(w http.ResponseWriter) {
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
-		w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", requester))
+		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
 }
 
@@ -510,7 +509,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	// Only check for validity if we are actually checking the registration
 	if regCheck && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
+		return nil, nil, reg, probs.Unauthorized("Registration is not valid, has status '%s'", reg.Status)
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -537,7 +536,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
-		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonce))
+		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonce)
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -606,8 +605,12 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 		if err == nil {
 			init.InitialIP = net.ParseIP(host)
 		} else {
-			logEvent.AddError("Couldn't parse RemoteAddr: %s", request.RemoteAddr)
-			wfe.sendError(response, logEvent, probs.ServerInternal("couldn't parse the remote (that is, the client's) address"), nil)
+			wfe.sendError(
+				response,
+				logEvent,
+				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			)
 			return
 		}
 	}
@@ -792,7 +795,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
 	} else {
-		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+		wfe.log.Debugf("Revoked %v", serial)
 		response.WriteHeader(http.StatusOK)
 	}
 }
@@ -901,19 +904,12 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	if features.Enabled(features.UseAIAIssuerURL) {
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
-	}
+	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1063,11 +1059,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Check that the registration ID matching the key used matches
 	// the registration ID on the authz object
 	if currReg.ID != authz.RegistrationID {
-		logEvent.AddError("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID)
 		wfe.sendError(response,
 			logEvent,
 			probs.Unauthorized("User registration ID doesn't match registration ID in authorization"),
-			nil,
+			fmt.Errorf("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID),
 		)
 		return
 	}
@@ -1162,8 +1157,8 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// extraneous requests to the RA we have to add this bypass.
 	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
 		update.Agreement != wfe.SubscriberAgreementURL {
-		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+		problem := probs.Malformed("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent, problem, nil)
 		return
 	}
 
@@ -1287,34 +1282,22 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	// TODO(#991): handle db errors
 	if err != nil {
-		logEvent.AddError("unable to get certificate by serial id %#v: %s", serial, err)
+		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), err)
+			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
 		} else {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
 		return
 	}
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	if features.Enabled(features.UseAIAIssuerURL) {
-		parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to parse certificate"), err)
-			return
-		}
-		if err = wfe.addIssuingCertificateURLs(response, parsedCertificate.IssuingCertificateURL); err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("unable to parse IssuingCertificateURL"), err)
-			return
-		}
-	} else {
-		relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
-		response.Header().Add("Link", link(relativeIssuerPath, "up"))
-	}
+	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 	return
 }
@@ -1331,7 +1314,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1339,9 +1322,8 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
-	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
-	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	if _, err := fmt.Fprintf(response, "Boulder=(%s %s)\n", core.GetBuildID(), core.GetBuildTime()); err != nil {
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 

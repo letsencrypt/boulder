@@ -100,8 +100,7 @@ func checkJWSAuthType(jws *jose.JSONWebSignature) (jwsAuthType, *probs.ProblemDe
 	header := jws.Signatures[0].Header
 	// There must not be a Key ID *and* an embedded JWK
 	if header.KeyID != "" && header.JSONWebKey != nil {
-		return invalidAuthType, probs.Malformed(
-			"jwk and kid header fields are mutually exclusive")
+		return invalidAuthType, probs.Malformed("jwk and kid header fields are mutually exclusive")
 	} else if header.KeyID != "" {
 		return embeddedKeyID, nil
 	} else if header.JSONWebKey != nil {
@@ -151,15 +150,13 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 		// JSON serialization.
 		if _, present := request.Header["Content-Type"]; !present {
 			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoContentType"}).Inc()
-			return probs.InvalidContentType(fmt.Sprintf(
-				"No Content-Type header on POST. "+
-					"Content-Type must be %q", expectedJWSContentType))
+			return probs.InvalidContentType("No Content-Type header on POST. Content-Type must be %q",
+				expectedJWSContentType)
 		}
 		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
 			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "WrongContentType"}).Inc()
-			return probs.InvalidContentType(fmt.Sprintf(
-				"Invalid Content-Type header on POST. "+
-					"Content-Type must be %q", expectedJWSContentType))
+			return probs.InvalidContentType("Invalid Content-Type header on POST. Content-Type must be %q",
+				expectedJWSContentType)
 		}
 	}
 
@@ -193,7 +190,7 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature) *probs.Proble
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonce))
+		return probs.BadNonce("JWS has an invalid anti-replay nonce: %q", nonce)
 	}
 	return nil
 }
@@ -230,9 +227,8 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	// header
 	if expectedURL.String() != headerURL {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMismatchedURL"}).Inc()
-		return probs.Malformed(fmt.Sprintf(
-			"JWS header parameter 'url' incorrect. Expected %q got %q",
-			expectedURL.String(), headerURL))
+		return probs.Malformed("JWS header parameter 'url' incorrect. Expected %q got %q",
+			expectedURL.String(), headerURL)
 	}
 	return nil
 }
@@ -262,9 +258,8 @@ func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner *jose.JSONWebSignature) *p
 	// Verify that the outer URL matches the inner URL
 	if outerURL != innerURL {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedURLs"}).Inc()
-		return probs.Malformed(fmt.Sprintf(
-			"Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
-			outerURL, innerURL))
+		return probs.Malformed("Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
+			outerURL, innerURL)
 	}
 
 	return nil
@@ -295,7 +290,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	if unprotected.Header != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnprotectedHeaders"}).Inc()
 		return nil, probs.Malformed(
-			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
+			`JWS "header" field not allowed. All headers must be in "protected" field`)
 	}
 
 	// ACME v2 never uses the "signatures" array of JSON serialized JWS, just the
@@ -303,7 +298,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	if len(unprotected.Signatures) > 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMultiSig"}).Inc()
 		return nil, probs.Malformed(
-			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
+			`JWS "signatures" field not allowed. Only the "signature" field should contain a signature`)
 	}
 
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
@@ -376,6 +371,37 @@ func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWe
 	return key, nil
 }
 
+// acctIDFromURL extracts the numeric int64 account ID from a ACMEv1 or ACMEv2
+// account URL. If the acctURL has an invalid URL or the account ID in the
+// acctURL is non-numeric a MalformedProblem is returned.
+func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request) (int64, *probs.ProblemDetails) {
+	// For normal ACME v2 accounts we expect the account URL has a prefix composed
+	// of the Host header and the acctPath.
+	expectedURLPrefix := web.RelativeEndpoint(request, acctPath)
+
+	// Process the acctURL to find only the trailing numeric account ID. Both the
+	// expected URL prefix and a legacy URL prefix are permitted in order to allow
+	// ACME v1 clients to use legacy accounts with unmodified account URLs for V2
+	// requests.
+	var accountIDStr string
+	if strings.HasPrefix(acctURL, expectedURLPrefix) {
+		accountIDStr = strings.TrimPrefix(acctURL, expectedURLPrefix)
+	} else if strings.HasPrefix(acctURL, wfe.LegacyKeyIDPrefix) {
+		accountIDStr = strings.TrimPrefix(acctURL, wfe.LegacyKeyIDPrefix)
+	} else {
+		return 0, probs.Malformed(
+			fmt.Sprintf("KeyID header contained an invalid account URL: %q", acctURL))
+	}
+
+	// Convert the raw account ID string to an int64 for use with the SA's
+	// GetRegistration RPC
+	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	if err != nil {
+		return 0, probs.Malformed("Malformed account ID in KeyID header URL: %q", acctURL)
+	}
+	return accountID, nil
+}
+
 // lookupJWK finds a JWK associated with the Key ID present in a provided JWS,
 // returning the JWK and a pointer to the associated account, or a problem. It
 // expects that the JWS is using the embedded Key ID style of authentication
@@ -395,14 +421,10 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
-	prefix := web.RelativeEndpoint(request, acctPath)
-	accountIDStr := strings.TrimPrefix(accountURL, prefix)
-	// Convert the account ID string to an int64 for use with the SA's
-	// GetRegistration RPC
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-	if err != nil {
+	accountID, prob := wfe.acctIDFromURL(accountURL, request)
+	if prob != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidKeyID"}).Inc()
-		return nil, nil, probs.Malformed(fmt.Sprintf("Malformed account ID in KeyID header"))
+		return nil, nil, prob
 	}
 
 	// Try to find the account for this account ID
@@ -411,8 +433,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// If the account isn't found, return a suitable problem
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDNotFound"}).Inc()
-			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
-				"Account %q not found", accountURL))
+			return nil, nil, probs.AccountDoesNotExist("Account %q not found", accountURL)
 		}
 
 		// If there was an error and it isn't a "Not Found" error, return
@@ -420,15 +441,13 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
-		return nil, nil, probs.ServerInternal(fmt.Sprintf(
-			"Error retreiving account %q", accountURL))
+		return nil, nil, probs.ServerInternal("Error retreiving account %q", accountURL)
 	}
 
 	// Verify the account is not deactivated
 	if account.Status != core.StatusValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
-		return nil, nil, probs.Unauthorized(
-			fmt.Sprintf("Account is not valid, has status %q", account.Status))
+		return nil, nil, probs.Unauthorized("Account is not valid, has status %q", account.Status)
 	}
 
 	// Update the logEvent with the account information and return the JWK
@@ -584,9 +603,30 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
 }
 
-// rolloverRequest is a struct representing an ACME key rollover request
+// rolloverOperation is a struct representing a requested rollover operation
+// from the specified old key to the new key for the given account ID. It is
+// composed based on a rolloverRequest or a rolloverRequestDraft13 based on the
+// `features.ACME13KeyRollover` feature flag.
+type rolloverOperation struct {
+	OldKey  jose.JSONWebKey
+	NewKey  jose.JSONWebKey
+	Account string
+}
+
+// rolloverRequest is a client request to change the account ID provided to the
+// new key provided. This is the legacy format used by ACMEv2 pre-draft13.
+// TODO(@cpu): Delete this type once features.ACME13KeyRollover is active
+// everywhere.
 type rolloverRequest struct {
 	NewKey  jose.JSONWebKey
+	Account string
+}
+
+// rolloverRequestDraft13 is a client request to change the key for the account
+// ID provided from the specified old key to a new key (the embedded JWK in the
+// inner JWS). This type is used when features.ACME13KeyRollover is enabled.
+type rolloverRequestDraft13 struct {
+	OldKey  jose.JSONWebKey
 	Account string
 }
 
@@ -598,17 +638,26 @@ type rolloverRequest struct {
 // 1) the inner JWS is valid and well formed
 // 2) the inner JWS has the same "url" header as the outer JWS
 // 3) the inner JWS is self-authenticated with an embedded JWK
-// 4) the payload of the inner JWS is a valid JSON key change object
-// 5) that the key specified in the key change object *also* verifies the inner JWS
-// A *rolloverRequest object and is returned if successfully validated,
-// otherwise a problem is returned. The caller is left to verify whether the
-// new key is appropriate (e.g. isn't being used by another existing account)
-// and that the account field of the rollover object matches the account that
-// verified the outer JWS.
+//
+// If features.ACME13KeyRollover is enabled this function verifies that the
+// inner JWS' body is a rolloverRequestDraft13 instance that specifies the
+// correct oldKey. The returned rolloverOperation's NewKey field will be set to
+// the JWK from the inner JWS.
+// If features.ACME13KeyRollover is disabled this function verifies that the
+// inner JWS' body is a rolloverRequest instance and that the key in newKey
+// validates the inner JWS signature. The returned rolloverOperations' NewKey
+// field will be set to the JWK from the rolloverRequest.
+//
+// In both cases A *rolloverOperation object and is returned if successfully
+// validated, otherwise a problem is returned. The caller is left to verify
+// whether the new key is appropriate (e.g. isn't being used by another existing
+// account) and that the account field of the rollover object matches the
+// account that verified the outer JWS.
 func (wfe *WebFrontEndImpl) validKeyRollover(
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
-	logEvent *web.RequestEvent) (*rolloverRequest, *probs.ProblemDetails) {
+	oldKey *jose.JSONWebKey,
+	logEvent *web.RequestEvent) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS
 	jwk, prob := wfe.extractJWK(innerJWS)
@@ -645,21 +694,53 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		return nil, prob
 	}
 
-	// Unmarshal the inner JWS' key roll over request
-	var req rolloverRequest
-	if json.Unmarshal(innerPayload, &req) != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
-		return nil, probs.Malformed(
-			"Inner JWS payload did not parse as JSON key rollover object")
+	result := &rolloverOperation{OldKey: *oldKey}
+	if !features.Enabled(features.ACME13KeyRollover) {
+		// Unmarshal the inner JWS' key roll over request
+		var req rolloverRequest
+		if json.Unmarshal(innerPayload, &req) != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
+			return nil, probs.Malformed(
+				"Inner JWS payload did not parse as JSON key rollover object")
+		}
+
+		// Verify that the key roll over request's NewKey *also* validates the inner
+		// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
+		// the JWS.
+		if _, err := innerJWS.Verify(req.NewKey); err != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSNewKeyVerifyFailed"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not verify with specified new key")
+		}
+		result.Account = req.Account
+		// Use the JWK specified in the key rollover request in pre-draft-13 key rollovers
+		result.NewKey = req.NewKey
+	} else {
+		var req rolloverRequestDraft13
+		if json.Unmarshal(innerPayload, &req) != nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverUnmarshalFailed"}).Inc()
+			return nil, probs.Malformed(
+				"Inner JWS payload did not parse as JSON key rollover object")
+		}
+
+		// If there's no oldkey specified fail before trying to use
+		// core.PublicKeyEqual on a nil argument.
+		if req.OldKey.Key == nil {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverWrongOldKey"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not contain old key field matching current account key")
+		}
+
+		// If ACME13KeyRollover is enabled then we must validate that the inner JWS'
+		// rollover request specifies the correct oldKey.
+		if keysEqual, err := core.PublicKeysEqual(req.OldKey.Key, oldKey.Key); err != nil {
+			return nil, probs.Malformed("Unable to compare new and old keys: %s", err.Error())
+		} else if !keysEqual {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverWrongOldKey"}).Inc()
+			return nil, probs.Malformed("Inner JWS does not contain old key field matching current account key")
+		}
+		result.Account = req.Account
+		// Use the JWK pulled from the inner JWS as the new key for draft-13 key rollovers
+		result.NewKey = *jwk
 	}
 
-	// Verify that the key roll over request's NewKey *also* validates the inner
-	// JWS. So far we've only checked that the JWK embedded in the inner JWS valides
-	// the JWS.
-	if _, err := innerJWS.Verify(req.NewKey); err != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSNewKeyVerifyFailed"}).Inc()
-		return nil, probs.Malformed("Inner JWS does not verify with specified new key")
-	}
-
-	return &req, nil
+	return result, nil
 }

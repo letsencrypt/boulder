@@ -44,10 +44,6 @@ func (sa *mockInvalidAuthorizationsAuthority) GetCertificateStatus(ctx context.C
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) CountCertificatesRange(ctx context.Context, in *sapb.Range, opts ...grpc.CallOption) (*sapb.Count, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) CountCertificatesByNames(ctx context.Context, in *sapb.CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return nil, nil
 }
@@ -81,10 +77,6 @@ func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations(ctx con
 	return &sapb.Count{
 		Count: &count,
 	}, nil
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) GetSCTReceipt(ctx context.Context, in *sapb.GetSCTReceiptRequest, opts ...grpc.CallOption) (*sapb.SignedCertificateTimestamp, error) {
-	return nil, nil
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountFQDNSets(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
@@ -131,10 +123,6 @@ func (sa *mockInvalidAuthorizationsAuthority) MarkCertificateRevoked(ctx context
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) AddCertificate(ctx context.Context, in *sapb.AddCertificateRequest, opts ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
-	return nil, nil
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) AddSCTReceipt(ctx context.Context, in *sapb.SignedCertificateTimestamp, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }
 

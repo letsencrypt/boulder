@@ -11,9 +11,11 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
+	blog "github.com/letsencrypt/boulder/log"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -42,6 +44,10 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		return nil, fmt.Errorf("error")
 	case "reserved.com":
 		record.Tag = "issue"
+		record.Value = "ca.com"
+		results = append(results, &record)
+	case "mixedcase.com":
+		record.Tag = "iSsUe"
 		record.Value = "ca.com"
 		results = append(results, &record)
 	case "critical.com":
@@ -85,6 +91,34 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Tag = "issue"
 		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
 		results = append(results, &record)
+	case "present-dns-only.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validationmethods=dns-01"
+		results = append(results, &record)
+	case "present-http-only.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validationmethods=http-01"
+		results = append(results, &record)
+	case "present-http-or-dns.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; validationmethods=http-01,dns-01"
+		results = append(results, &record)
+	case "present-correct-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
+		results = append(results, &record)
+	case "present-incorrect-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+	case "present-multiple-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issue"
+		secondRecord.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
+		results = append(results, &secondRecord)
 	case "unsatisfiable.com":
 		record.Tag = "issue"
 		record.Value = ";"
@@ -133,7 +167,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
@@ -144,6 +178,10 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+	defer features.Reset()
 
 	testCases := []struct {
 		Name    string
@@ -154,6 +192,12 @@ func TestCAAChecking(t *testing.T) {
 		{
 			Name:    "Bad (Reserved)",
 			Domain:  "reserved.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Bad (Reserved, Mixed case Issue)",
+			Domain:  "mixedcase.com",
 			Present: true,
 			Valid:   false,
 		},
@@ -224,6 +268,42 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name:    "Bad (restricts to dns-01, but tested with http-01)",
+			Domain:  "present-dns-only.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (restricts to http-01, tested with http-01)",
+			Domain:  "present-http-only.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (restricts to http-01 or dns-01, tested with http-01)",
+			Domain:  "present-http-or-dns.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Good (restricts to accounturi, tested with correct account)",
+			Domain:  "present-correct-accounturi.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
+			Name:    "Bad (restricts to accounturi, tested with incorrect account)",
+			Domain:  "present-incorrect-accounturi.com",
+			Present: true,
+			Valid:   false,
+		},
+		{
+			Name:    "Good (restricts to multiple accounturi, tested with a correct account)",
+			Domain:  "present-multiple-accounturi.com",
+			Present: true,
+			Valid:   true,
+		},
+		{
 			Name:    "Bad (unsatisfiable issue record)",
 			Domain:  "unsatisfiable.com",
 			Present: true,
@@ -267,11 +347,19 @@ func TestCAAChecking(t *testing.T) {
 		},
 	}
 
+	accountURIID := int64(123)
+	method := "http-01"
+	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
+
 	va, _ := setup(nil, 0)
 	va.dnsClient = caaMockDNS{}
+	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 	for _, caaTest := range testCases {
+		mockLog := va.log.(*blog.Mock)
+		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -284,24 +372,139 @@ func TestCAAChecking(t *testing.T) {
 		})
 	}
 
-	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	// Reset to disable CAAValidationMethods/CAAAccountURI.
+	features.Reset()
+
+	// present-dns-only.com should now be valid even with http-01
+	ident := core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}
+	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	// present-incorrect-accounturi.com should now be also be valid
+	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-accounturi.com"}
+	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
+	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	// nil params should be valid, too
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
+	test.AssertNotError(t, err, "present-dns-only.com")
+	test.Assert(t, present, "Present should be true")
+	test.Assert(t, valid, "Valid should be true")
+
+	ident.Value = "servfail.com"
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
-	if err == nil {
-		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
 	}
 
-	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	ident.Value = "servfail.present.com"
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
-	if err == nil {
-		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
+	}
+}
+
+func TestCAALogging(t *testing.T) {
+	va, _ := setup(nil, 0)
+	va.dnsClient = caaMockDNS{}
+
+	httpChal := core.ChallengeTypeHTTP01
+	dnsChal := core.ChallengeTypeDNS01
+	acctID := int64(12345)
+
+	testCases := []struct {
+		Name            string
+		Domain          string
+		AccountURIID    *int64
+		ChallengeType   *string
+		ExpectedLogline string
+	}{
+		{
+			Domain:          "reserved.com",
+			ChallengeType:   nil,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
+		},
+		{
+			Domain:          "reserved.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
+		},
+		{
+			Domain:          "reserved.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &dnsChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
+		},
+		{
+			Domain:          "mixedcase.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"iSsUe\",\"Value\":\"ca.com\"}]",
+		},
+		{
+			Domain:          "critical.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
+		},
+		{
+			Domain:          "present.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}]",
+		},
+		{
+			Domain:          "multi-crit-present.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}]",
+		},
+		{
+			Domain:          "present-with-parameter.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"  letsencrypt.org  ;foo=bar;baz=bar\"}]",
+		},
+		{
+			Domain:          "satisfiable-wildcard-override.com",
+			AccountURIID:    &acctID,
+			ChallengeType:   &httpChal,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issuewild\",\"Value\":\"letsencrypt.org\"}]",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Domain, func(t *testing.T) {
+			mockLog := va.log.(*blog.Mock)
+			mockLog.Clear()
+
+			params := &caaParams{
+				accountURIID:     tc.AccountURIID,
+				validationMethod: tc.ChallengeType,
+			}
+			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, params)
+
+			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
+			if len(caaLogLines) != 1 {
+				t.Errorf("checkCAARecords didn't audit log CAA record info. Instead got:\n%s\n",
+					strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+			} else {
+				test.AssertEquals(t, caaLogLines[0], tc.ExpectedLogline)
+			}
+		})
 	}
 }
 
@@ -336,7 +539,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validateChallengeAndIdentifier(ctx, dnsi("reserved.com"), chall)
+	_, prob := va.validate(ctx, dnsi("reserved.com"), chall, core.Authorization{})
 	if prob == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
@@ -345,18 +548,102 @@ func TestCAAFailure(t *testing.T) {
 
 func TestParseResults(t *testing.T) {
 	r := []caaResult{}
-	s, err := parseResults(r)
+	s, records, err := parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
+	test.Assert(t, records == nil, "records is not nil")
 	test.AssertNotError(t, err, "no error should be returned")
 	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{{Value: "test"}}, nil}}
-	s, err = parseResults(r)
+	s, records, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	expected := dns.CAA{Value: "other-test"}
+	test.AssertEquals(t, len(records), 0)
 	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{{Value: "test"}}, nil}}
-	s, err = parseResults(r)
+	s, records, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
 	test.AssertNotError(t, err, "no error should be returned")
+	test.AssertEquals(t, len(records), len(r[0].records))
+	for i, rec := range records {
+		test.AssertEquals(t, rec.String(), r[0].records[i].String())
+	}
+}
+
+func TestCheckAccountURI(t *testing.T) {
+	tests := []struct {
+		uri      string
+		prefixes []string
+		id       int64
+		want     bool
+	}{
+		{
+			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123457,
+			want: false,
+		},
+		{
+			uri: "https://acme-staging.api.letsencrypt.org/acme/reg/123456",
+			prefixes: []string{
+				"https://acme-staging.api.letsencrypt.org/acme/reg/",
+				"https://acme-staging-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+				"https://acme-v03.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   654321,
+			want: false,
+		},
+	}
+	for _, test := range tests {
+		if got, want := checkAccountURI(test.uri, test.prefixes, test.id), test.want; got != want {
+			t.Errorf("checkAccountURI(%q, %v, %d) = %v, want %v", test.uri, test.prefixes, test.id, got, want)
+		}
+	}
+}
+
+func TestContainsMethod(t *testing.T) {
+	test.AssertEquals(t, containsMethod("abc,123,xyz", "123"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "abc"), true)
+	test.AssertEquals(t, containsMethod("abc,xyz", "xyz"), true)
+	test.AssertEquals(t, containsMethod("abc", "abc"), true)
+
+	test.AssertEquals(t, containsMethod("abc,xyz,123", "456"), false)
+	test.AssertEquals(t, containsMethod("abc", "123"), false)
 }

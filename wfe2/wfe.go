@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -90,6 +90,11 @@ type WebFrontEndImpl struct {
 	// DirectoryWebsite is used for the /directory response's "meta" element's
 	// "website" field.
 	DirectoryWebsite string
+
+	// Allowed prefix for legacy accounts used by verify.go's `lookupJWK`.
+	// See `cmd/boulder-wfe2/main.go`'s comment on the configuration field
+	// `LegacyKeyIDPrefix` for more informaton.
+	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
 	nonceService *nonce.NonceService
@@ -175,7 +180,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
-				logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
+				logEvent.Slug = request.URL.Path
 			}
 
 			switch request.Method {
@@ -230,7 +235,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
 	}
 	return nil
@@ -328,22 +333,21 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 	}
 
 	if request.Method != "GET" {
-		logEvent.AddError("Bad method")
 		response.Header().Set("Allow", "GET")
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), errors.New("Bad method"))
 		return
 	}
 
 	addNoCacheHeader(response)
 	response.Header().Set("Content-Type", "text/html")
-	response.Write([]byte(fmt.Sprintf(`<html>
+	fmt.Fprintf(response, `<html>
 		<body>
 			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>
 	</html>
-	`, directoryPath, directoryPath)))
+	`, directoryPath, directoryPath)
 }
 
 func addNoCacheHeader(w http.ResponseWriter) {
@@ -352,7 +356,7 @@ func addNoCacheHeader(w http.ResponseWriter) {
 
 func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
-		w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", requester))
+		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
 }
 
@@ -465,7 +469,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		response.WriteHeader(http.StatusOK)
+
+		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
+		if err != nil {
+			// ServerInternal because we just created this account, and it
+			// should be OK.
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
+			return
+		}
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
@@ -492,8 +503,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		if err == nil {
 			ip = net.ParseIP(host)
 		} else {
-			logEvent.AddError("Couldn't parse RemoteAddr: %s", request.RemoteAddr)
-			wfe.sendError(response, logEvent, probs.ServerInternal("couldn't parse the remote (that is, the client's) address"), nil)
+			wfe.sendError(
+				response,
+				logEvent,
+				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			)
 			return
 		}
 	}
@@ -619,7 +634,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
 	if certStatus.Status == core.OCSPStatusRevoked {
-		return probs.Conflict("Certificate already revoked")
+		return probs.AlreadyRevoked("Certificate already revoked")
 	}
 
 	// Validate that the requester is authenticated to revoke the given certificate
@@ -643,7 +658,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
 	}
 
-	wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+	wfe.log.Debugf("Revoked %v", serial)
 	return nil
 }
 
@@ -1177,8 +1192,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
 	if !core.ValidSerial(serial) {
-		logEvent.AddError("certificate serial provided was not valid: %s", serial)
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.NotFound("Certificate not found"),
+			fmt.Errorf("certificate serial provided was not valid: %s", serial),
+		)
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
@@ -1186,11 +1205,11 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	// TODO(#991): handle db errors
 	if err != nil {
-		logEvent.AddError("unable to get certificate by serial id %#v: %s", serial, err)
+		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), err)
+			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
 		} else {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
 		return
 	}
@@ -1252,7 +1271,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 	return
 }
@@ -1263,7 +1282,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1273,7 +1292,7 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -1354,6 +1373,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
+	oldKey := acct.Key
 
 	// Parse the inner JWS from the validated outer JWS body
 	innerJWS, prob := wfe.parseJWS(outerBody)
@@ -1363,21 +1383,21 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverRequest, prob := wfe.validKeyRollover(outerJWS, innerJWS, logEvent)
+	rolloverOperation, prob := wfe.validKeyRollover(outerJWS, innerJWS, oldKey, logEvent)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
-	newKey := rolloverRequest.NewKey
+	newKey := rolloverOperation.NewKey
 
 	// Check that the rollover request's account URL matches the account URL used
 	// to validate the outer JWS
 	header := outerJWS.Signatures[0].Header
-	if rolloverRequest.Account != header.KeyID {
+	if rolloverOperation.Account != header.KeyID {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedAccount"}).Inc()
 		wfe.sendError(response, logEvent, probs.Malformed(
 			fmt.Sprintf("Inner key rollover request specified Account %q, but outer JWS has Key ID %q",
-				rolloverRequest.Account, header.KeyID)), nil)
+				rolloverOperation.Account, header.KeyID)), nil)
 		return
 	}
 
@@ -1386,7 +1406,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// will find the old account if its equal to the old account key. We
 	// check new key against old key explicitly to save an RPC round trip and a DB
 	// query for this easy rejection case
-	keysEqual, err := core.PublicKeysEqual(newKey.Key, acct.Key.Key)
+	keysEqual, err := core.PublicKeysEqual(newKey.Key, oldKey.Key)
 	if err != nil {
 		// This should not happen - both the old and new key have been validated by now
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to compare new and old keys"), err)
@@ -1480,8 +1500,8 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErr(fmt.Sprintf("Internal error converting order ID %d "+
-				"proto buf prob to problem details: %q", *order.Id, err))
+			wfe.log.AuditErrf("Internal error converting order ID %d "+
+				"proto buf prob to problem details: %q", *order.Id, err)
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
@@ -1592,15 +1612,15 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
 		return
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
 		return
 	}
 
@@ -1646,37 +1666,45 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
 		return
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
 		return
 	}
 
 	// If the authenticated account ID doesn't match the order's registration ID
 	// pretend it doesn't exist and abort.
 	if acct.ID != *order.RegistrationID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acct.ID), nil)
 		return
 	}
 
-	// If the order's status is not pending we can not finalize it and must
-	// return an error
-	if *order.Status != string(core.StatusPending) {
+	// Prior to ACME draft-10 the "ready" status did not exist and orders in
+	// a pending status with valid authzs were finalizable. We accept both states
+	// here for deployability ease. In the future we will only allow ready orders
+	// to be finalized.
+	// TODO(@cpu): Forbid finalizing "Pending" orders once
+	// `features.Enabled(features.OrderReadyStatus)` is deployed
+	if *order.Status != string(core.StatusPending) &&
+		*order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed("Order's status (%q) was not pending", *order.Status), nil)
+			probs.Malformed(
+				"Order's status (%q) is not acceptable for finalization",
+				*order.Status),
+			nil)
 		return
 	}
 
 	// If the order is expired we can not finalize it and must return an error
 	orderExpiry := time.Unix(*order.Expires, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", *order.Id)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("Order %d is expired", *order.Id), nil)
 		return
 	}
 

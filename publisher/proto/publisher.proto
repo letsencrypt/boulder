@@ -1,8 +1,6 @@
 syntax = "proto2";
 
 service Publisher {
-        rpc SubmitToCT(Request) returns (Empty) {}
-        rpc SubmitToSingleCT(Request) returns (Empty) {}
         rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
 }
 
@@ -11,11 +9,9 @@ message Request {
         optional string LogURL = 2;
         optional string LogPublicKey = 3;
         optional bool precert = 4;
+        optional bool storeSCT = 5;
 }
 
 message Result {
         optional bytes sct = 1;
-}
-
-message Empty {
 }

@@ -36,6 +36,7 @@ const (
 	StatusUnknown     = AcmeStatus("unknown")     // Unknown status; the default
 	StatusPending     = AcmeStatus("pending")     // In process; client has next action
 	StatusProcessing  = AcmeStatus("processing")  // In process; server has next action
+	StatusReady       = AcmeStatus("ready")       // Order is ready for finalization
 	StatusValid       = AcmeStatus("valid")       // Object is valid
 	StatusInvalid     = AcmeStatus("invalid")     // Validation failed
 	StatusRevoked     = AcmeStatus("revoked")     // Object no longer valid
@@ -67,21 +68,20 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01   = "http-01"
-	ChallengeTypeTLSSNI01 = "tls-sni-01"
-	ChallengeTypeDNS01    = "dns-01"
+	ChallengeTypeHTTP01    = "http-01"
+	ChallengeTypeTLSSNI01  = "tls-sni-01"
+	ChallengeTypeDNS01     = "dns-01"
+	ChallengeTypeTLSALPN01 = "tls-alpn-01"
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
 func ValidChallenge(name string) bool {
 	switch name {
-	case ChallengeTypeHTTP01:
-		fallthrough
-	case ChallengeTypeTLSSNI01:
-		fallthrough
-	case ChallengeTypeDNS01:
+	case ChallengeTypeHTTP01,
+		ChallengeTypeTLSSNI01,
+		ChallengeTypeDNS01,
+		ChallengeTypeTLSALPN01:
 		return true
-
 	default:
 		return false
 	}
@@ -232,7 +232,7 @@ type Challenge struct {
 	// For the V2 API the "URI" field is deprecated in favour of URL.
 	URL string `json:"url,omitempty"`
 
-	// Used by http-01, tls-sni-01, and dns-01 challenges
+	// Used by http-01, tls-sni-01, tls-alpn-01 and dns-01 challenges
 	Token string `json:"token,omitempty"`
 
 	// The expected KeyAuthorization for validation of the challenge. Populated by
@@ -278,7 +278,7 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeTLSSNI01:
+	case ChallengeTypeTLSSNI01, ChallengeTypeTLSALPN01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}

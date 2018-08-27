@@ -176,7 +176,8 @@ func TestCheckCert(t *testing.T) {
 			"*.foodnotbombs.mil",
 			// `dev-myqnapcloud.com` is included because it is an exact private
 			// entry on the public suffix list
-			"dev-myqnapcloud.com"},
+			"dev-myqnapcloud.com",
+		},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
@@ -211,8 +212,7 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has incorrect key usage extensions":                                                 1,
 		"Certificate has common name >64 characters long (65)":                                           1,
 		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
-		"commonName exceeding max length of 64":                                                          1,
-		"Certificate contains unknown extension (1.3.3.7)":                                               1,
+		"Certificate contains an unexpected extension: 1.3.3.7":                                          1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]
@@ -286,7 +286,8 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID, nil)
+		issued := fc.Now()
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID, nil, &issued)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 

@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -325,7 +326,7 @@ func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	}
 
 	// Nothing worked! Fail hard.
-	t.Fatal(fmt.Sprintf("Unable to decode private key PEM bytes"))
+	t.Fatalf("Unable to decode private key PEM bytes")
 	// NOOP - the t.Fatal() call will abort before this return
 	return nil
 }
@@ -346,7 +347,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 
 	certChains := map[string][]byte{
-		"http://localhost:4000/acme/issuer-cert": []byte(fmt.Sprintf("\n%s", string(chainPEM))),
+		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
@@ -368,7 +369,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
-			"Content-Length": {fmt.Sprintf("%d", len(body))},
+			"Content-Length": {strconv.Itoa(len(body))},
 		},
 		Body: makeBody(body),
 		Host: "localhost",
@@ -764,17 +765,17 @@ func TestRelativeDirectory(t *testing.T) {
 	defer func() { core.RandReader = rand.Reader }()
 
 	expectedDirectory := func(hostname string) string {
-		var expected bytes.Buffer
+		expected := new(bytes.Buffer)
 
-		expected.WriteString("{")
-		expected.WriteString(fmt.Sprintf(`"keyChange":"%s/acme/key-change",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newNonce":"%s/acme/new-nonce",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newAccount":"%s/acme/new-acct",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"newOrder":"%s/acme/new-order",`, hostname))
-		expected.WriteString(fmt.Sprintf(`"revokeCert":"%s/acme/revoke-cert",`, hostname))
-		expected.WriteString(`"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		expected.WriteString(`"meta":{"termsOfService":"http://example.invalid/terms"}`)
-		expected.WriteString("}")
+		fmt.Fprintf(expected, "{")
+		fmt.Fprintf(expected, `"keyChange":"%s/acme/key-change",`, hostname)
+		fmt.Fprintf(expected, `"newNonce":"%s/acme/new-nonce",`, hostname)
+		fmt.Fprintf(expected, `"newAccount":"%s/acme/new-acct",`, hostname)
+		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
+		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
+		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
+		fmt.Fprintf(expected, `"meta":{"termsOfService":"http://example.invalid/terms"}`)
+		fmt.Fprintf(expected, "}")
 		return expected.String()
 	}
 
@@ -1323,7 +1324,7 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
 }
 
 func TestGetAuthorization(t *testing.T) {
@@ -1955,7 +1956,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") was not pending","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
 		},
 		{
 			Name: "Order is expired",
@@ -1969,7 +1970,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
 		},
 		{
-			Name:            "Good CSR",
+			Name:            "Good CSR, Pending Order",
 			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
 			ExpectedBody: `
@@ -1983,6 +1984,23 @@ func TestFinalizeOrder(t *testing.T) {
     "http://localhost/acme/authz/hello"
   ],
   "finalize": "http://localhost/acme/finalize/1/4"
+}`,
+		},
+		{
+			Name:            "Good CSR, Ready Order",
+			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
+			ExpectedBody: `
+{
+  "status": "processing",
+  "expires": "1970-01-01T00:00:00.9466848Z",
+  "identifiers": [
+    {"type":"dns","value":"example.com"}
+  ],
+  "authorizations": [
+    "http://localhost/acme/authz/hello"
+  ],
+  "finalize": "http://localhost/acme/finalize/1/8"
 }`,
 		},
 	}
@@ -2035,11 +2053,12 @@ func TestKeyRollover(t *testing.T) {
 		}`)
 
 	testCases := []struct {
-		Name             string
-		Payload          string
-		ExpectedResponse string
-		NewKey           crypto.Signer
-		ErrorStatType    string
+		Name              string
+		ACME13KeyRollover bool
+		Payload           string
+		ExpectedResponse  string
+		NewKey            crypto.Signer
+		ErrorStatType     string
 	}{
 		{
 			Name:    "Missing account URL",
@@ -2108,10 +2127,111 @@ func TestKeyRollover(t *testing.T) {
 		   }`,
 			NewKey: newKeyPriv,
 		},
+		{
+			Name:    "Valid key rollover request, added ACME13KeyRollover compat",
+			Payload: `{"newKey":` + string(newJWKJSON) + `, "oldKey":` + test1KeyPublicJSON + `, "account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
+		{
+			Name:              "ACME13KeyRollover, legacy rollover request",
+			ACME13KeyRollover: true,
+			Payload:           `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverWrongOldKey",
+		},
+		{
+			Name:              "ACME13KeyRollover, Missing account URL",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverMismatchedAccount",
+		},
+		{
+			Name:              "ACME13KeyRollover, incorrect old key",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "status": 400
+		   }`,
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverWrongOldKey",
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request, key exists",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+                          "type": "urn:ietf:params:acme:error:malformed",
+                          "detail": "New key is already in use for a different account",
+                          "status": 409
+                        }`,
+			NewKey: existingKey,
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
+		{
+			Name:              "ACME13KeyRollover, Valid key rollover request, legacy compat",
+			ACME13KeyRollover: true,
+			Payload:           `{"oldKey":` + test1KeyPublicJSON + `, "newKey":` + string(newJWKJSON) + `, "account":"http://localhost/acme/acct/1"}`,
+			ExpectedResponse: `{
+		     "id": 1,
+		     "key": ` + string(newJWKJSON) + `,
+		     "contact": [
+		       "mailto:person@mail.com"
+		     ],
+		     "agreement": "http://example.invalid/terms",
+		     "initialIp": "",
+		     "createdAt": "0001-01-01T00:00:00Z",
+		     "status": "valid"
+		   }`,
+			NewKey: newKeyPriv,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if tc.ACME13KeyRollover {
+				_ = features.Set(map[string]bool{"ACME13KeyRollover": true})
+				defer features.Reset()
+			}
 			wfe.stats.joseErrorCount.Reset()
 			responseWriter.Body.Reset()
 			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)
@@ -2393,9 +2513,9 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 
-	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Code, 400)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
+		`{"type":"`+probs.V2ErrorNS+`alreadyRevoked","detail":"Certificate already revoked","status":400}`)
 }
 
 func TestRevokeCertificateWithAuthz(t *testing.T) {

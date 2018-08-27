@@ -27,7 +27,7 @@ func SendError(
 	code := probs.ProblemDetailsToStatusCode(prob)
 
 	// Record details to the log event
-	logEvent.AddError(fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail))
+	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail)
 	if ierr != nil {
 		logEvent.AddError(fmt.Sprintf("%#v", ierr))
 	}
@@ -36,16 +36,16 @@ func SendError(
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
 		if ierr != nil {
-			log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
+			log.AuditErrf("Internal error - %s - %s", prob.Detail, ierr)
 		} else {
-			log.AuditErr(fmt.Sprintf("Internal error - %s", prob.Detail))
+			log.AuditErrf("Internal error - %s", prob.Detail)
 		}
 	}
 
 	prob.Type = probs.ProblemType(namespace) + prob.Type
 	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
-		log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
+		log.AuditErrf("Could not marshal error message: %s - %+v", err, prob)
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 

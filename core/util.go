@@ -102,7 +102,7 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			logger := blog.Get()
-			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
+			logger.Debugf("Problem marshaling public key: %s", err)
 			return "", err
 		}
 		spkiDigest := sha256.Sum256(keyDER)
@@ -163,7 +163,7 @@ func ValidSerial(serial string) bool {
 	// Originally, serial numbers were 32 hex characters long. We later increased
 	// them to 36, but we allow the shorter ones because they exist in some
 	// production databases.
-	if len(serial) < 32 && len(serial) > 36 {
+	if len(serial) != 32 && len(serial) != 36 {
 		return false
 	}
 	_, err := hex.DecodeString(serial)
@@ -268,7 +268,8 @@ const retryJitter = 0.2
 // RetryBackoff calculates a backoff time based on number of retries, will always
 // add jitter so requests that start in unison won't fall into lockstep. Because of
 // this the returned duration can always be larger than the maximum by a factor of
-// retryJitter. Adapted from https://github.com/grpc/grpc-go/blob/master/rpc_util.go#L311
+// retryJitter. Adapted from
+// https://github.com/grpc/grpc-go/blob/v1.11.3/backoff.go#L77-L96
 func RetryBackoff(retries int, base, max time.Duration, factor float64) time.Duration {
 	if retries == 0 {
 		return 0

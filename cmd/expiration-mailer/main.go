@@ -74,8 +74,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	for _, contact := range contacts {
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("parsing contact email %s: %s",
-				contact, err))
+			m.log.AuditErrf("parsing contact email %s: %s", contact, err)
 			continue
 		}
 		if parsed.Scheme == "mailto" {
@@ -103,7 +102,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
-	m.log.Debug(fmt.Sprintf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", ")))
+	m.log.Debugf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", "))
 
 	// Construct the information about the expiring certificates for use in the
 	// subject template
@@ -169,7 +168,7 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 		map[string]interface{}{"serial": serial},
 	)
 	if present == 1 {
-		m.log.Debug(fmt.Sprintf("Cert %s is already renewed", serial))
+		m.log.Debugf("Cert %s is already renewed", serial)
 	}
 	return present == 1, err
 }
@@ -187,7 +186,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 
 	err := m.mailer.Connect()
 	if err != nil {
-		m.log.AuditErr(fmt.Sprintf("Error connecting to send nag emails: %s", err))
+		m.log.AuditErrf("Error connecting to send nag emails: %s", err)
 		return
 	}
 	defer func() {
@@ -197,7 +196,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
+			m.log.AuditErrf("Error fetching registration %d: %s", regID, err)
 			m.stats.errorCount.With(prometheus.Labels{"type": "GetRegistration"}).Inc()
 			continue
 		}
@@ -207,19 +206,19 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			parsedCert, err := x509.ParseCertificate(cert.DER)
 			if err != nil {
 				// TODO(#1420): tell registration about this error
-				m.log.AuditErr(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
+				m.log.AuditErrf("Error parsing certificate %s: %s", cert.Serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "ParseCertificate"}).Inc()
 				continue
 			}
 
 			renewed, err := m.certIsRenewed(cert.Serial)
 			if err != nil {
-				m.log.AuditErr(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
+				m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 				// assume not renewed
 			} else if renewed {
 				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
 				if err := m.updateCertStatus(cert.Serial); err != nil {
-					m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
+					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				}
 				continue
@@ -240,14 +239,14 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 		err = m.sendNags(*reg.Contact, parsedCerts)
 		if err != nil {
 			m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
-			m.log.AuditErr(fmt.Sprintf("Error sending nag emails: %s", err))
+			m.log.AuditErrf("Error sending nag emails: %s", err)
 			continue
 		}
 		for _, cert := range parsedCerts {
 			serial := core.SerialToString(cert.SerialNumber)
 			err = m.updateCertStatus(serial)
 			if err != nil {
-				m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
+				m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				continue
 			}
@@ -266,8 +265,8 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		right := now.Add(expiresIn)
 
-		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
-			left.UTC(), right.UTC(), expiresIn))
+		m.log.Infof("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
+			left.UTC(), right.UTC(), expiresIn)
 
 		// First we do a query on the certificateStatus table to find certificates
 		// nearing expiry meeting our criteria for email notification. We later
@@ -293,7 +292,7 @@ func (m *mailer) findExpiringCertificates() error {
 			},
 		)
 		if err != nil {
-			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificate serials: %s", err))
+			m.log.AuditErrf("expiration-mailer: Error loading certificate serials: %s", err)
 			return err
 		}
 
@@ -304,14 +303,14 @@ func (m *mailer) findExpiringCertificates() error {
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap, "WHERE serial = ?", serial)
 			if err != nil {
-				m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err))
+				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
 				return err
 			}
 			certs = append(certs, cert)
 		}
 
-		m.log.Info(fmt.Sprintf("Found %d certificates expiring between %s and %s", len(certs),
-			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04")))
+		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
+			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -325,10 +324,8 @@ func (m *mailer) findExpiringCertificates() error {
 		//
 		// 0: https://github.com/letsencrypt/boulder/issues/2002
 		if len(certs) == m.limit {
-			m.log.Info(fmt.Sprintf(
-				"nag group %s expiring certificates at configured capacity (cert limit %d)\n",
-				expiresIn.String(),
-				m.limit))
+			m.log.Infof("nag group %s expiring certificates at configured capacity (cert limit %d)",
+				expiresIn.String(), m.limit)
 			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(1)
 		}
 
@@ -481,8 +478,10 @@ func main() {
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
+	clk := cmd.Clock()
+
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -531,7 +530,7 @@ func main() {
 	if s := c.Mailer.NagCheckInterval; s != "" {
 		nagCheckInterval, err = time.ParseDuration(s)
 		if err != nil {
-			logger.AuditErr(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+			logger.AuditErrf("Failed to parse NagCheckInterval string %q: %s", s, err)
 			return
 		}
 	}
@@ -540,7 +539,7 @@ func main() {
 	for _, nagDuration := range c.Mailer.NagTimes {
 		dur, err := time.ParseDuration(nagDuration)
 		if err != nil {
-			logger.AuditErr(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+			logger.AuditErrf("Failed to parse nag duration string [%s]: %s", nagDuration, err)
 			return
 		}
 		nags = append(nags, dur+nagCheckInterval)
@@ -557,7 +556,7 @@ func main() {
 		emailTemplate:   tmpl,
 		nagTimes:        nags,
 		limit:           c.Mailer.CertLimit,
-		clk:             cmd.Clock(),
+		clk:             clk,
 		stats:           initStats(scope),
 	}
 

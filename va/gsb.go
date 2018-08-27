@@ -6,6 +6,7 @@ import (
 	safebrowsingv4 "github.com/google/safebrowsing"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/canceled"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
@@ -48,6 +49,12 @@ func (va *ValidationAuthorityImpl) isSafeDomain(ctx context.Context, domain stri
 	}
 
 	list, err := va.safeBrowsing.IsListed(ctx, domain)
+	if canceled.Is(err) {
+		// Sometimes an IsListed request will be canceled because the main
+		// validation failed, causing the parent context to be canceled.
+		stats.Inc("IsSafeDomain.Canceled", 1)
+		return true
+	}
 	if err != nil {
 		stats.Inc("IsSafeDomain.Errors", 1)
 		// In the event of an error checking the GSB status we allow the domain in

@@ -9,6 +9,10 @@
       "tlsPort": 5001
     },
     "dnsTries": 3,
+    "dnsResolvers": [
+      "127.0.0.1:8053",
+      "127.0.0.1:8054"
+    ],
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
@@ -17,14 +21,20 @@
     },
     "grpc": {
       "address": ":9097",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "va.boulder"
       ]
     },
     "features": {
       "RPCHeadroom": true,
-      "IPv6First": true
-    }
+      "IPv6First": true,
+      "CAAValidationMethods": true,
+      "CAAAccountURI": true
+    },
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
+    ]
   },
 
   "syslog": {
@@ -33,7 +43,6 @@
   },
 
   "common": {
-    "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
   }

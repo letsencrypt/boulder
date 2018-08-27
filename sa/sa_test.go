@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -25,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -494,13 +494,18 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil)
+	// Calling AddCertificate with a non-nil issued should succeed
+	issued := sa.clk.Now()
+	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
 	retrievedCert, err := sa.GetCertificate(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
+	// Because nil was provided as the Issued time we expect the cert was stored
+	// with an issued time equal to now
+	test.AssertEquals(t, retrievedCert.Issued, clk.Now())
 
 	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
@@ -514,13 +519,18 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
-	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID, nil)
+	// Add the certificate with a specific issued time instead of nil
+	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID, nil, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
 	retrievedCert2, err := sa.GetCertificate(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
+	// The cert should have been added with the specific issued time we provided
+	// as the issued field.
+	test.AssertEquals(t, retrievedCert2.Issued, issuedTime)
 
 	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
@@ -532,7 +542,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial = "ffa0160630d618b2eb5c0510824b14274856"
 	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp)
+	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
 	certificateStatus3, err := sa.GetCertificateStatus(ctx, serial)
@@ -577,7 +587,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -619,7 +630,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil)
+	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
@@ -638,57 +649,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 	}
 }
 
-const (
-	sctVersion    = 0
-	sctTimestamp  = 1435787268907
-	sctLogID      = "aPaY+B9kgr46jO65KB1M/HFRXWeT1ETRCmesu09P+8Q="
-	sctSignature  = "BAMASDBGAiEA/4kz9wQq3NhvZ6VlOmjq2Z9MVHGrUjF8uxUG9n1uRc4CIQD2FYnnszKXrR9AP5kBWmTgh3fXy+VlHK8HZXfbzdFf7g=="
-	sctCertSerial = "ff000000000000012607e11a78ac01f9"
-)
-
-func TestAddSCTReceipt(t *testing.T) {
-	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
-	test.AssertNotError(t, err, "Failed to decode SCT signature")
-	sct := core.SignedCertificateTimestamp{
-		SCTVersion:        sctVersion,
-		LogID:             sctLogID,
-		Timestamp:         sctTimestamp,
-		Signature:         sigBytes,
-		CertificateSerial: sctCertSerial,
-	}
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Failed to add SCT receipt")
-	// Append only and unique on signature and across LogID and CertificateSerial
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Incorrectly returned error on duplicate SCT receipt")
-}
-
-func TestGetSCTReceipt(t *testing.T) {
-	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
-	test.AssertNotError(t, err, "Failed to decode SCT signature")
-	sct := core.SignedCertificateTimestamp{
-		SCTVersion:        sctVersion,
-		LogID:             sctLogID,
-		Timestamp:         sctTimestamp,
-		Signature:         sigBytes,
-		CertificateSerial: sctCertSerial,
-	}
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
-	err = sa.AddSCTReceipt(ctx, sct)
-	test.AssertNotError(t, err, "Failed to add SCT receipt")
-
-	sqlSCT, err := sa.GetSCTReceipt(ctx, sctCertSerial, sctLogID)
-	test.AssertNotError(t, err, "Failed to get existing SCT receipt")
-	test.Assert(t, sqlSCT.SCTVersion == sct.SCTVersion, "Invalid SCT version")
-	test.Assert(t, sqlSCT.LogID == sct.LogID, "Invalid log ID")
-	test.Assert(t, sqlSCT.Timestamp == sct.Timestamp, "Invalid timestamp")
-	test.Assert(t, bytes.Compare(sqlSCT.Signature, sct.Signature) == 0, "Invalid signature")
-	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
-}
-
 func TestMarkCertificateRevoked(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -697,7 +657,8 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -720,35 +681,6 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	if !fc.Now().Equal(certificateStatusObj.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), certificateStatusObj.RevokedDate)
 	}
-}
-
-func TestCountCertificates(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-	fc.Add(time.Hour * 24)
-	now := fc.Now()
-	count, err := sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
-	test.AssertEquals(t, count, int64(0))
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	fc.Add(2 * time.Hour)
-	now = fc.Now()
-	count, err = sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
-	test.AssertEquals(t, count, int64(1))
-
-	fc.Add(24 * time.Hour)
-	now = fc.Now()
-	count, err = sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
-	test.AssertEquals(t, count, int64(0))
 }
 
 func TestCountRegistrationsByIP(t *testing.T) {
@@ -1020,7 +952,8 @@ func TestPreviousCertificateExists(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "reading cert DER")
 
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil)
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "calling AddCertificate")
 
 	cases := []struct {
@@ -2081,7 +2014,7 @@ func TestStatusForOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, invalidAuthz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authz to invalid")
 
-	// Create a deactivate authz
+	// Create a deactivated authz
 	deactivatedAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	deactivatedAuthz.Status = core.StatusDeactivated
@@ -2103,6 +2036,7 @@ func TestStatusForOrder(t *testing.T) {
 		ExpectedStatus   string
 		SetProcessing    bool
 		Finalize         bool
+		Features         []string
 	}{
 		{
 			Name:             "Order with an invalid authz",
@@ -2142,6 +2076,20 @@ func TestStatusForOrder(t *testing.T) {
 			ExpectedStatus:   string(core.StatusProcessing),
 		},
 		{
+			Name:             "Order with only valid authzs, not yet processed or finalized, OrderReadyStatus feature flag",
+			OrderNames:       []string{"valid.your.order.is.up"},
+			AuthorizationIDs: []string{validAuthz.ID},
+			ExpectedStatus:   string(core.StatusReady),
+			Features:         []string{"OrderReadyStatus"},
+		},
+		{
+			Name:             "Order with only valid authzs, set processing",
+			OrderNames:       []string{"valid.your.order.is.up"},
+			AuthorizationIDs: []string{validAuthz.ID},
+			SetProcessing:    true,
+			ExpectedStatus:   string(core.StatusProcessing),
+		},
+		{
 			Name:             "Order with only valid authzs, set processing and finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
 			AuthorizationIDs: []string{validAuthz.ID},
@@ -2153,12 +2101,21 @@ func TestStatusForOrder(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if len(tc.Features) > 0 {
+				for _, flag := range tc.Features {
+					_ = features.Set(map[string]bool{flag: true})
+				}
+				defer features.Reset()
+			}
+
 			// Add a new order with the testcase authz IDs
+			processing := false
 			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
-				RegistrationID: &reg.ID,
-				Expires:        &expiresNano,
-				Authorizations: tc.AuthorizationIDs,
-				Names:          tc.OrderNames,
+				RegistrationID:  &reg.ID,
+				Expires:         &expiresNano,
+				Authorizations:  tc.AuthorizationIDs,
+				Names:           tc.OrderNames,
+				BeganProcessing: &processing,
 			})
 			test.AssertNotError(t, err, "NewOrder errored unexpectedly")
 			// If requested, set the order to processing

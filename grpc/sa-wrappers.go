@@ -134,25 +134,6 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	}, nil
 }
 
-func (sac StorageAuthorityClientWrapper) CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountCertificatesRange(ctx, &sapb.Range{
-		Earliest: &earliestNano,
-		Latest:   &latestNano,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil || response.Count == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return *response.Count, nil
-}
-
 func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
 	earliestNano := earliest.UnixNano()
 	latestNano := latest.UnixNano()
@@ -292,19 +273,6 @@ func (sac StorageAuthorityClientWrapper) GetPendingAuthorization(ctx context.Con
 	return &authz, nil
 }
 
-func (sac StorageAuthorityClientWrapper) GetSCTReceipt(ctx context.Context, serial, logID string) (core.SignedCertificateTimestamp, error) {
-	response, err := sac.inner.GetSCTReceipt(ctx, &sapb.GetSCTReceiptRequest{Serial: &serial, LogID: &logID})
-	if err != nil {
-		return core.SignedCertificateTimestamp{}, err
-	}
-
-	if response == nil || !sctValid(response) {
-		return core.SignedCertificateTimestamp{}, errIncompleteResponse
-	}
-
-	return pbToSCT(response), nil
-}
-
 func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
 	windowNanos := window.Nanoseconds()
 
@@ -442,11 +410,21 @@ func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Cont
 	return nil
 }
 
-func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der []byte, regID int64, ocspResponse []byte) (string, error) {
+func (sac StorageAuthorityClientWrapper) AddCertificate(
+	ctx context.Context,
+	der []byte,
+	regID int64,
+	ocspResponse []byte,
+	issued *time.Time) (string, error) {
+	issuedTS := int64(0)
+	if issued != nil {
+		issuedTS = issued.UnixNano()
+	}
 	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:   der,
-		RegID: &regID,
-		Ocsp:  ocspResponse,
+		Der:    der,
+		RegID:  &regID,
+		Ocsp:   ocspResponse,
+		Issued: &issuedTS,
 	})
 	if err != nil {
 		return "", err
@@ -457,15 +435,6 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, der
 	}
 
 	return *response.Digest, nil
-}
-
-func (sac StorageAuthorityClientWrapper) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
-	_, err := sac.inner.AddSCTReceipt(ctx, sctToPB(sct))
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain core.AcmeIdentifier) (int64, int64, error) {
@@ -735,19 +704,6 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 	}, nil
 }
 
-func (sas StorageAuthorityServerWrapper) CountCertificatesRange(ctx context.Context, request *sapb.Range) (*sapb.Count, error) {
-	if request == nil || request.Earliest == nil || request.Latest == nil {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountCertificatesRange(ctx, time.Unix(0, *request.Earliest), time.Unix(0, *request.Latest))
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: &count}, nil
-}
-
 func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	if request == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil || request.Names == nil {
 		return nil, errIncompleteRequest
@@ -856,19 +812,6 @@ func (sas StorageAuthorityServerWrapper) GetPendingAuthorization(ctx context.Con
 		return nil, err
 	}
 	return authzPB, err
-}
-
-func (sas StorageAuthorityServerWrapper) GetSCTReceipt(ctx context.Context, request *sapb.GetSCTReceiptRequest) (*sapb.SignedCertificateTimestamp, error) {
-	if request == nil || request.Serial == nil || request.LogID == nil {
-		return nil, errIncompleteRequest
-	}
-
-	sct, err := sas.inner.GetSCTReceipt(ctx, *request.Serial, *request.LogID)
-	if err != nil {
-		return nil, err
-	}
-
-	return sctToPB(sct), nil
 }
 
 func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, request *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
@@ -1014,29 +957,17 @@ func (sas StorageAuthorityServerWrapper) MarkCertificateRevoked(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if request == nil || request.Der == nil || request.RegID == nil {
+	if request == nil || request.Der == nil || request.RegID == nil || request.Issued == nil {
 		return nil, errIncompleteRequest
 	}
 
-	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID, request.Ocsp)
+	reqIssued := time.Unix(0, *request.Issued)
+	digest, err := sas.inner.AddCertificate(ctx, request.Der, *request.RegID, request.Ocsp, &reqIssued)
 	if err != nil {
 		return nil, err
 	}
 
 	return &sapb.AddCertificateResponse{Digest: &digest}, nil
-}
-
-func (sas StorageAuthorityServerWrapper) AddSCTReceipt(ctx context.Context, request *sapb.SignedCertificateTimestamp) (*corepb.Empty, error) {
-	if request == nil || !sctValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	err := sas.inner.AddSCTReceipt(ctx, pbToSCT(request))
-	if err != nil {
-		return nil, err
-	}
-
-	return &corepb.Empty{}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain(ctx context.Context, request *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {

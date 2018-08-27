@@ -10,15 +10,19 @@ $ python chisel.py foo.com bar.com
 import json
 import logging
 import os
+import socket
 import sys
 import threading
 import time
 import urllib2
 
+from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 import OpenSSL
+from OpenSSL import SSL
 import josepy
 
 from acme import challenges
@@ -33,9 +37,11 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
-# URLs to control dns-test-srv
+# URLs for management interface of challtestsrv
 SET_TXT = "http://localhost:8055/set-txt"
 CLEAR_TXT = "http://localhost:8055/clear-txt"
+ADD_ALPN = "http://localhost:8055/add-tlsalpn01"
+DEL_ALPN = "http://localhost:8055/del-tlsalpn01"
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 
@@ -190,6 +196,33 @@ def do_http_challenges(client, authzs):
         thread.join()
     return cleanup
 
+def do_tlsalpn_challenges(client, authzs):
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.TLSALPN01)
+        name, value = (a.body.identifier.value, c.key_authorization(client.key))
+        cleanup_hosts.append(name)
+        urllib2.urlopen(ADD_ALPN,
+            data=json.dumps({
+                "host": name,
+                "content": value,
+            })).read()
+        client.answer_challenge(c, c.response(client.key))
+    def cleanup():
+        for host in cleanup_hosts:
+            urllib2.urlopen(DEL_ALPN,
+                data=json.dumps({
+                    "host": host,
+                })).read()
+    return cleanup
+
+def load_example_cert():
+    keypem = open('test/test-example.key', 'rb').read()
+    key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, keypem)
+    crtpem = open('test/test-example.pem', 'rb').read()
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, crtpem)
+    return (key, cert)
+
 def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, client=None):
     """Make authzs for each of the given domains, set up a server to answer the
        challenges in those authzs, tell the ACME server to validate the challenges,
@@ -202,6 +235,8 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "tls-alpn-01":
+        cleanup = do_tlsalpn_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 

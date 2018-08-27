@@ -6,7 +6,8 @@
     "listenAddress": "0.0.0.0:4002",
     "maxAge": "10s",
     "shutdownStopTimeout": "10s",
-    "debugAddr": ":8005"
+    "debugAddr": ":8005",
+    "requiredSerialPrefixes": ["ff"]
   },
 
   "syslog": {

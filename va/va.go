@@ -6,8 +6,10 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,6 +27,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -41,13 +44,29 @@ const (
 	// allowed accept up to 128 bytes before rejecting a response
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
+
+	// ALPN protocol ID for TLS-ALPN-01 challenge
+	// https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.2
+	ACMETLS1Protocol = "acme-tls/1"
 )
 
-// singleDialTimeout specifies how long an individual `Dial` operation may take
+// singleDialTimeout specifies how long an individual `DialContext` operation may take
 // before timing out. This timeout ignores the base RPC timeout and is strictly
-// used for the Dial operations that take place during an
+// used for the DialContext operations that take place during an
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
-var singleDialTimeout = time.Second * 10
+const singleDialTimeout = time.Second * 10
+
+// NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
+// for their own extension and IANA chose to assign it early. Because of this we had to increment
+// the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
+// OID we still need to support it until everyone is switched over to the new one.
+// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
+// id-pe OID + 30 (acmeIdentifier) + 1 (v1)
+var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+
+// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
+// id-pe OID + 31 (acmeIdentifier)
+var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -96,18 +115,19 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	log               blog.Logger
-	dnsClient         bdns.DNSClient
-	issuerDomain      string
-	safeBrowsing      SafeBrowsing
-	httpPort          int
-	httpsPort         int
-	tlsPort           int
-	userAgent         string
-	stats             metrics.Scope
-	clk               clock.Clock
-	remoteVAs         []RemoteVA
-	maxRemoteFailures int
+	log                blog.Logger
+	dnsClient          bdns.DNSClient
+	issuerDomain       string
+	safeBrowsing       SafeBrowsing
+	httpPort           int
+	httpsPort          int
+	tlsPort            int
+	userAgent          string
+	stats              metrics.Scope
+	clk                clock.Clock
+	remoteVAs          []RemoteVA
+	maxRemoteFailures  int
+	accountURIPrefixes []string
 
 	metrics *vaMetrics
 }
@@ -124,23 +144,38 @@ func NewValidationAuthorityImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	logger blog.Logger,
-) *ValidationAuthorityImpl {
+	accountURIPrefixes []string,
+) (*ValidationAuthorityImpl, error) {
+	if pc.HTTPPort == 0 {
+		pc.HTTPPort = 80
+	}
+	if pc.HTTPSPort == 0 {
+		pc.HTTPSPort = 443
+	}
+	if pc.TLSPort == 0 {
+		pc.TLSPort = 443
+	}
+
+	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
+		return nil, errors.New("no account URI prefixes configured")
+	}
 
 	return &ValidationAuthorityImpl{
-		log:               logger,
-		dnsClient:         resolver,
-		issuerDomain:      issuerDomain,
-		safeBrowsing:      sbc,
-		httpPort:          pc.HTTPPort,
-		httpsPort:         pc.HTTPSPort,
-		tlsPort:           pc.TLSPort,
-		userAgent:         userAgent,
-		stats:             stats,
-		clk:               clk,
-		metrics:           initMetrics(stats),
-		remoteVAs:         remoteVAs,
-		maxRemoteFailures: maxRemoteFailures,
-	}
+		log:                logger,
+		dnsClient:          resolver,
+		issuerDomain:       issuerDomain,
+		safeBrowsing:       sbc,
+		httpPort:           pc.HTTPPort,
+		httpsPort:          pc.HTTPSPort,
+		tlsPort:            pc.TLSPort,
+		userAgent:          userAgent,
+		stats:              stats,
+		clk:                clk,
+		metrics:            initMetrics(stats),
+		remoteVAs:          remoteVAs,
+		maxRemoteFailures:  maxRemoteFailures,
+		accountURIPrefixes: accountURIPrefixes,
+	}, nil
 }
 
 // Used for audit logging
@@ -159,111 +194,118 @@ type verificationRequestEvent struct {
 // the preferred address, the first net.IP in the addrs slice, and all addresses
 // resolved. This is the same choice made by the Go internal resolution library
 // used by net/http.
-func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, *probs.ProblemDetails) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		problem := probs.DNS(err.Error())
-		return net.IP{}, nil, problem
+		problem := probs.DNS("%v", err)
+		return nil, problem
 	}
 
 	if len(addrs) == 0 {
-		problem := probs.UnknownHost(
-			fmt.Sprintf("No valid IP addresses found for %s", hostname),
-		)
-		return net.IP{}, nil, problem
+		return nil, probs.UnknownHost("No valid IP addresses found for %s", hostname)
 	}
-	addr := addrs[0]
-	va.log.Debug(fmt.Sprintf("Resolved addresses for %s [using %s]: %s", hostname, addr, addrs))
-	return addr, addrs, nil
+	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
+	return addrs, nil
+}
+
+type addrRecord struct {
+	used  net.IP
+	tried []net.IP
 }
 
 // http01Dialer is a struct that exists to provide a dialer like object with
-// a `Dial` method that can be given to an http.Transport for HTTP-01
-// validation. The primary purpose of the http01Dialer's Dial method is to
-// circumvent traditional DNS lookup and to use the IP addresses provided in the
-// inner `record` member populated by the `resolveAndConstructDialer` function.
+// a `DialContext` method that can be given to an http.Transport for HTTP-01
+// validation. The primary purpose of the http01Dialer's DialContext method
+// is to circumvent traditional DNS lookup and to use the IP addresses in the
+// addr slice.
 type http01Dialer struct {
-	record      core.ValidationRecord
+	addrs       []net.IP
+	hostname    string
+	port        string
 	stats       metrics.Scope
 	dialerCount int
+
+	addrInfoChan chan addrRecord
 }
 
 // realDialer is used to create a true `net.Dialer` that can be used once an IP
 // address to connect to is determined. It increments the `dialerCount` integer
-// to track how many "fresh" dialer instances have been created during a `Dial`
-// for testing purposes.
+// to track how many "fresh" dialer instances have been created during a
+// `DialContext` for testing purposes.
 func (d *http01Dialer) realDialer() *net.Dialer {
 	// Record that we created a new instance of a real net.Dialer
 	d.dialerCount++
 	return &net.Dialer{Timeout: singleDialTimeout}
 }
 
-// Dial processes the IP addresses from the inner validation record, using
-// `realDialer` to make connections as required. If `features.IPv6First` is
-// enabled then for dual-homed hosts an initial IPv6 connection will be made
-// followed by a IPv4 connection if there is a failure with the IPv6 connection.
-func (d *http01Dialer) Dial(_, _ string) (net.Conn, error) {
+// DialContext processes the IP addresses from the inner validation record, using
+// `realDialer` to make connections as required. For dual-homed hosts an initial
+// IPv6 connection will be made followed by a IPv4 connection if there is a failure
+// with the IPv6 connection.
+func (d *http01Dialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		// Shouldn't happen: All requests should have a deadline by this point.
+		deadline = time.Now().Add(100 * time.Second)
+	} else {
+		// Set the context deadline slightly shorter than the HTTP deadline, so we
+		// get the dial error rather than a generic "deadline exceeded" error. This
+		// lets us give a more specific error to the subscriber.
+		deadline = deadline.Add(-10 * time.Millisecond)
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
 	var realDialer *net.Dialer
+	var addrInfo addrRecord
 
 	// Split the available addresses into v4 and v6 addresses
-	v4, v6 := availableAddresses(d.record)
+	v4, v6 := availableAddresses(d.addrs)
 
-	// If the IPv6 first feature isn't enabled then combine available IPv4 and
-	// IPv6 addresses and connect to the first IP in the combined list
-	if !features.Enabled(features.IPv6First) {
-		addresses := append(v4, v6...)
-		// This shouldn't happen, but be defensive about it anyway
-		if len(addresses) < 1 {
-			return nil, fmt.Errorf("no IP addresses found for %q", d.record.Hostname)
-		}
-		address := net.JoinHostPort(addresses[0].String(), d.record.Port)
-		d.record.AddressUsed = addresses[0]
+	// If there is at least one IPv6 address then try it first
+	if len(v6) > 0 {
+		address := net.JoinHostPort(v6[0].String(), d.port)
+		addrInfo.used = v6[0]
 		realDialer = d.realDialer()
-		return realDialer.Dial("tcp", address)
-	}
-
-	// If the IPv6 first feature is enabled and there is at least one IPv6 address
-	// then try it first
-	if features.Enabled(features.IPv6First) && len(v6) > 0 {
-		address := net.JoinHostPort(v6[0].String(), d.record.Port)
-		d.record.AddressUsed = v6[0]
-		realDialer = d.realDialer()
-		conn, err := realDialer.Dial("tcp", address)
+		conn, err := realDialer.DialContext(ctx, "tcp", address)
 
 		// If there is no error, return immediately
 		if err == nil {
+			d.addrInfoChan <- addrInfo
 			return conn, err
 		}
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
-		d.record.AddressesTried = append(d.record.AddressesTried, d.record.AddressUsed)
+		addrInfo.tried = append(addrInfo.tried, addrInfo.used)
 		d.stats.Inc("IPv4Fallback", 1)
 	}
 
 	// If there are no IPv4 addresses and we tried an IPv6 address return an
 	// error - there's nothing left to try
-	if len(v4) == 0 && len(d.record.AddressesTried) > 0 {
+	if len(v4) == 0 && len(addrInfo.tried) > 0 {
+		d.addrInfoChan <- addrInfo
 		return nil,
 			fmt.Errorf("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
-				d.record.Hostname, d.record.AddressesTried[0])
-	} else if len(v4) == 0 && len(d.record.AddressesTried) == 0 {
+				d.hostname, addrInfo.tried[0])
+	} else if len(v4) == 0 && len(addrInfo.tried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
 		// attempts at an IPv6 address connection but be defensive about it anyway
-		return nil, fmt.Errorf("no IP addresses found for %q", d.record.Hostname)
+		d.addrInfoChan <- addrInfo
+		return nil, fmt.Errorf("no IP addresses found for %q", d.hostname)
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
-	address := net.JoinHostPort(v4[0].String(), d.record.Port)
-	d.record.AddressUsed = v4[0]
+	addrInfo.used = v4[0]
+	d.addrInfoChan <- addrInfo
 	realDialer = d.realDialer()
-	return realDialer.Dial("tcp", address)
+	return realDialer.DialContext(ctx, "tcp", net.JoinHostPort(v4[0].String(), d.port))
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
 // into a list of IPv4 and IPv6 addresses.
-func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
-	for _, addr := range rec.AddressesResolved {
+func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
+	for _, addr := range allAddrs {
 		if addr.To4() != nil {
 			v4 = append(v4, addr)
 		} else {
@@ -273,24 +315,16 @@ func availableAddresses(rec core.ValidationRecord) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-// resolveAndConstructDialer gets the preferred address using va.getAddr and returns
-// the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (http01Dialer, *probs.ProblemDetails) {
-	d := http01Dialer{
-		record: core.ValidationRecord{
-			Hostname: name,
-			Port:     strconv.Itoa(port),
-		},
-		stats: va.stats,
+// newHTTP01Dialer initializes a http01Dialer for the relevant hostname and port
+// number
+func (va *ValidationAuthorityImpl) newHTTP01Dialer(host string, port int, addrs []net.IP) http01Dialer {
+	return http01Dialer{
+		hostname:     host,
+		port:         strconv.Itoa(port),
+		addrs:        addrs,
+		stats:        va.stats,
+		addrInfoChan: make(chan addrRecord, 1),
 	}
-
-	addr, allAddrs, err := va.getAddr(ctx, name)
-	if err != nil {
-		return d, err
-	}
-	d.record.AddressesResolved = allAddrs
-	d.record.AddressUsed = addr
-	return d, nil
 }
 
 // Validation methods
@@ -318,25 +352,36 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		Path:   path,
 	}
 
-	va.log.AuditInfo(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
+	va.log.AuditInfof("Attempting to validate %s for %s", challenge.Type, url)
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err))
+		va.log.Infof("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err)
 		return nil, nil, probs.Malformed("URL provided for HTTP was invalid")
 	}
 
+	httpRequest = httpRequest.WithContext(ctx)
 	if va.userAgent != "" {
 		httpRequest.Header["User-Agent"] = []string{va.userAgent}
 	}
 
-	dialer, prob := va.resolveAndConstructDialer(ctx, host, port)
-	dialer.record.URL = url.String()
-	// Start with an empty validation record list - we will add a record after
-	// each dialer.Dial()
-	var validationRecords []core.ValidationRecord
-	if prob != nil {
-		return nil, []core.ValidationRecord{dialer.record}, prob
+	// Build a base validation record that we will later populate with relevant IP
+	// addresses etc
+	baseRecord := core.ValidationRecord{
+		Hostname: host,
+		Port:     strconv.Itoa(port),
+		URL:      url.String(),
 	}
+	// Resolve IP addresses and construct custom dialer
+	addrs, prob := va.getAddrs(ctx, host)
+	if prob != nil {
+		return nil, []core.ValidationRecord{baseRecord}, prob
+	}
+	baseRecord.AddressesResolved = addrs
+	dialer := va.newHTTP01Dialer(host, port, addrs)
+
+	// Start with an empty validation record list - we will add a record after
+	// each dialer.DialContext()
+	var validationRecords []core.ValidationRecord
 
 	tr := &http.Transport{
 		// We are talking to a client that does not yet have a certificate,
@@ -345,9 +390,9 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
 		DisableKeepAlives: true,
-		// Intercept Dial in order to connect to the IP address we
+		// Intercept DialContext in order to connect to the IP address we
 		// select.
-		Dial: dialer.Dial,
+		DialContext: dialer.DialContext,
 	}
 
 	// Some of our users use mod_security. Mod_security sees a lack of Accept
@@ -361,10 +406,12 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// do many more things to satisfy misunderstandings around HTTP.
 	httpRequest.Header.Set("Accept", "*/*")
 
+	numRedirects := 0
 	logRedirect := func(req *http.Request, via []*http.Request) error {
-		if len(validationRecords) >= maxRedirect {
+		if numRedirects >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
 		}
+		numRedirects++
 
 		// Set Accept header for mod_security (see the other place the header is
 		// set)
@@ -393,28 +440,50 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			reqPort = va.httpPort
 		}
 
-		dialer, err := va.resolveAndConstructDialer(ctx, reqHost, reqPort)
-		dialer.record.URL = req.URL.String()
-		// A subsequent dialing from a redirect means adding another validation
-		// record
-		validationRecords = append(validationRecords, dialer.record)
-		if err != nil {
-			return err
+		// Since we've used dialer.DialContext we need to drain the address info
+		// channel and build a validation record using it and baseRecord so that
+		// we have a record for the host that sent the redirect.
+		addrInfo := <-dialer.addrInfoChan
+		record := baseRecord
+		record.AddressUsed, record.AddressesTried = addrInfo.used, addrInfo.tried
+		validationRecords = append(validationRecords, record)
+
+		// Update base record host, port, and URL for next dial. If there isn't
+		// another redirect this will be used by the parent scope to construct
+		// the final record.
+		baseRecord.Hostname = reqHost
+		baseRecord.Port = strconv.Itoa(reqPort)
+		baseRecord.URL = req.URL.String()
+
+		// Resolve new hostname and construct a new dialer
+		addrs, prob := va.getAddrs(ctx, reqHost)
+		if prob != nil {
+			// Since we won't call dialer.DialContext again the parent scope
+			// will block waiting for something from dialer.addrInfoChan so
+			// we put an empty addrRecord struct in the channel.
+			dialer.addrInfoChan <- addrRecord{}
+			return prob
 		}
-		tr.Dial = dialer.Dial
-		va.log.Debug(fmt.Sprintf("%s [%s] redirect from %q to %q [%s]", challenge.Type, identifier, via[len(via)-1].URL.String(), req.URL.String(), dialer.record.AddressUsed))
+		baseRecord.AddressesResolved = addrs
+		dialer = va.newHTTP01Dialer(reqHost, reqPort, addrs)
+
+		tr.DialContext = dialer.DialContext
+		va.log.Debugf("%s [%s] redirect from %q to %q", challenge.Type, identifier,
+			via[len(via)-1].URL.String(), req.URL.String())
 		return nil
 	}
 	client := http.Client{
 		Transport:     tr,
 		CheckRedirect: logRedirect,
-		Timeout:       singleDialTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
-	// Append a validation record now that we have dialed the dialer
-	validationRecords = append(validationRecords, dialer.record)
+	// Read the address info from the dialer and update the base record with it,
+	// then append the it to the slice of records
+	addrInfo := <-dialer.addrInfoChan
+	baseRecord.AddressUsed, baseRecord.AddressesTried = addrInfo.used, addrInfo.tried
+	validationRecords = append(validationRecords, baseRecord)
 	if err != nil {
-		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
+		va.log.Infof("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err)
 		return nil, validationRecords, detailedError(err)
 	}
 
@@ -424,19 +493,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		err = closeErr
 	}
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err))
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Error reading HTTP response body: %v", err))
+		va.log.Infof("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url, err, err)
+		return nil, validationRecords, probs.Unauthorized("Error reading HTTP response body: %v", err)
 	}
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body))
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: \"%s\"", url, body)
 	}
 
 	if httpResponse.StatusCode != 200 {
-		va.log.Info(fmt.Sprintf("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode))
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s [%s]: %d",
-			url.String(), dialer.record.AddressUsed, httpResponse.StatusCode))
+		va.log.Infof("Non-200 status code from HTTP: %s returned %d", url, httpResponse.StatusCode)
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s [%s]: %d",
+			url, validationRecords[len(validationRecords)-1].AddressUsed, httpResponse.StatusCode)
 	}
 
 	return body, validationRecords, nil
@@ -455,51 +524,42 @@ func certNames(cert *x509.Certificate) []string {
 	return names
 }
 
-func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, []core.ValidationRecord, *probs.ProblemDetails) {
-	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
+func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
+	identifier core.AcmeIdentifier, challenge core.Challenge,
+	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
+
+	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
-			AddressUsed:       addr,
 			Port:              strconv.Itoa(va.tlsPort),
 		},
 	}
 	if problem != nil {
-		return nil, validationRecords, problem
+		return nil, nil, validationRecords, problem
 	}
 	thisRecord := &validationRecords[0]
 
 	// Split the available addresses into v4 and v6 addresses
-	v4, v6 := availableAddresses(*thisRecord)
+	v4, v6 := availableAddresses(allAddrs)
 	addresses := append(v4, v6...)
 
 	// This shouldn't happen, but be defensive about it anyway
 	if len(addresses) < 1 {
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("no IP addresses found for %q", identifier.Value))
+		return nil, nil, validationRecords, probs.Malformed("no IP addresses found for %q", identifier.Value)
 	}
 
-	// If the IPv6 first feature isn't enabled then combine available IPv4 and
-	// IPv6 addresses and connect to the first IP in the combined list
-	if !features.Enabled(features.IPv6First) {
-		address := net.JoinHostPort(addresses[0].String(), thisRecord.Port)
-		thisRecord.AddressUsed = addresses[0]
-		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
-		return certs, validationRecords, err
-	}
-
-	// If the IPv6 first feature is enabled and there is at least one IPv6 address
-	// then try it first
-	if features.Enabled(features.IPv6First) && len(v6) > 0 {
+	// If there is at least one IPv6 address then try it first
+	if len(v6) > 0 {
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
-		certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
+		certs, cs, err := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
 
 		// If there is no error, return immediately
 		if err == nil {
-			return certs, validationRecords, err
+			return certs, cs, validationRecords, err
 		}
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
@@ -510,26 +570,24 @@ func (va *ValidationAuthorityImpl) tryGetTLSSNICerts(ctx context.Context, identi
 	// If there are no IPv4 addresses and we tried an IPv6 address return
 	// an error - there's nothing left to try
 	if len(v4) == 0 && len(thisRecord.AddressesTried) > 0 {
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
-				thisRecord.Hostname, thisRecord.AddressesTried[0]))
+		return nil, nil, validationRecords, probs.Malformed("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
+			thisRecord.Hostname, thisRecord.AddressesTried[0])
 	} else if len(v4) == 0 && len(thisRecord.AddressesTried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
 		// attempts at an IPv6 address connection but be defensive about it anyway
-		return nil, validationRecords, probs.Malformed(
-			fmt.Sprintf("No IP addresses found for %q", thisRecord.Hostname))
+		return nil, nil, validationRecords, probs.Malformed("No IP addresses found for %q", thisRecord.Hostname)
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
-	address := net.JoinHostPort(v4[0].String(), thisRecord.Port)
 	thisRecord.AddressUsed = v4[0]
-	certs, err := va.getTLSSNICerts(address, identifier, challenge, zName)
-	return certs, validationRecords, err
+	certs, cs, err := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
+		identifier, challenge, tlsConfig)
+	return certs, cs, validationRecords, err
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	certs, validationRecords, problem := va.tryGetTLSSNICerts(ctx, identifier, challenge, zName)
+	certs, _, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{ServerName: zName})
 	if problem != nil {
 		return validationRecords, problem
 	}
@@ -543,47 +601,76 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context
 
 	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 	names := certNames(leafCert)
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Requested %s from %s. Received %d certificate(s), "+
-			"first certificate had names %q",
+	problem = probs.Unauthorized("Incorrect validation certificate for %s challenge. "+
+		"Requested %s from %s. Received %d certificate(s), first certificate had names %q",
 		challenge.Type, zName, hostPort, len(certs), strings.Join(names, ", "))
-	va.log.Info(fmt.Sprintf("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier))
-	return validationRecords, probs.Unauthorized(errText)
+	va.log.Infof("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier)
+	return validationRecords, problem
 }
 
-func (va *ValidationAuthorityImpl) getTLSSNICerts(hostPort string, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]*x509.Certificate, *probs.ProblemDetails) {
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: singleDialTimeout}, "tcp", hostPort, &tls.Config{
-		ServerName:         zName,
-		InsecureSkipVerify: true,
-	})
+func (va *ValidationAuthorityImpl) getTLSCerts(
+	ctx context.Context,
+	hostPort string,
+	identifier core.AcmeIdentifier,
+	challenge core.Challenge,
+	config *tls.Config,
+) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
+	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
+	// We expect a self-signed challenge certificate, do not verify it here.
+	config.InsecureSkipVerify = true
+	conn, err := tlsDial(ctx, hostPort, config)
 
 	if err != nil {
-		va.log.Info(fmt.Sprintf("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err))
-		return nil, detailedError(err)
+		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
+		return nil, nil, detailedError(err)
 	}
 	// close errors are not important here
 	defer func() {
 		_ = conn.Close()
 	}()
 
-	// Check that zName is a dNSName SAN in the server's certificate
-	certs := conn.ConnectionState().PeerCertificates
+	cs := conn.ConnectionState()
+	certs := cs.PeerCertificates
 	if len(certs) == 0 {
-		va.log.Info(fmt.Sprintf("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value))
-		return nil, probs.Unauthorized(fmt.Sprintf("No certs presented for %s challenge", challenge.Type))
+		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
+		return nil, nil, probs.Unauthorized("No certs presented for %s challenge", challenge.Type)
 	}
 	for i, cert := range certs {
-		va.log.AuditInfo(fmt.Sprintf("%s challenge for %s received certificate (%d of %d): cert=[%s]",
-			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw)))
+		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
-	return certs, nil
+	return certs, &cs, nil
+}
+
+// tlsDial does the equivalent of tls.Dial, but obeying a context. Once
+// tls.DialContextWithDialer is available, switch to that.
+func tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, singleDialTimeout)
+	defer cancel()
+	dialer := &net.Dialer{}
+	netConn, err := dialer.DialContext(ctx, "tcp", hostPort)
+	if err != nil {
+		return nil, err
+	}
+	conn := tls.Client(netConn, config)
+	errChan := make(chan error)
+	go func() {
+		errChan <- conn.Handshake()
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case err := <-errChan:
+		if err != nil {
+			return nil, err
+		}
+	}
+	return conn, nil
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
-		va.log.Info(fmt.Sprintf("Got non-DNS identifier for HTTP validation: %s", identifier))
+		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
 		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
 	}
 
@@ -597,10 +684,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
+		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, probs.Unauthorized(errString)
+		va.log.Infof("%s for %s", problem.Detail, identifier)
+		return validationRecords, problem
 	}
 
 	return validationRecords, nil
@@ -608,7 +695,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI-01 was not DNS: %s", identifier))
+		va.log.Infof("Identifier type for TLS-SNI-01 was not DNS: %s", identifier)
 		return nil, probs.Malformed("Identifier type for TLS-SNI-01 was not DNS")
 	}
 
@@ -618,6 +705,75 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
 	return va.validateTLSSNI01WithZName(ctx, identifier, challenge, ZName)
+}
+
+func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if identifier.Type != "dns" {
+		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
+		return nil, probs.Malformed("Identifier type for TLS-ALPN-01 was not DNS")
+	}
+
+	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{
+		NextProtos: []string{ACMETLS1Protocol},
+		ServerName: identifier.Value,
+	})
+	if problem != nil {
+		return validationRecords, problem
+	}
+
+	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != ACMETLS1Protocol {
+		errText := fmt.Sprintf(
+			"Cannot negotiate ALPN protocol %q for %s challenge",
+			ACMETLS1Protocol,
+			core.ChallengeTypeTLSALPN01,
+		)
+		return validationRecords, probs.Unauthorized(errText)
+	}
+
+	leafCert := certs[0]
+
+	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
+	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
+		names := certNames(leafCert)
+		errText := fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. Received %d certificate(s), "+
+				"first certificate had names %q",
+			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
+		return validationRecords, probs.Unauthorized(errText)
+	}
+
+	// Verify key authorization in acmeValidation extension
+	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
+	for _, ext := range leafCert.Extensions {
+		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
+			if !ext.Critical {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			var extValue []byte
+			rest, err := asn1.Unmarshal(ext.Value, &extValue)
+			if err != nil || len(rest) > 0 {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Malformed acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			return validationRecords, nil
+		}
+	}
+
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Missing acmeValidationV1 extension.",
+		core.ChallengeTypeTLSALPN01)
+	return validationRecords, probs.Unauthorized(errText)
 }
 
 // badTLSHeader contains the string 'HTTP /' which is returned when
@@ -638,7 +794,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 
 	if tlsErr, ok := err.(tls.RecordHeaderError); ok && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
-		return probs.Malformed(fmt.Sprintf("Server only speaks HTTP, not TLS"))
+		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
 	if netErr, ok := err.(*net.OpError); ok {
@@ -650,12 +806,19 @@ func detailedError(err error) *probs.ProblemDetails {
 			syscallErr.Err == syscall.ECONNREFUSED {
 			return probs.ConnectionFailure("Connection refused")
 		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
+			syscallErr.Err == syscall.ENETUNREACH {
+			return probs.ConnectionFailure("Network unreachable")
+		} else if syscallErr, ok := netErr.Err.(*os.SyscallError); ok &&
 			syscallErr.Err == syscall.ECONNRESET {
 			return probs.ConnectionFailure("Connection reset by peer")
+		} else if netErr.Timeout() && netErr.Op == "dial" {
+			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+		} else if netErr.Timeout() {
+			return probs.ConnectionFailure("Timeout during %s (your server may be slow or overloaded)", netErr.Op)
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
-		return probs.ConnectionFailure("Timeout")
+		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if berrors.Is(err, berrors.ConnectionFailure) {
 		return probs.ConnectionFailure(err.Error())
@@ -666,7 +829,7 @@ func detailedError(err error) *probs.ProblemDetails {
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
-		va.log.Info(fmt.Sprintf("Identifier type for DNS challenge was not DNS: %s", identifier))
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", identifier)
 		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
 	}
 
@@ -680,8 +843,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
-		va.log.Info(fmt.Sprintf("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
-
+		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err)
 		return nil, probs.DNS(err.Error())
 	}
 
@@ -689,8 +851,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized(fmt.Sprintf(
-			"No TXT record found at %s", challengeSubdomain))
+		return nil, probs.Unauthorized("No TXT record found at %s", challengeSubdomain)
 	}
 
 	for _, element := range txts {
@@ -711,19 +872,20 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if len(txts) > 1 {
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
-	return nil, probs.Unauthorized(fmt.Sprintf(
-		"Incorrect TXT record %q%s found at %s",
-		invalidRecord, andMore, challengeSubdomain))
+	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }
 
-// validateChallengeAndIdentifier performs a challenge validation and, in parallel,
+// validate performs a challenge validation and, in parallel,
 // checks CAA and GSB for the identifier. If any of those steps fails, it
 // returns a ProblemDetails plus the validation records created during the
 // validation attempt.
-func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
+func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
 	identifier core.AcmeIdentifier,
-	challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	challenge core.Challenge,
+	authz core.Authorization,
+) ([]core.ValidationRecord, *probs.ProblemDetails) {
 
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
@@ -739,13 +901,16 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 2)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		params := &caaParams{
+			accountURIID:     &authz.RegistrationID,
+			validationMethod: &challenge.Type,
+		}
+		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
 		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
-			ch <- probs.Unauthorized(fmt.Sprintf(
-				"%q was considered an unsafe domain by a third-party API",
-				baseIdentifier.Value))
+			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
+				baseIdentifier.Value)
 		} else {
 			ch <- nil
 		}
@@ -758,8 +923,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndIdentifier(
 	}
 
 	for i := 0; i < cap(ch); i++ {
-		extraProblem := <-ch
-		if extraProblem != nil {
+		if extraProblem := <-ch; extraProblem != nil {
 			return validationRecords, extraProblem
 		}
 	}
@@ -777,8 +941,10 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateTLSSNI01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
+	case core.ChallengeTypeTLSALPN01:
+		return va.validateTLSALPN01(ctx, identifier, challenge)
 	}
-	return nil, probs.Malformed(fmt.Sprintf("invalid challenge type %s", challenge.Type))
+	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
 }
 
 func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
@@ -791,10 +957,27 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// returned error can be a nil *probs.ProblemDetails which breaks the
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
-				if p, ok := err.(*probs.ProblemDetails); !ok || p != nil {
-					va.log.Info(fmt.Sprintf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err))
+				if p, ok := err.(*probs.ProblemDetails); ok || p != nil {
+					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
+					// log it at an info level. It's a normal non-success validation
+					// result and the remote VA will have logged more detail.
+					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Addresses, err)
 				} else if ok && p == nil {
+					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
+					// anything. There isn't really an error here.
 					err = nil
+				} else if canceled.Is(err) {
+					// If the non-nil err was a canceled error, ignore it. That's fine it
+					// just means we cancelled the remote VA request before it was
+					// finished because we didn't care about its result.
+					err = nil
+				} else if !ok {
+					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
+					// was *not* a context cancelleded error and represents something that
+					// will later be returned as a server internal error
+					// without detail if the number of errors is >= va.maxRemoteFailures.
+					// Log it at the error level so we can debug from logs.
+					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
 			errors <- err
@@ -827,6 +1010,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 				// instances.
 				result <- prob
 			} else {
+				// Otherwise the error was not an expected non-sucess problem result and
+				// represents an internal error. The real error has already been logged
+				// so return a server internal problem result without detail.
 				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")
 			}
 			break
@@ -841,8 +1027,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
-//
-// TODO(#1626): remove authz parameter
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
@@ -858,10 +1042,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
 	}
 
-	records, prob := va.validateChallengeAndIdentifier(
-		ctx,
-		core.AcmeIdentifier{Type: "dns", Value: domain},
-		challenge)
+	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
 
 	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records
@@ -883,9 +1064,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
 			logEvent.Error = prob.Error()
-			va.log.Info(fmt.Sprintf(
-				"Validation failed due to remote failures: identifier=%v err=%s",
-				authz.Identifier, prob))
+			va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
+				authz.Identifier, prob)
 			va.metrics.remoteValidationFailures.Inc()
 		} else {
 			challenge.Status = core.StatusValid
@@ -903,7 +1083,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}).Observe(time.Since(vStart).Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
+	va.log.Infof("Validations: %+v", authz)
 	if prob == nil {
 		// This is necessary because if we just naively returned prob, it would be a
 		// non-nil interface value containing a nil pointer, rather than a nil

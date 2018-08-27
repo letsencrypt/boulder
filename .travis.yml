@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - "1.10"
+  - "1.10.3"
 
 go_import_path: github.com/letsencrypt/boulder
 
@@ -30,31 +30,26 @@ branches:
     - release
     - /^test-.*$/
 
-matrix:
-  include:
+env:
     #
     # Current Go version build tasks:
     #
-    - env: RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
+    - RUN="vet fmt migrations integration errcheck generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - env: RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - env: RUN="unit"
-    - env: RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - env: RUN="coverage"
+    - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
+    - RUN="unit"
+    - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+    # godep-restore runs with a separate container because it needs to fetch
+    # packages from GitHub et. al., which is incompatible with the DNS server
+    # override in the boulder container (used for service discovery).
+    - RUN="godep-restore" CONTAINER="netaccess"
+    - RUN="coverage" CONTAINER="netaccess"
 
-    #
-    # Next Go version build tasks:
-    #
-    - env: GO_VERSION="1.10.1" RUN="vet fmt migrations integration godep-restore errcheck generate dashlint rpm"
-    # Config changes that have landed in master but not yet been applied to
-    # production can be made in boulder-config-next.json.
-    - env: GO_VERSION="1.10.1" RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
-    - env: GO_VERSION="1.10.1" RUN="unit"
-    - env: GO_VERSION="1.10.1" RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
+matrix:
   fast_finish: true
   allow_failures:
-    - env: RUN="coverage"
+    - env: RUN="coverage" CONTAINER="netaccess"
 
 # We require a newer version of docker-compose than is installed by way of the
 # "services: docker" directive. Per the travis docs[0] this is best remedied
@@ -72,4 +67,4 @@ install:
   - $HOME/bin/docker-compose pull
 
 script:
-  - $HOME/bin/docker-compose run -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder ./test.sh
+  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER:-boulder} ./test.sh

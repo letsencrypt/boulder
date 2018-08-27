@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -60,6 +61,15 @@ type config struct {
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
 		DirectoryWebsite string
+
+		// ACMEv2 requests (outside some registration/revocation messages) use a JWS with
+		// a KeyID header containing the full account URL. For new accounts this
+		// will be a KeyID based on the HTTP request's Host header and the ACMEv2
+		// account path. For legacy ACMEv1 accounts we need to whitelist the account
+		// ID prefix that legacy accounts would have been using based on the Host
+		// header of the WFE1 instance and the legacy 'reg' path component. This
+		// will differ in configuration for production and staging.
+		LegacyKeyIDPrefix string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -170,15 +180,15 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 	return results, nil
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope) (core.RegistrationAuthority, core.StorageAuthority) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, clientMetrics)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
@@ -207,11 +217,13 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	clk := cmd.Clock()
+
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, cmd.Clock(), kp, certChains, logger)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac := setupWFE(c, logger, scope)
+	rac, sac := setupWFE(c, logger, scope, clk)
 	wfe.RA = rac
 	wfe.SA = sac
 
@@ -221,13 +233,14 @@ func main() {
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
+	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 
 	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-	logger.Info(fmt.Sprintf("WFE using key policy: %#v", kp))
+	logger.Infof("WFE using key policy: %#v", kp)
 
-	logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
+	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
 	handler := wfe.Handler()
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,

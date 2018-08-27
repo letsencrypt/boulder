@@ -227,7 +227,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 	authz.Challenges, err = ssa.getChallenges(authz.ID)
 	if err != nil {
-		return authz, err
+		return authz, Rollback(tx, err)
 	}
 
 	return authz, tx.Commit()
@@ -887,7 +887,12 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64, ocspResponse []byte) (string, error) {
+func (ssa *SQLStorageAuthority) AddCertificate(
+	ctx context.Context,
+	certDER []byte,
+	regID int64,
+	ocspResponse []byte,
+	issued *time.Time) (string, error) {
 	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return "", err
@@ -900,7 +905,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 		Serial:         serial,
 		Digest:         digest,
 		DER:            certDER,
-		Issued:         ssa.clk.Now(),
+		Issued:         *issued,
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -953,23 +958,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	return digest, tx.Commit()
-}
-
-// CountCertificatesRange returns the number of certificates issued in a specific
-// date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (int64, error) {
-	var count int64
-	err := ssa.dbMap.SelectOne(
-		&count,
-		`SELECT COUNT(1) FROM certificates
-		WHERE issued >= :windowLeft
-		AND issued < :windowRight`,
-		map[string]interface{}{
-			"windowLeft":  start,
-			"windowRight": end,
-		},
-	)
-	return count, err
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
@@ -1041,36 +1029,6 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 			"invalid":    string(core.StatusInvalid),
 		})
 	return
-}
-
-// ErrNoReceipt is an error type for non-existent SCT receipt
-type ErrNoReceipt string
-
-func (e ErrNoReceipt) Error() string {
-	return string(e)
-}
-
-// GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
-// CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (core.SignedCertificateTimestamp, error) {
-	receipt, err := selectSctReceipt(ssa.dbMap, "WHERE certificateSerial = ? AND logID = ?", serial, logID)
-	if err == sql.ErrNoRows {
-		return receipt, ErrNoReceipt(err.Error())
-	}
-	return receipt, err
-}
-
-// AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
-func (ssa *SQLStorageAuthority) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
-	err := ssa.dbMap.Insert(&sct)
-	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
-	// based on duplicates, especially because we currently retry all submissions
-	// for a certificate if even one of them fails. Once https://github.com/letsencrypt/boulder/issues/891
-	// is fixed, we may want to start returning this as an error, or logging it.
-	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-		return nil
-	}
-	return err
 }
 
 func hashNames(names []string) []byte {
@@ -1248,7 +1206,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 	// If there are no results we have encountered a major error and
 	// should loudly complain
 	if err == sql.ErrNoRows || len(results) == 0 {
-		ssa.log.AuditErr(fmt.Sprintf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets))
+		ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
 		return 0, err
 	}
 
@@ -1375,7 +1333,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		}
 		if authzObj == nil {
 			// InternalServerError because existingPending already told us it existed
-			return berrors.InternalServerError("failure retrieving pending authorization")
+			return Rollback(tx, berrors.InternalServerError("failure retrieving pending authorization"))
 		}
 		authz := authzObj.(*pendingauthzModel)
 		if authz.Status != core.StatusPending {
@@ -1460,13 +1418,28 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	// Update the request with the created timestamp from the model
 	createdTS := order.Created.UnixNano()
 	req.Created = &createdTS
-
-	// Update the request with pending status (No need to calculate the status
-	// based on authzs here, we know a brand new order is always pending)
-	pendingStatus := string(core.StatusPending)
-	req.Status = &pendingStatus
+	// A new order is never processing because it can't have been finalized yet
 	processingStatus := false
 	req.BeganProcessing = &processingStatus
+
+	// If the OrderReadyStatus feature is enabled we need to calculate the order
+	// status before returning it. Since it may have reused all valid
+	// authorizations the order may be "born" in a ready status.
+	if features.Enabled(features.OrderReadyStatus) {
+		// Calculate the status for the order
+		status, err := ssa.statusForOrder(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		req.Status = &status
+	} else {
+		// Update the request with pending status (No need to calculate the status
+		// based on authzs here, we know a brand new order is always pending when
+		// features.OrderReadyStatus isn't enabled)
+		pendingStatus := string(core.StatusPending)
+		req.Status = &pendingStatus
+	}
+	// Return the new order
 	return req, nil
 }
 
@@ -1510,7 +1483,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 
 	om, err := orderToModel(order)
 	if err != nil {
-		return err
+		return Rollback(tx, err)
 	}
 
 	result, err := tx.Exec(`
@@ -1649,7 +1622,9 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we have began
 //     processing, but there is no certificate serial, the order is processing.
 //   * If all of the order's authorizations are valid, and we haven't begun
-//     processing, then the order is pending waiting a finalization request.
+//     processing, then the order is status ready (if
+//     `features.OrderReadyStatus` is enabled) or status processing otherwise.
+//     In both cases it is awaiting a finalization request.
 // An error is returned for any other case.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
@@ -1746,9 +1721,16 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// If the order is fully authorized, and we haven't begun processing it, then
-	// the order is still pending waiting a finalization request.
+	// the order is pending finalization and either status ready or status pending
+	// depending on the `OrderReadyStatus` feature flag. Historically we used
+	// "Pending" for this state but the ACME specification > draft-10 uses a new
+	// "Ready" state.
 	if fullyAuthorized && order.BeganProcessing != nil && !*order.BeganProcessing {
-		return string(core.StatusPending), nil
+		if features.Enabled(features.OrderReadyStatus) {
+			return string(core.StatusReady), nil
+		} else {
+			return string(core.StatusPending), nil
+		}
 	}
 
 	return "", berrors.InternalServerError(

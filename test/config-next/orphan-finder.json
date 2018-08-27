@@ -1,4 +1,6 @@
 {
+  "backdate": "1h",
+
   "syslog": {
     "stdoutlevel": 7
   },
@@ -10,7 +12,7 @@
   },
 
   "saService": {
-    "serverAddresses": ["sa.boulder:9095"],
+    "serverAddress": "sa.boulder:9095",
     "timeout": "15s"
   }
 }

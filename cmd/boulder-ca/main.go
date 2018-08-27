@@ -107,6 +107,9 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 }
 
 func main() {
+	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
+	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -120,6 +123,16 @@ func main() {
 
 	err = features.Set(c.CA.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *caAddr != "" {
+		c.CA.GRPCCA.Address = *caAddr
+	}
+	if *ocspAddr != "" {
+		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
+	}
+	if *debugAddr != "" {
+		c.CA.DebugAddr = *debugAddr
+	}
 
 	if c.CA.MaxNames == 0 {
 		cmd.Fail(fmt.Sprintf("Error in CA config: MaxNames must not be 0"))
@@ -149,8 +162,10 @@ func main() {
 	tlsConfig, err := c.CA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
+	clk := cmd.Clock()
+
 	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
@@ -165,7 +180,7 @@ func main() {
 		c.CA,
 		sa,
 		pa,
-		cmd.Clock(),
+		clk,
 		scope,
 		issuers,
 		kp,
@@ -174,8 +189,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
-
-	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics)
+	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 	caPB.RegisterCertificateAuthorityServer(caSrv, caWrapper)
@@ -183,7 +197,7 @@ func main() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
 	}()
 
-	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics)
+	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 	caPB.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)

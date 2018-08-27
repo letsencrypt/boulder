@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	cfocsp "github.com/cloudflare/cfssl/ocsp"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -71,7 +72,7 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", nil, blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
@@ -127,7 +128,7 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 
 func TestErrorLog(t *testing.T) {
 	mockLog := blog.NewMock()
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", mockLog)
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", nil, mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
 
 	ocspReq, err := ocsp.ParseRequest(req)
@@ -149,4 +150,23 @@ func mustRead(path string) []byte {
 		panic(fmt.Sprintf("read all %#v: %s", path, err))
 	}
 	return b
+}
+
+func TestRequiredSerialPrefix(t *testing.T) {
+	mockLog := blog.NewMock()
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"nope"}, mockLog)
+	test.AssertNotError(t, err, "failed to create DBSource")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	_, _, err = src.Response(ocspReq)
+	test.AssertEquals(t, err, cfocsp.ErrNotFound)
+
+	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
+
+	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, mockLog)
+	test.AssertNotError(t, err, "failed to create DBSource")
+	_, _, err = src.Response(ocspReq)
+	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
 }

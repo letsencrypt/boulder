@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/md5"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -26,7 +25,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -50,21 +48,16 @@ type OCSPUpdater struct {
 
 	dbMap ocspDB
 
-	cac  core.CertificateAuthority
-	pubc core.Publisher
-	sac  core.StorageAuthority
+	cac core.CertificateAuthority
+	sac core.StorageAuthority
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Used to calculate how far back in time the findStaleOCSPResponse will look
 	ocspStaleMaxAge time.Duration
-	// Used to calculate how far back missing SCT receipts should be looked for
-	oldestIssuedSCT time.Duration
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
-	// Logs we expect to have SCT receipts for. Missing logs will be resubmitted to.
-	logs []*ctLog
 
 	loops []*looper
 
@@ -72,28 +65,22 @@ type OCSPUpdater struct {
 	issuer *x509.Certificate
 }
 
-// This is somewhat gross but can be pared down a bit once the publisher and this
-// are fully smooshed together
 func newUpdater(
 	stats metrics.Scope,
 	clk clock.Clock,
 	dbMap ocspDB,
 	ca core.CertificateAuthority,
-	pub core.Publisher,
 	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
-	logConfigs []cmd.LogDescription,
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
-		config.OldOCSPBatchSize == 0 ||
-		config.MissingSCTBatchSize == 0 {
+		config.OldOCSPBatchSize == 0 {
 		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
 	}
 	if config.NewCertificateWindow.Duration == 0 ||
-		config.OldOCSPWindow.Duration == 0 ||
-		config.MissingSCTWindow.Duration == 0 {
+		config.OldOCSPWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 	if config.OCSPStaleMaxAge.Duration == 0 {
@@ -105,15 +92,6 @@ func newUpdater(
 		config.ParallelGenerateOCSPRequests = 1
 	}
 
-	logs := make([]*ctLog, len(logConfigs))
-	for i, logConfig := range logConfigs {
-		l, err := newLog(logConfig)
-		if err != nil {
-			return nil, err
-		}
-		logs[i] = l
-	}
-
 	updater := OCSPUpdater{
 		stats:                        stats,
 		clk:                          clk,
@@ -121,11 +99,8 @@ func newUpdater(
 		cac:                          ca,
 		log:                          log,
 		sac:                          sac,
-		pubc:                         pub,
-		logs:                         logs,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
 		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
-		oldestIssuedSCT:              config.OldestIssuedSCT.Duration,
 		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 	}
 
@@ -163,18 +138,6 @@ func newUpdater(
 			name:                 "RevokedCertificates",
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		})
-	}
-	if !features.Enabled(features.EmbedSCTs) {
-		// The missing SCT loop doesn't need to know about failureBackoffFactor or
-		// failureBackoffMax as it doesn't make any calls to the CA
-		updater.loops = append(updater.loops, &looper{
-			clk:       clk,
-			stats:     stats.NewScope("MissingSCTReceipts"),
-			batchSize: config.MissingSCTBatchSize,
-			tickDur:   config.MissingSCTWindow.Duration,
-			tickFunc:  updater.missingReceiptsTick,
-			name:      "MissingSCTReceipts",
 		})
 	}
 
@@ -238,13 +201,13 @@ func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
 func (updater *OCSPUpdater) sendPurge(der []byte) {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		updater.log.AuditErr(fmt.Sprintf("Failed to parse certificate for cache purge: %s", err))
+		updater.log.AuditErrf("Failed to parse certificate for cache purge: %s", err)
 		return
 	}
 
 	req, err := ocsp.CreateRequest(cert, updater.issuer, nil)
 	if err != nil {
-		updater.log.AuditErr(fmt.Sprintf("Failed to create OCSP request for cache purge: %s", err))
+		updater.log.AuditErrf("Failed to create OCSP request for cache purge: %s", err)
 		return
 	}
 
@@ -260,7 +223,7 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 
 	err = updater.ccu.Purge(urls)
 	if err != nil {
-		updater.log.AuditErr(fmt.Sprintf("Failed to purge OCSP response from CDN: %s", err))
+		updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
 	}
 }
 
@@ -409,7 +372,7 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindMissingResponses", 1)
-		updater.log.AuditErr(fmt.Sprintf("Failed to find certificates with missing OCSP responses: %s", err))
+		updater.log.AuditErrf("Failed to find certificates with missing OCSP responses: %s", err)
 		return err
 	}
 
@@ -431,21 +394,21 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindRevokedCertificates", 1)
-		updater.log.AuditErr(fmt.Sprintf("Failed to find revoked certificates: %s", err))
+		updater.log.AuditErrf("Failed to find revoked certificates: %s", err)
 		return err
 	}
 
 	for _, status := range statuses {
 		meta, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to generate revoked OCSP response: %s", err))
+			updater.log.AuditErrf("Failed to generate revoked OCSP response: %s", err)
 			updater.stats.Inc("Errors.RevokedResponseGeneration", 1)
 			return err
 		}
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.stats.Inc("Errors.StoreRevokedResponse", 1)
-			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
+			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
 			continue
 		}
 	}
@@ -471,14 +434,14 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		defer done(updater.clk.Now())
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to generate OCSP response: %s", err))
+			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
 			stats.Inc("Errors.ResponseGeneration", 1)
 			return
 		}
 		stats.Inc("GeneratedResponses", 1)
 		err = updater.storeResponse(meta)
 		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to store OCSP response: %s", err))
+			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
 			stats.Inc("Errors.StoreResponse", 1)
 			return
 		}
@@ -504,7 +467,7 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
-		updater.log.AuditErr(fmt.Sprintf("Failed to find stale OCSP responses: %s", err))
+		updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
 		return err
 	}
 	tickEnd := updater.clk.Now()
@@ -520,114 +483,6 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	}
 
 	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
-}
-
-func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
-	var allSerials []string
-	for {
-		serials := []string{}
-		_, err := updater.dbMap.Select(
-			&serials,
-			`SELECT serial FROM certificates
-			 WHERE issued > :since
-			 ORDER BY issued ASC
-			 LIMIT :limit OFFSET :offset`,
-			map[string]interface{}{
-				"since":  since,
-				"limit":  batchSize,
-				"offset": len(allSerials),
-			},
-		)
-		if err == sql.ErrNoRows || len(serials) == 0 {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		allSerials = append(allSerials, serials...)
-
-		if len(serials) < batchSize {
-			break
-		}
-	}
-	return allSerials, nil
-}
-
-// getSubmittedReceipts returns the IDs of the CT logs that have returned a SCT
-// receipt for the given certificate serial
-func (updater *OCSPUpdater) getSubmittedReceipts(serial string) ([]string, error) {
-	var logIDs []string
-	_, err := updater.dbMap.Select(
-		&logIDs,
-		`SELECT logID
-		FROM sctReceipts
-		WHERE certificateSerial = :serial`,
-		map[string]interface{}{"serial": serial},
-	)
-	return logIDs, err
-}
-
-// missingLogIDs examines a list of log IDs that have given a SCT receipt for
-// a certificate and returns a list of the configured logs that are not
-// present. This is the set of logs we need to resubmit this certificate to in
-// order to obtain a full compliment of SCTs
-func (updater *OCSPUpdater) missingLogs(logIDs []string) []*ctLog {
-	var missingLogs []*ctLog
-
-	presentMap := make(map[string]bool)
-	for _, logID := range logIDs {
-		presentMap[logID] = true
-	}
-
-	for _, l := range updater.logs {
-		if _, present := presentMap[l.logID]; !present {
-			missingLogs = append(missingLogs, l)
-		}
-	}
-
-	return missingLogs
-}
-
-// missingReceiptsTick looks for certificates without the correct number of SCT
-// receipts and retrieves them
-func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize int) error {
-	now := updater.clk.Now()
-	since := now.Add(-updater.oldestIssuedSCT)
-	serials, err := updater.getSerialsIssuedSince(since, batchSize)
-	if err != nil {
-		updater.log.AuditErr(fmt.Sprintf("Failed to get certificate serials: %s", err))
-		return err
-	}
-
-	for _, serial := range serials {
-		// First find the logIDs that have provided a SCT for the serial
-		logIDs, err := updater.getSubmittedReceipts(serial)
-		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf(
-				"Failed to get CT log IDs of SCT receipts for certificate: %s", err))
-			continue
-		}
-
-		// Next, check if any of the configured CT logs are missing from the list of
-		// logs that have given SCTs for this serial
-		missingLogs := updater.missingLogs(logIDs)
-		if len(missingLogs) == 0 {
-			// If all of the logs have provided a SCT we're done for this serial
-			continue
-		}
-
-		// Otherwise, we need to get the certificate from the SA & submit it to each
-		// of the missing logs to obtain SCTs.
-		cert, err := updater.sac.GetCertificate(ctx, serial)
-		if err != nil {
-			updater.log.AuditErr(fmt.Sprintf("Failed to get certificate: %s", err))
-			continue
-		}
-		for _, log := range missingLogs {
-			_ = updater.pubc.SubmitToSingleCT(ctx, log.uri, log.key, cert.DER)
-		}
-	}
-	return nil
 }
 
 type looper struct {
@@ -654,9 +509,7 @@ func (l *looper) tick() {
 		l.stats.Inc("LongTicks", 1)
 	}
 
-	// After we have all the stats stuff out of the way let's check if the tick
-	// function failed, if the reason is the HSM is dead increase the length of
-	// sleepDur using the exponentially increasing duration returned by core.RetryBackoff.
+	// On success, sleep till it's time for the next tick. On failure, backoff.
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
 		l.stats.Inc("FailedTicks", 1)
@@ -681,25 +534,6 @@ func (l *looper) loop() error {
 	}
 }
 
-// a ctLog contains the pre-processed logID and URI for a CT log. The ocsp-updater
-// creates these out of cmd.LogDescription's from its config
-type ctLog struct {
-	logID string
-	key   string
-	uri   string
-}
-
-func newLog(logConfig cmd.LogDescription) (*ctLog, error) {
-	logPK, err := base64.StdEncoding.DecodeString(logConfig.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	logPKHash := sha256.Sum256(logPK)
-	logID := base64.StdEncoding.EncodeToString(logPKHash[:])
-	return &ctLog{logID: logID, key: logConfig.Key, uri: logConfig.URI}, nil
-}
-
 type config struct {
 	OCSPUpdater cmd.OCSPUpdaterConfig
 
@@ -709,15 +543,11 @@ type config struct {
 
 	Common struct {
 		IssuerCert string
-		CT         struct {
-			Logs []cmd.LogDescription
-		}
 	}
 }
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	core.CertificateAuthority,
-	core.Publisher,
 	core.StorageAuthority,
 ) {
 	var tls *tls.Config
@@ -727,22 +557,18 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope) (
 		cmd.FailOnError(err, "TLS config")
 	}
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics)
+	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
 	// TODO(jsha): Once we've fully moved to gRPC, replace this
 	// with a plain caPB.NewOCSPGeneratorClient.
 	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
-	publisherConn, err := bgrpc.ClientSetup(c.Publisher, tls, clientMetrics)
-	cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(publisherConn))
-
-	conn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics)
+	conn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
-	return cac, pubc, sac
+	return cac, sac
 }
 
 func main() {
@@ -772,18 +598,17 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, scope)
 
-	cac, pubc, sac := setupClients(conf, scope)
+	clk := cmd.Clock()
+	cac, sac := setupClients(conf, scope, clk)
 
 	updater, err := newUpdater(
 		scope,
-		cmd.Clock(),
+		clk,
 		dbMap,
 		cac,
-		pubc,
 		sac,
 		// Necessary evil for now
 		conf,
-		c.Common.CT.Logs,
 		c.Common.IssuerCert,
 		logger,
 	)

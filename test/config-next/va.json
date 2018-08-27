@@ -21,6 +21,7 @@
     },
     "grpc": {
       "address": ":9092",
+      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -28,22 +29,27 @@
     "GoogleSafeBrowsing": {
       "APIKey": "my-voice-is-my-passport",
       "DataDir": "/tmp",
-      "ServerURL": "http://boulder:6000"
+      "ServerURL": "http://va1.boulder:6000"
     },
     "features": {
       "RPCHeadroom": true,
       "VAChecksGSB": true,
-      "IPv6First": true
+      "IPv6First": true,
+      "CAAValidationMethods": true,
+      "CAAAccountURI": true
     },
     "remoteVAs": [
       {
-        "serverAddresses": ["va.boulder:9097"],
+        "serverAddress": "va1.boulder:9097",
         "timeout": "15s"
       },
       {
-        "serverAddresses": ["va.boulder:9098"],
+        "serverAddress": "va1.boulder:9098",
         "timeout": "15s"
       }
+    ],
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
     ]
   },
 

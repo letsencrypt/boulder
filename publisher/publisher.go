@@ -84,7 +84,7 @@ type logAdaptor struct {
 }
 
 func (la logAdaptor) Printf(s string, args ...interface{}) {
-	la.Logger.Info(fmt.Sprintf(s, args...))
+	la.Logger.Infof(s, args...)
 }
 
 // NewLog returns an initialized Log struct
@@ -164,43 +164,24 @@ type Impl struct {
 	client       *http.Client
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
-	// ctLogs is slightly redundant with the logCache, and should be removed. See
-	// issue https://github.com/letsencrypt/boulder/issues/2357
-	ctLogs  []*Log
-	metrics *pubMetrics
-
-	sa core.StorageAuthority
+	metrics      *pubMetrics
 }
 
 // New creates a Publisher that will submit certificates
-// to any CT logs configured in CTConfig
+// to requested CT logs
 func New(
 	bundle []ct.ASN1Cert,
-	logs []*Log,
 	logger blog.Logger,
 	stats metrics.Scope,
-	sa core.StorageAuthority,
 ) *Impl {
 	return &Impl{
 		issuerBundle: bundle,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
-		ctLogs:  logs,
 		log:     logger,
-		sa:      sa,
 		metrics: initMetrics(stats),
 	}
-}
-
-// SubmitToSingleCT will submit the certificate represented by certDER to the CT
-// log specified by log URL and public key (base64)
-func (pub *Impl) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey string, der []byte) error {
-	// NOTE(@roland): historically we've always thrown any errors away when
-	// using this method. In order to preserve this behaviour we just ignore
-	// any returns and return nil.
-	_, _ = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &logURL, LogPublicKey: &logPublicKey, Der: der})
-	return nil
 }
 
 // SubmitToSingleCTWithResult will submit the certificate represented by certDER to the CT
@@ -208,7 +189,7 @@ func (pub *Impl) SubmitToSingleCT(ctx context.Context, logURL, logPublicKey stri
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	cert, err := x509.ParseCertificate(req.Der)
 	if err != nil {
-		pub.log.AuditErr(fmt.Sprintf("Failed to parse certificate: %s", err))
+		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
 
@@ -219,7 +200,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	// and returned.
 	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.log)
 	if err != nil {
-		pub.log.AuditErr(fmt.Sprintf("Making Log: %s", err))
+		pub.log.AuditErrf("Making Log: %s", err)
 		return nil, err
 	}
 
@@ -235,10 +216,15 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		core.SerialToString(cert.SerialNumber),
 		ctLog)
 	if err != nil {
-		if !canceled.Is(err) {
-			pub.log.AuditErr(
-				fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
+		if canceled.Is(err) {
+			return nil, err
 		}
+		var body string
+		if respErr, ok := err.(ctClient.RspError); ok && respErr.StatusCode < 500 {
+			body = string(respErr.Body)
+		}
+		pub.log.AuditErrf("Failed to submit certificate to CT log at %s: %s Body=%q",
+			ctLog.uri, err, body)
 		return nil, err
 	}
 
@@ -247,26 +233,6 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 	return &pubpb.Result{Sct: sctBytes}, nil
-}
-
-// SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs.
-func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
-	wg := new(sync.WaitGroup)
-	for _, ctLog := range pub.ctLogs {
-		wg.Add(1)
-		// Do each submission in a goroutine so a single slow log doesn't eat
-		// all of the context and prevent submission to the rest of the logs
-		go func(ctLog *Log) {
-			defer wg.Done()
-			// Nothing actually consumes the errors returned from SubmitToCT
-			// so instead of using a channel to collect them we just throw
-			// it away here.
-			_ = pub.SubmitToSingleCT(ctx, ctLog.uri, ctLog.logID, der)
-		}(ctLog)
-	}
-	wg.Wait()
-	return nil
 }
 
 func (pub *Impl) singleLogSubmit(
@@ -326,14 +292,6 @@ func (pub *Impl) singleLogSubmit(
 		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
 	}
 
-	// Only store the SCT if it was for a certificate, we have no need for
-	// the precert once it is embedded in a certificate
-	if !isPrecert {
-		err = pub.sa.AddSCTReceipt(ctx, sctToInternal(sct, serial))
-		if err != nil {
-			return nil, err
-		}
-	}
 	return sct, nil
 }
 
