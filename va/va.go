@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -960,14 +961,20 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
 					// log it at an info level. It's a normal non-success validation
 					// result and the remote VA will have logged more detail.
-					va.log.Infof("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
+					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Addresses, err)
 				} else if ok && p == nil {
 					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
 					// anything. There isn't really an error here.
 					err = nil
+				} else if canceled.Is(err) {
+					// If the non-nil err was a canceled error, ignore it. That's fine it
+					// just means we cancelled the remote VA request before it was
+					// finished because we didn't care about its result.
+					err = nil
 				} else if !ok {
 					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
-					// represents something that will later be returned as a server internal error
+					// was *not* a context cancelleded error and represents something that
+					// will later be returned as a server internal error
 					// without detail if the number of errors is >= va.maxRemoteFailures.
 					// Log it at the error level so we can debug from logs.
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)

@@ -1593,6 +1593,18 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 	return ms
 }
 
+// cancelledVA is a mock that always returns context.Canceled for
+// PerformValidation or IsSafeDomain calls
+type cancelledVA struct{}
+
+func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Challenge, _ core.Authorization) ([]core.ValidationRecord, error) {
+	return nil, context.Canceled
+}
+
+func (v cancelledVA) IsSafeDomain(_ context.Context, _ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	return nil, context.Canceled
+}
+
 func TestPerformRemoteValidation(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01()
@@ -1638,6 +1650,35 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.allowedUAs["remote 1"] = struct{}{}
 	ms.allowedUAs["remote 2"] = struct{}{}
 	ms.mu.Unlock()
+
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{cancelledVA{}, "remote 2"},
+	}
+
+	// One remote cancelled, should return no err
+	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	prob = <-probCh
+	if prob != nil {
+		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
+	}
+
+	localVA.remoteVAs = []RemoteVA{
+		{cancelledVA{}, "remote 1"},
+		{cancelledVA{}, "remote 2"},
+	}
+
+	// Both remotes cancelled, should return no err
+	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	prob = <-probCh
+	if prob != nil {
+		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
+	}
+
+	localVA.remoteVAs = []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{remoteVA2, "remote 2"},
+	}
 
 	// Both local and remotes working, should succeed
 	_, err := localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
