@@ -165,7 +165,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
-	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, mockLog)
+	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, mockLog)
 	test.AssertNotError(t, err, "failed to create DBSource")
 	_, _, err = src.Response(ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
