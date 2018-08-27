@@ -7,14 +7,14 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "github.com/beeker1121/goque",
-			"Comment": "v2.0.1-16-g4044bc2",
-			"Rev": "4044bc29b28064db4f08e947c4972d5ca3e0f3c8"
-		},
-		{
 			"ImportPath": "github.com/asaskevich/govalidator",
 			"Comment": "v6-25-g73945b6",
 			"Rev": "73945b6115bfbbcc57d89b7316e28109364124e1"
+		},
+		{
+			"ImportPath": "github.com/beeker1121/goque",
+			"Comment": "v2.0.1-16-g4044bc2",
+			"Rev": "4044bc29b28064db4f08e947c4972d5ca3e0f3c8"
 		},
 		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
