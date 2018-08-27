@@ -188,6 +188,12 @@ func main() {
 		orphanQueue)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
+	if orphanQueue != nil {
+		go func() {
+			cai.OrphanIntegrationLoop()
+		}()
+	}
+
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")

@@ -685,33 +685,48 @@ type orphanedCert struct {
 func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 	_, err := ca.orphanQueue.EnqueueObject(o)
 	if err != nil {
-		ca.log.Err(fmt.Sprintf("Failed to queue orphan for integration: %s", err))
+		ca.log.Err(fmt.Sprintf("failed to queue orphan for integration: %s", err))
 	}
 }
 
-func (ca *CertificateAuthorityImpl) integrateOrphans() {
+// OrphanIntegrationLoop runs a loop executing integrateOrphans and then waiting a minute.
+// It is split out into a separate function called directly by boulder-ca in order to make
+// testing the orphan queue functionality somewhat more simple.
+func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	for {
-		item, err := ca.orphanQueue.Peek()
-		if err != nil {
-			if err == goque.ErrEmpty {
-				time.Sleep(time.Minute)
-				continue
-			}
-			ca.log.Err(fmt.Sprintf("Failed to peek into orphan queue: %s", err))
-			continue
+		err := ca.integrateOrphans()
+		if err != nil && err != goque.ErrEmpty {
+			ca.log.Err(fmt.Sprintf("failed to integrate orphaned certs: %s", err))
 		}
-		var orphan orphanedCert
-		err = item.ToObject(&orphan)
-		if err != nil {
-			ca.log.Err(fmt.Sprintf("Failed to marshal orphan: %s", err))
-		}
-		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp)
-		if err != nil && !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-			ca.log.Err(fmt.Sprintf("Failed to store orphaned certificate: %s", err))
-		}
-		_, err = ca.orphanQueue.Dequeue()
-		if err != nil {
-			ca.log.Err(fmt.Sprintf("Failed to dequeue integrated orphaned certificate: %s", err))
-		}
+		time.Sleep(time.Minute)
 	}
+}
+
+func (ca *CertificateAuthorityImpl) integrateOrphans() error {
+	item, err := ca.orphanQueue.Peek()
+	if err != nil {
+		if err == goque.ErrEmpty {
+			return goque.ErrEmpty
+		}
+		return fmt.Errorf("failed to peek into orphan queue: %s", err)
+	}
+	var orphan orphanedCert
+	err = item.ToObject(&orphan)
+	if err != nil {
+		return fmt.Errorf("failed to marshal orphan: %s", err)
+	}
+	cert, err := x509.ParseCertificate(orphan.DER)
+	if err != nil {
+		return fmt.Errorf("failed to parse orphan: %s", err)
+	}
+	issued := cert.NotBefore.Add(-ca.backdate)
+	_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+	if err != nil && !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+		return fmt.Errorf("failed to store orphaned certificate: %s", err)
+	}
+	_, err = ca.orphanQueue.Dequeue()
+	if err != nil {
+		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
+	}
+	return nil
 }

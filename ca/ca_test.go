@@ -3,15 +3,22 @@ package ca
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"os"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/beeker1121/goque"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/signer"
@@ -933,4 +940,94 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		}
 	}
 	test.Assert(t, list, "returned cert doesn't contain SCT list")
+}
+
+type queueSA struct {
+	fail bool
+}
+
+func (qsa *queueSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
+	if qsa.fail {
+		return "", errors.New("bad")
+	}
+	return "", nil
+}
+
+func TestOrphanQueue(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
+	defer os.Remove(tmpDir)
+	test.AssertNotError(t, err, "Failed to create temp directory")
+	orphanQueue, err := goque.OpenQueue(tmpDir)
+	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
+
+	qsa := &queueSA{fail: true}
+	testCtx := setup(t)
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		qsa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		orphanQueue)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	err = ca.integrateOrphans()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// generate basic test cert
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed to generate test key")
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"test.invalid"},
+		NotBefore:    time.Time{}.Add(time.Hour * 24),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	test.AssertNotError(t, err, "Failed to generate test cert")
+	_, err = ca.generateOCSPAndStoreCertificate(
+		context.Background(),
+		1,
+		1,
+		big.NewInt(1),
+		certDER,
+	)
+	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+
+	qsa.fail = false
+	err = ca.integrateOrphans()
+	test.AssertNotError(t, err, "integrateOrphans failed")
+	err = ca.integrateOrphans()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// add cert to queue, and recreate queue to make sure it still has the cert
+	qsa.fail = true
+	_, err = ca.generateOCSPAndStoreCertificate(
+		context.Background(),
+		1,
+		1,
+		big.NewInt(1),
+		certDER,
+	)
+	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+	err = orphanQueue.Close()
+	test.AssertNotError(t, err, "Failed to close the queue cleanly")
+	orphanQueue, err = goque.OpenQueue(tmpDir)
+	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
+	defer func() { _ = orphanQueue.Close() }()
+	ca.orphanQueue = orphanQueue
+
+	qsa.fail = false
+	err = ca.integrateOrphans()
+	test.AssertNotError(t, err, "integrateOrphans failed")
+	err = ca.integrateOrphans()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
 }
