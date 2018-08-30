@@ -974,7 +974,7 @@ func TestOrphanQueue(t *testing.T) {
 		orphanQueue)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	err = ca.integrateOrphans()
+	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
@@ -999,9 +999,9 @@ func TestOrphanQueue(t *testing.T) {
 	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
 
 	qsa.fail = false
-	err = ca.integrateOrphans()
-	test.AssertNotError(t, err, "integrateOrphans failed")
-	err = ca.integrateOrphans()
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed")
+	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
@@ -1024,9 +1024,9 @@ func TestOrphanQueue(t *testing.T) {
 	ca.orphanQueue = orphanQueue
 
 	qsa.fail = false
-	err = ca.integrateOrphans()
-	test.AssertNotError(t, err, "integrateOrphans failed")
-	err = ca.integrateOrphans()
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed")
+	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}

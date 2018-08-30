@@ -189,9 +189,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	if orphanQueue != nil {
-		go func() {
-			cai.OrphanIntegrationLoop()
-		}()
+		go cai.OrphanIntegrationLoop()
 	}
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)

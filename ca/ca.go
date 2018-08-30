@@ -685,7 +685,7 @@ type orphanedCert struct {
 func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 	_, err := ca.orphanQueue.EnqueueObject(o)
 	if err != nil {
-		ca.log.Err(fmt.Sprintf("failed to queue orphan for integration: %s", err))
+		ca.log.AuditErrf("failed to queue orphan for integration: %s", err)
 	}
 }
 
@@ -694,15 +694,23 @@ func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 // testing the orphan queue functionality somewhat more simple.
 func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	for {
-		err := ca.integrateOrphans()
-		if err != nil && err != goque.ErrEmpty {
-			ca.log.Err(fmt.Sprintf("failed to integrate orphaned certs: %s", err))
+		err := ca.integrateOrphan()
+		if err != nil {
+			if err == goque.ErrEmpty {
+				time.Sleep(time.Minute)
+				continue
+			}
+			ca.log.Errf("failed to integrate orphaned certs: %s", err)
 		}
-		time.Sleep(time.Minute)
 	}
 }
 
-func (ca *CertificateAuthorityImpl) integrateOrphans() error {
+// integrateOrpan removes an orphan from the queue and adds it to the database. The
+// item isn't dequeued until it is actually added to the database to prevent items from
+// being lost if the CA is restarted between the item being dequeued and being added to
+// the database. It calculates the issuance time by subtracting the backdate period from
+// the notBefore time.
+func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	item, err := ca.orphanQueue.Peek()
 	if err != nil {
 		if err == goque.ErrEmpty {
@@ -711,8 +719,7 @@ func (ca *CertificateAuthorityImpl) integrateOrphans() error {
 		return fmt.Errorf("failed to peek into orphan queue: %s", err)
 	}
 	var orphan orphanedCert
-	err = item.ToObject(&orphan)
-	if err != nil {
+	if err = item.ToObject(&orphan); err != nil {
 		return fmt.Errorf("failed to marshal orphan: %s", err)
 	}
 	cert, err := x509.ParseCertificate(orphan.DER)
