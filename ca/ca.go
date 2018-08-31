@@ -37,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -728,7 +729,7 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	}
 	issued := cert.NotBefore.Add(-ca.backdate)
 	_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
-	if err != nil && !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+	if err != nil && err != sa.ErrDuplicate {
 		return fmt.Errorf("failed to store orphaned certificate: %s", err)
 	}
 	_, err = ca.orphanQueue.Dequeue()
