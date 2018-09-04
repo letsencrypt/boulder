@@ -920,7 +920,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 			test.AssertNotError(t, err, "Failed to unmarshal extension value")
 			sctList, err := helpers.DeserializeSCTList(rawValue)
 			test.AssertNotError(t, err, "Failed to deserialize SCT list")
-			test.Assert(t, len(*sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(*sctList)))
+			test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
 		}
 	}
 	test.Assert(t, list, "returned cert doesn't contain SCT list")
