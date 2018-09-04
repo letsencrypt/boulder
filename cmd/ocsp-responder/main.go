@@ -27,6 +27,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+// statsShim implements the cfocsp.Stats interface which allows
+// measurement of number/type of OCSP responses that are served
 type statsShim struct {
 	responseTypes *prometheus.CounterVec
 }
@@ -41,7 +43,11 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 }
 
 func (ss *statsShim) ResponseStatus(status ocsp.ResponseStatus) {
-	ss.responseTypes.With(prometheus.Labels{"type": responseTypeToString[status]}).Inc()
+	respType, ok := responseTypeToString[status]
+	if !ok {
+		respType = "unknownType"
+	}
+	ss.responseTypes.With(prometheus.Labels{"type": respType}).Inc()
 }
 
 /*
