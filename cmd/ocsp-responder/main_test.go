@@ -18,6 +18,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -42,17 +43,24 @@ func TestMux(t *testing.T) {
 	src := make(cfocsp.InMemorySource)
 	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
 	src[doubleSlashReq.SerialNumber.String()] = resp.OCSPResponse
-	h := mux(stats, "/foobar/", src)
+	ocspStats := statsShim{responseTypes: prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocspResponses-test",
+		},
+		[]string{"type"},
+	)}
+	h := mux(stats, "/foobar/", src, &ocspStats)
 	type muxTest struct {
-		method   string
-		path     string
-		reqBody  []byte
-		respBody []byte
+		method       string
+		path         string
+		reqBody      []byte
+		respBody     []byte
+		expectedType string
 	}
 	mts := []muxTest{
-		{"POST", "/foobar/", req, resp.OCSPResponse},
-		{"GET", "/", nil, nil},
-		{"GET", "/foobar/MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==", nil, resp.OCSPResponse},
+		{"POST", "/foobar/", req, resp.OCSPResponse, "Success"},
+		{"GET", "/", nil, nil, ""},
+		{"GET", "/foobar/MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==", nil, resp.OCSPResponse, "Success"},
 	}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()
@@ -67,7 +75,10 @@ func TestMux(t *testing.T) {
 		if !bytes.Equal(w.Body.Bytes(), mt.respBody) {
 			t.Errorf("Mismatched body: want %#v, got %#v", mt.respBody, w.Body.Bytes())
 		}
-
+		if mt.expectedType != "" {
+			test.AssertEquals(t, 1, test.CountCounterVec("type", mt.expectedType, ocspStats.responseTypes))
+			ocspStats.responseTypes.Reset()
+		}
 	}
 }
 
@@ -77,7 +88,7 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("makeDBSource: %s", err)
 	}
 
-	h := cfocsp.NewResponder(src)
+	h := cfocsp.NewResponder(src, nil)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
