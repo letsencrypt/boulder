@@ -42,7 +42,7 @@ func TestMux(t *testing.T) {
 	src := make(cfocsp.InMemorySource)
 	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
 	src[doubleSlashReq.SerialNumber.String()] = resp.OCSPResponse
-	h := mux(stats, "/foobar/", src)
+	h := mux(stats, "/foobar/", src, nil)
 	type muxTest struct {
 		method   string
 		path     string
@@ -77,7 +77,7 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("makeDBSource: %s", err)
 	}
 
-	h := cfocsp.NewResponder(src)
+	h := cfocsp.NewResponder(src, nil)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
