@@ -1325,10 +1325,10 @@ func TestSetOrderProcessing(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authz to valid")
 
-	i := int64(1337)
+	orderExpiry := sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano()
 	order := &corepb.Order{
 		RegistrationID: &reg.ID,
-		Expires:        &i,
+		Expires:        &orderExpiry,
 		Names:          []string{"example.com"},
 		Authorizations: []string{authz.ID},
 	}
@@ -1378,10 +1378,10 @@ func TestFinalizeOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization")
 
-	i := int64(1337)
+	orderExpiry := sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano()
 	order := &corepb.Order{
 		RegistrationID: &reg.ID,
-		Expires:        &i,
+		Expires:        &orderExpiry,
 		Names:          []string{"example.com"},
 		Authorizations: []string{authz.ID},
 	}
