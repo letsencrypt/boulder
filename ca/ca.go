@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeker1121/goque"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
 	"github.com/cloudflare/cfssl/ocsp"
@@ -36,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -130,6 +132,7 @@ type CertificateAuthorityImpl struct {
 	enableMustStaple  bool
 	signatureCount    *prometheus.CounterVec
 	csrExtensionCount *prometheus.CounterVec
+	orphanQueue       *goque.Queue
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -195,6 +198,7 @@ func NewCertificateAuthorityImpl(
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
+	orphanQueue *goque.Queue,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
@@ -273,6 +277,7 @@ func NewCertificateAuthorityImpl(
 		enableMustStaple:  config.EnableMustStaple,
 		signatureCount:    signatureCount,
 		csrExtensionCount: csrExtensionCount,
+		orphanQueue:       orphanQueue,
 	}
 
 	if config.Expiry == "" {
@@ -659,8 +664,74 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
 			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
+		if ca.orphanQueue != nil {
+			ca.queueOrphan(&orphanedCert{
+				DER:      certDER,
+				OCSPResp: ocspResp,
+				RegID:    regID,
+			})
+		}
 		return core.Certificate{}, err
 	}
 
 	return core.Certificate{DER: certDER}, nil
+}
+
+type orphanedCert struct {
+	DER      []byte
+	OCSPResp []byte
+	RegID    int64
+}
+
+func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
+	if _, err := ca.orphanQueue.EnqueueObject(o); err != nil {
+		ca.log.AuditErrf("failed to queue orphan for integration: %s", err)
+	}
+}
+
+// OrphanIntegrationLoop runs a loop executing integrateOrphans and then waiting a minute.
+// It is split out into a separate function called directly by boulder-ca in order to make
+// testing the orphan queue functionality somewhat more simple.
+func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
+	for {
+		if err := ca.integrateOrphan(); err != nil {
+			if err == goque.ErrEmpty {
+				time.Sleep(time.Minute)
+				continue
+			}
+			ca.log.AuditErrf("failed to integrate orphaned certs: %s", err)
+		}
+	}
+}
+
+// integrateOrpan removes an orphan from the queue and adds it to the database. The
+// item isn't dequeued until it is actually added to the database to prevent items from
+// being lost if the CA is restarted between the item being dequeued and being added to
+// the database. It calculates the issuance time by subtracting the backdate period from
+// the notBefore time.
+func (ca *CertificateAuthorityImpl) integrateOrphan() error {
+	item, err := ca.orphanQueue.Peek()
+	if err != nil {
+		if err == goque.ErrEmpty {
+			return goque.ErrEmpty
+		}
+		return fmt.Errorf("failed to peek into orphan queue: %s", err)
+	}
+	var orphan orphanedCert
+	if err = item.ToObject(&orphan); err != nil {
+		return fmt.Errorf("failed to marshal orphan: %s", err)
+	}
+	cert, err := x509.ParseCertificate(orphan.DER)
+	if err != nil {
+		return fmt.Errorf("failed to parse orphan: %s", err)
+	}
+	issued := cert.NotBefore.Add(-ca.backdate)
+	_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+	if err != nil && err != sa.ErrDuplicate {
+		return fmt.Errorf("failed to store orphaned certificate: %s", err)
+	}
+	if _, err = ca.orphanQueue.Dequeue(); err != nil {
+		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
+	}
+	return nil
 }

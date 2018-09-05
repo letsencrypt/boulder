@@ -9,6 +9,8 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/beeker1121/goque"
+
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/pkcs11key"
 
@@ -167,6 +169,13 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
+	var orphanQueue *goque.Queue
+	if c.CA.OrphanQueueDir != "" {
+		orphanQueue, err = goque.OpenQueue(c.CA.OrphanQueueDir)
+		cmd.FailOnError(err, "Failed to open orphaned certificate queue")
+		defer func() { _ = orphanQueue.Close() }()
+	}
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		c.CA,
 		sa,
@@ -175,8 +184,13 @@ func main() {
 		scope,
 		issuers,
 		kp,
-		logger)
+		logger,
+		orphanQueue)
 	cmd.FailOnError(err, "Failed to create CA impl")
+
+	if orphanQueue != nil {
+		go cai.OrphanIntegrationLoop()
+	}
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)

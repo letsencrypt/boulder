@@ -59,6 +59,10 @@ type CAConfig struct {
 
 	SAService *cmd.GRPCClientConfig
 
+	// Path to directory holding orphan queue files, if not provided an orphan queue
+	// is not used.
+	OrphanQueueDir string
+
 	Features map[string]bool
 }
 
