@@ -2790,7 +2790,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create a new order referencing both of the above finalized authzs
 	pendingStatus := "pending"
-	expUnix := exp.Unix()
+	expUnix := exp.UnixNano()
 	finalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID: &Registration.ID,
 		Expires:        &expUnix,
@@ -3037,7 +3037,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
 
 	// Create a new order to finalize with names in SAN and CN
-	expUnix := exp.Unix()
+	expUnix := exp.UnixNano()
 	pendingStatus := "pending"
 	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID: &Registration.ID,

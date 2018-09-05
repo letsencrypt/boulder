@@ -1641,6 +1641,18 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return string(core.StatusInvalid), nil
 	}
 
+	// If the order is expired the status is invalid and we don't need to get
+	// order authorizations. Its important to exit early in this case because an
+	// order that references an expired authorization will be itself have been
+	// expired (because we match the order expiry to the associated authz expiries
+	// in ra.NewOrder), and expired authorizations may be purged from the DB.
+	// Because of this purging fetching the authz's for an expired order may
+	// return fewer authz objects than expected, triggering a 500 error response.
+	orderExpiry := time.Unix(0, *order.Expires)
+	if orderExpiry.Before(ssa.clk.Now()) {
+		return string(core.StatusInvalid), nil
+	}
+
 	// Get the full Authorization objects for the order
 	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
 	// If there was an error getting the authorizations, return it immediately
