@@ -684,8 +684,7 @@ type orphanedCert struct {
 }
 
 func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
-	_, err := ca.orphanQueue.EnqueueObject(o)
-	if err != nil {
+	if _, err := ca.orphanQueue.EnqueueObject(o); err != nil {
 		ca.log.AuditErrf("failed to queue orphan for integration: %s", err)
 	}
 }
@@ -695,13 +694,12 @@ func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 // testing the orphan queue functionality somewhat more simple.
 func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	for {
-		err := ca.integrateOrphan()
-		if err != nil {
+		if err := ca.integrateOrphan(); err != nil {
 			if err == goque.ErrEmpty {
 				time.Sleep(time.Minute)
 				continue
 			}
-			ca.log.Errf("failed to integrate orphaned certs: %s", err)
+			ca.log.AuditErrf("failed to integrate orphaned certs: %s", err)
 		}
 	}
 }
@@ -732,8 +730,7 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if err != nil && err != sa.ErrDuplicate {
 		return fmt.Errorf("failed to store orphaned certificate: %s", err)
 	}
-	_, err = ca.orphanQueue.Dequeue()
-	if err != nil {
+	if _, err = ca.orphanQueue.Dequeue(); err != nil {
 		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
 	}
 	return nil

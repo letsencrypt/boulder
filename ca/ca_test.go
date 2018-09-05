@@ -38,6 +38,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -943,13 +944,19 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 }
 
 type queueSA struct {
-	fail bool
+	fail      bool
+	duplicate bool
+
+	issued *time.Time
 }
 
-func (qsa *queueSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
+func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byte, issued *time.Time) (string, error) {
 	if qsa.fail {
 		return "", errors.New("bad")
+	} else if qsa.duplicate {
+		return "", sa.ErrDuplicate
 	}
+	qsa.issued = issued
 	return "", nil
 }
 
@@ -993,7 +1000,7 @@ func TestOrphanQueue(t *testing.T) {
 		context.Background(),
 		1,
 		1,
-		big.NewInt(1),
+		tmpl.SerialNumber,
 		certDER,
 	)
 	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
@@ -1001,6 +1008,23 @@ func TestOrphanQueue(t *testing.T) {
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// test with a duplicate cert
+	ca.queueOrphan(&orphanedCert{
+		DER:      certDER,
+		OCSPResp: []byte{},
+		RegID:    1,
+	})
+
+	qsa.duplicate = true
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
@@ -1008,11 +1032,12 @@ func TestOrphanQueue(t *testing.T) {
 
 	// add cert to queue, and recreate queue to make sure it still has the cert
 	qsa.fail = true
+	qsa.duplicate = false
 	_, err = ca.generateOCSPAndStoreCertificate(
 		context.Background(),
 		1,
 		1,
-		big.NewInt(1),
+		tmpl.SerialNumber,
 		certDER,
 	)
 	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
@@ -1026,6 +1051,7 @@ func TestOrphanQueue(t *testing.T) {
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
