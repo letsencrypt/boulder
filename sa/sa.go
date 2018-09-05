@@ -1638,7 +1638,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	// expired (because we match the order expiry to the associated authz expiries
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
-	// return less authz objects than expected, triggering a 500 error response.
+	// return fewer authz objects than expected, triggering a 500 error response.
 	orderExpiry := time.Unix(0, *order.Expires)
 	if orderExpiry.Before(ssa.clk.Now()) {
 		return string(core.StatusInvalid), nil
