@@ -2033,6 +2033,7 @@ func TestStatusForOrder(t *testing.T) {
 		Name             string
 		AuthorizationIDs []string
 		OrderNames       []string
+		OrderExpires     int64
 		ExpectedStatus   string
 		SetProcessing    bool
 		Finalize         bool
@@ -2055,6 +2056,13 @@ func TestStatusForOrder(t *testing.T) {
 			OrderNames:       []string{"pending.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			AuthorizationIDs: []string{pendingAuthz.ID, deactivatedAuthz.ID, validAuthz.ID},
 			ExpectedStatus:   string(core.StatusDeactivated),
+		},
+		{
+			Name:             "Order that has expired and references a purged expired authz",
+			OrderExpires:     alreadyExpired.UnixNano(),
+			OrderNames:       []string{"missing.your.order.is.up"},
+			AuthorizationIDs: []string{"this does not exist"},
+			ExpectedStatus:   string(core.StatusInvalid),
 		},
 		{
 			Name:             "Order with a pending authz",
@@ -2110,9 +2118,15 @@ func TestStatusForOrder(t *testing.T) {
 
 			// Add a new order with the testcase authz IDs
 			processing := false
+			// If the testcase doesn't specify an order expiry use a default timestamp
+			// in the near future.
+			orderExpiry := tc.OrderExpires
+			if orderExpiry == 0 {
+				orderExpiry = expiresNano
+			}
 			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
 				RegistrationID:  &reg.ID,
-				Expires:         &expiresNano,
+				Expires:         &orderExpiry,
 				Authorizations:  tc.AuthorizationIDs,
 				Names:           tc.OrderNames,
 				BeganProcessing: &processing,
