@@ -3,15 +3,22 @@ package ca
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"os"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/beeker1121/goque"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/signer"
@@ -31,6 +38,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -295,7 +303,8 @@ func TestFailNoSerial(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
@@ -399,7 +408,8 @@ func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImp
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.forceCNFromSAN = false
 
@@ -459,7 +469,8 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
@@ -483,7 +494,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
@@ -532,7 +544,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.stats,
 		newIssuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	// Now issue a new cert, signed by newIssuerCert
@@ -628,7 +641,8 @@ func TestInvalidCSRs(t *testing.T) {
 				testCtx.stats,
 				testCtx.issuers,
 				testCtx.keyPolicy,
-				testCtx.logger)
+				testCtx.logger,
+				nil)
 			test.AssertNotError(t, err, "Failed to create CA")
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
@@ -663,7 +677,8 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
@@ -718,6 +733,7 @@ func TestSingleAIAEnforcement(t *testing.T) {
 		nil,
 		goodkey.KeyPolicy{},
 		&blog.Mock{},
+		nil,
 	)
 	test.AssertError(t, err, "NewCertificateAuthorityImpl allowed a profile with multiple issuer_urls")
 	test.AssertEquals(t, err.Error(), "only one issuer_url supported")
@@ -872,7 +888,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.stats,
 		testCtx.issuers,
 		testCtx.keyPolicy,
-		testCtx.logger)
+		testCtx.logger,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	orderID := int64(0)
@@ -920,8 +937,123 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 			test.AssertNotError(t, err, "Failed to unmarshal extension value")
 			sctList, err := helpers.DeserializeSCTList(rawValue)
 			test.AssertNotError(t, err, "Failed to deserialize SCT list")
-			test.Assert(t, len(*sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(*sctList)))
+			test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
 		}
 	}
 	test.Assert(t, list, "returned cert doesn't contain SCT list")
+}
+
+type queueSA struct {
+	fail      bool
+	duplicate bool
+
+	issued *time.Time
+}
+
+func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byte, issued *time.Time) (string, error) {
+	if qsa.fail {
+		return "", errors.New("bad")
+	} else if qsa.duplicate {
+		return "", sa.ErrDuplicate
+	}
+	qsa.issued = issued
+	return "", nil
+}
+
+func TestOrphanQueue(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
+	defer os.Remove(tmpDir)
+	test.AssertNotError(t, err, "Failed to create temp directory")
+	orphanQueue, err := goque.OpenQueue(tmpDir)
+	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
+
+	qsa := &queueSA{fail: true}
+	testCtx := setup(t)
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		qsa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		orphanQueue)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// generate basic test cert
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed to generate test key")
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"test.invalid"},
+		NotBefore:    time.Time{}.Add(time.Hour * 24),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	test.AssertNotError(t, err, "Failed to generate test cert")
+	_, err = ca.generateOCSPAndStoreCertificate(
+		context.Background(),
+		1,
+		1,
+		tmpl.SerialNumber,
+		certDER,
+	)
+	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+
+	qsa.fail = false
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// test with a duplicate cert
+	ca.queueOrphan(&orphanedCert{
+		DER:      certDER,
+		OCSPResp: []byte{},
+		RegID:    1,
+	})
+
+	qsa.duplicate = true
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	// add cert to queue, and recreate queue to make sure it still has the cert
+	qsa.fail = true
+	qsa.duplicate = false
+	_, err = ca.generateOCSPAndStoreCertificate(
+		context.Background(),
+		1,
+		1,
+		tmpl.SerialNumber,
+		certDER,
+	)
+	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+	err = orphanQueue.Close()
+	test.AssertNotError(t, err, "Failed to close the queue cleanly")
+	orphanQueue, err = goque.OpenQueue(tmpDir)
+	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
+	defer func() { _ = orphanQueue.Close() }()
+	ca.orphanQueue = orphanQueue
+
+	qsa.fail = false
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed")
+	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
 }

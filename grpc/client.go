@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"net"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -19,39 +19,30 @@ import (
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
-	if len(c.ServerAddresses) == 0 {
-		return nil, fmt.Errorf("boulder/grpc: ServerAddresses is empty")
+	if c.ServerAddress == "" {
+		if len(c.ServerAddresses) == 0 {
+			return nil, errors.New("Both ServerAddress and ServerAddresses are empty")
+		} else if len(c.ServerAddresses) != 1 {
+			return nil, errors.New("If ServerAddress is empty ServerAddresses can only contain one address")
+		}
+		c.ServerAddress = c.ServerAddresses[0]
 	}
 	if tls == nil {
 		return nil, errNilTLS
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
-	// When there's only one server address, we use our custom newDNSResolver,
-	// intended as a temporary shim until we upgrade to a version of gRPC that has
-	// its own built-in DNS resolver. This works equally well when there's only
-	// one IP for a hostname or when there are multiple IPs for the hostname.
-	if len(c.ServerAddresses) == 1 {
-		host, port, err := net.SplitHostPort(c.ServerAddresses[0])
-		if err != nil {
-			return nil, err
-		}
-		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
-		return grpc.Dial(
-			c.ServerAddresses[0],
-			grpc.WithTransportCredentials(creds),
-			grpc.WithBalancer(grpc.RoundRobin(newDNSResolver(host, port))),
-			grpc.WithUnaryInterceptor(ci.intercept),
-		)
-	} else {
-		creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, "")
-		return grpc.Dial(
-			"", // Since our staticResolver provides addresses we don't need to pass an address here
-			grpc.WithTransportCredentials(creds),
-			grpc.WithBalancer(grpc.RoundRobin(newStaticResolver(c.ServerAddresses))),
-			grpc.WithUnaryInterceptor(ci.intercept),
-		)
+	host, _, err := net.SplitHostPort(c.ServerAddress)
+	if err != nil {
+		return nil, err
 	}
+	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
+	return grpc.Dial(
+		"dns:///"+c.ServerAddress,
+		grpc.WithBalancerName("round_robin"),
+		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(ci.intercept),
+	)
 }
 
 type registry interface {

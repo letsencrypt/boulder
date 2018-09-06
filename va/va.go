@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -55,9 +56,17 @@ const (
 // HTTP-01/TLS-SNI-[01|02] challenge validation.
 const singleDialTimeout = time.Second * 10
 
+// NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
+// for their own extension and IANA chose to assign it early. Because of this we had to increment
+// the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
+// OID we still need to support it until everyone is switched over to the new one.
 // As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
 // id-pe OID + 30 (acmeIdentifier) + 1 (v1)
-var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+
+// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
+// id-pe OID + 31 (acmeIdentifier)
+var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -738,7 +747,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	// Verify key authorization in acmeValidation extension
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifierV1.Equal(ext.Id) {
+		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
 			if !ext.Critical {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
@@ -952,14 +961,20 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
 					// log it at an info level. It's a normal non-success validation
 					// result and the remote VA will have logged more detail.
-					va.log.Infof("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
+					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Addresses, err)
 				} else if ok && p == nil {
 					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
 					// anything. There isn't really an error here.
 					err = nil
+				} else if canceled.Is(err) {
+					// If the non-nil err was a canceled error, ignore it. That's fine it
+					// just means we cancelled the remote VA request before it was
+					// finished because we didn't care about its result.
+					err = nil
 				} else if !ok {
 					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
-					// represents something that will later be returned as a server internal error
+					// was *not* a context cancelleded error and represents something that
+					// will later be returned as a server internal error
 					// without detail if the number of errors is >= va.maxRemoteFailures.
 					// Log it at the error level so we can debug from logs.
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)

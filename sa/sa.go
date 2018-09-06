@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -27,6 +28,8 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
+
+var ErrDuplicate = errors.New("cannot add a duplicate row")
 
 type certCountFunc func(domain string, earliest, latest time.Time) (int, error)
 type getChallengesFunc func(authID string) ([]core.Challenge, error)
@@ -948,11 +951,17 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	// https://github.com/letsencrypt/boulder/issues/2265 for more
 	err = tx.Insert(cert)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			err = ErrDuplicate
+		}
 		return "", Rollback(tx, err)
 	}
 
 	err = tx.Insert(certStatus)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			err = ErrDuplicate
+		}
 		return "", Rollback(tx, err)
 	}
 
@@ -1644,6 +1653,18 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
+		return string(core.StatusInvalid), nil
+	}
+
+	// If the order is expired the status is invalid and we don't need to get
+	// order authorizations. Its important to exit early in this case because an
+	// order that references an expired authorization will be itself have been
+	// expired (because we match the order expiry to the associated authz expiries
+	// in ra.NewOrder), and expired authorizations may be purged from the DB.
+	// Because of this purging fetching the authz's for an expired order may
+	// return fewer authz objects than expected, triggering a 500 error response.
+	orderExpiry := time.Unix(0, *order.Expires)
+	if orderExpiry.Before(ssa.clk.Now()) {
 		return string(core.StatusInvalid), nil
 	}
 
