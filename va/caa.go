@@ -263,8 +263,8 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range records {
-		caaIssuerDomain, caaParameters := extractIssuerDomainAndParameters(caa)
-		if caaIssuerDomain != va.issuerDomain {
+		caaIssuerDomain, caaParameters, caaValid := extractIssuerDomainAndParameters(caa)
+		if !caaValid || caaIssuerDomain != va.issuerDomain {
 			continue
 		}
 
@@ -317,25 +317,57 @@ func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID i
 	return false
 }
 
-// Given a CAA record, assume that the Value is in the issue/issuewild format,
-// that is, a domain name with zero or more additional key-value parameters.
-// Returns the domain name, which may be "" (unsatisfiable), and a tag-value map of parameters.
-func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string) {
+// extractIssuerDomainAndParameters extracts the domain and parameters (if any)
+// from a issue/issuewild CAA record. This follows sections 5.2 and 5.3 of the
+// RFC 6844bis draft (https://tools.ietf.org/html/draft-ietf-lamps-rfc6844bis-00),
+// where all components are semi-colon separated. The domain name (which may be
+// an empty string in the unsatisfiable case) and a tag-value map of parameters
+// are returned, along with a bool indicating if the CAA record is valid.
+func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string, valid bool) {
 	isIssueSpace := func(r rune) bool {
 		return r == '\t' || r == ' '
 	}
 
-	v := strings.SplitN(caa.Value, ";", 2)
-	domain = strings.TrimFunc(v[0], isIssueSpace)
+	// Semi-colons (ASCII 0x3B) are prohibited from being specified in the
+	// parameter tag or value, hence we can simply split on semi-colons.
+	parts := strings.Split(caa.Value, ";")
+	domain = strings.TrimFunc(parts[0], isIssueSpace)
 	parameters = make(map[string]string)
 
-	if len(v) == 2 {
-		for _, s := range strings.FieldsFunc(v[1], isIssueSpace) {
-			if kv := strings.SplitN(s, "=", 2); len(kv) == 2 {
-				parameters[kv[0]] = kv[1]
-			}
-		}
+	// Handle the case where a semi-colon is specified following the domain
+	// but no parameters are given.
+	if len(parts[1:]) == 1 && strings.TrimFunc(parts[1], isIssueSpace) == "" {
+		return domain, parameters, true
 	}
 
-	return domain, parameters
+	for _, parameter := range parts[1:] {
+		// A parameter tag cannot include equal signs (ASCII 0x3D),
+		// however they are permitted in the value itself.
+		tv := strings.SplitN(parameter, "=", 2)
+		if len(tv) != 2 {
+			return domain, nil, false
+		}
+
+		tag := strings.TrimFunc(tv[0], isIssueSpace)
+		for _, r := range []rune(tag) {
+			// ASCII alpha/digits.
+			// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+			if r < 0x30 || r > 0x39 && r < 0x41 || r > 0x5a && r < 0x61 || r > 0x7a {
+				return domain, nil, false
+			}
+		}
+
+		value := strings.TrimFunc(tv[1], isIssueSpace)
+		for _, r := range []rune(value) {
+			// ASCII without whitespace/semi-colons.
+			// value = *(%x21-3A / %x3C-7E)
+			if r < 0x21 || r > 0x3a && r < 0x3c || r > 0x7e {
+				return domain, nil, false
+			}
+		}
+
+		parameters[tag] = value
+	}
+
+	return domain, parameters, true
 }
