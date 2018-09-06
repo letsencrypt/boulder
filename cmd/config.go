@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -261,14 +262,6 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// LogDescription contains the information needed to submit certificates
-// to a CT log and verify returned receipts
-type LogDescription struct {
-	URI             string
-	Key             string
-	SubmitFinalCert bool
-}
-
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
 	// NOTE: this field is deprecated in favor of ServerAddress, as we only ever
@@ -307,6 +300,89 @@ type CAADistributedResolverConfig struct {
 	Timeout     ConfigDuration
 	MaxFailures int
 	Proxies     []string
+}
+
+type TemporalLogDescription struct {
+	URI         string
+	Key         string
+	WindowStart string
+	start       time.Time
+	WindowEnd   string
+	end         time.Time
+}
+
+type TemporalSet struct {
+	Name   string
+	Shards []TemporalLogDescription
+
+	clk clock.Clock
+}
+
+// Setup initializes the TemporalSet by parsing the start and end dates
+// and verifying the intervals
+func (ts TemporalSet) Setup(clk clock.Clock) error {
+	ts.clk = clk
+	if ts.Name == "" {
+		return errors.New("Name cannot be empty")
+	}
+	var err error
+	for i := range ts.Shards {
+		ts.Shards[i].start, err = time.Parse(time.RFC3339, ts.Shards[i].WindowStart)
+		if err != nil {
+			return err
+		}
+		ts.Shards[i].end, err = time.Parse(time.RFC3339, ts.Shards[i].WindowEnd)
+		if err != nil {
+			return err
+		}
+		if ts.Shards[i].end.After(ts.Shards[i].start) || ts.Shards[i].end.Equal(ts.Shards[i].start) {
+			return errors.New("WindowStart must be before WindowEnd")
+		}
+	}
+	return nil
+}
+
+func (ts TemporalSet) pick() (*TemporalLogDescription, error) {
+	now := ts.clk.Now()
+	for _, shard := range ts.Shards {
+		if now.Before(shard.start) {
+			continue
+		}
+		if !now.Before(shard.end) {
+			continue
+		}
+		return &shard, nil
+	}
+	return nil, fmt.Errorf("no valid shard available for temporal set %q", ts.Name)
+}
+
+// Info returns the URI and key of the most recent valid shard
+func (ts TemporalSet) Info() (string, string, error) {
+	shard, err := ts.pick()
+	if err != nil {
+		return "", "", err
+	}
+	return shard.URI, shard.Key, nil
+}
+
+// LogDescription contains the information needed to submit certificates
+// to a CT log and verify returned receipts
+type LogDescription struct {
+	URI             string
+	Key             string
+	SubmitFinalCert bool
+
+	Temporal bool
+	TemporalSet
+}
+
+// Info returns the URI and key of the log, either from a plain log description
+// or from the most recent valid shard from a temporal log set
+func (ld LogDescription) Info() (string, string, error) {
+	if !ld.Temporal {
+		return ld.URI, ld.Key, nil
+	}
+	return ld.TemporalSet.Info()
 }
 
 type CTGroup struct {

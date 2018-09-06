@@ -175,18 +175,27 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
+	var groups []cmd.CTGroup
 	if c.RA.CTLogGroups != nil {
-		groups := make([]cmd.CTGroup, len(c.RA.CTLogGroups))
+		groups = make([]cmd.CTGroup, len(c.RA.CTLogGroups))
 		for i, logs := range c.RA.CTLogGroups {
 			groups[i] = cmd.CTGroup{
 				Name: strconv.Itoa(i),
 				Logs: logs,
 			}
 		}
-		ctp = ctpolicy.New(pubc, groups, nil, logger, scope)
 	} else if c.RA.CTLogGroups2 != nil {
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
+		groups = c.RA.CTLogGroups2
 	}
+	for _, g := range groups {
+		for _, l := range g.Logs {
+			if l.Temporal {
+				err := l.Setup(clk)
+				cmd.FailOnError(err, "Failed to setup a temporal log set")
+			}
+		}
+	}
+	ctp = ctpolicy.New(pubc, groups, c.RA.InformationalCTLogs, logger, scope)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
