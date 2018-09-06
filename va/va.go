@@ -21,6 +21,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -498,6 +499,11 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
+		// If the body isn't UTF-8, it will cause problems when marshaling the
+		// response as a protocol buffer. If so, just skip showing the body.
+		if !utf8.Valid(body) {
+			return nil, validationRecords, probs.Unauthorized("Invalid response from %s", url)
+		}
 		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: \"%s\"", url, body)
 	}
 

@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
@@ -1311,7 +1312,7 @@ func TestLimitedReader(t *testing.T) {
 	chall := core.HTTPChallenge01()
 	setChallengeToken(&chall, core.NewToken())
 
-	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
+	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
 	va, _ := setup(hs, 0)
 	defer hs.Close()
 
@@ -1320,6 +1321,10 @@ func TestLimitedReader(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.Assert(t, strings.HasPrefix(prob.Detail, "Invalid response from "),
 		"Expected failure due to truncation")
+
+	if !utf8.ValidString(prob.Detail) {
+		t.Errorf("Problem Detail contained an invalid UTF-8 string")
+	}
 }
 
 func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImpl, *blog.Mock) {
