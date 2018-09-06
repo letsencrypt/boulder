@@ -164,12 +164,10 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 			`UPDATE challenges SET
 				status = ?,
 				error = ?,
-				keyAuthorization = ?,
 				validationRecord = ?
 			WHERE status = ? AND id = ?`,
 			string(chall.Status),
 			chall.Error,
-			chall.KeyAuthorization,
 			chall.ValidationRecord,
 			string(core.StatusPending),
 			chall.ID)
