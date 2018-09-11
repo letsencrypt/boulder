@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -159,80 +158,6 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 
 func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
 	ra.log.Errf("error reloading rate limit policy: %s", err)
-}
-
-var (
-	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
-	emptyDNSResponseError = berrors.InvalidEmailError(
-		"empty DNS response validating email domain - no MX/A records")
-	multipleAddressError = berrors.InvalidEmailError("more than one e-mail address")
-)
-
-func problemIsTimeout(err error) bool {
-	if dnsErr, ok := err.(*bdns.DNSError); ok && dnsErr.Timeout() {
-		return true
-	}
-
-	return false
-}
-
-// forbiddenMailDomains is a map of domain names we do not allow after the
-// @ symbol in contact mailto addresses. These are frequently used when
-// copy-pasting example configurations and would not result in expiration
-// messages and subscriber communications reaching the user that created the
-// registration if allowed.
-var forbiddenMailDomains = map[string]bool{
-	// https://tools.ietf.org/html/rfc2606#section-3
-	"example.com": true,
-	"example.net": true,
-	"example.org": true,
-}
-
-func validateEmail(ctx context.Context, address string, resolver bdns.DNSClient) error {
-	email, err := mail.ParseAddress(address)
-	if err != nil {
-		return unparseableEmailError
-	}
-	splitEmail := strings.SplitN(email.Address, "@", -1)
-	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError(
-			"invalid contact domain. Contact emails @%s are forbidden",
-			domain)
-	}
-	var resultMX []string
-	var resultA []net.IP
-	var errMX, errA error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		resultMX, errMX = resolver.LookupMX(ctx, domain)
-		wg.Done()
-	}()
-	go func() {
-		resultA, errA = resolver.LookupHost(ctx, domain)
-		wg.Done()
-	}()
-	wg.Wait()
-
-	// We treat timeouts as non-failures for best-effort email validation
-	// See: https://github.com/letsencrypt/boulder/issues/2260
-	if problemIsTimeout(errMX) || problemIsTimeout(errA) {
-		return nil
-	}
-
-	if errMX != nil {
-		return berrors.InvalidEmailError(errMX.Error())
-	} else if len(resultMX) > 0 {
-		return nil
-	}
-	if errA != nil {
-		return berrors.InvalidEmailError(errA.Error())
-	} else if len(resultA) > 0 {
-		return nil
-	}
-
-	return emptyDNSResponseError
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid
@@ -384,6 +309,15 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return reg, nil
 }
 
+// validateContacts checks the provided list of contacts, returning an error if
+// any are not acceptable. Unacceptable contacts lists include:
+// * An empty list
+// * A list has more than maxContactsPerReg contacts
+// * A list containing an empty contact
+// * A list containing a contact that does not parse as a URL
+// * A list containing a contact that has a URL scheme other than mailto
+// * A list containing a contact that has non-ascii characters
+// * A list containing a contact that doesn't pass `validateEmail`
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
@@ -413,18 +347,47 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 				contact,
 			)
 		}
-
-		start := ra.clk.Now()
-		ra.stats.Inc("ValidateEmail.Calls", 1)
-		err = validateEmail(ctx, parsed.Opaque, ra.DNSClient)
-		ra.stats.TimingDuration("ValidateEmail.Latency", ra.clk.Now().Sub(start))
-		if err != nil {
-			ra.stats.Inc("ValidateEmail.Errors", 1)
+		if err := validateEmail(parsed.Opaque); err != nil {
 			return err
 		}
-		ra.stats.Inc("ValidateEmail.Successes", 1)
 	}
 
+	return nil
+}
+
+var (
+	// unparseableEmailError is returned by validateEmail when the given address
+	// is not parseable.
+	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
+)
+
+// forbiddenMailDomains is a map of domain names we do not allow after the
+// @ symbol in contact mailto addresses. These are frequently used when
+// copy-pasting example configurations and would not result in expiration
+// messages and subscriber communications reaching the user that created the
+// registration if allowed.
+var forbiddenMailDomains = map[string]bool{
+	// https://tools.ietf.org/html/rfc2606#section-3
+	"example.com": true,
+	"example.net": true,
+	"example.org": true,
+}
+
+// validateEmail returns an error if the given address is not parseable as an
+// email address or if the domain portion of the email address is a member of
+// the forbiddenMailDomains map.
+func validateEmail(address string) error {
+	email, err := mail.ParseAddress(address)
+	if err != nil {
+		return unparseableEmailError
+	}
+	splitEmail := strings.SplitN(email.Address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	if forbiddenMailDomains[domain] {
+		return berrors.InvalidEmailError(
+			"invalid contact domain. Contact emails @%s are forbidden",
+			domain)
+	}
 	return nil
 }
 
