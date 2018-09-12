@@ -189,7 +189,7 @@ func main() {
 	}
 	for _, g := range groups {
 		for _, l := range g.Logs {
-			if l.Temporal {
+			if l.TemporalSet != nil {
 				err := l.Setup(clk)
 				cmd.FailOnError(err, "Failed to setup a temporal log set")
 			}

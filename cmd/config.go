@@ -320,7 +320,7 @@ type TemporalSet struct {
 
 // Setup initializes the TemporalSet by parsing the start and end dates
 // and verifying the intervals
-func (ts TemporalSet) Setup(clk clock.Clock) error {
+func (ts *TemporalSet) Setup(clk clock.Clock) error {
 	ts.clk = clk
 	if ts.Name == "" {
 		return errors.New("Name cannot be empty")
@@ -335,14 +335,14 @@ func (ts TemporalSet) Setup(clk clock.Clock) error {
 		if err != nil {
 			return err
 		}
-		if ts.Shards[i].end.After(ts.Shards[i].start) || ts.Shards[i].end.Equal(ts.Shards[i].start) {
+		if ts.Shards[i].end.Before(ts.Shards[i].start) || ts.Shards[i].end.Equal(ts.Shards[i].start) {
 			return errors.New("WindowStart must be before WindowEnd")
 		}
 	}
 	return nil
 }
 
-func (ts TemporalSet) pick() (*TemporalLogDescription, error) {
+func (ts *TemporalSet) pick() (*TemporalLogDescription, error) {
 	now := ts.clk.Now()
 	for _, shard := range ts.Shards {
 		if now.Before(shard.start) {
@@ -357,7 +357,7 @@ func (ts TemporalSet) pick() (*TemporalLogDescription, error) {
 }
 
 // Info returns the URI and key of the most recent valid shard
-func (ts TemporalSet) Info() (string, string, error) {
+func (ts *TemporalSet) Info() (string, string, error) {
 	shard, err := ts.pick()
 	if err != nil {
 		return "", "", err
@@ -372,14 +372,14 @@ type LogDescription struct {
 	Key             string
 	SubmitFinalCert bool
 
-	Temporal bool
-	TemporalSet
+	// Temporal bool
+	*TemporalSet
 }
 
 // Info returns the URI and key of the log, either from a plain log description
 // or from the most recent valid shard from a temporal log set
 func (ld LogDescription) Info() (string, string, error) {
-	if !ld.Temporal {
+	if ld.TemporalSet == nil {
 		return ld.URI, ld.Key, nil
 	}
 	return ld.TemporalSet.Info()

@@ -4,7 +4,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -97,4 +99,133 @@ func TestTLSConfigLoad(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTemporalSetup(t *testing.T) {
+	for _, tc := range []struct {
+		ts  TemporalSet
+		err string
+	}{
+		{
+			ts:  TemporalSet{},
+			err: "Name cannot be empty",
+		},
+		{
+			ts: TemporalSet{
+				Name: "temporal set",
+				Shards: []TemporalLogDescription{
+					{
+						WindowStart: "",
+						WindowEnd:   "",
+					},
+				},
+			},
+			err: "parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"",
+		},
+		{
+			ts: TemporalSet{
+				Name: "temporal set",
+				Shards: []TemporalLogDescription{
+					{
+						WindowStart: "0001-01-01T00:00:00Z",
+						WindowEnd:   "",
+					},
+				},
+			},
+			err: "parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"",
+		},
+		{
+			ts: TemporalSet{
+				Name: "temporal set",
+				Shards: []TemporalLogDescription{
+					{
+						WindowStart: "0001-01-01T00:00:00Z",
+						WindowEnd:   "0001-01-01T00:00:00Z",
+					},
+				},
+			},
+			err: "WindowStart must be before WindowEnd",
+		},
+		{
+			ts: TemporalSet{
+				Name: "temporal set",
+				Shards: []TemporalLogDescription{
+					{
+						WindowStart: "0001-01-02T00:00:00Z",
+						WindowEnd:   "0001-01-01T00:00:00Z",
+					},
+				},
+			},
+			err: "WindowStart must be before WindowEnd",
+		},
+		{
+			ts: TemporalSet{
+				Name: "temporal set",
+				Shards: []TemporalLogDescription{
+					{
+						WindowStart: "0001-01-01T00:00:00Z",
+						WindowEnd:   "0001-01-02T00:00:00Z",
+					},
+				},
+			},
+			err: "",
+		},
+	} {
+		err := tc.ts.Setup(nil)
+		if err != nil && tc.err != err.Error() {
+			t.Errorf("got error %q, wanted %q", err, tc.err)
+		} else if err == nil && tc.err != "" {
+			t.Errorf("unexpected error %q", err)
+		}
+	}
+}
+
+func TestTemporalPick(t *testing.T) {
+
+}
+
+func TestLogInfo(t *testing.T) {
+	ld := LogDescription{
+		URI: "basic-uri",
+		Key: "basic-key",
+	}
+	uri, key, err := ld.Info()
+	test.AssertNotError(t, err, "Info failed")
+	test.AssertEquals(t, uri, ld.URI)
+	test.AssertEquals(t, key, ld.Key)
+
+	fc := clock.NewFake()
+	ld.TemporalSet = &TemporalSet{clk: fc}
+	uri, key, err = ld.Info()
+	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
+	ld.TemporalSet.Shards = []TemporalLogDescription{{start: fc.Now().Add(time.Hour), end: fc.Now().Add(time.Hour * 2)}}
+	uri, key, err = ld.Info()
+	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
+
+	fc.Add(time.Hour * 4)
+	now := fc.Now()
+	ld.TemporalSet.Shards = []TemporalLogDescription{
+		{
+			start: now.Add(time.Hour * -4),
+			end:   now.Add(time.Hour * -2),
+			URI:   "a",
+			Key:   "a",
+		},
+		{
+			start: now.Add(time.Hour * -2),
+			end:   now.Add(time.Hour * 2),
+			URI:   "b",
+			Key:   "b",
+		},
+		{
+			start: now.Add(time.Hour * 2),
+			end:   now.Add(time.Hour * 4),
+			URI:   "c",
+			Key:   "c",
+		},
+	}
+	uri, key, err = ld.Info()
+	test.AssertNotError(t, err, "Info failed")
+	test.AssertEquals(t, uri, "b")
+	test.AssertEquals(t, key, "b")
 }
