@@ -171,7 +171,7 @@ func TestTemporalSetup(t *testing.T) {
 			err: "",
 		},
 	} {
-		err := tc.ts.Setup(nil)
+		err := tc.ts.Setup()
 		if err != nil && tc.err != err.Error() {
 			t.Errorf("got error %q, wanted %q", err, tc.err)
 		} else if err == nil && tc.err != "" {
@@ -180,26 +180,22 @@ func TestTemporalSetup(t *testing.T) {
 	}
 }
 
-func TestTemporalPick(t *testing.T) {
-
-}
-
 func TestLogInfo(t *testing.T) {
 	ld := LogDescription{
 		URI: "basic-uri",
 		Key: "basic-key",
 	}
-	uri, key, err := ld.Info()
+	uri, key, err := ld.Info(time.Time{})
 	test.AssertNotError(t, err, "Info failed")
 	test.AssertEquals(t, uri, ld.URI)
 	test.AssertEquals(t, key, ld.Key)
 
 	fc := clock.NewFake()
-	ld.TemporalSet = &TemporalSet{clk: fc}
-	uri, key, err = ld.Info()
+	ld.TemporalSet = &TemporalSet{}
+	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 	ld.TemporalSet.Shards = []TemporalLogDescription{{start: fc.Now().Add(time.Hour), end: fc.Now().Add(time.Hour * 2)}}
-	uri, key, err = ld.Info()
+	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 
 	fc.Add(time.Hour * 4)
@@ -224,7 +220,7 @@ func TestLogInfo(t *testing.T) {
 			Key:   "c",
 		},
 	}
-	uri, key, err = ld.Info()
+	uri, key, err = ld.Info(now)
 	test.AssertNotError(t, err, "Info failed")
 	test.AssertEquals(t, uri, "b")
 	test.AssertEquals(t, key, "b")

@@ -1130,7 +1130,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing precertificate")
 	}
-	scts, err := ra.getSCTs(ctx, precert.DER)
+	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	if err != nil {
+		return emptyCert, wrapError(err, "parsing precertificate")
+	}
+	scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
 	if err != nil {
 		return emptyCert, wrapError(err, "getting SCTs")
 	}
@@ -1143,8 +1147,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
 	}
-	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.DER)
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
@@ -1152,6 +1154,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		// parseable.
 		return emptyCert, berrors.InternalServerError("failed to parse certificate: %s", err.Error())
 	}
+
+	// Asynchronously submit the final certificate to any configured logs
+	go ra.ctpolicy.SubmitFinalCert(cert.DER, parsedCertificate.NotAfter)
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
@@ -1167,9 +1172,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	return cert, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte) (core.SCTDERs, error) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
 	started := ra.clk.Now()
-	scts, err := ra.ctpolicy.GetSCTs(ctx, cert)
+	scts, err := ra.ctpolicy.GetSCTs(ctx, cert, expiration)
 	took := ra.clk.Since(started)
 	// The final cert has already been issued so actually return it to the
 	// user even if this fails since we aren't actually doing anything with

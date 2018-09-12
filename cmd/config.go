@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -314,14 +313,11 @@ type TemporalLogDescription struct {
 type TemporalSet struct {
 	Name   string
 	Shards []TemporalLogDescription
-
-	clk clock.Clock
 }
 
 // Setup initializes the TemporalSet by parsing the start and end dates
 // and verifying the intervals
-func (ts *TemporalSet) Setup(clk clock.Clock) error {
-	ts.clk = clk
+func (ts *TemporalSet) Setup() error {
 	if ts.Name == "" {
 		return errors.New("Name cannot be empty")
 	}
@@ -342,13 +338,12 @@ func (ts *TemporalSet) Setup(clk clock.Clock) error {
 	return nil
 }
 
-func (ts *TemporalSet) pick() (*TemporalLogDescription, error) {
-	now := ts.clk.Now()
+func (ts *TemporalSet) pick(exp time.Time) (*TemporalLogDescription, error) {
 	for _, shard := range ts.Shards {
-		if now.Before(shard.start) {
+		if exp.Before(shard.start) {
 			continue
 		}
-		if !now.Before(shard.end) {
+		if !exp.Before(shard.end) {
 			continue
 		}
 		return &shard, nil
@@ -357,8 +352,8 @@ func (ts *TemporalSet) pick() (*TemporalLogDescription, error) {
 }
 
 // Info returns the URI and key of the most recent valid shard
-func (ts *TemporalSet) Info() (string, string, error) {
-	shard, err := ts.pick()
+func (ts *TemporalSet) Info(exp time.Time) (string, string, error) {
+	shard, err := ts.pick(exp)
 	if err != nil {
 		return "", "", err
 	}
@@ -378,11 +373,11 @@ type LogDescription struct {
 
 // Info returns the URI and key of the log, either from a plain log description
 // or from the most recent valid shard from a temporal log set
-func (ld LogDescription) Info() (string, string, error) {
+func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 	if ld.TemporalSet == nil {
 		return ld.URI, ld.Key, nil
 	}
-	return ld.TemporalSet.Info()
+	return ld.TemporalSet.Info(exp)
 }
 
 type CTGroup struct {

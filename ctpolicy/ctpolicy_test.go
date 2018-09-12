@@ -117,7 +117,7 @@ func TestGetSCTs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctp := New(tc.mock, tc.groups, nil, blog.NewMock(), metrics.NewNoopScope())
-			ret, err := ctp.GetSCTs(tc.ctx, []byte{0})
+			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
 			} else if tc.errRegexp != nil {
@@ -162,7 +162,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 			},
 		},
 	}, nil, blog.NewMock(), metrics.NewNoopScope())
-	_, err := ctp.GetSCTs(context.Background(), []byte{0})
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "a"})), 1)
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "b"})), 1)
@@ -190,7 +190,7 @@ func TestStagger(t *testing.T) {
 			},
 		},
 	}, nil, blog.NewMock(), metrics.NewNoopScope())
-	_, err := ctp.GetSCTs(context.Background(), []byte{0})
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	if countingPub.count != 1 {
 		t.Errorf("wrong number of requests to publisher. got %d, expected 1", countingPub.count)

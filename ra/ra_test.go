@@ -1,6 +1,8 @@
 package ra
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -21,8 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -46,6 +46,12 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+
+	"github.com/golang/protobuf/proto"
+	ctasn1 "github.com/google/certificate-transparency-go/asn1"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
+	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
@@ -3633,8 +3639,26 @@ type mockCAFailCertForPrecert struct {
 
 // IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
 func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	tmpl := &ctx509.Certificate{
+		SerialNumber: big.NewInt(1),
+		ExtraExtensions: []ctpkix.Extension{
+			{
+				Id:       ctx509.OIDExtensionCTPoison,
+				Critical: true,
+				Value:    ctasn1.NullBytes,
+			},
+		},
+	}
+	precert, err := ctx509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	if err != nil {
+		return nil, err
+	}
 	return &capb.IssuePrecertificateResponse{
-		DER: []byte{},
+		DER: precert,
 	}, nil
 }
 
@@ -3793,7 +3817,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 				// `issueCertificateInner` error to be a `berrors.BoulderError`
 				berr, ok := err.(*berrors.BoulderError)
 				if !ok {
-					t.Errorf("Expected a boulder error, got %#v\n", err)
+					t.Fatalf("Expected a boulder error, got %#v\n", err)
 				}
 				// Match the expected berror Type and Detail to the observed
 				test.AssertEquals(t, berr.Type, tc.ExpectedProb.Type)

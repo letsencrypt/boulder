@@ -78,7 +78,7 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
-func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
+func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup, expiration time.Time) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
@@ -94,7 +94,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 			if ctx.Err() != nil {
 				return
 			}
-			uri, key, err := ld.Info()
+			uri, key, err := ld.Info(expiration)
 			if err != nil {
 				ctp.log.Errf("unable to get log info: %s", err)
 				return
@@ -138,13 +138,13 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
 // the set of SCTs to the caller.
-func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDERs, error) {
+func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for i, g := range ctp.groups {
 		go func(i int, g cmd.CTGroup) {
-			sct, err := ctp.race(subCtx, cert, g)
+			sct, err := ctp.race(subCtx, cert, g, expiration)
 			// Only one of these will be non-nil
 			if err != nil {
 				results <- result{err: berrors.MissingSCTsError("CT log group %q: %s", g.Name, err)}
@@ -159,7 +159,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			// submissions are running in a goroutine and we don't want them to be
 			// cancelled when the caller of CTPolicy.GetSCTs returns and cancels
 			// its RPC context.
-			uri, key, err := l.Info()
+			uri, key, err := l.Info(expiration)
 			if err != nil {
 				ctp.log.Errf("unable to get log info: %s", err)
 				return
@@ -192,11 +192,11 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured logs
-func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
+func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
 	falseVar := false
 	for _, log := range ctp.finalLogs {
 		go func(l cmd.LogDescription) {
-			uri, key, err := l.Info()
+			uri, key, err := l.Info(expiration)
 			if err != nil {
 				ctp.log.Errf("unable to get log info: %s", err)
 				return
