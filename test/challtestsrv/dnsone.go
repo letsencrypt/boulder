@@ -64,18 +64,6 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			record.A = net.ParseIP(fakeDNS)
 
 			m.Answer = append(m.Answer, record)
-		case dns.TypeMX:
-			record := new(dns.MX)
-			record.Hdr = dns.RR_Header{
-				Name:   q.Name,
-				Rrtype: dns.TypeMX,
-				Class:  dns.ClassINET,
-				Ttl:    0,
-			}
-			record.Mx = "mail." + q.Name
-			record.Preference = 10
-
-			m.Answer = append(m.Answer, record)
 		case dns.TypeTXT:
 			values := s.GetDNSOneChallenge(q.Name)
 			if values == nil {
