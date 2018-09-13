@@ -23,7 +23,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/bdns"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
