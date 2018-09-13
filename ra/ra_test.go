@@ -288,7 +288,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSClient = &bdns.MockDNSClient{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -3517,7 +3516,6 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSClient = &bdns.MockDNSClient{}
 
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := ssa.NewPendingAuthorization(ctx, AuthzFinal)
