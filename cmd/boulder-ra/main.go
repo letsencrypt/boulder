@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/ctpolicy"
@@ -33,12 +32,6 @@ type config struct {
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO: remove after va IsSafeDomain deploy
-
-		// The number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries     int
-		DNSResolvers []string
 
 		SAService        *cmd.GRPCClientConfig
 		VAService        *cmd.GRPCClientConfig
@@ -92,12 +85,6 @@ type config struct {
 	PA cmd.PAConfig
 
 	Syslog cmd.SyslogConfig
-
-	Common struct {
-		DNSResolver               string
-		DNSTimeout                string
-		DNSAllowLoopbackAddresses bool
-	}
 }
 
 func main() {
@@ -231,31 +218,6 @@ func main() {
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
-
-	raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
-	cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-	dnsTries := c.RA.DNSTries
-	if dnsTries < 1 {
-		dnsTries = 1
-	}
-	if len(c.Common.DNSResolver) != 0 {
-		c.RA.DNSResolvers = append(c.RA.DNSResolvers, c.Common.DNSResolver)
-	}
-	if !c.Common.DNSAllowLoopbackAddresses {
-		rai.DNSClient = bdns.NewDNSClientImpl(
-			raDNSTimeout,
-			c.RA.DNSResolvers,
-			scope,
-			clk,
-			dnsTries)
-	} else {
-		rai.DNSClient = bdns.NewTestDNSClientImpl(
-			raDNSTimeout,
-			c.RA.DNSResolvers,
-			scope,
-			clk,
-			dnsTries)
-	}
 
 	rai.VA = vac
 	rai.CA = cac

@@ -18,7 +18,6 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/bdns"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -68,7 +67,6 @@ type RegistrationAuthorityImpl struct {
 	caa       caaChecker
 
 	stats     metrics.Scope
-	DNSClient bdns.DNSClient
 	clk       clock.Clock
 	log       blog.Logger
 	keyPolicy goodkey.KeyPolicy
