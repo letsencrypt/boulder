@@ -153,7 +153,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 	}
 	for i, authChall := range challenges {
 		if challs[i].AuthorizationID != authID {
-			return fmt.Errorf("challenge authorization ID %q didn't match %q", challs[i].AuthorizationID, authID)
+			return fmt.Errorf("challenge authorization ID %q didn't match associated authorization ID %q", challs[i].AuthorizationID, authID)
 		}
 		chall, err := challengeToModel(&authChall, authID)
 		if err != nil {
