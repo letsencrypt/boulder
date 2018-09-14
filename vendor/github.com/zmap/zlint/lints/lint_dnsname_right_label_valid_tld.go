@@ -31,12 +31,12 @@ func (l *DNSNameValidTLD) CheckApplies(c *x509.Certificate) bool {
 
 func (l *DNSNameValidTLD) Execute(c *x509.Certificate) *LintResult {
 	if c.Subject.CommonName != "" && !util.CommonNameIsIP(c) {
-		if !util.HasValidTLD(c.Subject.CommonName) {
+		if !util.HasValidTLD(c.Subject.CommonName, c.NotBefore) {
 			return &LintResult{Status: Error}
 		}
 	}
 	for _, dns := range c.DNSNames {
-		if !util.HasValidTLD(dns) {
+		if !util.HasValidTLD(dns, c.NotBefore) {
 			return &LintResult{Status: Error}
 		}
 	}

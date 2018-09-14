@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/bdns"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -294,7 +293,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSClient = &bdns.MockDNSClient{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -336,6 +334,8 @@ func TestValidateContacts(t *testing.T) {
 	otherValidEmail := "mailto:other-admin@email.com"
 	malformedEmail := "mailto:admin.com"
 	nonASCII := "mailto:señor@email.com"
+	unparseable := "mailto:a@email.com, b@email.com"
+	forbidden := "mailto:a@example.org"
 
 	err := ra.validateContacts(context.Background(), &[]string{})
 	test.AssertNotError(t, err, "No Contacts")
@@ -357,49 +357,12 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
-}
 
-func TestValidateEmail(t *testing.T) {
-	testFailures := []struct {
-		input    string
-		expected string
-	}{
-		{"an email`", unparseableEmailError.Error()},
-		{"a@always.invalid", emptyDNSResponseError.Error()},
-		{"a@email.com, b@email.com", unparseableEmailError.Error()},
-		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
-		{"a@example.com", "invalid contact domain. Contact emails @example.com are forbidden"},
-		{"a@example.net", "invalid contact domain. Contact emails @example.net are forbidden"},
-		{"a@example.org", "invalid contact domain. Contact emails @example.org are forbidden"},
-	}
+	err = ra.validateContacts(context.Background(), &[]string{unparseable})
+	test.AssertError(t, err, "Unparseable email")
 
-	testSuccesses := []string{
-		"a@email.com",
-		"b@email.only",
-		// A timeout during email validation is treated as a success. We treat email
-		// validation during registration as a best-effort. See
-		// https://github.com/letsencrypt/boulder/issues/2260 for more
-		"a@always.timeout",
-	}
-
-	for _, tc := range testFailures {
-		err := validateEmail(context.Background(), tc.input, &bdns.MockDNSClient{})
-		if !berrors.Is(err, berrors.InvalidEmail) {
-			t.Errorf("validateEmail(%q): got error %#v, expected type berrors.InvalidEmail", tc.input, err)
-		}
-
-		if err.Error() != tc.expected {
-			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, err.Error(), tc.expected)
-		}
-	}
-
-	for _, addr := range testSuccesses {
-		if err := validateEmail(context.Background(), addr, &bdns.MockDNSClient{}); err != nil {
-			t.Errorf("validateEmail(%q): expected success, but it failed: %#v",
-				addr, err)
-		}
-	}
+	err = ra.validateContacts(context.Background(), &[]string{forbidden})
+	test.AssertError(t, err, "Forbidden email")
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -3558,7 +3521,6 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSClient = &bdns.MockDNSClient{}
 
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := ssa.NewPendingAuthorization(ctx, AuthzFinal)
