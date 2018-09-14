@@ -113,34 +113,16 @@ func TestTemporalSetup(t *testing.T) {
 		{
 			ts: TemporalSet{
 				Name: "temporal set",
-				Shards: []TemporalLogDescription{
-					{
-						WindowStart: "",
-						WindowEnd:   "",
-					},
-				},
 			},
-			err: "parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"",
+			err: "temporal set contains no shards",
 		},
 		{
 			ts: TemporalSet{
 				Name: "temporal set",
 				Shards: []TemporalLogDescription{
 					{
-						WindowStart: "0001-01-01T00:00:00Z",
-						WindowEnd:   "",
-					},
-				},
-			},
-			err: "parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"",
-		},
-		{
-			ts: TemporalSet{
-				Name: "temporal set",
-				Shards: []TemporalLogDescription{
-					{
-						WindowStart: "0001-01-01T00:00:00Z",
-						WindowEnd:   "0001-01-01T00:00:00Z",
+						WindowStart: time.Time{},
+						WindowEnd:   time.Time{},
 					},
 				},
 			},
@@ -151,8 +133,8 @@ func TestTemporalSetup(t *testing.T) {
 				Name: "temporal set",
 				Shards: []TemporalLogDescription{
 					{
-						WindowStart: "0001-01-02T00:00:00Z",
-						WindowEnd:   "0001-01-01T00:00:00Z",
+						WindowStart: time.Time{}.Add(time.Hour),
+						WindowEnd:   time.Time{},
 					},
 				},
 			},
@@ -163,8 +145,8 @@ func TestTemporalSetup(t *testing.T) {
 				Name: "temporal set",
 				Shards: []TemporalLogDescription{
 					{
-						WindowStart: "0001-01-01T00:00:00Z",
-						WindowEnd:   "0001-01-02T00:00:00Z",
+						WindowStart: time.Time{},
+						WindowEnd:   time.Time{}.Add(time.Hour),
 					},
 				},
 			},
@@ -194,7 +176,7 @@ func TestLogInfo(t *testing.T) {
 	ld.TemporalSet = &TemporalSet{}
 	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
-	ld.TemporalSet.Shards = []TemporalLogDescription{{start: fc.Now().Add(time.Hour), end: fc.Now().Add(time.Hour * 2)}}
+	ld.TemporalSet.Shards = []TemporalLogDescription{{WindowStart: fc.Now().Add(time.Hour), WindowEnd: fc.Now().Add(time.Hour * 2)}}
 	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 
@@ -202,22 +184,22 @@ func TestLogInfo(t *testing.T) {
 	now := fc.Now()
 	ld.TemporalSet.Shards = []TemporalLogDescription{
 		{
-			start: now.Add(time.Hour * -4),
-			end:   now.Add(time.Hour * -2),
-			URI:   "a",
-			Key:   "a",
+			WindowStart: now.Add(time.Hour * -4),
+			WindowEnd:   now.Add(time.Hour * -2),
+			URI:         "a",
+			Key:         "a",
 		},
 		{
-			start: now.Add(time.Hour * -2),
-			end:   now.Add(time.Hour * 2),
-			URI:   "b",
-			Key:   "b",
+			WindowStart: now.Add(time.Hour * -2),
+			WindowEnd:   now.Add(time.Hour * 2),
+			URI:         "b",
+			Key:         "b",
 		},
 		{
-			start: now.Add(time.Hour * 2),
-			end:   now.Add(time.Hour * 4),
-			URI:   "c",
-			Key:   "c",
+			WindowStart: now.Add(time.Hour * 2),
+			WindowEnd:   now.Add(time.Hour * 4),
+			URI:         "c",
+			Key:         "c",
 		},
 	}
 	uri, key, err = ld.Info(now)

@@ -301,57 +301,55 @@ type CAADistributedResolverConfig struct {
 	Proxies     []string
 }
 
+// TemporalLogDescription describes a single shard of a temporally shared
+// CT log
 type TemporalLogDescription struct {
 	URI         string
 	Key         string
-	WindowStart string
-	start       time.Time
-	WindowEnd   string
-	end         time.Time
+	WindowStart time.Time
+	WindowEnd   time.Time
 }
 
+// TemporalSet contains a set of temporal shards of a single log
 type TemporalSet struct {
 	Name   string
 	Shards []TemporalLogDescription
 }
 
 // Setup initializes the TemporalSet by parsing the start and end dates
-// and verifying the intervals
+// and verifying WindowEnd > WindowStart
 func (ts *TemporalSet) Setup() error {
 	if ts.Name == "" {
 		return errors.New("Name cannot be empty")
 	}
-	var err error
+	if len(ts.Shards) == 0 {
+		return errors.New("temporal set contains no shards")
+	}
 	for i := range ts.Shards {
-		ts.Shards[i].start, err = time.Parse(time.RFC3339, ts.Shards[i].WindowStart)
-		if err != nil {
-			return err
-		}
-		ts.Shards[i].end, err = time.Parse(time.RFC3339, ts.Shards[i].WindowEnd)
-		if err != nil {
-			return err
-		}
-		if ts.Shards[i].end.Before(ts.Shards[i].start) || ts.Shards[i].end.Equal(ts.Shards[i].start) {
+		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) || ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
 			return errors.New("WindowStart must be before WindowEnd")
 		}
 	}
 	return nil
 }
 
+// pick chooses the correct shard from a TemporalSet to use for the given
+// expiration time. In the case where two shards have overlapping windows
+// the earlier of the two shards will be chosen.
 func (ts *TemporalSet) pick(exp time.Time) (*TemporalLogDescription, error) {
 	for _, shard := range ts.Shards {
-		if exp.Before(shard.start) {
+		if exp.Before(shard.WindowStart) {
 			continue
 		}
-		if !exp.Before(shard.end) {
+		if !exp.Before(shard.WindowEnd) {
 			continue
 		}
 		return &shard, nil
 	}
-	return nil, fmt.Errorf("no valid shard available for temporal set %q", ts.Name)
+	return nil, fmt.Errorf("no valid shard available for temporal set %q for expiration date %q", ts.Name, exp)
 }
 
-// Info returns the URI and key of the most recent valid shard
+// Info returns the URI and key of the earliest valid shard
 func (ts *TemporalSet) Info(exp time.Time) (string, string, error) {
 	shard, err := ts.pick(exp)
 	if err != nil {
@@ -367,12 +365,11 @@ type LogDescription struct {
 	Key             string
 	SubmitFinalCert bool
 
-	// Temporal bool
 	*TemporalSet
 }
 
 // Info returns the URI and key of the log, either from a plain log description
-// or from the most recent valid shard from a temporal log set
+// or from the earliest valid shard from a temporal log set
 func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 	if ld.TemporalSet == nil {
 		return ld.URI, ld.Key, nil

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -175,19 +174,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
-	var groups []cmd.CTGroup
-	if c.RA.CTLogGroups != nil {
-		groups = make([]cmd.CTGroup, len(c.RA.CTLogGroups))
-		for i, logs := range c.RA.CTLogGroups {
-			groups[i] = cmd.CTGroup{
-				Name: strconv.Itoa(i),
-				Logs: logs,
-			}
-		}
-	} else if c.RA.CTLogGroups2 != nil {
-		groups = c.RA.CTLogGroups2
-	}
-	for _, g := range groups {
+	for _, g := range c.RA.CTLogGroups2 {
 		for _, l := range g.Logs {
 			if l.TemporalSet != nil {
 				err := l.Setup()
@@ -195,7 +182,7 @@ func main() {
 			}
 		}
 	}
-	ctp = ctpolicy.New(pubc, groups, c.RA.InformationalCTLogs, logger, scope)
+	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
