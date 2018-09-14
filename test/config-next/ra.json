@@ -75,8 +75,27 @@
             "submitFinalCert": true
           },
           {
-            "uri": "http://boulder:4511",
-            "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+            "name": "temporal test set",
+            "shards": [
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2006-01-02T15:04:05Z",
+                "windowEnd": "2017-01-02T15:04:05Z"
+              },
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2017-01-02T15:04:05Z",
+                "windowEnd": "2022-01-02T15:04:05Z"
+              },
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2022-01-02T15:04:05Z",
+                "windowEnd": "2050-01-02T15:04:05Z"
+              }
+            ],
             "submitFinalCert": true
           }
         ]

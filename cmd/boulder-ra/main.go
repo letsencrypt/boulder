@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -162,18 +161,15 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
-	if c.RA.CTLogGroups != nil {
-		groups := make([]cmd.CTGroup, len(c.RA.CTLogGroups))
-		for i, logs := range c.RA.CTLogGroups {
-			groups[i] = cmd.CTGroup{
-				Name: strconv.Itoa(i),
-				Logs: logs,
+	for _, g := range c.RA.CTLogGroups2 {
+		for _, l := range g.Logs {
+			if l.TemporalSet != nil {
+				err := l.Setup()
+				cmd.FailOnError(err, "Failed to setup a temporal log set")
 			}
 		}
-		ctp = ctpolicy.New(pubc, groups, nil, logger, scope)
-	} else if c.RA.CTLogGroups2 != nil {
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 	}
+	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")

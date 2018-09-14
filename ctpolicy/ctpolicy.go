@@ -78,7 +78,7 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
-func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup) ([]byte, error) {
+func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup, expiration time.Time) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
@@ -94,21 +94,26 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 			if ctx.Err() != nil {
 				return
 			}
+			uri, key, err := ld.Info(expiration)
+			if err != nil {
+				ctp.log.Errf("unable to get log info: %s", err)
+				return
+			}
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-				LogURL:       &ld.URI,
-				LogPublicKey: &ld.Key,
+				LogURL:       &uri,
+				LogPublicKey: &key,
 				Der:          cert,
 				Precert:      &isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of the context being canceled
 				if !canceled.Is(err) {
-					ctp.log.Warningf("ct submission to %q failed: %s", ld.URI, err)
+					ctp.log.Warningf("ct submission to %q failed: %s", uri, err)
 				}
 				results <- result{err: err}
 				return
 			}
-			results <- result{sct: sct.Sct, log: ld.URI}
+			results <- result{sct: sct.Sct, log: uri}
 		}(i, ld)
 	}
 
@@ -133,13 +138,13 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 
 // GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
 // the set of SCTs to the caller.
-func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDERs, error) {
+func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for i, g := range ctp.groups {
 		go func(i int, g cmd.CTGroup) {
-			sct, err := ctp.race(subCtx, cert, g)
+			sct, err := ctp.race(subCtx, cert, g, expiration)
 			// Only one of these will be non-nil
 			if err != nil {
 				results <- result{err: berrors.MissingSCTsError("CT log group %q: %s", g.Name, err)}
@@ -154,14 +159,19 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 			// submissions are running in a goroutine and we don't want them to be
 			// cancelled when the caller of CTPolicy.GetSCTs returns and cancels
 			// its RPC context.
-			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-				LogURL:       &l.URI,
-				LogPublicKey: &l.Key,
+			uri, key, err := l.Info(expiration)
+			if err != nil {
+				ctp.log.Errf("unable to get log info: %s", err)
+				return
+			}
+			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+				LogURL:       &uri,
+				LogPublicKey: &key,
 				Der:          cert,
 				Precert:      &isPrecert,
 			})
 			if err != nil {
-				ctp.log.Warningf("ct submission to informational log %q failed: %s", l.URI, err)
+				ctp.log.Warningf("ct submission to informational log %q failed: %s", uri, err)
 			}
 		}(log)
 	}
@@ -182,19 +192,24 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER) (core.SCTDE
 
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured logs
-func (ctp *CTPolicy) SubmitFinalCert(cert []byte) {
+func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
 	falseVar := false
 	for _, log := range ctp.finalLogs {
 		go func(l cmd.LogDescription) {
-			_, err := ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-				LogURL:       &l.URI,
-				LogPublicKey: &l.Key,
+			uri, key, err := l.Info(expiration)
+			if err != nil {
+				ctp.log.Errf("unable to get log info: %s", err)
+				return
+			}
+			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+				LogURL:       &uri,
+				LogPublicKey: &key,
 				Der:          cert,
 				Precert:      &falseVar,
 				StoreSCT:     &falseVar,
 			})
 			if err != nil {
-				ctp.log.Warningf("ct submission of final cert to log %q failed: %s", l.URI, err)
+				ctp.log.Warningf("ct submission of final cert to log %q failed: %s", uri, err)
 			}
 		}(log)
 	}
