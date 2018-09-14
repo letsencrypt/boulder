@@ -43,6 +43,10 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
+// getWork selects a set of authorizations that expired before purgeBefore, bounded by batchSize,
+// that have IDs that are more than initialID from either the pendingAuthorizations or authz tables
+// and adds them to the work channel. It returns the last ID it selected and the number of IDs it
+// added to the work channel or an error.
 func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID string, purgeBefore time.Time, batchSize int64) (string, int, error) {
 	var idBatch []string
 	_, err := p.db.Select(
@@ -72,13 +76,18 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 
 // purge looks up pending or finalized authzs (depending on the value of
 // `table`) that expire before `purgeBefore`, using `parallelism`
-// goroutines. It will delete a maximum of `max` authzs.
+// goroutines. It will delete a maximum of `max` authzs if daemon is not true.
 // Neither table has an index on `expires` by itself, so we just iterate through
 // the table with LIMIT and OFFSET using the default ordering. Note that this
 // becomes expensive once the earliest set of authzs has been purged, since the
 // database will have to scan through many rows before it finds some that meet
 // the expiration criteria. When we move to better authz storage (#2620), we
 // will get an appropriate index that will make this cheaper.
+//
+// If daemon is true purge will run indefinitely looking for authorizations to
+// purge. If getWork returns the same ID that was passed to it then it will
+// sleep a minute before looking for more authorizations again, starting at the
+// same ID.
 func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool) error {
 	var query string
 	switch table {
