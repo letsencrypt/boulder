@@ -119,7 +119,7 @@ func TestTemporalSetup(t *testing.T) {
 		{
 			ts: TemporalSet{
 				Name: "temporal set",
-				Shards: []TemporalLogDescription{
+				Shards: []LogShard{
 					{
 						WindowStart: time.Time{},
 						WindowEnd:   time.Time{},
@@ -131,7 +131,7 @@ func TestTemporalSetup(t *testing.T) {
 		{
 			ts: TemporalSet{
 				Name: "temporal set",
-				Shards: []TemporalLogDescription{
+				Shards: []LogShard{
 					{
 						WindowStart: time.Time{}.Add(time.Hour),
 						WindowEnd:   time.Time{},
@@ -143,7 +143,7 @@ func TestTemporalSetup(t *testing.T) {
 		{
 			ts: TemporalSet{
 				Name: "temporal set",
-				Shards: []TemporalLogDescription{
+				Shards: []LogShard{
 					{
 						WindowStart: time.Time{},
 						WindowEnd:   time.Time{}.Add(time.Hour),
@@ -176,13 +176,13 @@ func TestLogInfo(t *testing.T) {
 	ld.TemporalSet = &TemporalSet{}
 	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
-	ld.TemporalSet.Shards = []TemporalLogDescription{{WindowStart: fc.Now().Add(time.Hour), WindowEnd: fc.Now().Add(time.Hour * 2)}}
+	ld.TemporalSet.Shards = []LogShard{{WindowStart: fc.Now().Add(time.Hour), WindowEnd: fc.Now().Add(time.Hour * 2)}}
 	uri, key, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 
 	fc.Add(time.Hour * 4)
 	now := fc.Now()
-	ld.TemporalSet.Shards = []TemporalLogDescription{
+	ld.TemporalSet.Shards = []LogShard{
 		{
 			WindowStart: now.Add(time.Hour * -4),
 			WindowEnd:   now.Add(time.Hour * -2),

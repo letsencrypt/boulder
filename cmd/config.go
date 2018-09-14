@@ -301,9 +301,9 @@ type CAADistributedResolverConfig struct {
 	Proxies     []string
 }
 
-// TemporalLogDescription describes a single shard of a temporally shared
+// LogShard describes a single shard of a temporally sharded
 // CT log
-type TemporalLogDescription struct {
+type LogShard struct {
 	URI         string
 	Key         string
 	WindowStart time.Time
@@ -313,7 +313,7 @@ type TemporalLogDescription struct {
 // TemporalSet contains a set of temporal shards of a single log
 type TemporalSet struct {
 	Name   string
-	Shards []TemporalLogDescription
+	Shards []LogShard
 }
 
 // Setup initializes the TemporalSet by parsing the start and end dates
@@ -326,7 +326,8 @@ func (ts *TemporalSet) Setup() error {
 		return errors.New("temporal set contains no shards")
 	}
 	for i := range ts.Shards {
-		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) || ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
+		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) ||
+			ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
 			return errors.New("WindowStart must be before WindowEnd")
 		}
 	}
@@ -336,7 +337,7 @@ func (ts *TemporalSet) Setup() error {
 // pick chooses the correct shard from a TemporalSet to use for the given
 // expiration time. In the case where two shards have overlapping windows
 // the earlier of the two shards will be chosen.
-func (ts *TemporalSet) pick(exp time.Time) (*TemporalLogDescription, error) {
+func (ts *TemporalSet) pick(exp time.Time) (*LogShard, error) {
 	for _, shard := range ts.Shards {
 		if exp.Before(shard.WindowStart) {
 			continue
@@ -349,17 +350,9 @@ func (ts *TemporalSet) pick(exp time.Time) (*TemporalLogDescription, error) {
 	return nil, fmt.Errorf("no valid shard available for temporal set %q for expiration date %q", ts.Name, exp)
 }
 
-// Info returns the URI and key of the earliest valid shard
-func (ts *TemporalSet) Info(exp time.Time) (string, string, error) {
-	shard, err := ts.pick(exp)
-	if err != nil {
-		return "", "", err
-	}
-	return shard.URI, shard.Key, nil
-}
-
 // LogDescription contains the information needed to submit certificates
-// to a CT log and verify returned receipts
+// to a CT log and verify returned receipts. If TemporalSet is non-nil then
+// URI and Key should be empty.
 type LogDescription struct {
 	URI             string
 	Key             string
@@ -374,7 +367,11 @@ func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 	if ld.TemporalSet == nil {
 		return ld.URI, ld.Key, nil
 	}
-	return ld.TemporalSet.Info(exp)
+	shard, err := ld.TemporalSet.pick(exp)
+	if err != nil {
+		return "", "", err
+	}
+	return shard.URI, shard.Key, nil
 }
 
 type CTGroup struct {
