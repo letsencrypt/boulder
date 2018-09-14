@@ -21,7 +21,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -499,12 +498,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		// If the body isn't UTF-8, it will cause problems when marshaling the
-		// response as a protocol buffer. If so, just skip showing the body.
-		if !utf8.Valid(body) {
-			return nil, validationRecords, probs.Unauthorized("Invalid response from %s", url)
-		}
-		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: \"%s\"", url, body)
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: q", url,
+			replaceInvalidUTF8(body))
 	}
 
 	if httpResponse.StatusCode != 200 {
@@ -878,7 +873,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
 	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
-		invalidRecord, andMore, challengeSubdomain)
+		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain)
 }
 
 // validate performs a challenge validation and, in parallel,
