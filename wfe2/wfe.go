@@ -1146,7 +1146,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		if berrors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
-			wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
 		}
 		return
 	}
