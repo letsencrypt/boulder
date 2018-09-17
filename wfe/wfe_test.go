@@ -1653,7 +1653,7 @@ type mockSAGetAuthzError struct {
 	core.StorageGetter
 }
 
-func (msa *mockSANoSuchRegistration) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
+func (msa *mockSAGetAuthzError) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
 	return core.Authorization{}, berrors.InternalServerError("oops")
 }
 
@@ -1664,6 +1664,8 @@ func TestAuthorization500(t *testing.T) {
 	wfe.SA = &mockSAGetAuthzError{}
 	mux := wfe.Handler()
 
+	wfe.SA.GetAuthorization(context.Background(), "id")
+
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1671,7 +1673,13 @@ func TestAuthorization500(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(authzPath),
 	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	expected := `{
+	  "type": "urn:acme:error:serverInternal",
+		"detail": "Problem getting authorization",
+		"status": 500
+	}`
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
+
 }
 
 func TestAuthorization(t *testing.T) {

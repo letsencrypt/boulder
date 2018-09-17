@@ -1235,6 +1235,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
 		}
+		return
 	}
 	logEvent.Extra["Identifier"] = authz.Identifier
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
