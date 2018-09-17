@@ -1664,11 +1664,6 @@ func TestAuthorization500(t *testing.T) {
 	wfe.SA = &mockSAGetAuthzError{}
 	mux := wfe.Handler()
 
-	err := wfe.SA.GetAuthorization(context.Background(), "id")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
