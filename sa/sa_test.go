@@ -2241,9 +2241,6 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
 
-	r, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "fetching")
-
 	tx, err := sa.dbMap.Begin()
 	test.AssertNotError(t, err, "beginning transaction")
 
