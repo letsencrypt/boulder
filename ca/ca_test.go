@@ -38,7 +38,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -954,7 +953,7 @@ func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byt
 	if qsa.fail {
 		return "", errors.New("bad")
 	} else if qsa.duplicate {
-		return "", sa.ErrDuplicate
+		return "", berrors.DuplicateError("is a dupe")
 	}
 	qsa.issued = issued
 	return "", nil

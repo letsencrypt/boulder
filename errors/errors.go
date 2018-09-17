@@ -18,6 +18,7 @@ const (
 	WrongAuthorizationState
 	CAA
 	MissingSCTs
+	Duplicate
 )
 
 // BoulderError represents internal Boulder errors
@@ -92,4 +93,8 @@ func CAAError(msg string, args ...interface{}) error {
 
 func MissingSCTsError(msg string, args ...interface{}) error {
 	return New(MissingSCTs, msg, args...)
+}
+
+func DuplicateError(msg string, args ...interface{}) error {
+	return New(Duplicate, msg, args...)
 }
