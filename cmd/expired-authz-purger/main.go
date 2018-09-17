@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -42,16 +43,52 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
+// getWork selects a set of authorizations that expired before purgeBefore, bounded by batchSize,
+// that have IDs that are more than initialID from either the pendingAuthorizations or authz tables
+// and adds them to the work channel. It returns the last ID it selected and the number of IDs it
+// added to the work channel or an error.
+func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID string, purgeBefore time.Time, batchSize int64) (string, int, error) {
+	var idBatch []string
+	_, err := p.db.Select(
+		&idBatch,
+		query,
+		map[string]interface{}{
+			"id":      initialID,
+			"expires": purgeBefore,
+			"limit":   batchSize,
+		},
+	)
+	if err != nil && err != sql.ErrNoRows {
+		return "", 0, fmt.Errorf("Getting a batch: %s", err)
+	}
+	if len(idBatch) == 0 {
+		return initialID, 0, nil
+	}
+	var count int
+	var lastID string
+	for _, v := range idBatch {
+		work <- v
+		count += 1
+		lastID = v
+	}
+	return lastID, count, nil
+}
+
 // purge looks up pending or finalized authzs (depending on the value of
 // `table`) that expire before `purgeBefore`, using `parallelism`
-// goroutines. It will delete a maximum of `max` authzs.
+// goroutines. It will delete a maximum of `max` authzs if daemon is not true.
 // Neither table has an index on `expires` by itself, so we just iterate through
 // the table with LIMIT and OFFSET using the default ordering. Note that this
 // becomes expensive once the earliest set of authzs has been purged, since the
 // database will have to scan through many rows before it finds some that meet
 // the expiration criteria. When we move to better authz storage (#2620), we
 // will get an appropriate index that will make this cheaper.
-func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int) error {
+//
+// If daemon is true purge will run indefinitely looking for authorizations to
+// purge. If getWork returns the same ID that was passed to it then it will
+// sleep a minute before looking for more authorizations again, starting at the
+// same ID.
+func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool) error {
 	var query string
 	switch table {
 	case "pendingAuthorizations":
@@ -60,44 +97,38 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 		query = "SELECT id FROM authz WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	}
 
-	done := make(chan int)
 	work := make(chan string)
 	go func() {
 		// id starts as "", which is smaller than all other ids.
 		var id string
 		var count int
-		for count < max {
-			var idBatch []string
-			_, err := p.db.Select(
-				&idBatch,
-				query,
-				map[string]interface{}{
-					"id":      id,
-					"expires": purgeBefore,
-					"limit":   p.batchSize,
-				},
-			)
-			if err != nil && err != sql.ErrNoRows {
-				p.log.AuditErrf("Getting a batch: %s", err)
-				time.Sleep(10)
+
+		var working func() bool
+		if daemon {
+			working = func() bool { return true }
+		} else {
+			working = func() bool { return count < max }
+		}
+
+		for working() {
+			lastID, added, err := p.getWork(work, query, id, purgeBefore, p.batchSize)
+			if err != nil {
+				p.log.AuditErr(err.Error())
+				time.Sleep(time.Millisecond * 500)
 				continue
-			}
-			for _, v := range idBatch {
-				work <- v
-				count += 1
-				// Start the next query at the highest id we saw in this batch.
-				id = v
-			}
-			p.log.Infof("Deleted %d authzs from %s so far", count, table)
-			if len(idBatch) < int(p.batchSize) {
+			} else if daemon && lastID == id {
+				time.Sleep(time.Minute)
+			} else if !daemon && added < int(p.batchSize) {
 				break
 			}
+			count += added
+			id = lastID
 		}
 		close(work)
-		done <- count
 	}()
 
 	wg := new(sync.WaitGroup)
+	deleted := int64(0)
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
@@ -107,14 +138,13 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				if err != nil {
 					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
+				atomic.AddInt64(&deleted, 1)
 			}
 		}()
 	}
 
-	count := <-done
 	wg.Wait()
-
-	p.log.Infof("Deleted a total of %d expired authorizations from %s", count, table)
+	p.log.Infof("Deleted a total of %d expired authorizations from %s", deleted, table)
 	return nil
 }
 
@@ -140,11 +170,11 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 	return nil
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int) error {
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int, daemon bool) error {
 	// Purge authz first because it tends to be bigger and in more need of
 	// purging.
 	for _, table := range []string{"authz", "pendingAuthorizations"} {
-		err := p.purge(table, purgeBefore, parallelism, max)
+		err := p.purge(table, purgeBefore, parallelism, max, daemon)
 		if err != nil {
 			return err
 		}
@@ -153,6 +183,7 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int,
 }
 
 func main() {
+	daemon := flag.Bool("daemon", false, "Runs the expired-authz-purger in daemon mode")
 	configPath := flag.String("config", "config.json", "Path to Boulder configuration file")
 	flag.Parse()
 
@@ -198,6 +229,6 @@ func main() {
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 	logger.Info("Beginning purge")
 	err = purger.purgeAuthzs(purgeBefore, int(config.ExpiredAuthzPurger.Parallelism),
-		int(config.ExpiredAuthzPurger.MaxAuthzs))
+		int(config.ExpiredAuthzPurger.MaxAuthzs), *daemon)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
