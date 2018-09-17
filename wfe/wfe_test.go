@@ -1647,6 +1647,33 @@ func TestRevokeCertificateWithAuthz(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
+// An SA mock that always returns a berrors.ServerInternal error for
+// GetAuthorization.
+type mockSAGetAuthzError struct {
+	core.StorageGetter
+}
+
+func (msa *mockSANoSuchRegistration) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
+	return core.Authorization{}, berrors.InternalServerError("oops")
+}
+
+// TestAuthorization500 tests that internal errors on GetAuthorization result in
+// a 500.
+func TestAuthorization500(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetAuthzError{}
+	mux := wfe.Handler()
+
+	responseWriter := httptest.NewRecorder()
+
+	// GET instead of POST should be rejected
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzPath),
+	})
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+}
+
 func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
