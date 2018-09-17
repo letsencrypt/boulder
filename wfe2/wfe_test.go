@@ -1367,7 +1367,10 @@ func TestAuthorization500(t *testing.T) {
 	wfe.SA = &mockSAGetAuthzError{}
 	mux := wfe.Handler()
 
-	wfe.SA.GetAuthorization(context.Background(), "id")
+	err := wfe.SA.GetAuthorization(context.Background(), "id")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	responseWriter := httptest.NewRecorder()
 
