@@ -2209,3 +2209,53 @@ func TestGetAuthorizationsFast(t *testing.T) {
 		t.Errorf("Wrong challenge fetch count: expected 2, got %d", challengeFetchCount)
 	}
 }
+
+func TestUpdateChallengesPendingOnly(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	expires := fc.Now().Add(time.Hour)
+	ctx := context.Background()
+
+	// Create a registration to work with
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create a pending authz
+	input := core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &expires,
+		Status:         core.StatusPending,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				Type:   "http-01",
+				Status: "pending",
+			},
+		},
+	}
+	authz, err := sa.NewPendingAuthorization(ctx, input)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+
+	authz.Status = core.StatusValid
+	authz.Challenges[0].Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "beginning transaction")
+
+	// We shouldn't be able to change a challenge status back to pending once it's
+	// been set to "valid". This update should succeed, but have no effect.
+	authz.Challenges[0].Status = core.StatusPending
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	test.AssertNotError(t, err, "updating challenges")
+	err = tx.Commit()
+	test.AssertNotError(t, err, "committing")
+
+	result, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "fetching")
+
+	if result.Challenges[0].Status != core.StatusValid {
+		t.Errorf("challenge status was updated when it should not have been allowed to be changed.")
+	}
+}
