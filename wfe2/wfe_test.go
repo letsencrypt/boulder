@@ -1347,7 +1347,7 @@ func TestGetAuthorization(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Unable to find authorization","status":404}`)
+		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"No such authorization","status":404}`)
 }
 
 // An SA mock that always returns a berrors.ServerInternal error for

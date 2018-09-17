@@ -1772,7 +1772,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Unable to find authorization","status":404}`)
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such authorization","status":404}`)
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of

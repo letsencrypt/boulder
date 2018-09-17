@@ -1231,7 +1231,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
+			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
 		}
