@@ -1150,8 +1150,11 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
-		// TODO(#1199): handle db errors
-		wfe.sendError(response, logEvent, probs.NotFound("Unable to find authorization"), err)
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		}
 		return
 	}
 	logEvent.Extra["Identifier"] = authz.Identifier

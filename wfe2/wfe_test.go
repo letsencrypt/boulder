@@ -1348,7 +1348,39 @@ func TestGetAuthorization(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Unable to find authorization","status":404}`)
+		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"No such authorization","status":404}`)
+}
+
+// An SA mock that always returns a berrors.ServerInternal error for
+// GetAuthorization.
+type mockSAGetAuthzError struct {
+	core.StorageGetter
+}
+
+func (msa *mockSAGetAuthzError) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
+	return core.Authorization{}, berrors.InternalServerError("oops")
+}
+
+// TestAuthorization500 tests that internal errors on GetAuthorization result in
+// a 500.
+func TestAuthorization500(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetAuthzError{}
+	mux := wfe.Handler()
+
+	responseWriter := httptest.NewRecorder()
+
+	// GET instead of POST should be rejected
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzPath),
+	})
+	expected := `{
+         "type": "urn:ietf:params:acme:error:serverInternal",
+				 "detail": "Problem getting authorization",
+				 "status": 500
+  }`
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
