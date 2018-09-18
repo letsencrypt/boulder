@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -314,14 +313,12 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
-					if features.Enabled(features.RotateDNSOnErr) {
-						// Chose a new server to retry the query with by incrementing the
-						// chosen server index modulo the number of servers. This ensures that
-						// if one dns server isn't available we retry with the next in the
-						// list.
-						chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
-						chosenServer = dnsClient.servers[chosenServerIndex]
-					}
+					// Chose a new server to retry the query with by incrementing the
+					// chosen server index modulo the number of servers. This ensures that
+					// if one dns server isn't available we retry with the next in the
+					// list.
+					chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
+					chosenServer = dnsClient.servers[chosenServerIndex]
 					continue
 				} else if isRetryable && !hasRetriesLeft {
 					dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "out of retries"}).Inc()

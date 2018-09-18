@@ -36,8 +36,7 @@
       "VAChecksGSB": true,
       "IPv6First": true,
       "CAAValidationMethods": true,
-      "CAAAccountURI": true,
-      "RotateDNSOnErr": true
+      "CAAAccountURI": true
     },
     "remoteVAs": [
       {

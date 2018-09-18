@@ -14,7 +14,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
@@ -702,9 +701,6 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 // server will result in the retry being performed against the next server in
 // the list.
 func TestRotateServerOnErr(t *testing.T) {
-	_ = features.Set(map[string]bool{"RotateDNSOnErr": true})
-	defer features.Reset()
-
 	// Configure three DNS servers
 	dnsServers := []string{
 		"a", "b", "c",
