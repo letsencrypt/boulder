@@ -44,6 +44,8 @@ const (
 	CAAAccountURI
 	// Honour draft-ietf-acme-13's keyrollover
 	ACME13KeyRollover
+	// Rotate the DNS server used between query retries
+	RotateDNSOnErr
 )
 
 // List of features and their default value, protected by fMu
@@ -67,6 +69,7 @@ var features = map[FeatureFlag]bool{
 	CAAValidationMethods:        false,
 	CAAAccountURI:               false,
 	ACME13KeyRollover:           false,
+	RotateDNSOnErr:              false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
@@ -668,3 +669,76 @@ type tempError bool
 
 func (t tempError) Temporary() bool { return bool(t) }
 func (t tempError) Error() string   { return fmt.Sprintf("Temporary: %t", t) }
+
+// rotateFailureExchanger is a dns.Exchange implementation that tracks a count
+// of the number of calls to `Exchange` for a given address in the `lookups`
+// map. For all addresses in the `brokenAddresses` map, a retryable error is
+// returned from `Exchange`. This mock is used by `TestRotateServerOnErr`.
+type rotateFailureExchanger struct {
+	sync.Mutex
+	lookups         map[string]int
+	brokenAddresses map[string]bool
+}
+
+// Exchange for rotateFailureExchanger tracks the `a` argument in `lookups` and
+// if present in `brokenAddresses`, returns a temporary error.
+func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+	e.Lock()
+	defer e.Unlock()
+
+	// Track that exchange was called for the given server
+	e.lookups[a]++
+
+	// If its a broken server, return a retryable error
+	if e.brokenAddresses[a] {
+		isTempErr := &net.OpError{Op: "read", Err: tempError(true)}
+		return nil, 2 * time.Millisecond, isTempErr
+	}
+
+	return m, 2 * time.Millisecond, nil
+}
+
+// TestRotateServerOnErr ensures that a retryable error returned from a DNS
+// server will result in the retry being performed against the next server in
+// the list.
+func TestRotateServerOnErr(t *testing.T) {
+	_ = features.Set(map[string]bool{"RotateDNSOnErr": true})
+	defer features.Reset()
+
+	// Configure three DNS servers
+	dnsServers := []string{
+		"a", "b", "c",
+	}
+	// Set up a DNS client using these servers that will retry queries up to
+	// a maximum of 5 times. It's important to choose a maxTries value >= the
+	// number of dnsServers to ensure we always get around to trying the one
+	// working server
+	maxTries := 5
+	client := NewTestDNSClientImpl(time.Second*10, dnsServers, testStats, clock.NewFake(), maxTries)
+
+	// Configure a mock exchanger that will always return a retryable error for
+	// the A and B servers. This will force the C server to do all the work once
+	// retries reach it.
+	mock := &rotateFailureExchanger{
+		brokenAddresses: map[string]bool{"a": true, "b": true},
+		lookups:         make(map[string]int),
+	}
+	client.dnsClient = mock
+
+	// Perform a bunch of lookups. We choose the initial server randomly. Any time
+	// A or B is chosen there should be an error and a retry using the next server
+	// in the list. Since we configured maxTries to be larger than the number of
+	// servers *all* queries should eventually succeed by being retried against
+	// the C server.
+	for i := 0; i < maxTries*2; i++ {
+		_, _, err := client.LookupTXT(context.Background(), "example.com")
+		// Any errors are unexpected - the C server should have responded without error.
+		test.AssertNotError(t, err, "Expected no error from eventual retry with functional server")
+	}
+
+	// We expect that the A and B servers had a non-zero number of lookups attempted
+	test.Assert(t, mock.lookups["a"] > 0, "Expected A server to have non-zero lookup attempts")
+	test.Assert(t, mock.lookups["b"] > 0, "Expected B server to have non-zero lookup attempts")
+	// We expect that the C server eventually served all of the lookups attempted
+	test.AssertEquals(t, mock.lookups["c"], maxTries*2)
+}
