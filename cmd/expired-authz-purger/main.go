@@ -26,10 +26,12 @@ type eapConfig struct {
 
 		Syslog cmd.SyslogConfig
 
-		GracePeriod cmd.ConfigDuration
-		BatchSize   int
-		MaxAuthzs   int
-		Parallelism uint
+		GracePeriod           cmd.ConfigDuration
+		BatchSize             int
+		MaxAuthzs             int
+		Parallelism           uint
+		PendingCheckpointFile string
+		FinalCheckpointFile   string
 
 		Features map[string]bool
 	}
@@ -41,6 +43,33 @@ type expiredAuthzPurger struct {
 	db  *gorp.DbMap
 
 	batchSize int64
+}
+
+func loadCheckpoint(checkpointFile string) (string, error) {
+	content, err := ioutil.ReadFile(checkpointFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(content), nil
+}
+
+func saveCheckpoint(checkpointFile, id string) error {
+	tmpDir, err := ioutil.TempDir("", "checkpoint-tmp")
+	if err != nil {
+		return err
+	}
+	tmp, err := ioutil.TempFile(tmpDir, "checkpoint-atomic")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write([]byte(id))
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), checkpointFile)
 }
 
 // getWork selects a set of authorizations that expired before purgeBefore, bounded by batchSize,
@@ -68,7 +97,7 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 	var lastID string
 	for _, v := range idBatch {
 		work <- v
-		count += 1
+		count++
 		lastID = v
 	}
 	return lastID, count, nil
@@ -88,7 +117,7 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 // purge. If getWork returns the same ID that was passed to it then it will
 // sleep a minute before looking for more authorizations again, starting at the
 // same ID.
-func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool) error {
+func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool, checkpointFile string) error {
 	var query string
 	switch table {
 	case "pendingAuthorizations":
@@ -97,10 +126,18 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 		query = "SELECT id FROM authz WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	}
 
+	// id starts as "", which is smaller than all other ids.
+	var id string
+	if daemon && checkpointFile != "" {
+		startID, err := loadCheckpoint(checkpointFile)
+		if err != nil {
+			return err
+		}
+		id = startID
+	}
+
 	work := make(chan string)
 	go func() {
-		// id starts as "", which is smaller than all other ids.
-		var id string
 		var count int
 
 		var working func() bool
@@ -138,7 +175,15 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				if err != nil {
 					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
-				atomic.AddInt64(&deleted, 1)
+				new := atomic.AddInt64(&deleted, 1)
+				// Only checkpoint every 1000 IDs in order to prevent unnecessary churn
+				// in the checkpoint file
+				if daemon && checkpointFile != "" && new%1000 == 0 {
+					err = saveCheckpoint(checkpointFile, id)
+					if err != nil {
+						p.log.AuditErrf("failed to checkpoint %q table at ID %q: %s", table, id, err)
+					}
+				}
 			}
 		}()
 	}
@@ -166,18 +211,6 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 	_, err = db.Exec(query, id)
 	if err != nil {
 		return err
-	}
-	return nil
-}
-
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int, daemon bool) error {
-	// Purge authz first because it tends to be bigger and in more need of
-	// purging.
-	for _, table := range []string{"authz", "pendingAuthorizations"} {
-		err := p.purge(table, purgeBefore, parallelism, max, daemon)
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -228,7 +261,33 @@ func main() {
 	}
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 	logger.Info("Beginning purge")
-	err = purger.purgeAuthzs(purgeBefore, int(config.ExpiredAuthzPurger.Parallelism),
-		int(config.ExpiredAuthzPurger.MaxAuthzs), *daemon)
-	cmd.FailOnError(err, "Failed to purge authorizations")
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = purger.purge(
+			"authz",
+			purgeBefore,
+			int(config.ExpiredAuthzPurger.Parallelism),
+			int(config.ExpiredAuthzPurger.MaxAuthzs),
+			*daemon,
+			config.ExpiredAuthzPurger.FinalCheckpointFile,
+		)
+		cmd.FailOnError(err, "Failed to purge authorizations")
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = purger.purge(
+			"pendingAuthorizations",
+			purgeBefore,
+			int(config.ExpiredAuthzPurger.Parallelism),
+			int(config.ExpiredAuthzPurger.MaxAuthzs),
+			*daemon,
+			config.ExpiredAuthzPurger.PendingCheckpointFile,
+		)
+		cmd.FailOnError(err, "Failed to purge authorizations")
+	}()
+	wg.Wait()
 }
