@@ -266,7 +266,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = purger.purge(
+		err := purger.purge(
 			"authz",
 			purgeBefore,
 			int(config.ExpiredAuthzPurger.Parallelism),
@@ -279,7 +279,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = purger.purge(
+		err := purger.purge(
 			"pendingAuthorizations",
 			purgeBefore,
 			int(config.ExpiredAuthzPurger.Parallelism),
