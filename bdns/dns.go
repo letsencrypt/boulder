@@ -258,7 +258,8 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	}
 
 	// Randomly pick a server
-	chosenServer := dnsClient.servers[rand.Intn(len(dnsClient.servers))]
+	chosenServerIndex := rand.Intn(len(dnsClient.servers))
+	chosenServer := dnsClient.servers[chosenServerIndex]
 
 	start := dnsClient.clk.Now()
 	client := dnsClient.dnsClient
@@ -312,6 +313,12 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
+					// Chose a new server to retry the query with by incrementing the
+					// chosen server index modulo the number of servers. This ensures that
+					// if one dns server isn't available we retry with the next in the
+					// list.
+					chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
+					chosenServer = dnsClient.servers[chosenServerIndex]
 					continue
 				} else if isRetryable && !hasRetriesLeft {
 					dnsClient.timeoutCounter.With(prometheus.Labels{"qtype": qtypeStr, "type": "out of retries"}).Inc()
