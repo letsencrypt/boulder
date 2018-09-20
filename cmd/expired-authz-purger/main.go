@@ -45,6 +45,10 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
+// loadCheckpoint reads a string (which is assumed to be an authorization ID)
+// from the file at the provided path and returns it to the caller. If the
+// file does not exist an error is not returned and the returned ID is an
+// empty string.
 func loadCheckpoint(checkpointFile string) (string, error) {
 	content, err := ioutil.ReadFile(checkpointFile)
 	if err != nil {
@@ -56,17 +60,21 @@ func loadCheckpoint(checkpointFile string) (string, error) {
 	return string(content), nil
 }
 
+// saveCheckpoint atomically writes the provided ID to the provided file. The
+// method os.Rename makes use of the renameat syscall to atomically replace
+// one file with another. It creates a temporary file in a temporary directory
+// before using os.Rename to replace the old file with the new one.
 func saveCheckpoint(checkpointFile, id string) error {
 	tmpDir, err := ioutil.TempDir("", "checkpoint-tmp")
 	if err != nil {
 		return err
 	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 	tmp, err := ioutil.TempFile(tmpDir, "checkpoint-atomic")
 	if err != nil {
 		return err
 	}
-	_, err = tmp.Write([]byte(id))
-	if err != nil {
+	if _, err = tmp.Write([]byte(id)); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), checkpointFile)
