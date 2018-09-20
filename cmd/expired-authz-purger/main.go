@@ -30,6 +30,7 @@ type eapConfig struct {
 		BatchSize   int
 		MaxAuthzs   int
 		Parallelism uint
+		MaxDPS      int
 
 		Features map[string]bool
 	}
@@ -88,7 +89,7 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 // purge. If getWork returns the same ID that was passed to it then it will
 // sleep a minute before looking for more authorizations again, starting at the
 // same ID.
-func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool) error {
+func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool, maxDPS int) error {
 	var query string
 	switch table {
 	case "pendingAuthorizations":
@@ -129,16 +130,25 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 
 	wg := new(sync.WaitGroup)
 	deleted := int64(0)
+	var minWait time.Duration
+	if maxDPS > 0 {
+		minWait = time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000)
+	}
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for id := range work {
+				s := time.Now()
 				err := deleteAuthorization(p.db, table, id)
 				if err != nil {
 					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
 				atomic.AddInt64(&deleted, 1)
+				took := time.Since(s)
+				if minWait > 0 && took < minWait {
+					time.Sleep(minWait - took)
+				}
 			}
 		}()
 	}
@@ -170,11 +180,11 @@ func deleteAuthorization(db *gorp.DbMap, table, id string) error {
 	return nil
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int, daemon bool) error {
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, parallelism int, max int, daemon bool, maxDPS int) error {
 	// Purge authz first because it tends to be bigger and in more need of
 	// purging.
 	for _, table := range []string{"authz", "pendingAuthorizations"} {
-		err := p.purge(table, purgeBefore, parallelism, max, daemon)
+		err := p.purge(table, purgeBefore, parallelism, max, daemon, maxDPS/2)
 		if err != nil {
 			return err
 		}
@@ -229,6 +239,6 @@ func main() {
 	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 	logger.Info("Beginning purge")
 	err = purger.purgeAuthzs(purgeBefore, int(config.ExpiredAuthzPurger.Parallelism),
-		int(config.ExpiredAuthzPurger.MaxAuthzs), *daemon)
+		int(config.ExpiredAuthzPurger.MaxAuthzs), *daemon, config.ExpiredAuthzPurger.MaxDPS)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
