@@ -35,7 +35,7 @@ type eapConfig struct {
 		// which does not exist it will be created.
 		PendingCheckpointFile string
 		// FinalCheckpointFile is the path to a file which is used to store the
-		// last pending authorization ID which was deleted. If path is to a file
+		// last authorization ID which was deleted. If path is to a file
 		// which does not exist it will be created.
 		FinalCheckpointFile string
 
