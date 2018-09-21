@@ -26,7 +26,7 @@ func (l *evSNMissing) Initialize() error {
 }
 
 func (l *evSNMissing) CheckApplies(c *x509.Certificate) bool {
-	return util.IsEV(c.PolicyIdentifiers)
+	return util.IsEV(c.PolicyIdentifiers) && util.IsSubscriberCert(c)
 }
 
 func (l *evSNMissing) Execute(c *x509.Certificate) *LintResult {

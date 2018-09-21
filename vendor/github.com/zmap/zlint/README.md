@@ -134,6 +134,19 @@ func TestBasicConstNotCritical(t *testing.T) {
 
 ```
 
+Updating the TLD Map
+--------------------
+
+ZLint maintains [a map of
+top-level-domains](https://github.com/zmap/zlint/blob/master/util/gtld_map.go)
+and their validity periods that is referenced by linters. As ICANN adds and
+removes TLDs this map need to be updated. To do so, ensure the
+`zlint-gtld-update` command is installed and in your `$PATH` and run `go
+generate`:
+
+	go get github.com/zmap/zlint/cmd/zlint-gtld-update
+	go generate github.com/zmap/zlint/...
+
 
 License and Copyright
 ---------------------

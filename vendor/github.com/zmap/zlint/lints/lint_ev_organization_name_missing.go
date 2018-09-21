@@ -26,7 +26,7 @@ func (l *evOrgMissing) Initialize() error {
 }
 
 func (l *evOrgMissing) CheckApplies(c *x509.Certificate) bool {
-	return util.IsEV(c.PolicyIdentifiers)
+	return util.IsEV(c.PolicyIdentifiers) && util.IsSubscriberCert(c)
 }
 
 func (l *evOrgMissing) Execute(c *x509.Certificate) *LintResult {
