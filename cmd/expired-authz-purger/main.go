@@ -91,7 +91,8 @@ func (p *expiredAuthzPurger) deleteAuthorizations(work chan string, maxDPS int, 
 	deleted := int64(0)
 	var ticker *time.Ticker
 	if maxDPS > 0 {
-		ticker = time.NewTicker(time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000))
+		minDur := time.Duration((1/(float64(maxDPS)/float64(parallelism)))*1000) * time.Millisecond
+		ticker = time.NewTicker(minDur)
 	}
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
