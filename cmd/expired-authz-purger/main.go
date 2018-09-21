@@ -130,25 +130,23 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 
 	wg := new(sync.WaitGroup)
 	deleted := int64(0)
-	var minWait time.Duration
+	var ticker *time.Ticker
 	if maxDPS > 0 {
-		minWait = time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000)
+		ticker = time.NewTicker(time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000))
 	}
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for id := range work {
-				s := time.Now()
+				if ticker != nil {
+					<-ticker.C
+				}
 				err := deleteAuthorization(p.db, table, id)
 				if err != nil {
 					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
 				atomic.AddInt64(&deleted, 1)
-				took := time.Since(s)
-				if minWait > 0 && took < minWait {
-					time.Sleep(minWait - took)
-				}
 			}
 		}()
 	}
