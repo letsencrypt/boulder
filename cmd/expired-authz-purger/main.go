@@ -26,12 +26,18 @@ type eapConfig struct {
 
 		Syslog cmd.SyslogConfig
 
-		GracePeriod           cmd.ConfigDuration
-		BatchSize             int
-		MaxAuthzs             int
-		Parallelism           uint
+		GracePeriod cmd.ConfigDuration
+		BatchSize   int
+		MaxAuthzs   int
+		Parallelism uint
+		// PendingCheckpointFile is the path to a file which is used to store the
+		// last pending authorization ID which was deleted. If path is to a file
+		// which does not exist it will be created.
 		PendingCheckpointFile string
-		FinalCheckpointFile   string
+		// FinalCheckpointFile is the path to a file which is used to store the
+		// last pending authorization ID which was deleted. If path is to a file
+		// which does not exist it will be created.
+		FinalCheckpointFile string
 
 		Features map[string]bool
 	}
@@ -136,7 +142,7 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 
 	// id starts as "", which is smaller than all other ids.
 	var id string
-	if daemon && checkpointFile != "" {
+	if checkpointFile != "" {
 		startID, err := loadCheckpoint(checkpointFile)
 		if err != nil {
 			return err
@@ -183,10 +189,10 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 				if err != nil {
 					p.log.AuditErrf("Deleting %s: %s", id, err)
 				}
-				new := atomic.AddInt64(&deleted, 1)
+				numDeleted := atomic.AddInt64(&deleted, 1)
 				// Only checkpoint every 1000 IDs in order to prevent unnecessary churn
 				// in the checkpoint file
-				if daemon && checkpointFile != "" && new%1000 == 0 {
+				if checkpointFile != "" && numDeleted%1000 == 0 {
 					err = saveCheckpoint(checkpointFile, id)
 					if err != nil {
 						p.log.AuditErrf("failed to checkpoint %q table at ID %q: %s", table, id, err)
