@@ -144,11 +144,8 @@ def test_order_reuse_failed_authz():
     order = client.new_order(csr_pem)
     firstOrderURI = order.uri
 
-    # Pick the first authz's http challenge
-    chall_body = None
-    for chall in order.authorizations[0].body.challenges:
-        if chall.typ == "http-01":
-            chall_body = chall
+    # Pick the first authz's first challenge, doesn't matter what type it is
+    chall_body = order.authorizations[0].body.challenges[0]
     # Answer it, but with nothing set up to solve the challenge request
     client.answer_challenge(chall_body, chall_body.response(client.net.key))
 
