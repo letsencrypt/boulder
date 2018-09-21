@@ -111,6 +111,11 @@ fi
 if [[ "$RUN" =~ "fmt" ]] ; then
   start_context "fmt"
   check_gofmt() {
+    # NOTE(@cpu): Go 1.10.3's gofmt and Go 1.11's gofmt don't agree. Let's
+    # temporarily ignore the gofmt check when not using Go 1.11
+    if [ "$TRAVIS_GO_VERSION" != "1.11" ]; then
+      return 0
+    fi
     unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
       return 0
