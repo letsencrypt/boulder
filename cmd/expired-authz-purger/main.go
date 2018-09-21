@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -30,16 +29,25 @@ type eapConfig struct {
 		BatchSize   int
 		MaxAuthzs   int
 		Parallelism uint
-		MaxDPS      int
+		// MaxDPS controls the maximum number of deletes which will be performed
+		// per second in total from both the pendingAuthorizations and authz tables.
+		// This can be used to reduce the replication lag caused by creating very
+		// large numbers of delete statements.
+		MaxDPS int
 
 		Features map[string]bool
 	}
 }
 
+type eapDB interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+}
+
 type expiredAuthzPurger struct {
 	log blog.Logger
 	clk clock.Clock
-	db  *gorp.DbMap
+	db  eapDB
 
 	batchSize int64
 }
@@ -75,6 +83,37 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 	return lastID, count, nil
 }
 
+// deleteAuthorizations reads from the work channel and deletes each authorization
+// from either the pendingAuthorization or authz tables. If maxDPS is more than 0
+// it will throttle the number of DELETE statements it generates to the passed rate.
+func (p *expiredAuthzPurger) deleteAuthorizations(work chan string, maxDPS int, parallelism int, table string) {
+	wg := new(sync.WaitGroup)
+	deleted := int64(0)
+	var ticker *time.Ticker
+	if maxDPS > 0 {
+		ticker = time.NewTicker(time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000))
+	}
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range work {
+				if ticker != nil {
+					<-ticker.C
+				}
+				err := deleteAuthorization(p.db, table, id)
+				if err != nil {
+					p.log.AuditErrf("Deleting %s: %s", id, err)
+				}
+				atomic.AddInt64(&deleted, 1)
+			}
+		}()
+	}
+
+	wg.Wait()
+	p.log.Infof("Deleted a total of %d expired authorizations from %s", deleted, table)
+}
+
 // purge looks up pending or finalized authzs (depending on the value of
 // `table`) that expire before `purgeBefore`, using `parallelism`
 // goroutines. It will delete a maximum of `max` authzs if daemon is not true.
@@ -89,7 +128,17 @@ func (p *expiredAuthzPurger) getWork(work chan string, query string, initialID s
 // purge. If getWork returns the same ID that was passed to it then it will
 // sleep a minute before looking for more authorizations again, starting at the
 // same ID.
-func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallelism int, max int, daemon bool, maxDPS int) error {
+//
+// If maxDPS is set the number of DELETE statements from both the pendingAuthorizations
+// and authz tables will be capped at the passed rate.
+func (p *expiredAuthzPurger) purge(
+	table string,
+	purgeBefore time.Time,
+	parallelism int,
+	max int,
+	daemon bool,
+	maxDPS int,
+) error {
 	var query string
 	switch table {
 	case "pendingAuthorizations":
@@ -128,35 +177,12 @@ func (p *expiredAuthzPurger) purge(table string, purgeBefore time.Time, parallel
 		close(work)
 	}()
 
-	wg := new(sync.WaitGroup)
-	deleted := int64(0)
-	var ticker *time.Ticker
-	if maxDPS > 0 {
-		ticker = time.NewTicker(time.Millisecond * time.Duration(float64(maxDPS)/float64(parallelism)*1000))
-	}
-	for i := 0; i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for id := range work {
-				if ticker != nil {
-					<-ticker.C
-				}
-				err := deleteAuthorization(p.db, table, id)
-				if err != nil {
-					p.log.AuditErrf("Deleting %s: %s", id, err)
-				}
-				atomic.AddInt64(&deleted, 1)
-			}
-		}()
-	}
+	p.deleteAuthorizations(work, maxDPS, parallelism, table)
 
-	wg.Wait()
-	p.log.Infof("Deleted a total of %d expired authorizations from %s", deleted, table)
 	return nil
 }
 
-func deleteAuthorization(db *gorp.DbMap, table, id string) error {
+func deleteAuthorization(db eapDB, table, id string) error {
 	// Delete challenges + authorization. We delete challenges first and fail out
 	// if that doesn't succeed so that we don't ever orphan challenges which would
 	// require a relatively expensive join to then find.
