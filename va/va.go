@@ -499,7 +499,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: q", url,
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: %q", url,
 			replaceInvalidUTF8(body))
 	}
 
