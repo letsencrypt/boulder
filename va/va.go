@@ -393,11 +393,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		// Intercept DialContext in order to connect to the IP address we
 		// select.
 		DialContext: dialer.DialContext,
-		// These match the values from DefaultRoundTripper in net/http.
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		// We don't want idle connections, but 0 means "unlimited," so we pick 1.
+		MaxIdleConns:        1,
+		IdleConnTimeout:     1 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
 	}
 
 	// Some of our users use mod_security. Mod_security sees a lack of Accept
