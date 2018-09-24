@@ -9,6 +9,7 @@
         "batchSize": 1000,
         "maxAuthzs": 10000,
         "parallelism": 20,
+        "maxDPS": 1000,
         "pendingCheckpointFile": "/tmp/pending-checkpoint",
         "finalCheckpointFile": "/tmp/final-checkpoint"
     }

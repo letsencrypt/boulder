@@ -1,6 +1,9 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -40,6 +43,7 @@ func TestPurgeAuthzs(t *testing.T) {
 		100,
 		false,
 		"",
+		0,
 	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 
@@ -72,6 +76,7 @@ func TestPurgeAuthzs(t *testing.T) {
 		100,
 		false,
 		"",
+		0,
 	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	count, err := dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
@@ -88,6 +93,7 @@ func TestPurgeAuthzs(t *testing.T) {
 		100,
 		false,
 		"",
+		0,
 	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
@@ -97,4 +103,28 @@ func TestPurgeAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(0))
 
+}
+
+type mockDeleter struct{}
+
+func (md *mockDeleter) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return nil, nil
+}
+
+func (md *mockDeleter) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestMaxDPS(t *testing.T) {
+	log := blog.UseMock()
+	md := &mockDeleter{}
+	p := &expiredAuthzPurger{db: md, log: log}
+	work := make(chan string, 2)
+	work <- "a"
+	work <- "b"
+	close(work)
+	start := time.Now()
+	p.deleteAuthorizations(work, 1, 1, "", "")
+	took := time.Since(start)
+	test.Assert(t, took >= time.Second*2, fmt.Sprintf("deleteAuthorizations was faster than expected. wanted: 2s, got: %s", took))
 }
