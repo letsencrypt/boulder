@@ -395,7 +395,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		DialContext: dialer.DialContext,
 		// We don't want idle connections, but 0 means "unlimited," so we pick 1.
 		MaxIdleConns:        1,
-		IdleConnTimeout:     1 * time.Second,
+		IdleConnTimeout:     time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
 
