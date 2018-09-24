@@ -795,13 +795,13 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	}
 
 	if !existingPending(tx, authz.ID) {
-		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
 	_, err = selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
-		err = berrors.InternalServerError("authorization with ID '%d' not found", authz.ID)
+		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 	if err != nil {

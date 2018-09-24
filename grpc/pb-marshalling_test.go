@@ -99,10 +99,10 @@ func TestChallenge(t *testing.T) {
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	chall := core.Challenge{
-		ID:     10,
-		Type:   core.ChallengeTypeDNS01,
-		Status: core.StatusPending,
-		Token:  "asd",
+		ID:                       10,
+		Type:                     core.ChallengeTypeDNS01,
+		Status:                   core.StatusPending,
+		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 
@@ -203,10 +203,10 @@ func TestPerformValidationReq(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	domain := "example.com"
 	chall := core.Challenge{
-		ID:     10,
-		Type:   core.ChallengeTypeDNS01,
-		Status: core.StatusPending,
-		Token:  "asd",
+		ID:                       10,
+		Type:                     core.ChallengeTypeDNS01,
+		Status:                   core.StatusPending,
+		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 	authz := core.Authorization{ID: "asd", RegistrationID: 10}
@@ -271,17 +271,17 @@ func TestAuthz(t *testing.T) {
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 	challA := core.Challenge{
-		ID:     10,
-		Type:   core.ChallengeTypeDNS01,
-		Status: core.StatusPending,
-		Token:  "asd",
+		ID:                       10,
+		Type:                     core.ChallengeTypeDNS01,
+		Status:                   core.StatusPending,
+		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 	challB := core.Challenge{
-		ID:     11,
-		Type:   core.ChallengeTypeDNS01,
-		Status: core.StatusPending,
-		Token:  "asd2",
+		ID:                       11,
+		Type:                     core.ChallengeTypeDNS01,
+		Status:                   core.StatusPending,
+		Token:                    "asd2",
 		ProvidedKeyAuthorization: "keyauth4",
 	}
 	inAuthz := core.Authorization{

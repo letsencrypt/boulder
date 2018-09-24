@@ -119,9 +119,9 @@ func NewRegistrationAuthorityImpl(
 	stats.MustRegister(ctpolicyResults)
 
 	ra := &RegistrationAuthorityImpl{
-		stats: stats,
-		clk:   clk,
-		log:   logger,
+		stats:                        stats,
+		clk:                          clk,
+		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),
@@ -1840,7 +1840,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// An authz without an expiry is an unexpected internal server event
 		if authz.Expires == nil {
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned an authz (%d) with nil expiry",
+				"SA.GetAuthorizations returned an authz (%s) with nil expiry",
 				*authz.Id)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
