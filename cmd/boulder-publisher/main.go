@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 
@@ -82,6 +83,13 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 	gw := bgrpc.NewPublisherServerWrapper(pubi)
 	pubPB.RegisterPublisherServer(grpcSrv, gw)
+
+	go func() {
+		t := time.NewTicker(time.Second * 30)
+		for range t.C {
+			pubi.ProbeLogs()
+		}
+	}()
 
 	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 

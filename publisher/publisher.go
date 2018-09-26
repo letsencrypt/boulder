@@ -79,6 +79,17 @@ func (c *logCache) Len() int {
 	return len(c.logs)
 }
 
+// LogURIs returns the URIs of all logs currently in the logCache
+func (c *logCache) LogURIs() []string {
+	c.RLock()
+	defer c.RUnlock()
+	var uris []string
+	for _, l := range c.logs {
+		uris = append(uris, l.uri)
+	}
+	return uris
+}
+
 type logAdaptor struct {
 	blog.Logger
 }
@@ -140,6 +151,7 @@ type ctSubmissionRequest struct {
 
 type pubMetrics struct {
 	submissionLatency *prometheus.HistogramVec
+	probeLatency      *prometheus.HistogramVec
 }
 
 func initMetrics(stats metrics.Scope) *pubMetrics {
@@ -153,15 +165,25 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 	)
 	stats.MustRegister(submissionLatency)
 
+	probeLatency := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "ct_probe_time_seconds",
+			Help:    "Time taken to probe a CT log",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"log", "success", "status"},
+	)
+	stats.MustRegister(probeLatency)
+
 	return &pubMetrics{
 		submissionLatency: submissionLatency,
+		probeLatency:      probeLatency,
 	}
 }
 
 // Impl defines a Publisher
 type Impl struct {
 	log          blog.Logger
-	client       *http.Client
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
 	metrics      *pubMetrics
@@ -368,4 +390,38 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
 	return jsonSCT
+}
+
+func (pub *Impl) ProbeLogs() {
+	wg := new(sync.WaitGroup)
+	for _, log := range pub.ctLogsCache.LogURIs() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := http.Client{
+				Timeout: time.Minute*2 + time.Second*30,
+			}
+			url, err := url.Parse(log)
+			if err != nil {
+				pub.log.Errf("failed to parse log URI: %s", err)
+			}
+			url.Path = "/ct/v1/get-sth"
+			s := time.Now()
+			resp, err := c.Get(url.String())
+			took := time.Since(s).Seconds()
+			var success bool
+			var status string
+			if err == nil {
+				defer resp.Body.Close()
+				success = resp.StatusCode == http.StatusOK
+				status = resp.Status
+			}
+			pub.metrics.probeLatency.With(prometheus.Labels{
+				"log":     log,
+				"success": fmt.Sprintf("%t", success),
+				"status":  status,
+			}).Observe(took)
+		}()
+	}
+	wg.Wait()
 }
