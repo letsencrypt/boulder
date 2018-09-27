@@ -8,10 +8,8 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 
 # Review Requirements
 * All pull requests must receive at least one positive review. Contributors are
-  strongly encouraged to get two positives reviews before merging whenever
+  strongly encouraged to get two positive reviews before merging whenever
   possible.
-* Exception:
-  * Pull requests from current master into the 'staging' branch can be merged without review. This is because any code in master has already been through the normal code review process. Similarly, pull requests from the current 'staging' branch into the 'release' branch can be merged without review. Pull requests into 'staging' or 'release' that aren't directly from master require the normal code review process. These pull requests should be marked by the submitter with the r0=branch-merge label.
 * We indicate review approval through GitHub's code review facility.
 * New commits pushed to a branch invalidate previous reviews. In other words, a reviewer must give positive reviews of a branch after its most recent pushed commit.
 * You cannot review your own code.
@@ -28,16 +26,14 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 ```
 // TODO(<email-address>): Hoverboard + Time-machine unsupported until upstream patch.
 // TODO(Issue #<num>): Pending hoverboard/time-machine interface.
+// TODO(@githubusername): Enable hoverboard kickflips once interface is stable.
 ```
 
 # Squash merging
 
 Once a pull requests has two reviews and the tests are passing, we'll merge it. We always use [squash merges](https://github.com/blog/2141-squash-your-commits) via GitHub's web interface. That means that during the course of your review you should generally not squash or amend commits, or force push. Even if the changes in each commit are small, keeping them separate makes it easier for us to review incremental changes to a pull request. Rest assured that those tiny changes will get squashed into a nice meaningful-size commit when we merge.
 
-When submitting a squash merge, the merger should copy the URL of the pull
-request into the body of the commit message.
-
-If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
+If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes (though rarely) they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
 
 # Error handling
 
@@ -269,6 +265,50 @@ Instead, it's better to contribute a patch upstream, then pull down changes. For
 
 When vendorizing dependencies, it's important to make sure tests pass on the version you are vendorizing. Currently we enforce this by requiring that pull requests containing a dependency update include a comment indicating that you ran the tests and that they succeeded, preferably with the command line you run them with.
 
+## Updating Dependencies
+
+All Go dependencies are vendored under the vendor directory, to [make dependency management easier](https://golang.org/cmd/go/#hdr-Vendor_Directories).
+
+To update a dependencies:
+
+```
+# Fetch godep
+go get -u github.com/tools/godep
+# Check out the currently vendorized version of each dependency.
+godep restore
+# Update to the latest version of a dependency. Alternately you can cd to the
+# directory under GOPATH and check out a specific revision. Here's an example
+# using cfssl:
+go get -u github.com/cloudflare/cfssl/...
+# Update the Godep config to the appropriate version.
+godep update github.com/cloudflare/cfssl/...
+# Save the dependencies
+godep save ./...
+git add Godeps vendor
+git commit
+```
+
+NOTE: If you get "godep: no packages can be updated," there's a good chance you're trying to update a single package that belongs to a repo with other packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce this error, because it's part of the `golang.org/x/crypto` repo, from which we also other packages. Godep requires that all packages from the same repo be on the same version, so it can't update just one. See https://github.com/tools/godep/issues/164 for the issue dedicated to fixing it.
+
+Certain dependencies we rely on themselves also vendor packages that we vendor. This generally isn't an issue unless the version that is vendored by our dependency uses a version with breaking changes from the version that we vendor. In this case either we need to switch to the same version or attempt to get the dependency to do the same.
+
+# Go Version
+
+The [Boulder development
+environment](https://github.com/letsencrypt/boulder/blob/master/README.md#setting-up-boulder)
+does not use the Go version installed on the host machine, and instead uses a Go
+environment baked into a "boulder-tools" Docker image. We build a separate
+boulder-tools container for each supported Go version. Please see [the
+Boulder-tools README](https://github.com/letsencrypt/boulder/blob/master/test/boulder-tools/README.md)
+for more information on upgrading Go versions.
+
+# ACME Protocol Divergences
+
+While Boulder attempts to implement the ACME specification as strictly as
+possible there are places at which we will diverge from the letter of the
+specification for various reasons. We detail these divergences (for both the V1
+and V2 API) in the [ACME divergences doc](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md).
+
 ## Problems or questions?
 
-The best place to ask dev related questions is either [IRC](https://webchat.freenode.net/?channels=#letsencrypt-dev) or the [Community Forums](https://community.letsencrypt.org/)
+The best place to ask dev related questions is either [IRC](https://webchat.freenode.net/?channels=#letsencrypt-dev) or the [Community Forums](https://community.letsencrypt.org/).
