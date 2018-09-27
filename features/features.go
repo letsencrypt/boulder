@@ -44,6 +44,8 @@ const (
 	CAAAccountURI
 	// Honour draft-ietf-acme-13's keyrollover
 	ACME13KeyRollover
+	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
+	ProbeCTLogs
 )
 
 // List of features and their default value, protected by fMu
@@ -67,6 +69,7 @@ var features = map[FeatureFlag]bool{
 	CAAValidationMethods:        false,
 	CAAAccountURI:               false,
 	ACME13KeyRollover:           false,
+	ProbeCTLogs:                 false,
 }
 
 var fMu = new(sync.RWMutex)
