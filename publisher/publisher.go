@@ -171,7 +171,7 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 			Help:    "Time taken to probe a CT log",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"log", "success", "status"},
+		[]string{"log", "status"},
 	)
 	stats.MustRegister(probeLatency)
 
@@ -392,36 +392,39 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 	return jsonSCT
 }
 
+// ProbeLogs sends a HTTP GET request to each of the logs in the
+// publisher logCache and records the latency and status of the
+// response.
 func (pub *Impl) ProbeLogs() {
 	wg := new(sync.WaitGroup)
 	for _, log := range pub.ctLogsCache.LogURIs() {
 		wg.Add(1)
-		go func() {
+		go func(uri string) {
 			defer wg.Done()
 			c := http.Client{
 				Timeout: time.Minute*2 + time.Second*30,
 			}
-			url, err := url.Parse(log)
+			url, err := url.Parse(uri)
 			if err != nil {
 				pub.log.Errf("failed to parse log URI: %s", err)
 			}
-			url.Path = "/ct/v1/get-sth"
+			url.Path = ct.GetSTHPath
 			s := time.Now()
 			resp, err := c.Get(url.String())
 			took := time.Since(s).Seconds()
-			var success bool
 			var status string
 			if err == nil {
 				defer resp.Body.Close()
-				success = resp.StatusCode == http.StatusOK
 				status = resp.Status
+			} else {
+				status = "error"
 			}
+			fmt.Println(uri, status)
 			pub.metrics.probeLatency.With(prometheus.Labels{
-				"log":     log,
-				"success": fmt.Sprintf("%t", success),
-				"status":  status,
+				"log":    uri,
+				"status": status,
 			}).Observe(took)
-		}()
+		}(log)
 	}
 	wg.Wait()
 }
