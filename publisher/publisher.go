@@ -414,7 +414,7 @@ func (pub *Impl) ProbeLogs() {
 			took := time.Since(s).Seconds()
 			var status string
 			if err == nil {
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				status = resp.Status
 			} else {
 				status = "error"
