@@ -419,7 +419,6 @@ func (pub *Impl) ProbeLogs() {
 			} else {
 				status = "error"
 			}
-			fmt.Println(uri, status)
 			pub.metrics.probeLatency.With(prometheus.Labels{
 				"log":    uri,
 				"status": status,
