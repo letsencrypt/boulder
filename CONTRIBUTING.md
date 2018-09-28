@@ -25,7 +25,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 * Do not include `XXX`s or naked `TODO`s. Use the formats:
 ```
 // TODO(<email-address>): Hoverboard + Time-machine unsupported until upstream patch.
-// TODO(Issue #<num>): Pending hoverboard/time-machine interface.
+// TODO(#<num>): Pending hoverboard/time-machine interface.
 // TODO(@githubusername): Enable hoverboard kickflips once interface is stable.
 ```
 
