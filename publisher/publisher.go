@@ -116,7 +116,12 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	// the gRPC timeout to be set to. This allows us to retry the
 	// request at least twice in the case where the server we are
 	// talking to is simply hanging indefinitely.
-	httpClient := &http.Client{Timeout: time.Minute*2 + time.Second*30}
+	httpClient := &http.Client{
+		Timeout: time.Minute*2 + time.Second*30,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
 	client, err := ctClient.New(url.String(), httpClient, opts)
 	if err != nil {
 		return nil, fmt.Errorf("making CT client: %s", err)
@@ -403,6 +408,9 @@ func (pub *Impl) ProbeLogs() {
 			defer wg.Done()
 			c := http.Client{
 				Timeout: time.Minute*2 + time.Second*30,
+				Transport: &http.Transport{
+					TLSHandshakeTimeout: 10 * time.Second,
+				},
 			}
 			url, err := url.Parse(uri)
 			if err != nil {
