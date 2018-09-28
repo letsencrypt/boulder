@@ -23,6 +23,7 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -431,4 +432,46 @@ func TestLogErrorBody(t *testing.T) {
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
+}
+
+func TestProbeLogs(t *testing.T) {
+	pub, _, k := setup(t)
+
+	srvA := logSrv(k)
+	defer srvA.Close()
+	portA, err := getPort(srvA.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	srvB := errorBodyLogSrv()
+	defer srvB.Close()
+	portB, err := getPort(srvB.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+
+	addLog := func(uri string) {
+		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		test.AssertNotError(t, err, "ecdsa.GenerateKey() failed for k")
+		der, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+		test.AssertNotError(t, err, "x509.MarshalPKIXPublicKey(der) failed")
+		kb64 := base64.StdEncoding.EncodeToString(der)
+		_, err = pub.ctLogsCache.AddLog(uri, kb64, pub.log)
+		test.AssertNotError(t, err, "Failed to add log to logCache")
+	}
+
+	addLog(fmt.Sprintf("http://localhost:%d", portA))
+	addLog(fmt.Sprintf("http://localhost:%d", portB))
+	addLog("http://blackhole:9999")
+
+	pub.ProbeLogs()
+
+	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.probeLatency.With(prometheus.Labels{
+		"log":    fmt.Sprintf("http://localhost:%d", portA),
+		"status": "200 OK",
+	})), 1)
+	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.probeLatency.With(prometheus.Labels{
+		"log":    fmt.Sprintf("http://localhost:%d", portB),
+		"status": "400 Bad Request",
+	})), 1)
+	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.probeLatency.With(prometheus.Labels{
+		"log":    "http://blackhole:9999",
+		"status": "error",
+	})), 1)
 }

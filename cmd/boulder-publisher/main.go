@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 
@@ -82,6 +83,20 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 	gw := bgrpc.NewPublisherServerWrapper(pubi)
 	pubPB.RegisterPublisherServer(grpcSrv, gw)
+
+	// Collect HTTP GET debug data every second from each log which
+	// we are requesting SCTs from. This will allow us to verify during
+	// CT outages we've seen in the past if the issue is with the CT
+	// client itself or something in the larger publisher/golang http
+	// library.
+	if features.Enabled(features.ProbeCTLogs) {
+		go func() {
+			t := time.NewTicker(time.Second)
+			for range t.C {
+				go pubi.ProbeLogs()
+			}
+		}()
+	}
 
 	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 
