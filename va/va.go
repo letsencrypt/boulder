@@ -1033,9 +1033,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 // validation records, even when it also returns an error.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
-		ID:          authz.ID,
-		Requester:   authz.RegistrationID,
-		Hostname:    domain,
+		ID:        authz.ID,
+		Requester: authz.RegistrationID,
+		Hostname:  domain,
 	}
 	vStart := va.clk.Now()
 
