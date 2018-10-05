@@ -1036,7 +1036,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
 		Hostname:    domain,
-		RequestTime: va.clk.Now(),
 	}
 	vStart := va.clk.Now()
 
@@ -1080,7 +1079,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
-	validationLatency = time.Since(vStart)
+	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency
 
 	va.metrics.validationTime.With(prometheus.Labels{
