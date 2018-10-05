@@ -185,8 +185,7 @@ type verificationRequestEvent struct {
 	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
-	RequestTime       time.Time               `json:",omitempty"`
-	ResponseTime      time.Time               `json:",omitempty"`
+	ValidationLatency time.Duration           `json:",omitempty"`
 	Error             string                  `json:",omitempty"`
 }
 
@@ -1081,11 +1080,14 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
+	validationLatency = time.Since(vStart)
+	logEvent.ValidationLatency = validationLatency
+
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":        string(challenge.Type),
 		"result":      string(challenge.Status),
 		"problemType": problemType,
-	}).Observe(time.Since(vStart).Seconds())
+	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Infof("Validations: %+v", authz)
