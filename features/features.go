@@ -20,10 +20,9 @@ const (
 	EmbedSCTs               // can be deleted?
 	AllowRenewalFirstRL     // can be deleted?
 	WildcardDomains         // can be deleted?
+	ForceConsistentStatus   // can be deleted?
 
 	//   Currently in-use features
-	// Copy authz status to challenge status
-	ForceConsistentStatus
 	// Ensure there is headroom in RPC timeouts to return an error to the client
 	RPCHeadroom
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
