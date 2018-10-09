@@ -1886,19 +1886,17 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		Expires:        &expires,
 	}
 
-	if identifier.Type == core.IdentifierDNS && !features.Enabled(features.VAChecksGSB) {
-		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
-		if err != nil {
-			outErr := berrors.InternalServerError("unable to determine if domain was safe")
-			ra.log.Warningf("%s: %s", outErr, err)
-			return nil, outErr
-		}
-		if !isSafeResp.GetIsSafe() {
-			return nil, berrors.UnauthorizedError(
-				"%q was considered an unsafe domain by a third-party API",
-				identifier.Value,
-			)
-		}
+	isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
+	if err != nil {
+		outErr := berrors.InternalServerError("unable to determine if domain was safe")
+		ra.log.Warningf("%s: %s", outErr, err)
+		return nil, outErr
+	}
+	if !isSafeResp.GetIsSafe() {
+		return nil, berrors.UnauthorizedError(
+			"%q was considered an unsafe domain by a third-party API",
+			identifier.Value,
+		)
 	}
 
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation

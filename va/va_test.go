@@ -37,7 +37,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
@@ -910,9 +909,6 @@ func TestGSBAtValidation(t *testing.T) {
 	defer hs.Close()
 
 	va, _ := setup(hs, 0)
-
-	_ = features.Set(map[string]bool{"VAChecksGSB": true})
-	defer features.Reset()
 
 	ctrl := gomock.NewController(t)
 	sbc := NewMockSafeBrowsing(ctrl)
