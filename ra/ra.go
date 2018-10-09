@@ -1702,11 +1702,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if features.Enabled(features.WildcardDomains) {
-			if err := ra.PA.WillingToIssueWildcard(id); err != nil {
-				return nil, err
-			}
-		} else if err := ra.PA.WillingToIssue(id); err != nil {
+		if err := ra.PA.WillingToIssueWildcard(id); err != nil {
 			return nil, err
 		}
 	}

@@ -856,7 +856,9 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	// Create another authorization
-	authz, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	newAR := AuthzRequest
+	newAR.Identifier.Value = "not-not-example.com" // Identifier needs to be different to bypass authorization reuse
+	authz, err = ra.NewAuthorization(ctx, newAR, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Update it with an empty challenge, no key authorization
@@ -2357,9 +2359,6 @@ func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
 // for background - this safety check was previously broken!
 // https://github.com/letsencrypt/boulder/issues/3420
 func TestNewOrderAuthzReuseSafety(t *testing.T) {
-	// Enable wildcard domains
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
 
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -2400,20 +2399,6 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 
-	// First test that with WildcardDomains feature disabled wildcard orders are
-	// rejected as expected
-	_ = features.Set(map[string]bool{"WildcardDomains": false})
-
-	_, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertError(t, err, "NewOrder with wildcard names did not error with "+
-		"WildcardDomains feature disabled")
-	test.AssertEquals(t, err.Error(), "Wildcard names not supported")
-
-	// Now test with WildcardDomains feature enabled
-	features.Reset()
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
-
 	// Also ensure that the required challenge types are enabled. The ra_test
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01
@@ -2429,8 +2414,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	ra.PA = pa
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
@@ -2477,8 +2461,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
@@ -2545,8 +2528,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 	// There should be one authz
@@ -2569,8 +2551,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	// Submit an identical wildcard order request
 	dupeOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
 	// There should be one authz
@@ -3058,10 +3039,6 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	// Enable wildcard domains
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
-
 	// Also ensure that the required challenge types are enabled. The ra_test
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01 or DNS-01-Wildcard
@@ -3427,6 +3404,7 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 		return foundTLSSNI
 	}
 	if !hasTLSSNI(authz.Challenges) {
+		fmt.Println(authz.Challenges)
 		t.Errorf("TLS-SNI challenge was not created during revalidation.")
 	}
 

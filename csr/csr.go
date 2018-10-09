@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
@@ -81,14 +80,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 			Value: name,
 		}
 		var err error
-		// If wildcard names are enabled then use WillingToIssueWildcard
-		if features.Enabled(features.WildcardDomains) {
-			err = pa.WillingToIssueWildcard(ident)
-		} else {
-			// Otherwise use WillingToIssue
-			err = pa.WillingToIssue(ident)
-		}
-		if err != nil {
+		if err = pa.WillingToIssueWildcard(ident); err != nil {
 			badNames = append(badNames, fmt.Sprintf("%q", name))
 		}
 	}
