@@ -13,18 +13,17 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
 	ReusePendingAuthz
-	CancelCTSubmissions     // can be deleted?
-	CountCertificatesExact  // can be deleted?
-	IPv6First               // can be deleted?
-	EnforceChallengeDisable // can be deleted?
-	EmbedSCTs               // can be deleted?
-	AllowRenewalFirstRL     // can be deleted?
-	WildcardDomains         // can be deleted?
-	ForceConsistentStatus   // can be deleted?
+	CancelCTSubmissions
+	CountCertificatesExact
+	IPv6First
+	EnforceChallengeDisable
+	EmbedSCTs
+	AllowRenewalFirstRL
+	WildcardDomains
+	ForceConsistentStatus
+	RPCHeadroom
 
 	//   Currently in-use features
-	// Ensure there is headroom in RPC timeouts to return an error to the client
-	RPCHeadroom
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	VAChecksGSB
