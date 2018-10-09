@@ -664,9 +664,6 @@ func TestReusePendingAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
-	defer features.Reset()
-
 	// Create one pending authorization
 	firstAuthz, err := ra.NewAuthorization(ctx, AuthzInitial, Registration.ID)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
