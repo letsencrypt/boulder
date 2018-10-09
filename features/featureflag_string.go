@@ -4,9 +4,9 @@ package features
 
 import "strconv"
 
-const _FeatureFlag_name = "unusedReusePendingAuthzCancelCTSubmissionsCountCertificatesExactIPv6FirstEnforceChallengeDisableEmbedSCTsAllowRenewalFirstRLWildcardDomainsForceConsistentStatusRPCHeadroomVAChecksGSBTLSSNIRevalidationEnforceV2ContentTypeEnforceOverlappingWildcardsOrderReadyStatusCAAValidationMethodsCAAAccountURIACME13KeyRolloverProbeCTLogs"
+const _FeatureFlag_name = "unusedReusePendingAuthzCancelCTSubmissionsCountCertificatesExactIPv6FirstEnforceChallengeDisableEmbedSCTsAllowRenewalFirstRLWildcardDomainsForceConsistentStatusRPCHeadroomVAChecksGSBEnforceV2ContentTypeTLSSNIRevalidationEnforceOverlappingWildcardsOrderReadyStatusCAAValidationMethodsCAAAccountURIACME13KeyRolloverProbeCTLogs"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 23, 42, 64, 73, 96, 105, 124, 139, 160, 171, 182, 200, 220, 247, 263, 283, 296, 313, 324}
+var _FeatureFlag_index = [...]uint16{0, 6, 23, 42, 64, 73, 96, 105, 124, 139, 160, 171, 182, 202, 220, 247, 263, 283, 296, 313, 324}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

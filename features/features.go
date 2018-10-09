@@ -23,13 +23,11 @@ const (
 	ForceConsistentStatus
 	RPCHeadroom
 	VAChecksGSB
+	EnforceV2ContentType
 
 	//   Currently in-use features
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
-	// Return errors to ACMEv2 clients that do not send the correct JWS
-	// Content-Type header
-	EnforceV2ContentType
 	// Reject new-orders that contain a hostname redundant with a wildcard.
 	EnforceOverlappingWildcards
 	// Set orders to status "ready" when they are awaiting finalization
