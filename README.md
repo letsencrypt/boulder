@@ -33,8 +33,8 @@ This component model lets us separate the function of the CA by security context
 
 ```
                              +--------- OCSP Updater
-                             |           |   |
-                             v           v   |
+                             |               |
+                             v               |
                             CA -> Publisher  |
                              ^               |
                              |               v
