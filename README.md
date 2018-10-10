@@ -29,7 +29,7 @@ Boulder is divided into the following main components:
 7. OCSP Updater
 8. OCSP Responder
 
-This component model lets us separate the function of the CA by security context.  The Web Front End, Validation Authority, and Publisher need access to the Internet, which puts them at greater risk of compromise.  The Registration Authority can live without Internet connectivity, but still needs to talk to the Web Front End and Validation Authority.  The Certificate Authority need only receive instructions from the Registration Authority. All components talk to the SA for storage, so lines indicating SA RPCs are not shown here.
+This component model lets us separate the function of the CA by security context.  The Web Front End, Validation Authority, and Publisher need access to the Internet, which puts them at greater risk of compromise.  The Registration Authority can live without Internet connectivity, but still needs to talk to the Web Front End and Validation Authority.  The Certificate Authority need only receive instructions from the Registration Authority. All components talk to the SA for storage, so most lines indicating SA RPCs are not shown here.
 
 ```
                              +--------- OCSP Updater
