@@ -1339,6 +1339,48 @@ func TestValidPOSTForAccount(t *testing.T) {
 	}
 }
 
+// TestValidPOSTAsGETForAccount tests POST-as-GET processing. Because
+// wfe.validPOSTAsGETForAccount calls `wfe.validPOSTForAccount` to do all
+// processing except the empty body test we do not duplicate the
+// `TestValidPOSTForAccount` testcases here.
+func TestValidPOSTAsGETForAccount(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// an invalid POST-as-GET request contains a non-empty payload. In this case
+	// we test with the empty JSON payload ("{}")
+	_, _, invalidPayloadRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "{}", wfe.nonceService)
+	// a valid POST-as-GET request contains an empty payload.
+	_, _, validRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "", wfe.nonceService)
+
+	testCases := []struct {
+		Name            string
+		Request         *http.Request
+		ExpectedProblem *probs.ProblemDetails
+	}{
+		{
+			Name:            "Non-empty JWS payload",
+			Request:         makePostRequestWithPath("test", invalidPayloadRequest),
+			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
+		},
+		{
+			Name:    "Valid POST-as-GET",
+			Request: makePostRequestWithPath("test", validRequest),
+		},
+	}
+
+	for _, tc := range testCases {
+		_, _, prob := wfe.validPOSTAsGETForAccount(
+			tc.Request,
+			context.Background(),
+			newRequestEvent())
+		if tc.ExpectedProblem == nil && prob != nil {
+			t.Fatalf("Expected nil problem, got %#v\n", prob)
+		} else if tc.ExpectedProblem != nil {
+			test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+		}
+	}
+}
+
 type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }

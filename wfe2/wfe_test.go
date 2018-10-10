@@ -873,20 +873,23 @@ func TestHTTPMethods(t *testing.T) {
 			Path:    acctPath,
 			Allowed: postOnly,
 		},
+		// TODO(@cpu): Remove GET authz support, support only POST-as-GET
 		{
 			Name:    "Authz path should be GET or POST only",
 			Path:    authzPath,
 			Allowed: getOrPost,
 		},
+		// TODO(@cpu): Remove GET challenge support, support only POST-as-GET
 		{
 			Name:    "Challenge path should be GET or POST only",
 			Path:    challengePath,
 			Allowed: getOrPost,
 		},
+		// TODO(@cpu): Remove GET certificate support, support only POST-as-GET
 		{
-			Name:    "Certificate path should be GET only",
+			Name:    "Certificate path should be GET or POST only",
 			Path:    certPath,
-			Allowed: getOnly,
+			Allowed: getOrPost,
 		},
 		{
 			Name:    "RevokeCert path should be POST only",
@@ -913,6 +916,7 @@ func TestHTTPMethods(t *testing.T) {
 			Path:    newOrderPath,
 			Allowed: postOnly,
 		},
+		// TODO(@cpu): Remove GET order support, support only POST-as-GET
 		{
 			Name:    "Order path should be GET or POST only",
 			Path:    orderPath,
@@ -1014,18 +1018,28 @@ func TestGetChallenge(t *testing.T) {
 func TestChallenge(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
+	post := func(path string) *http.Request {
+		signedURL := fmt.Sprintf("http://localhost/%s", path)
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+	postAsGet := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
 	// See mocks/mocks.go StorageAuthority.GetAuthorization for the "expired/"
 	// "error_result/" path handling.
 	testCases := []struct {
 		Name            string
-		Path            string
+		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
 	}{
 		{
 			Name:           "Valid challenge",
-			Path:           "valid/23",
+			Request:        post("valid/23"),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Location": "http://localhost/acme/challenge/valid/23",
@@ -1035,34 +1049,40 @@ func TestChallenge(t *testing.T) {
 		},
 		{
 			Name:           "Expired challenge",
-			Path:           "expired/23",
+			Request:        post("expired/23"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Expired authorization","status":404}`,
 		},
 		{
 			Name:           "Missing challenge",
-			Path:           "",
+			Request:        post(""),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No such challenge","status":404}`,
 		},
 		{
 			Name:           "Unspecified database error",
-			Path:           "error_result/24",
+			Request:        post("error_result/24"),
 			ExpectedStatus: http.StatusInternalServerError,
 			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `serverInternal","detail":"Problem getting authorization","status":500}`,
+		},
+		{
+			Name:           "POST-as-GET, wrong owner",
+			Request:        postAsGet(1, "diff_acct/23", ""),
+			ExpectedStatus: http.StatusForbidden,
+			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"User account ID doesn't match account ID in authorization","status":403}`,
+		},
+		{
+			Name:           "Valid POST-as-GET",
+			Request:        postAsGet(1, "valid/23", ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedBody:   `{"type":"dns", "url": "http://localhost/acme/challenge/valid/23"}`,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-
-			// Make a signed request to the Challenge endpoint
-			signedURL := fmt.Sprintf("http://localhost/%s", tc.Path)
-			_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-			request := makePostRequestWithPath(tc.Path, jwsBody)
-			wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
-
+			wfe.Challenge(ctx, newRequestEvent(), responseWriter, tc.Request)
 			// Check the reponse code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
@@ -1349,6 +1369,30 @@ func TestGetAuthorization(t *testing.T) {
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"No such authorization","status":404}`)
+
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/valid", "", wfe.nonceService)
+	postAsGet := makePostRequestWithPath("http://localhost/valid", jwsBody)
+
+	responseWriter = httptest.NewRecorder()
+	// Ensure that a POST-as-GET to an authorization works
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body := responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"url": "http://localhost/acme/challenge/valid/23"
+			}
+		]
+	}`)
 }
 
 // An SA mock that always returns a berrors.ServerInternal error for
@@ -1500,6 +1544,32 @@ func TestAccount(t *testing.T) {
 	test.AssertContains(t, responseWriter.Body.String(), "400")
 	test.AssertContains(t, responseWriter.Body.String(), probs.V2ErrorNS+"malformed")
 	responseWriter.Body.Reset()
+
+	// Test valid POST-as-GET request
+	responseWriter = httptest.NewRecorder()
+	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", "", wfe.nonceService)
+	request = makePostRequestWithPath("1", body)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
+	// It should not error
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+
+	altKey := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok = altKey.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load altKey RSA key")
+
+	// Test POST-as-GET request signed with wrong account key
+	responseWriter = httptest.NewRecorder()
+	_, _, body = signRequestKeyID(t, 2, altKey, "http://localhost/1", "", wfe.nonceService)
+	request = makePostRequestWithPath("1", body)
+	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
+	// It should error
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{
+		"type": "urn:ietf:params:acme:error:unauthorized",
+		"detail": "Request signing key did not match account key",
+		"status": 403
+	}`)
 }
 
 func TestIssuer(t *testing.T) {
@@ -1519,6 +1589,19 @@ func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
+	makeGet := func(path string) *http.Request {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
+	}
+
+	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
+		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	altKey := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := altKey.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	pkixContent := "application/pem-certificate-chain"
 
@@ -1531,7 +1614,7 @@ func TestGetCertificate(t *testing.T) {
 
 	testCases := []struct {
 		Name            string
-		Path            string
+		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
@@ -1539,7 +1622,7 @@ func TestGetCertificate(t *testing.T) {
 	}{
 		{
 			Name:           "Valid serial",
-			Path:           goodSerial,
+			Request:        makeGet(goodSerial),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
@@ -1547,20 +1630,49 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 		{
+			Name:           "Valid serial, POST-as-GET",
+			Request:        makePost(1, nil, goodSerial, ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial, bad POST-as-GET",
+			Request:        makePost(1, nil, goodSerial, "{}"),
+			ExpectedStatus: http.StatusBadRequest,
+			ExpectedBody: `{
+				"type": "urn:ietf:params:acme:error:malformed",
+				"status": 400,
+				"detail": "POST-as-GET requests must have an empty payload"
+			}`,
+		},
+		{
+			Name:           "Valid serial, POST-as-GET from wrong account",
+			Request:        makePost(2, altKey, goodSerial, ""),
+			ExpectedStatus: http.StatusForbidden,
+			ExpectedBody: `{
+				"type": "urn:ietf:params:acme:error:unauthorized",
+				"status": 403,
+				"detail": "Account in use did not issue specified certificate"
+			}`,
+		},
+		{
 			Name:           "Unused serial, no cache",
-			Path:           "/acme/cert/0000000000000000000000000000000000ff",
+			Request:        makeGet("/acme/cert/0000000000000000000000000000000000ff"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
 		{
 			Name:           "Invalid serial, no cache",
-			Path:           "/acme/cert/nothex",
+			Request:        makeGet("/acme/cert/nothex"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
 		{
 			Name:           "Another invalid serial, no cache",
-			Path:           "/acme/cert/00000000000000",
+			Request:        makeGet("/acme/cert/00000000000000"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
@@ -1573,9 +1685,7 @@ func TestGetCertificate(t *testing.T) {
 			mockLog.Clear()
 
 			// Mux a request for a certificate
-			req, _ := http.NewRequest("GET", tc.Path, nil)
-			req.RemoteAddr = "192.168.0.1"
-			mux.ServeHTTP(responseWriter, req)
+			mux.ServeHTTP(responseWriter, tc.Request)
 			headers := responseWriter.Header()
 
 			// Assert that the status code written is as expected
@@ -1606,10 +1716,10 @@ func TestGetCertificate(t *testing.T) {
 				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 
 				// Unsuccessful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(`INFO: JSON=.*"Code":404.*`)
+				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: JSON=.*"Code":%d.*`, tc.ExpectedStatus))
 				if len(reqlogs) != 1 {
-					t.Errorf("Didn't find info logs with code 404. Instead got:\n%s\n",
-						strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+					t.Errorf("Didn't find info logs with code %d. Instead got:\n%s\n",
+						tc.ExpectedStatus, strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
 				}
 			}
 		})
@@ -2278,55 +2388,79 @@ func TestKeyRollover(t *testing.T) {
 	}
 }
 
-func TestOrder(t *testing.T) {
+func TestGetOrder(t *testing.T) {
 	wfe, _ := setupWFE(t)
+
+	makeGet := func(path string) *http.Request {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
+	}
+
+	makePost := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
 
 	testCases := []struct {
 		Name     string
-		Path     string
+		Request  *http.Request
 		Response string
 	}{
 		{
 			Name:     "Good request",
-			Path:     "1/1",
+			Request:  makeGet("1/1"),
 			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz/hello"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
-			Path:     "1/2",
+			Request:  makeGet("1/2"),
 			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2", "status":404}`,
 		},
 		{
 			Name:     "Invalid request path",
-			Path:     "asd",
+			Request:  makeGet("asd"),
 			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:     "Invalid account ID",
-			Path:     "asd/asd",
+			Request:  makeGet("asd/asd"),
 			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
 		},
 		{
 			Name:     "Invalid order ID",
-			Path:     "1/asd",
+			Request:  makeGet("1/asd"),
 			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
 			Name:     "Real request, wrong account",
-			Path:     "2/1",
+			Request:  makeGet("2/1"),
 			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
 		},
 		{
 			Name:     "Internal error request",
-			Path:     "1/3",
+			Request:  makeGet("1/3"),
 			Response: `{"type":"` + probs.V2ErrorNS + `serverInternal","detail":"Failed to retrieve order for ID 3","status":500}`,
+		},
+		{
+			Name:     "Invalid POST-as-GET",
+			Request:  makePost(1, "1/1", "{}"),
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"POST-as-GET requests must have an empty payload", "status":400}`,
+		},
+		{
+			Name:     "Valid POST-as-GET, wrong account",
+			Request:  makePost(1, "2/1", ""),
+			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
+		},
+		{
+			Name:     "Valid POST-as-GET",
+			Request:  makePost(1, "1/1", ""),
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz/hello"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, &http.Request{URL: &url.URL{Path: tc.Path}, Method: "GET"})
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 		})
 	}

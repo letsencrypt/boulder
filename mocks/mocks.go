@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -247,6 +248,8 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 			},
 		},
 	}
+	// Strip a leading `/` to make working with fake URLs in signed JWS tests easier.
+	id = strings.TrimPrefix(id, "/")
 
 	if id == "valid" {
 		exp := sa.clk.Now().AddDate(100, 0, 0)
@@ -260,6 +263,12 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		return authz, nil
 	} else if id == "error_result" {
 		return core.Authorization{}, fmt.Errorf("Unspecified database error")
+	} else if id == "diff_acct" {
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.RegistrationID = 2
+		authz.Expires = &exp
+		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
+		return authz, nil
 	}
 
 	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)

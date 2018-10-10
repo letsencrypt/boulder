@@ -297,20 +297,30 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
-	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
-	wfe.HandleFunc(m, newAcctPath, wfe.NewAccount, "POST")
-	wfe.HandleFunc(m, acctPath, wfe.Account, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
-	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
+	// Boulder specific endpoints
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
-	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
+
+	// GETable ACME endpoints
+	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
+
+	// POSTable ACME endpoints
+	wfe.HandleFunc(m, newAcctPath, wfe.NewAccount, "POST")
+	wfe.HandleFunc(m, acctPath, wfe.Account, "POST")
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
+	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET")
 	wfe.HandleFunc(m, finalizeOrderPath, wfe.FinalizeOrder, "POST")
+
+	// POST-as-GETable ACME endpoints
+	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
+	// endpoints will be removed, leaving only POST-as-GET support.
+	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
+
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -963,6 +973,14 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
+	// If the JWS body is empty then this POST is a POST-as-GET to retreive
+	// challenge details, not a POST to initiate a challenge
+	if string(body) == "" {
+		challenge := authz.Challenges[challengeIndex]
+		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
+		return
+	}
+
 	// NOTE(@cpu): Historically a challenge update needed to include
 	// a KeyAuthorization field. This is no longer the case, since both sides can
 	// calculate the key authorization as needed. We unmarshal here only to check
@@ -1030,55 +1048,59 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	// Only the Contact and Status fields of an account may be updated this way.
-	// For key updates clients should be using the key change endpoint.
-	var accountUpdateRequest struct {
-		Contact *[]string       `json:"contact"`
-		Status  core.AcmeStatus `json:"status"`
-	}
+	// If the body was not empty, then this is an account update request.
+	if string(body) != "" {
+		// Only the Contact and Status fields of an account may be updated this way.
+		// For key updates clients should be using the key change endpoint.
+		var accountUpdateRequest struct {
+			Contact *[]string       `json:"contact"`
+			Status  core.AcmeStatus `json:"status"`
+		}
 
-	err = json.Unmarshal(body, &accountUpdateRequest)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
-		return
-	}
-
-	// Copy over the fields from the request to the registration object used for
-	// the RA updates.
-	update := core.Registration{
-		Contact: accountUpdateRequest.Contact,
-		Status:  accountUpdateRequest.Status,
-	}
-
-	// People *will* POST their full accounts to this endpoint, including
-	// the 'valid' status, to avoid always failing out when that happens only
-	// attempt to deactivate if the provided status is different from their current
-	// status.
-	//
-	// If a user tries to send both a deactivation request and an update to their
-	// contacts or subscriber agreement URL the deactivation will take place and
-	// return before an update would be performed.
-	if update.Status != "" && update.Status != currAcct.Status {
-		if update.Status != core.StatusDeactivated {
-			wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
+		err = json.Unmarshal(body, &accountUpdateRequest)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
 			return
 		}
-		wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
-		return
-	}
 
-	// Account objects contain a JWK object which are merged in UpdateRegistration
-	// if it is different from the existing account key. Since this isn't how you
-	// update the key we just copy the existing one into the update object here. This
-	// ensures the key isn't changed and that we can cleanly serialize the update as
-	// JSON to send via RPC to the RA.
-	update.Key = currAcct.Key
+		// Copy over the fields from the request to the registration object used for
+		// the RA updates.
+		update := core.Registration{
+			Contact: accountUpdateRequest.Contact,
+			Status:  accountUpdateRequest.Status,
+		}
 
-	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
-	if err != nil {
-		wfe.sendError(response, logEvent,
-			web.ProblemDetailsForError(err, "Unable to update account"), err)
-		return
+		// People *will* POST their full accounts to this endpoint, including
+		// the 'valid' status, to avoid always failing out when that happens only
+		// attempt to deactivate if the provided status is different from their current
+		// status.
+		//
+		// If a user tries to send both a deactivation request and an update to their
+		// contacts or subscriber agreement URL the deactivation will take place and
+		// return before an update would be performed.
+		if update.Status != "" && update.Status != currAcct.Status {
+			if update.Status != core.StatusDeactivated {
+				wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
+				return
+			}
+			wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
+			return
+		}
+
+		// Account objects contain a JWK object which are merged in UpdateRegistration
+		// if it is different from the existing account key. Since this isn't how you
+		// update the key we just copy the existing one into the update object here. This
+		// ensures the key isn't changed and that we can cleanly serialize the update as
+		// JSON to send via RPC to the RA.
+		update.Key = currAcct.Key
+
+		updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
+		if err != nil {
+			wfe.sendError(response, logEvent,
+				web.ProblemDetailsForError(err, "Unable to update account"), err)
+			return
+		}
+		currAcct = &updatedAcct
 	}
 
 	if len(wfe.SubscriberAgreementURL) > 0 {
@@ -1091,9 +1113,9 @@ func (wfe *WebFrontEndImpl) Account(
 	// this value back to a V2 client. The "Agreement" field of an
 	// account/registration is a V1 notion so we strip it here in the WFE2 before
 	// returning the account.
-	updatedAcct.Agreement = ""
+	currAcct.Agreement = ""
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, currAcct)
 	if err != nil {
 		// ServerInternal because we just generated the account, it should be OK
 		wfe.sendError(response, logEvent,
@@ -1102,23 +1124,17 @@ func (wfe *WebFrontEndImpl) Account(
 	}
 }
 
+// deactivateAuthorization processes the given JWS POST body as a request to
+// deactivate the provided authorization. If an error occurs it is written to
+// the response writer. Important: `deactivateAuthorization` does not check that
+// the requester is authorized to deactivate the given authorization. It is
+// assumed that this check is performed prior to calling deactivateAuthorzation.
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
 	authz *core.Authorization,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
-	request *http.Request) bool {
-	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
-		return false
-	}
-	if acct.ID != authz.RegistrationID {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
-		return false
-	}
+	body []byte) bool {
 	var req struct {
 		Status core.AcmeStatus
 	}
@@ -1146,6 +1162,23 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	var requestAccount *core.Registration
+	var requestBody []byte
+	// If the request is a POST it is either:
+	//   A) an update to an authorization to deactivate it
+	//   B) a POST-as-GET to query the authorization details
+	if request.Method == "POST" {
+		// Both POST options need to be authenticated by an account
+		body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+		addRequesterHeader(response, logEvent.Requester)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+		requestAccount = acct
+		requestBody = body
+	}
+
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
@@ -1166,11 +1199,22 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
+	// If this was a POST that has an associated requestAccount and that account
+	// doesn't own the authorization, abort before trying to deactivate the authz
+	// or return its details
+	if requestAccount != nil && requestAccount.ID != authz.RegistrationID {
+		wfe.sendError(response, logEvent,
+			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
+		return
+	}
+
+	// If the body isn't empty we know it isn't a POST-as-GET and must be an
+	// attempt to deactivate an authorization.
+	if string(requestBody) != "" && wfe.AllowAuthzDeactivation {
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
-		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, request) {
+		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, requestBody) {
 			return
 		}
 	}
@@ -1190,6 +1234,17 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	var requesterAccount *core.Registration
+	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
+	// no POSTs with a body allowed for this endpoint.
+	if request.Method == "POST" {
+		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+		requesterAccount = acct
+	}
 
 	serial := request.URL.Path
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
@@ -1214,6 +1269,14 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		} else {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
+		return
+	}
+
+	// If there was a requesterAccount (e.g. because it was a POST-as-GET request)
+	// then the requesting account must be the owner of the certificate, otherwise
+	// return an unauthorized error.
+	if requesterAccount != nil && requesterAccount.ID != cert.RegistrationID {
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account in use did not issue specified certificate"), nil)
 		return
 	}
 
@@ -1595,6 +1658,18 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	var requesterAccount *core.Registration
+	// Any POSTs to the Order endpoint should be POST-as-GET requests. There are
+	// no POSTs with a body allowed for this endpoint.
+	if request.Method == "POST" {
+		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+		requesterAccount = acct
+	}
+
 	// Path prefix is stripped, so this should be like "<account ID>/<order ID>"
 	fields := strings.SplitN(request.URL.Path, "/", 2)
 	if len(fields) != 2 {
@@ -1623,6 +1698,14 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	}
 
 	if *order.RegistrationID != acctID {
+		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
+		return
+	}
+
+	// If the requesterAccount is not nil then this was an authenticated
+	// POST-as-GET request and we need to verify the requesterAccount is the
+	// order's owner.
+	if requesterAccount != nil && *order.RegistrationID != requesterAccount.ID {
 		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
 		return
 	}
