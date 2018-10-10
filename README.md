@@ -159,9 +159,9 @@ exposes debug ports and is brittle to component failure.
 While we are supportive of other organization's deploying Boulder in
 a production setting we prioritize support and development work that favors
 Let's Encrypt's mission. This means we may not be able to provide timely support
-or accept pull-requests that deviate significantly from our first line goals. We
-will try our best to engage with folks who have done their homework and need
-a helping hand.
+or accept pull-requests that deviate significantly from our first line goals. If
+you've thoroughly evaluated the alternatives and Boulder is definitely the best
+fit we're happy to answer questions to the best of our ability.
 
 ## Contributing
 
