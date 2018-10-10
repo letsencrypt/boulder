@@ -98,7 +98,7 @@ By default, Boulder uses a fake DNS resolver that resolves all hostnames to 127.
 
     ifconfig docker0 | grep "inet addr:" | cut -d: -f2 | awk '{ print $1}'
 
-And edit docker-compose.yml to change the FAKE_DNS environment variable to match. This will cause Boulder to use the local system resolver available on your host if one is available.
+And edit docker-compose.yml to change the `FAKE_DNS` environment variable to match. This will cause Boulder's stubbed-out DNS resolver (`sd-test-srv`) to respond to all A queries with the address in `FAKE_DNS`.
 
 Alternatively, you can override the docker-compose.yml default with an environmental variable using -e (replace 172.17.0.1 with the host IPv4 address found in the command above)
 
@@ -118,7 +118,7 @@ Check out the Certbot client from https://github.com/certbot/certbot and follow 
     source ~/certbot/tests/integration/_common.sh
     certbot_test certonly -a standalone -d example.com
 
-Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, so you can use any value for the -d flag. If you want to use another DNS resolver you can by setting the environment variable FAKE_DNS=1.2.3.4.
+Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, so you can use any value for the -d flag. To return an answer other than `127.0.0.1` change the Boulder `FAKE_DNS` environment variable to another IP address.
 
 By default Certbot will connect to the ACME v2 API over HTTP. You can customize the `SERVER` environment variable with an alternative ACME directory URL if required.
 
@@ -135,9 +135,9 @@ the following URLs:
 
 To access the HTTPS versions of the endpoints you will need to configure your ACME client software to use a CA truststore that contains the `test/wfe-tls/minica.pem` CA certificate. See [the `test/wfe-tls` README](https://github.com/letsencrypt/boulder/master/test/wfe-tls/README) for more information.
 
-Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, allowing you to issue certificates for any domain as if it resolved to your localhost. If you want to use another DNS resolver you can by setting the environment variable FAKE_DNS=1.2.3.4.
+Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, allowing you to issue certificates for any domain as if it resolved to your localhost. To return an answer other than `127.0.0.1` change the Boulder `FAKE_DNS` environment variable to another IP address.
 
-Most often you will want to configure FAKE_DNS to point to your host machine where you run an ACME client. Remember to also configure the ACME client to use ports 5002 and 5001 instead of 80 and 443 for HTTP-01 and TLS-ALPN-01 challenge servers (or customize the Boulder VA configuration to match your port choices).
+Most often you will want to configure `FAKE_DNS` to point to your host machine where you run an ACME client. Remember to also configure the ACME client to use ports 5002 and 5001 instead of 80 and 443 for HTTP-01 and TLS-ALPN-01 challenge servers (or customize the Boulder VA configuration to match your port choices).
 
 ### Production
 
