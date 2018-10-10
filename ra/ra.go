@@ -1707,10 +1707,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 	}
 
-	if features.Enabled(features.EnforceOverlappingWildcards) {
-		if err := wildcardOverlap(order.Names); err != nil {
-			return nil, err
-		}
+	if err := wildcardOverlap(order.Names); err != nil {
+		return nil, err
 	}
 
 	// See if there is an existing, pending, unexpired order that can be reused
@@ -1834,7 +1832,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// An authz without an expiry is an unexpected internal server event
 		if authz.Expires == nil {
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned an authz (%d) with nil expiry",
+				"SA.GetAuthorizations returned an authz (%s) with nil expiry",
 				*authz.Id)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry

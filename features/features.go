@@ -24,12 +24,11 @@ const (
 	RPCHeadroom
 	VAChecksGSB
 	EnforceV2ContentType
+	EnforceOverlappingWildcards
 
 	//   Currently in-use features
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
-	// Reject new-orders that contain a hostname redundant with a wildcard.
-	EnforceOverlappingWildcards
 	// Set orders to status "ready" when they are awaiting finalization
 	OrderReadyStatus
 	// Check CAA and respect validationmethods parameter.
