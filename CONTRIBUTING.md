@@ -288,7 +288,7 @@ git add Godeps vendor
 git commit
 ```
 
-NOTE: If you get "godep: no packages can be updated," there's a good chance you're trying to update a single package that belongs to a repo with other packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce this error, because it's part of the `golang.org/x/crypto` repo, from which we also other packages. Godep requires that all packages from the same repo be on the same version, so it can't update just one. See https://github.com/tools/godep/issues/164 for the issue dedicated to fixing it.
+NOTE: If you get "godep: no packages can be updated," there's a good chance you're trying to update a single package that belongs to a repo with other packages. For instance, `godep update golang.org/x/crypto/ocsp` will produce this error, because it's part of the `golang.org/x/crypto` repo, from which we also vendor other packages. Godep requires that all packages from the same repo be on the same version, so it can't update just one. See https://github.com/tools/godep/issues/164 for the issue dedicated to fixing it.
 
 Certain dependencies we rely on themselves also vendor packages that we vendor. This generally isn't an issue unless the version that is vendored by our dependency uses a version with breaking changes from the version that we vendor. In this case either we need to switch to the same version or attempt to get the dependency to do the same.
 
