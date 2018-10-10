@@ -25,12 +25,11 @@ const (
 	VAChecksGSB
 	EnforceV2ContentType
 	EnforceOverlappingWildcards
+	OrderReadyStatus
 
 	//   Currently in-use features
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
-	// Set orders to status "ready" when they are awaiting finalization
-	OrderReadyStatus
 	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.

@@ -1691,8 +1691,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// a pending status with valid authzs were finalizable. We accept both states
 	// here for deployability ease. In the future we will only allow ready orders
 	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders once
-	// `features.Enabled(features.OrderReadyStatus)` is deployed
+	// TODO(@cpu): Forbid finalizing "Pending" orders
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,

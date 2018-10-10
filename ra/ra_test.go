@@ -2748,8 +2748,6 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
-	// Enable the order ready status temporarily
-	_ = features.Set(map[string]bool{"OrderReadyStatus": true})
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
@@ -2761,8 +2759,6 @@ func TestFinalizeOrder(t *testing.T) {
 		BeganProcessing: &processingStatus,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
-	// Disable the order ready status again
-	_ = features.Set(map[string]bool{"OrderReadyStatus": false})
 
 	// Swallowing errors here because the CSRPEM is hardcoded test data expected
 	// to parse in all instance
@@ -3259,6 +3255,8 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	mockLog.Clear()
 
 	// Finalize the order with the CSR
+	status := string(core.StatusReady)
+	order.Status = &status
 	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   csr})
