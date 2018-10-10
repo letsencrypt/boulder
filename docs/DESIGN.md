@@ -1,7 +1,7 @@
 # Boulder flow diagrams
 
-Boulder is built in a decentralized way in order to enable parts to be deployed
-in different security contexts.
+Boulder is built out of multiple components that can be deployed in different
+security contexts.
 
 In order for you to understand how Boulder works and ensure it's working correctly,
 this document lays out how various operations flow through boulder. It is
