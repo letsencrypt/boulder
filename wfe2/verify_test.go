@@ -1369,7 +1369,7 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		_, _, prob := wfe.validPOSTAsGETForAccount(
+		_, prob := wfe.validPOSTAsGETForAccount(
 			tc.Request,
 			context.Background(),
 			newRequestEvent())

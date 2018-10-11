@@ -570,11 +570,11 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	// Call validPOSTForAccount to verify the JWS and extract the body.
 	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, prob
 	}
 	// Verify the POST-as-GET payload is empty
 	if string(body) != "" {
-		return nil, nil, probs.Malformed("POST-as-GET requests must have an empty payload")
+		return nil, probs.Malformed("POST-as-GET requests must have an empty payload")
 	}
 	return reg, prob
 }
