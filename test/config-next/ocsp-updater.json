@@ -22,10 +22,6 @@
       "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
       "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
     },
-    "publisher": {
-      "serverAddress": "publisher.boulder:9091",
-      "timeout": "10s"
-    },
     "saService": {
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
@@ -45,18 +41,6 @@
   },
 
   "common": {
-    "issuerCert": "test/test-ca2.pem",
-    "ct": {
-      "logs": [
-        {
-          "uri": "http://boulder:4500",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
-        },
-        {
-          "uri": "http://boulder:4501",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA=="
-        }
-      ]
-    }
+    "issuerCert": "test/test-ca2.pem"
   }
 }
