@@ -18,7 +18,6 @@ const (
 	IPv6First
 	EnforceChallengeDisable
 	EmbedSCTs
-	AllowRenewalFirstRL
 	WildcardDomains
 	ForceConsistentStatus
 	RPCHeadroom
@@ -28,6 +27,7 @@ const (
 	OrderReadyStatus
 
 	//   Currently in-use features
+	AllowRenewalFirstRL
 	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
 	TLSSNIRevalidation
 	// Check CAA and respect validationmethods parameter.
@@ -45,14 +45,14 @@ var features = map[FeatureFlag]bool{
 	unused:                      false,
 	ReusePendingAuthz:           false,
 	CountCertificatesExact:      false,
-	IPv6First:                   false, // deprecated
+	IPv6First:                   false,
 	AllowRenewalFirstRL:         false,
 	WildcardDomains:             false,
-	EnforceChallengeDisable:     false, // deprecated
+	EnforceChallengeDisable:     false,
 	RPCHeadroom:                 false,
 	TLSSNIRevalidation:          false,
-	EmbedSCTs:                   false, // deprecated
-	CancelCTSubmissions:         true,  // deprecated
+	EmbedSCTs:                   false,
+	CancelCTSubmissions:         true,
 	VAChecksGSB:                 false,
 	EnforceV2ContentType:        false,
 	ForceConsistentStatus:       false,
