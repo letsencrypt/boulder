@@ -912,8 +912,12 @@ func (va *ValidationAuthorityImpl) validate(
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
-		ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
-			baseIdentifier.Value)
+		if !va.isSafeDomain(ctx, baseIdentifier.Value) {
+			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
+				baseIdentifier.Value)
+		} else {
+			ch <- nil
+		}
 	}()
 
 	// TODO(#1292): send into another goroutine

@@ -1883,19 +1883,6 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		Expires:        &expires,
 	}
 
-	isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
-	if err != nil {
-		outErr := berrors.InternalServerError("unable to determine if domain was safe")
-		ra.log.Warningf("%s: %s", outErr, err)
-		return nil, outErr
-	}
-	if !isSafeResp.GetIsSafe() {
-		return nil, berrors.UnauthorizedError(
-			"%q was considered an unsafe domain by a third-party API",
-			identifier.Value,
-		)
-	}
-
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
 	// (previous certificate existed) or not. If it is a revalidation, we'll tell
 	// the PA about that so it can include the TLS-SNI-01 challenge.
