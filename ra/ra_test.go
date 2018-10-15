@@ -3361,6 +3361,10 @@ func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Co
 	return &sapb.Exists{Exists: &f}, nil
 }
 
+func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	return nil, berrors.NotFoundError("no pending authorization found")
+}
+
 // With TLS-SNI-01 disabled, an account that previously issued a certificate for
 // example.com should still be able to get a new authorization.
 func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
