@@ -311,4 +311,4 @@ and V2 API) in the [ACME divergences doc](https://github.com/letsencrypt/boulder
 
 ## Problems or questions?
 
-The best place to ask dev related questions is either [IRC](https://webchat.freenode.net/?channels=#letsencrypt-dev) or the [Community Forums](https://community.letsencrypt.org/).
+The best place to ask dev related questions is on the [Community Forums](https://community.letsencrypt.org/).
