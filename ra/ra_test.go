@@ -3406,7 +3406,6 @@ func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 		return foundTLSSNI
 	}
 	if !hasTLSSNI(authz.Challenges) {
-		fmt.Println(authz.Challenges)
 		t.Errorf("TLS-SNI challenge was not created during revalidation.")
 	}
 
