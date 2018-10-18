@@ -664,9 +664,6 @@ func TestReusePendingAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	_ = features.Set(map[string]bool{"ReusePendingAuthz": true})
-	defer features.Reset()
-
 	// Create one pending authorization
 	firstAuthz, err := ra.NewAuthorization(ctx, AuthzInitial, Registration.ID)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
@@ -859,7 +856,9 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	// Create another authorization
-	authz, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	newAR := AuthzRequest
+	newAR.Identifier.Value = "not-not-example.com" // Identifier needs to be different to bypass authorization reuse
+	authz, err = ra.NewAuthorization(ctx, newAR, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Update it with an empty challenge, no key authorization
@@ -2360,9 +2359,6 @@ func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
 // for background - this safety check was previously broken!
 // https://github.com/letsencrypt/boulder/issues/3420
 func TestNewOrderAuthzReuseSafety(t *testing.T) {
-	// Enable wildcard domains
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
 
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -2403,20 +2399,6 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 
-	// First test that with WildcardDomains feature disabled wildcard orders are
-	// rejected as expected
-	_ = features.Set(map[string]bool{"WildcardDomains": false})
-
-	_, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertError(t, err, "NewOrder with wildcard names did not error with "+
-		"WildcardDomains feature disabled")
-	test.AssertEquals(t, err.Error(), "Wildcard names not supported")
-
-	// Now test with WildcardDomains feature enabled
-	features.Reset()
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
-
 	// Also ensure that the required challenge types are enabled. The ra_test
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01
@@ -2432,8 +2414,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	ra.PA = pa
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
@@ -2480,8 +2461,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
@@ -2548,8 +2528,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 	// There should be one authz
@@ -2572,8 +2551,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	// Submit an identical wildcard order request
 	dupeOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
-	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request "+
-		"with WildcardDomains enabled")
+	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
 	// There should be one authz
@@ -2770,8 +2748,6 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
-	// Enable the order ready status temporarily
-	_ = features.Set(map[string]bool{"OrderReadyStatus": true})
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
@@ -2783,8 +2759,6 @@ func TestFinalizeOrder(t *testing.T) {
 		BeganProcessing: &processingStatus,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
-	// Disable the order ready status again
-	_ = features.Set(map[string]bool{"OrderReadyStatus": false})
 
 	// Swallowing errors here because the CSRPEM is hardcoded test data expected
 	// to parse in all instance
@@ -3061,10 +3035,6 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	// Enable wildcard domains
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
-
 	// Also ensure that the required challenge types are enabled. The ra_test
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01 or DNS-01-Wildcard
@@ -3285,6 +3255,8 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	mockLog.Clear()
 
 	// Finalize the order with the CSR
+	status := string(core.StatusReady)
+	order.Status = &status
 	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   csr})
@@ -3387,6 +3359,10 @@ func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Co
 		return &sapb.Exists{Exists: &t}, nil
 	}
 	return &sapb.Exists{Exists: &f}, nil
+}
+
+func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	return nil, berrors.NotFoundError("no pending authorization found")
 }
 
 // With TLS-SNI-01 disabled, an account that previously issued a certificate for
@@ -3547,8 +3523,6 @@ func TestCTPolicyMeasurements(t *testing.T) {
 }
 
 func TestWildcardOverlap(t *testing.T) {
-	_ = features.Set(map[string]bool{"EnforceOverlappingWildcards": true})
-	defer features.Reset()
 	err := wildcardOverlap([]string{
 		"*.example.com",
 		"*.example.net",

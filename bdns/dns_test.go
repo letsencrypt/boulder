@@ -611,8 +611,9 @@ func TestRetry(t *testing.T) {
 		}
 		if tc.metricsAllRetries > 0 {
 			count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
-				"qtype": "TXT",
-				"type":  "out of retries",
+				"qtype":    "TXT",
+				"type":     "out of retries",
+				"resolver": dnsLoopbackAddr,
 			}))
 			if count != tc.metricsAllRetries {
 				t.Errorf("wrong count for timeoutCounter: got %d, expected %d", count, tc.metricsAllRetries)
@@ -648,16 +649,18 @@ func TestRetry(t *testing.T) {
 	}
 
 	count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
-		"qtype": "TXT",
-		"type":  "canceled",
+		"qtype":    "TXT",
+		"type":     "canceled",
+		"resolver": dnsLoopbackAddr,
 	}))
 	if count != 1 {
 		t.Errorf("wrong count for timeoutCounter canceled: got %d, expected %d", count, 1)
 	}
 
 	count = test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
-		"qtype": "TXT",
-		"type":  "deadline exceeded",
+		"qtype":    "TXT",
+		"type":     "deadline exceeded",
+		"resolver": dnsLoopbackAddr,
 	}))
 	if count != 2 {
 		t.Errorf("wrong count for timeoutCounter deadline exceeded: got %d, expected %d", count, 2)

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -33,7 +36,15 @@ func TestPurgeAuthzs(t *testing.T) {
 
 	p := expiredAuthzPurger{log, fc, dbMap, 1}
 
-	err = p.purgeAuthzs(time.Time{}, 10, 100, false)
+	err = p.purge(
+		"pendingAuthorizations",
+		time.Time{},
+		10,
+		100,
+		false,
+		"",
+		0,
+	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 
 	old, new := fc.Now().Add(-time.Hour), fc.Now().Add(time.Hour)
@@ -58,7 +69,15 @@ func TestPurgeAuthzs(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "NewPendingAuthorization failed")
 
-	err = p.purgeAuthzs(fc.Now(), 10, 100, false)
+	err = p.purge(
+		"pendingAuthorizations",
+		fc.Now(),
+		10,
+		100,
+		false,
+		"",
+		0,
+	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	count, err := dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
@@ -67,7 +86,15 @@ func TestPurgeAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(1))
 
-	err = p.purgeAuthzs(fc.Now().Add(time.Hour), 10, 100, false)
+	err = p.purge(
+		"pendingAuthorizations",
+		fc.Now().Add(time.Hour),
+		10,
+		100,
+		false,
+		"",
+		0,
+	)
 	test.AssertNotError(t, err, "purgeAuthzs failed")
 	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM pendingAuthorizations")
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
@@ -76,4 +103,28 @@ func TestPurgeAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(0))
 
+}
+
+type mockDeleter struct{}
+
+func (md *mockDeleter) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return nil, nil
+}
+
+func (md *mockDeleter) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestMaxDPS(t *testing.T) {
+	log := blog.UseMock()
+	md := &mockDeleter{}
+	p := &expiredAuthzPurger{db: md, log: log}
+	work := make(chan string, 2)
+	work <- "a"
+	work <- "b"
+	close(work)
+	start := time.Now()
+	p.deleteAuthorizations(work, 1, 1, "", "")
+	took := time.Since(start)
+	test.Assert(t, took >= time.Second*2, fmt.Sprintf("deleteAuthorizations was faster than expected. wanted: 2s, got: %s", took))
 }

@@ -185,8 +185,7 @@ type verificationRequestEvent struct {
 	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
-	RequestTime       time.Time               `json:",omitempty"`
-	ResponseTime      time.Time               `json:",omitempty"`
+	ValidationLatency time.Duration           `json:",omitempty"`
 	Error             string                  `json:",omitempty"`
 }
 
@@ -393,6 +392,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		// Intercept DialContext in order to connect to the IP address we
 		// select.
 		DialContext: dialer.DialContext,
+		// We don't want idle connections, but 0 means "unlimited," so we pick 1.
+		MaxIdleConns:        1,
+		IdleConnTimeout:     time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
 	}
 
 	// Some of our users use mod_security. Mod_security sees a lack of Accept
@@ -499,8 +502,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s: %q", url,
-			replaceInvalidUTF8(body)))
+		return nil, validationRecords, probs.Unauthorized("Invalid response from %s: %q", url,
+			replaceInvalidUTF8(body))
 	}
 
 	if httpResponse.StatusCode != 200 {
@@ -909,7 +912,7 @@ func (va *ValidationAuthorityImpl) validate(
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
-		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
+		if !va.isSafeDomain(ctx, baseIdentifier.Value) {
 			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
 				baseIdentifier.Value)
 		} else {
@@ -1030,10 +1033,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 // validation records, even when it also returns an error.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
-		ID:          authz.ID,
-		Requester:   authz.RegistrationID,
-		Hostname:    domain,
-		RequestTime: va.clk.Now(),
+		ID:        authz.ID,
+		Requester: authz.RegistrationID,
+		Hostname:  domain,
 	}
 	vStart := va.clk.Now()
 
@@ -1077,11 +1079,14 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	logEvent.Challenge = challenge
 
+	validationLatency := time.Since(vStart)
+	logEvent.ValidationLatency = validationLatency
+
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":        string(challenge.Type),
 		"result":      string(challenge.Status),
 		"problemType": problemType,
-	}).Observe(time.Since(vStart).Seconds())
+	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Infof("Validations: %+v", authz)

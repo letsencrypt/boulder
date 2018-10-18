@@ -28,13 +28,13 @@ func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID i
 }
 
 func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
-	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
-		return errors.New("")
-	}
 	return nil
 }
 
 func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
+		return errors.New("")
+	}
 	return nil
 }
 

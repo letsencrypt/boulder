@@ -370,6 +370,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
 			"Content-Length": {strconv.Itoa(len(body))},
+			"Content-Type":   []string{expectedJWSContentType},
 		},
 		Body: makeBody(body),
 		Host: "localhost",
@@ -1250,6 +1251,7 @@ func TestNewAccount(t *testing.T) {
 				URL:    mustParseURL(newAcctPath),
 				Header: map[string][]string{
 					"Content-Length": {"0"},
+					"Content-Type":   []string{expectedJWSContentType},
 				},
 			},
 			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -1845,6 +1847,7 @@ func TestNewOrder(t *testing.T) {
 				Method: "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
+					"Content-Type":   []string{expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -1939,6 +1942,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Method:     "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
+					"Content-Type":   []string{expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,

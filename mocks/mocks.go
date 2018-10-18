@@ -364,7 +364,7 @@ func (sa *StorageAuthority) PreviousCertificateExists(
 }
 
 func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
-	return nil, fmt.Errorf("GetPendingAuthorization not implemented")
+	return nil, nil
 }
 
 // GetValidAuthorizations is a mock

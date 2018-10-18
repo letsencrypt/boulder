@@ -23,7 +23,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -995,7 +994,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 
 	// If the authz has been marked invalid, consider all challenges on that authz
 	// to be invalid as well.
-	if features.Enabled(features.ForceConsistentStatus) && authz.Status == core.StatusInvalid {
+	if authz.Status == core.StatusInvalid {
 		challenge.Status = authz.Status
 	}
 }
