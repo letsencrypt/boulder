@@ -1866,7 +1866,6 @@ func TestDeactivateAccount(t *testing.T) {
 		  "contact": [
 		    "mailto:person@mail.com"
 		  ],
-		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"
@@ -1889,7 +1888,6 @@ func TestDeactivateAccount(t *testing.T) {
 		  "contact": [
 		    "mailto:person@mail.com"
 		  ],
-		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
 		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"

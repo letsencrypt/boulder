@@ -1050,61 +1050,11 @@ func (wfe *WebFrontEndImpl) Account(
 
 	// If the body was not empty, then this is an account update request.
 	if string(body) != "" {
-		// Only the Contact and Status fields of an account may be updated this way.
-		// For key updates clients should be using the key change endpoint.
-		var accountUpdateRequest struct {
-			Contact *[]string       `json:"contact"`
-			Status  core.AcmeStatus `json:"status"`
-		}
-
-		err = json.Unmarshal(body, &accountUpdateRequest)
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling account"), err)
+		currAcct, prob = wfe.updateAccount(ctx, body, currAcct)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
 			return
 		}
-
-		// Copy over the fields from the request to the registration object used for
-		// the RA updates.
-		update := core.Registration{
-			Contact: accountUpdateRequest.Contact,
-			Status:  accountUpdateRequest.Status,
-		}
-
-		// People *will* POST their full accounts to this endpoint, including
-		// the 'valid' status, to avoid always failing out when that happens only
-		// attempt to deactivate if the provided status is different from their current
-		// status.
-		//
-		// If a user tries to send both a deactivation request and an update to their
-		// contacts or subscriber agreement URL the deactivation will take place and
-		// return before an update would be performed.
-		if update.Status != "" && update.Status != currAcct.Status {
-			if update.Status != core.StatusDeactivated {
-				wfe.sendError(response, logEvent, probs.Malformed("Invalid value provided for status field"), nil)
-				return
-			}
-			wfe.deactivateAccount(ctx, *currAcct, response, request, logEvent)
-			return
-		}
-
-		// Account objects contain a JWK object which are merged in UpdateRegistration
-		// if it is different from the existing account key. Since this isn't how you
-		// update the key we just copy the existing one into the update object here. This
-		// ensures the key isn't changed and that we can cleanly serialize the update as
-		// JSON to send via RPC to the RA.
-		update.Key = currAcct.Key
-
-		updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
-		if err != nil {
-			wfe.sendError(response, logEvent,
-				web.ProblemDetailsForError(err, "Unable to update account"), err)
-			return
-		}
-		currAcct = &updatedAcct
-	}
-
-	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
 	// We populate the account Agreement field when creating a new response to
@@ -1122,6 +1072,67 @@ func (wfe *WebFrontEndImpl) Account(
 			probs.ServerInternal("Failed to marshal account"), err)
 		return
 	}
+}
+
+// updateAccount unmarshals an account update request from the provided
+// requestBody to update the given registration. Important: It is assumed the
+// request has already been authenticated by the caller. If the request is
+// a valid update the resulting updated account is returned, otherwise a problem
+// is returned.
+func (wfe *WebFrontEndImpl) updateAccount(
+	ctx context.Context,
+	requestBody []byte,
+	currAcct *core.Registration) (*core.Registration, *probs.ProblemDetails) {
+	// Only the Contact and Status fields of an account may be updated this way.
+	// For key updates clients should be using the key change endpoint.
+	var accountUpdateRequest struct {
+		Contact *[]string       `json:"contact"`
+		Status  core.AcmeStatus `json:"status"`
+	}
+
+	err := json.Unmarshal(requestBody, &accountUpdateRequest)
+	if err != nil {
+		return nil, probs.Malformed("Error unmarshaling account")
+	}
+
+	// Copy over the fields from the request to the registration object used for
+	// the RA updates.
+	update := core.Registration{
+		Contact: accountUpdateRequest.Contact,
+		Status:  accountUpdateRequest.Status,
+	}
+
+	// People *will* POST their full accounts to this endpoint, including
+	// the 'valid' status, to avoid always failing out when that happens only
+	// attempt to deactivate if the provided status is different from their current
+	// status.
+	//
+	// If a user tries to send both a deactivation request and an update to their
+	// contacts or subscriber agreement URL the deactivation will take place and
+	// return before an update would be performed.
+	if update.Status != "" && update.Status != currAcct.Status {
+		if update.Status != core.StatusDeactivated {
+			return nil, probs.Malformed("Invalid value provided for status field")
+		}
+		if err := wfe.RA.DeactivateRegistration(ctx, *currAcct); err != nil {
+			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
+		}
+		currAcct.Status = core.StatusDeactivated
+		return currAcct, nil
+	}
+
+	// Account objects contain a JWK object which are merged in UpdateRegistration
+	// if it is different from the existing account key. Since this isn't how you
+	// update the key we just copy the existing one into the update object here. This
+	// ensures the key isn't changed and that we can cleanly serialize the update as
+	// JSON to send via RPC to the RA.
+	update.Key = currAcct.Key
+
+	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
+	if err != nil {
+		return nil, web.ProblemDetailsForError(err, "Unable to update account")
+	}
+	return &updatedAcct, nil
 }
 
 // deactivateAuthorization processes the given JWS POST body as a request to
@@ -1508,29 +1519,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
-	}
-}
-
-func (wfe *WebFrontEndImpl) deactivateAccount(
-	ctx context.Context,
-	acct core.Registration,
-	response http.ResponseWriter,
-	request *http.Request,
-	logEvent *web.RequestEvent) {
-	err := wfe.RA.DeactivateRegistration(ctx, acct)
-	if err != nil {
-		wfe.sendError(response, logEvent,
-			web.ProblemDetailsForError(err, "Error deactivating account"), err)
-		return
-	}
-	acct.Status = core.StatusDeactivated
-
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
-	if err != nil {
-		// ServerInternal because account is from DB and should be fine
-		wfe.sendError(response, logEvent,
-			probs.ServerInternal("Failed to marshal account"), err)
-		return
 	}
 }
 
