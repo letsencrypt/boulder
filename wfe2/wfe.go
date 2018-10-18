@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -891,7 +892,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 
 	// If the authz has been marked invalid, consider all challenges on that authz
 	// to be invalid as well.
-	if authz.Status == core.StatusInvalid {
+	if features.Enabled(features.ForceConsistentStatus) && authz.Status == core.StatusInvalid {
 		challenge.Status = authz.Status
 	}
 }
@@ -1054,6 +1055,10 @@ func (wfe *WebFrontEndImpl) Account(
 			wfe.sendError(response, logEvent, prob, nil)
 			return
 		}
+	}
+
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
 	// We populate the account Agreement field when creating a new response to
@@ -1762,7 +1767,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// a pending status with valid authzs were finalizable. We accept both states
 	// here for deployability ease. In the future we will only allow ready orders
 	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders
+	// TODO(@cpu): Forbid finalizing "Pending" orders once
+	// `features.Enabled(features.OrderReadyStatus)` is deployed
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
