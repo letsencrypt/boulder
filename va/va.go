@@ -912,7 +912,7 @@ func (va *ValidationAuthorityImpl) validate(
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 	go func() {
-		if features.Enabled(features.VAChecksGSB) && !va.isSafeDomain(ctx, baseIdentifier.Value) {
+		if !va.isSafeDomain(ctx, baseIdentifier.Value) {
 			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
 				baseIdentifier.Value)
 		} else {

@@ -12,7 +12,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -387,6 +386,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
 				"Replay-Nonce":   []string{"ima-misplaced-nonce"},
+				"Content-Type":   []string{expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
@@ -397,6 +397,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with an empty POST body",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
+				"Content-Type":   []string{expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "No body on POST",
@@ -436,10 +437,6 @@ func TestValidPOSTRequest(t *testing.T) {
 			Header: tc.Headers,
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			_ = features.Set(map[string]bool{
-				"EnforceV2ContentType": tc.EnforceContentType,
-			})
-			defer features.Reset()
 			prob := wfe.validPOSTRequest(input)
 			test.Assert(t, prob != nil, "No error returned for invalid POST")
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -724,6 +721,7 @@ func TestValidPOSTURL(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			tc.Request.Header.Add("Content-Type", expectedJWSContentType)
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validPOSTURL(tc.Request, tc.JWS)
 			if tc.ExpectedResult == nil && prob != nil {

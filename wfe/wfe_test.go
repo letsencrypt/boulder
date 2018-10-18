@@ -26,7 +26,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -2450,7 +2449,6 @@ func TestKeyRollover(t *testing.T) {
 }
 
 func TestPrepChallengeForDisplay(t *testing.T) {
-	_ = features.Set(map[string]bool{"ForceConsistentStatus": true})
 	req := &http.Request{
 		Host: "example.com",
 	}

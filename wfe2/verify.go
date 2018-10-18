@@ -145,19 +145,17 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 		return probs.ContentLengthRequired()
 	}
 
-	if features.Enabled(features.EnforceV2ContentType) {
-		// Per 6.2 ALL POSTs should have the correct JWS Content-Type for flattened
-		// JSON serialization.
-		if _, present := request.Header["Content-Type"]; !present {
-			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoContentType"}).Inc()
-			return probs.InvalidContentType("No Content-Type header on POST. Content-Type must be %q",
-				expectedJWSContentType)
-		}
-		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
-			wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "WrongContentType"}).Inc()
-			return probs.InvalidContentType("Invalid Content-Type header on POST. Content-Type must be %q",
-				expectedJWSContentType)
-		}
+	// Per 6.2 ALL POSTs should have the correct JWS Content-Type for flattened
+	// JSON serialization.
+	if _, present := request.Header["Content-Type"]; !present {
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoContentType"}).Inc()
+		return probs.InvalidContentType("No Content-Type header on POST. Content-Type must be %q",
+			expectedJWSContentType)
+	}
+	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "WrongContentType"}).Inc()
+		return probs.InvalidContentType("Invalid Content-Type header on POST. Content-Type must be %q",
+			expectedJWSContentType)
 	}
 
 	// Per 6.4.1 "Replay-Nonce" clients should not send a Replay-Nonce header in

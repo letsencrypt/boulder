@@ -18,7 +18,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -85,9 +84,6 @@ func TestCheckWildcardCert(t *testing.T) {
 	defer func() {
 		saCleanup()
 	}()
-
-	_ = features.Set(map[string]bool{"WildcardDomains": true})
-	defer features.Reset()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
@@ -172,8 +168,6 @@ func TestCheckCert(t *testing.T) {
 			longName,
 			"example-a.com",
 			"foodnotbombs.mil",
-			// `*.foodnotbombs.mil` should be flagged because the wildcard issuance feature is disabled
-			"*.foodnotbombs.mil",
 			// `dev-myqnapcloud.com` is included because it is an exact private
 			// entry on the public suffix list
 			"dev-myqnapcloud.com",
@@ -203,16 +197,15 @@ func TestCheckCert(t *testing.T) {
 	problems := checker.checkCert(cert)
 
 	problemsMap := map[string]int{
-		"Stored digest doesn't match certificate digest":                                                 1,
-		"Stored serial doesn't match certificate serial":                                                 1,
-		"Stored expiration doesn't match certificate NotAfter":                                           1,
-		"Certificate doesn't have basic constraints set":                                                 1,
-		"Certificate has a validity period longer than 2160h0m0s":                                        1,
-		"Stored issuance date is outside of 6 hour window of certificate NotBefore":                      1,
-		"Certificate has incorrect key usage extensions":                                                 1,
-		"Certificate has common name >64 characters long (65)":                                           1,
-		"Policy Authority isn't willing to issue for '*.foodnotbombs.mil': Wildcard names not supported": 1,
-		"Certificate contains an unexpected extension: 1.3.3.7":                                          1,
+		"Stored digest doesn't match certificate digest":                            1,
+		"Stored serial doesn't match certificate serial":                            1,
+		"Stored expiration doesn't match certificate NotAfter":                      1,
+		"Certificate doesn't have basic constraints set":                            1,
+		"Certificate has a validity period longer than 2160h0m0s":                   1,
+		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
+		"Certificate has incorrect key usage extensions":                            1,
+		"Certificate has common name >64 characters long (65)":                      1,
+		"Certificate contains an unexpected extension: 1.3.3.7":                     1,
 	}
 	for _, p := range problems {
 		_, ok := problemsMap[p]

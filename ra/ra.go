@@ -526,25 +526,23 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			}
 		}
 	}
-	if features.Enabled(features.ReusePendingAuthz) {
-		nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
-		identifierTypeString := string(identifier.Type)
-		pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
-			RegistrationID:  &regID,
-			IdentifierType:  &identifierTypeString,
-			IdentifierValue: &identifier.Value,
-			ValidUntil:      &nowishNano,
-		})
-		if err != nil && !berrors.Is(err, berrors.NotFound) {
-			return core.Authorization{}, berrors.InternalServerError(
-				"unable to get pending authorization for regID: %d, identifier: %s: %s",
-				regID,
-				identifier.Value,
-				err)
-		} else if err == nil {
-			return *pendingAuth, nil
-		}
-		// Fall through to normal creation flow.
+
+	nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
+	identifierTypeString := string(identifier.Type)
+	pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &regID,
+		IdentifierType:  &identifierTypeString,
+		IdentifierValue: &identifier.Value,
+		ValidUntil:      &nowishNano,
+	})
+	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		return core.Authorization{}, berrors.InternalServerError(
+			"unable to get pending authorization for regID: %d, identifier: %s: %s",
+			regID,
+			identifier.Value,
+			err)
+	} else if err == nil {
+		return *pendingAuth, nil
 	}
 
 	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
@@ -835,8 +833,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// a pending status with valid authzs were finalizable. We accept both states
 	// here for deployability ease. In the future we will only allow ready orders
 	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders once
-	// `features.Enabled(features.OrderReadyStatus)` is deployed
+	// TODO(@cpu): Forbid finalizing "Pending" orders
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {
 		return nil, berrors.MalformedError(
@@ -1704,19 +1701,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
 		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if features.Enabled(features.WildcardDomains) {
-			if err := ra.PA.WillingToIssueWildcard(id); err != nil {
-				return nil, err
-			}
-		} else if err := ra.PA.WillingToIssue(id); err != nil {
+		if err := ra.PA.WillingToIssueWildcard(id); err != nil {
 			return nil, err
 		}
 	}
 
-	if features.Enabled(features.EnforceOverlappingWildcards) {
-		if err := wildcardOverlap(order.Names); err != nil {
-			return nil, err
-		}
+	if err := wildcardOverlap(order.Names); err != nil {
+		return nil, err
 	}
 
 	// See if there is an existing, pending, unexpired order that can be reused
@@ -1840,7 +1831,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// An authz without an expiry is an unexpected internal server event
 		if authz.Expires == nil {
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned an authz (%d) with nil expiry",
+				"SA.GetAuthorizations returned an authz (%s) with nil expiry",
 				*authz.Id)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
@@ -1890,21 +1881,6 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		RegistrationID: &reg,
 		Status:         &status,
 		Expires:        &expires,
-	}
-
-	if identifier.Type == core.IdentifierDNS && !features.Enabled(features.VAChecksGSB) {
-		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
-		if err != nil {
-			outErr := berrors.InternalServerError("unable to determine if domain was safe")
-			ra.log.Warningf("%s: %s", outErr, err)
-			return nil, outErr
-		}
-		if !isSafeResp.GetIsSafe() {
-			return nil, berrors.UnauthorizedError(
-				"%q was considered an unsafe domain by a third-party API",
-				identifier.Value,
-			)
-		}
 	}
 
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
