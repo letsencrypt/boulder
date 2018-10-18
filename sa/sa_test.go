@@ -24,7 +24,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -1726,7 +1725,7 @@ func TestCountOrders(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	now := sa.clk.Now()
-	expires := now.Add(24 * time.Hour).UnixNano()
+	expires := now.Add(24 * time.Hour)
 
 	earliest := now.Add(-time.Hour)
 	latest := now.Add(time.Second)
@@ -1736,12 +1735,17 @@ func TestCountOrders(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
 	test.AssertEquals(t, count, 0)
 
+	// Add a pending authorization
+	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID, Identifier: core.AcmeIdentifier{Type: "dns", Value: "example.com"}, Status: core.StatusPending, Expires: &expires})
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+
 	// Add one pending order
+	expiresNano := expires.UnixNano()
 	order, err := sa.NewOrder(ctx, &corepb.Order{
 		RegistrationID: &reg.ID,
-		Expires:        &expires,
+		Expires:        &expiresNano,
 		Names:          []string{"example.com"},
-		Authorizations: []string{"~ ~ [:: AuThOrIzEd ::] ~ ~ "},
+		Authorizations: []string{authz.ID},
 	})
 	test.AssertNotError(t, err, "Couldn't create new pending order")
 
@@ -2037,7 +2041,6 @@ func TestStatusForOrder(t *testing.T) {
 		ExpectedStatus   string
 		SetProcessing    bool
 		Finalize         bool
-		Features         []string
 	}{
 		{
 			Name:             "Order with an invalid authz",
@@ -2074,7 +2077,7 @@ func TestStatusForOrder(t *testing.T) {
 			Name:             "Order with only valid authzs, not yet processed or finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
 			AuthorizationIDs: []string{validAuthz.ID},
-			ExpectedStatus:   string(core.StatusPending),
+			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
@@ -2088,7 +2091,6 @@ func TestStatusForOrder(t *testing.T) {
 			OrderNames:       []string{"valid.your.order.is.up"},
 			AuthorizationIDs: []string{validAuthz.ID},
 			ExpectedStatus:   string(core.StatusReady),
-			Features:         []string{"OrderReadyStatus"},
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
@@ -2109,13 +2111,6 @@ func TestStatusForOrder(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			if len(tc.Features) > 0 {
-				for _, flag := range tc.Features {
-					_ = features.Set(map[string]bool{flag: true})
-				}
-				defer features.Reset()
-			}
-
 			// Add a new order with the testcase authz IDs
 			processing := false
 			// If the testcase doesn't specify an order expiry use a default timestamp
