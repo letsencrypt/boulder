@@ -196,19 +196,15 @@ func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
 	}
 }
 
-// sendPurge should only be called as a Goroutine as it will block until the purge
-// request is successful
-func (updater *OCSPUpdater) sendPurge(der []byte) {
+func (updater *OCSPUpdater) generatePurgeURLs(der []byte) ([]string, error) {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		updater.log.AuditErrf("Failed to parse certificate for cache purge: %s", err)
-		return
+		return nil, err
 	}
 
 	req, err := ocsp.CreateRequest(cert, updater.issuer, nil)
 	if err != nil {
-		updater.log.AuditErrf("Failed to create OCSP request for cache purge: %s", err)
-		return
+		return nil, err
 	}
 
 	// Create a GET and special Akamai POST style OCSP url for each endpoint in cert.OCSPServer
@@ -220,11 +216,7 @@ func (updater *OCSPUpdater) sendPurge(der []byte) {
 		// Generate GET url
 		urls = append(generateOCSPCacheKeys(req, ocspServer))
 	}
-
-	err = updater.ccu.Purge(urls)
-	if err != nil {
-		updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
-	}
+	return urls, nil
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
@@ -305,10 +297,10 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 	return &status, nil
 }
 
-func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, []string, error) {
 	cert, err := updater.sac.GetCertificate(ctx, status.Serial)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	signRequest := core.OCSPSigningRequest{
@@ -320,19 +312,23 @@ func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status 
 
 	ocspResponse, err := updater.cac.GenerateOCSP(ctx, signRequest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	now := updater.clk.Now()
 	status.OCSPLastUpdated = now
 	status.OCSPResponse = ocspResponse
 
-	// Purge OCSP response from CDN, gated on client having been initialized
+	// If cache client is populated generate purge URLs
+	var purgeURLs []string
 	if updater.ccu != nil {
-		go updater.sendPurge(cert.DER)
+		purgeURLs, err = updater.generatePurgeURLs(cert.DER)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
-	return &status, nil
+	return &status, purgeURLs, nil
 }
 
 func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error {
@@ -398,13 +394,15 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		return err
 	}
 
+	var purgeURLs []string
 	for _, status := range statuses {
-		meta, err := updater.generateRevokedResponse(ctx, status)
+		meta, respURLs, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate revoked OCSP response: %s", err)
 			updater.stats.Inc("Errors.RevokedResponseGeneration", 1)
 			return err
 		}
+		purgeURLs = append(purgeURLs, respURLs...)
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.stats.Inc("Errors.StoreRevokedResponse", 1)
@@ -412,6 +410,15 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 			continue
 		}
 	}
+
+	if updater.ccu != nil {
+		err = updater.ccu.Purge(purgeURLs)
+		if err != nil {
+			updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
+			return err
+		}
+	}
+
 	return nil
 }
 

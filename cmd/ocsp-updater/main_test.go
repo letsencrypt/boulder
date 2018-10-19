@@ -114,7 +114,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	secondMeta, err := updater.generateRevokedResponse(ctx, status)
+	secondMeta, _, err := updater.generateRevokedResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
 	err = updater.storeResponse(secondMeta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
