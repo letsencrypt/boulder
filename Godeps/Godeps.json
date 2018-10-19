@@ -557,8 +557,8 @@
 		},
 		{
 			"ImportPath": "gopkg.in/go-gorp/gorp.v2",
-			"Comment": "v2.0.0",
-			"Rev": "4deece61034873cb5b5416e81abe4cea7bd0da72"
+			"Comment": "v2.0.0-14-g6032c66",
+			"Rev": "6032c66e0f5f155fd56216ed14cbbdd991034605"
 		},
 		{
 			"ImportPath": "gopkg.in/square/go-jose.v2",

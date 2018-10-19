@@ -1,6 +1,6 @@
 # Go Relational Persistence
 
-[![build status](https://img.shields.io/travis/go-gorp/gorp.svg)](http://travis-ci.org/go-gorp/gorp)
+[![build status](https://img.shields.io/travis/go-gorp/gorp/master.svg)](http://travis-ci.org/go-gorp/gorp)
 [![code coverage](https://img.shields.io/coveralls/go-gorp/gorp.svg)](https://coveralls.io/r/go-gorp/gorp)
 [![issues](https://img.shields.io/github/issues/go-gorp/gorp.svg)](https://github.com/go-gorp/gorp/issues)
 [![godoc v1](https://img.shields.io/badge/godoc-v1-375EAB.svg)](https://godoc.org/gopkg.in/gorp.v1)
@@ -689,6 +689,32 @@ Note that these databases are not covered by CI and I (@coopernurse)
 have no good way to test them locally.  So please try them and send
 patches as needed, but expect a bit more unpredicability.
 
+## Sqlite3 Extensions
+
+In order to use sqlite3 extensions you need to first register a custom driver:
+
+```go
+import (
+	"database/sql"
+
+	// use whatever database/sql driver you wish
+	sqlite "github.com/mattn/go-sqlite3"
+)
+
+func customDriver() (*sql.DB, error) {
+
+	// create custom driver with extensions defined
+	sql.Register("sqlite3-custom", &sqlite.SQLiteDriver{
+		Extensions: []string{
+			"mod_spatialite",
+		},
+	})
+
+	// now you can then connect using the 'sqlite3-custom' driver instead of 'sqlite3'
+	return sql.Open("sqlite3-custom", "/tmp/post_db.bin")
+}
+```
+
 ## Known Issues
 
 ### SQL placeholder portability
@@ -706,14 +732,18 @@ Raw SQL strings passed to `Exec`, `Select`, `SelectOne`, `SelectInt`,
 etc will not be parsed.  Consequently you may have portability issues
 if you write a query like this:
 
-```go // works on MySQL and Sqlite3, but not with Postgresql err :=
-dbmap.SelectOne(&val, "select * from foo where id = ?", 30) ```
+```go 
+// works on MySQL and Sqlite3, but not with Postgresql err :=
+dbmap.SelectOne(&val, "select * from foo where id = ?", 30)
+```
 
 In `Select` and `SelectOne` you can use named parameters to work
 around this.  The following is portable:
 
-```go err := dbmap.SelectOne(&val, "select * from foo where id = :id",
-map[string]interface{} { "id": 30}) ```
+```go 
+err := dbmap.SelectOne(&val, "select * from foo where id = :id",
+map[string]interface{} { "id": 30})
+```
 
 Additionally, when using Postgres as your database, you should utilize
 `$1` instead of `?` placeholders as utilizing `?` placeholders when
