@@ -748,7 +748,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 		return
 	}
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
-		wfe.sendError(response, logEvent, probs.Malformed("Certificate is expired"), nil)
+		wfe.sendError(response, logEvent, probs.Unauthorized("Certificate is expired"), nil)
 		return
 	}
 	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)

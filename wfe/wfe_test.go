@@ -1662,9 +1662,9 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
-	test.AssertEquals(t, responseWriter.Code, 400)
+	test.AssertEquals(t, responseWriter.Code, 403)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate is expired","status":400}`)
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Certificate is expired","status":403}`)
 
 }
 
