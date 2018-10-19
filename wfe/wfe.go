@@ -579,15 +579,18 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key); err == nil {
+	existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
+		return
+	} else if err == nil || !berrors.Is(err, berrors.NotFound) {
 		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
-		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 		return
 	}
 
 	var init core.Registration
-	err := json.Unmarshal(body, &init)
+	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
