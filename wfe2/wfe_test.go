@@ -2001,11 +2001,6 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
-			Name:         "Invalid CSR",
-			Request:      signAndPost(t, "1/4", "http://localhost/1/4", `{"CSR": "ABCD"}`, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Error parsing certificate request: asn1: structure error: tags don't match (16 vs {class:0 tag:0 length:16 isCompound:false}) {optional:false explicit:false application:false defaultValue:\u003cnil\u003e tag:\u003cnil\u003e stringType:0 timeType:0 set:false omitEmpty:false} certificateRequest @2","status":400}`,
-		},
-		{
 			Name:            "Good CSR, Pending Order",
 			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
@@ -2056,6 +2051,17 @@ func TestFinalizeOrder(t *testing.T) {
 				tc.ExpectedBody)
 		})
 	}
+
+	// Check a bad CSR request separately from the above testcases. We don't want
+	// to match the whole response body because the "detail" of a bad CSR problem
+	// contains a verbose Go error message that can change between versions (e.g.
+	// Go 1.10.4 to 1.11 changed the expected format)
+	badCSRReq := signAndPost(t, "1/4", "http://localhost/1/4", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
+	responseWriter.Body.Reset()
+	responseWriter.HeaderMap = http.Header{}
+	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
+	responseBody := responseWriter.Body.String()
+	test.AssertContains(t, responseBody, "Error parsing certificate request")
 }
 
 func TestKeyRollover(t *testing.T) {
