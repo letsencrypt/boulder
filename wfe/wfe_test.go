@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -2498,4 +2499,35 @@ func TestNewCertificateSCTError(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
+}
+
+type mockSAGetRegByKeyNotFoundAfterVerify struct {
+	core.StorageGetter
+	verified bool
+}
+
+func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	if !sa.verified {
+		sa.verified = true
+		return sa.StorageGetter.GetRegistrationByKey(ctx, jwk)
+	}
+	return core.Registration{}, errors.New("broke")
+}
+
+// If GetRegistrationByKey returns a non berrors.NotFound error NewRegistration should fail
+// out with an internal server error instead of continuing on and attempting to create a new
+// account.
+func TestNewRegistrationGetKeyBroken(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFoundAfterVerify{mocks.NewStorageAuthority(fc), false}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	var prob probs.ProblemDetails
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+	test.AssertNotError(t, err, "unmarshalling response")
+	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
 }

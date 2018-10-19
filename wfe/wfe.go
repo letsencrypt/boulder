@@ -570,7 +570,6 @@ func link(url, relation string) string {
 
 // NewRegistration is used by clients to submit a new registration/account
 func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-
 	body, key, _, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceNewReg)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
