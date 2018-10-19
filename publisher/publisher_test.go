@@ -292,7 +292,7 @@ func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
 		SerialNumber:          big.NewInt(0),
 		Subject:               pkix.Name{CommonName: "root"},
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 	}
 	rootBytes, err := x509.CreateCertificate(rand.Reader, &rootTmpl, &rootTmpl, k.Public(), k)
 	if err != nil {

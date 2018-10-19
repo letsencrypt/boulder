@@ -153,8 +153,8 @@ var CompressionType_name = map[int32]string{
 }
 var CompressionType_value = map[string]int32{
 	"COMPRESSION_TYPE_UNSPECIFIED": 0,
-	"RAW":  1,
-	"RICE": 2,
+	"RAW":                          1,
+	"RICE":                         2,
 }
 
 func (x CompressionType) String() string {
@@ -185,9 +185,9 @@ var ThreatEntryType_name = map[int32]string{
 }
 var ThreatEntryType_value = map[string]int32{
 	"THREAT_ENTRY_TYPE_UNSPECIFIED": 0,
-	"URL":        1,
-	"EXECUTABLE": 2,
-	"IP_RANGE":   3,
+	"URL":                           1,
+	"EXECUTABLE":                    2,
+	"IP_RANGE":                      3,
 }
 
 func (x ThreatEntryType) String() string {
