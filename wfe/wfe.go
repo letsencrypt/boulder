@@ -747,6 +747,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 		wfe.sendError(response, logEvent, probs.ServerInternal("invalid parse of stored certificate"), err)
 		return
 	}
+	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
+		wfe.sendError(response, logEvent, probs.Malformed("Certificate is expired"), nil)
+		return
+	}
 	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
 	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses

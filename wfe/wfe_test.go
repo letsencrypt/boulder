@@ -1629,6 +1629,45 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
 }
 
+func TestRevokeCertificateExpired(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	keyPemBytes, err := ioutil.ReadFile("test/178.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, keyPemBytes)
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer := newJoseSigner(t, rsaKey, wfe.nonceService)
+
+	certPemBytes, err := ioutil.ReadFile("test/178.crt")
+	test.AssertNotError(t, err, "Failed to load cert")
+	certBlock, _ := pem.Decode(certPemBytes)
+	test.Assert(t, certBlock != nil, "Failed to decode PEM")
+	revokeRequest := struct {
+		Resource       string          `json:"resource"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
+	}{
+		Resource:       "revoke-cert",
+		CertificateDER: certBlock.Bytes,
+	}
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	test.AssertNotError(t, err, "Failed to marshal request")
+
+	parsedCert, err := x509.ParseCertificate(certBlock.Bytes)
+	test.AssertNotError(t, err, "failed to parse test cert")
+	fc.Set(parsedCert.NotAfter.Add(time.Hour))
+
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	responseWriter := httptest.NewRecorder()
+	responseWriter.Body.Reset()
+	result, _ := signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 400)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate is expired","status":400}`)
+
+}
+
 func TestRevokeCertificateWithAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
