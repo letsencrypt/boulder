@@ -499,10 +499,10 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// In the WFE1 package the check for the request URL required unmarshalling
 	// the payload JSON to check the "resource" field of the protected JWS body.
 	// This caught invalid JSON early and so we preserve this check by explicitly
-	// trying to unmarshal the payload as part of the verification and failing
-	// early if it isn't valid JSON.
+	// trying to unmarshal the payload (when it is non-empty to allow POST-as-GET
+	// behaviour) as part of the verification and failing early if it isn't valid JSON.
 	var parsedBody struct{}
-	if err := json.Unmarshal(payload, &parsedBody); err != nil {
+	if err := json.Unmarshal(payload, &parsedBody); string(payload) != "" && err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSBodyUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed("Request payload did not parse as JSON")
 	}
@@ -538,7 +538,10 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 }
 
 // validPOSTForAccount checks that a given POST request has a valid JWS
-// using `validJWSForAccount`.
+// using `validJWSForAccount`. If valid, the authenticated JWS body and the
+// registration that authenticated the body are returned. Otherwise a problem is
+// returned. The returned JWS body may be empty if the request is a POST-as-GET
+// request.
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
@@ -549,6 +552,29 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 		return nil, nil, nil, prob
 	}
 	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
+}
+
+// validPOSTAsGETForAccount checks that a given POST request is valid using
+// `validPOSTForAccount`. It additionally validates that the JWS request payload
+// is empty, indicating that it is a POST-as-GET request per ACME draft 15+
+// section 6.3 "GET and POST-as-GET requests". If a non empty payload is
+// provided in the JWS the invalidPOSTAsGETErr problem is returned. This
+// function is useful only for endpoints that do not need to handle both POSTs
+// with a body and POST-as-GET requests (e.g. Order, Certificate).
+func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
+	request *http.Request,
+	ctx context.Context,
+	logEvent *web.RequestEvent) (*core.Registration, *probs.ProblemDetails) {
+	// Call validPOSTForAccount to verify the JWS and extract the body.
+	body, _, reg, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	if prob != nil {
+		return nil, prob
+	}
+	// Verify the POST-as-GET payload is empty
+	if string(body) != "" {
+		return nil, probs.Malformed("POST-as-GET requests must have an empty payload")
+	}
+	return reg, prob
 }
 
 // validSelfAuthenticatedJWS checks that a given JWS verifies with the JWK
