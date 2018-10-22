@@ -15,11 +15,10 @@ import (
 	"strings"
 	"time"
 
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -623,6 +622,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	}
 	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+
+	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
+		return probs.Unauthorized("Certificate is expired")
+	}
 
 	// Check the certificate status for the provided certificate to see if it is
 	// already revoked
