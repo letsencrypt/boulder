@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
@@ -2707,6 +2708,38 @@ func TestRevokeCertificateWithAuthz(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+func TestRevokeCertificateExpired(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	test4JWK := loadKey(t, []byte(test4KeyPrivatePEM))
+
+	certPemBytes, err := ioutil.ReadFile("test/238.crt")
+	test.AssertNotError(t, err, "failed to read test/238.crt")
+	certBlock, _ := pem.Decode(certPemBytes)
+	test.AssertNotError(t, err, "failed to parse test/238.crt")
+	reason := revocation.Reason(0)
+	revokeRequest := struct {
+		CertificateDER core.JSONBuffer    `json:"certificate"`
+		Reason         *revocation.Reason `json:"reason"`
+	}{
+		CertificateDER: certBlock.Bytes,
+		Reason:         &reason,
+	}
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	test.AssertNotError(t, err, "failed to marshal revocation request")
+
+	parsedCertificate, err := x509.ParseCertificate(certBlock.Bytes)
+	test.AssertNotError(t, err, "failed to parse test cert")
+	fc.Set(parsedCertificate.NotAfter.Add(time.Hour))
+
+	_, _, jwsBody := signRequestKeyID(t, 4, test4JWK, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
 }
 
 type mockSAGetRegByKeyFails struct {
