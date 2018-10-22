@@ -555,7 +555,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 }
 
 // validPOSTAsGETForAccount checks that a given POST request is valid using
-// `validPOSTForAccount`. It additional validates that the JWS request payload
+// `validPOSTForAccount`. It additionally validates that the JWS request payload
 // is empty, indicating that it is a POST-as-GET request per ACME draft 15+
 // section 6.3 "GET and POST-as-GET requests". If a non empty payload is
 // provided in the JWS the invalidPOSTAsGETErr problem is returned. This
