@@ -892,7 +892,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 
 	// If the authz has been marked invalid, consider all challenges on that authz
 	// to be invalid as well.
-	if features.Enabled(features.ForceConsistentStatus) && authz.Status == core.StatusInvalid {
+	if authz.Status == core.StatusInvalid {
 		challenge.Status = authz.Status
 	}
 }
@@ -1767,8 +1767,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// a pending status with valid authzs were finalizable. We accept both states
 	// here for deployability ease. In the future we will only allow ready orders
 	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders once
-	// `features.Enabled(features.OrderReadyStatus)` is deployed
+	// TODO(@cpu): Forbid finalizing "Pending" orders
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
