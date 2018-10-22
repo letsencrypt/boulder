@@ -303,7 +303,7 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		SignatureAlgorithm:    sigAlg,
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 		Subject: pkix.Name{
 			CommonName:   profile.CommonName,
 			Organization: []string{profile.Organization},

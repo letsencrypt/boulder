@@ -11,13 +11,14 @@
 
 package gorp
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // The Dialect interface encapsulates behaviors that differ across
 // SQL databases.  At present the Dialect is only used by CreateTables()
 // but this could change in the future
 type Dialect interface {
-
 	// adds a suffix to any query, usually ";"
 	QuerySuffix() string
 
@@ -67,7 +68,7 @@ type Dialect interface {
 	// table - The table name
 	QuotedTableForQuery(schema string, table string) string
 
-	// Existance clause for table creation / deletion
+	// Existence clause for table creation / deletion
 	IfSchemaNotExists(command, schema string) string
 	IfTableExists(command, schema, table string) string
 	IfTableNotExists(command, schema, table string) string

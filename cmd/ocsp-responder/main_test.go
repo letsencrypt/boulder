@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +12,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"golang.org/x/crypto/ocsp"
 
@@ -83,7 +87,7 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", nil, blog.NewMock())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
@@ -118,7 +122,13 @@ func TestDBHandler(t *testing.T) {
 }
 
 // mockSelector always returns the same certificateStatus
-type mockSelector struct{}
+type mockSelector struct {
+	mockSqlExecutor
+}
+
+func (bs mockSelector) WithContext(context.Context) gorp.SqlExecutor {
+	return bs
+}
 
 func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
 	outputPtr, ok := output.(*dbResponse)
@@ -129,17 +139,78 @@ func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{})
 	return nil
 }
 
+// To mock out WithContext, we need to be able to return objects that satisfy
+// gorp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock
+// that we can embed everywhere we need to satisfy it.
+// Note: mockSqlExecutor does *not* implement WithContext. The expectation is
+// that structs that embed mockSqlExecutor will define their own WithContext
+// that returns a reference to themselves. That makes it easy for those structs
+// to override the specific methods they need to implement (e.g. SelectOne).
+type mockSqlExecutor struct{}
+
+func (mse mockSqlExecutor) Get(i interface{}, keys ...interface{}) (interface{}, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Insert(list ...interface{}) error {
+	return fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Update(list ...interface{}) (int64, error) {
+	return 0, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Delete(list ...interface{}) (int64, error) {
+	return 0, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectInt(query string, args ...interface{}) (int64, error) {
+	return 0, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error) {
+	return sql.NullInt64{}, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectFloat(query string, args ...interface{}) (float64, error) {
+	return 0, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectNullFloat(query string, args ...interface{}) (sql.NullFloat64, error) {
+	return sql.NullFloat64{}, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectStr(query string, args ...interface{}) (string, error) {
+	return "", fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectNullStr(query string, args ...interface{}) (sql.NullString, error) {
+	return sql.NullString{}, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
+	return fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+func (mse mockSqlExecutor) QueryRow(query string, args ...interface{}) *sql.Row {
+	return nil
+}
+
 // brokenSelector allows us to test what happens when gorp SelectOne statements
 // throw errors and satisfies the dbSelector interface
-type brokenSelector struct{}
+type brokenSelector struct {
+	mockSqlExecutor
+}
 
 func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
 	return fmt.Errorf("Failure!")
 }
 
+func (bs brokenSelector) WithContext(context.Context) gorp.SqlExecutor {
+	return bs
+}
+
 func TestErrorLog(t *testing.T) {
 	mockLog := blog.NewMock()
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", nil, mockLog)
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
 
 	ocspReq, err := ocsp.ParseRequest(req)
@@ -165,7 +236,7 @@ func mustRead(path string) []byte {
 
 func TestRequiredSerialPrefix(t *testing.T) {
 	mockLog := blog.NewMock()
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"nope"}, mockLog)
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"nope"}, time.Second, mockLog)
 	test.AssertNotError(t, err, "failed to create DBSource")
 
 	ocspReq, err := ocsp.ParseRequest(req)
@@ -176,7 +247,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
-	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, mockLog)
+	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, time.Second, mockLog)
 	test.AssertNotError(t, err, "failed to create DBSource")
 	_, _, err = src.Response(ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
