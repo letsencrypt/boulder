@@ -140,7 +140,6 @@ func newUpdater(
 		},
 	}
 
-	// TODO(#1050): Remove this gate and the nil ccu checks below
 	if config.AkamaiBaseURL != "" {
 		issuer, err := core.LoadCert(issuerPath)
 		ccu, err := akamai.NewCachePurgeClient(
