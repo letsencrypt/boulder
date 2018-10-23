@@ -76,11 +76,13 @@ func newUpdater(
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
-		config.OldOCSPBatchSize == 0 {
+		config.OldOCSPBatchSize == 0 ||
+		config.RevokedCertificateBatchSize == 0 {
 		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
 	}
 	if config.NewCertificateWindow.Duration == 0 ||
-		config.OldOCSPWindow.Duration == 0 {
+		config.OldOCSPWindow.Duration == 0 ||
+		config.RevokedCertificateWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 	if config.OCSPStaleMaxAge.Duration == 0 {
@@ -126,19 +128,16 @@ func newUpdater(
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
-	}
-	if config.RevokedCertificateBatchSize != 0 &&
-		config.RevokedCertificateWindow.Duration != 0 {
-		updater.loops = append(updater.loops, &looper{
+		{
 			clk:                  clk,
-			stats:                stats,
+			stats:                stats.NewScope("RevokedCertificates"),
 			batchSize:            config.RevokedCertificateBatchSize,
 			tickDur:              config.RevokedCertificateWindow.Duration,
 			tickFunc:             updater.revokedCertificatesTick,
 			name:                 "RevokedCertificates",
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		})
+		},
 	}
 
 	// TODO(#1050): Remove this gate and the nil ccu checks below
