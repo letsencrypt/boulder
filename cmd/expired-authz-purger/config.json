@@ -11,6 +11,7 @@
         "parallelism": 20,
         "maxDPS": 1000,
         "pendingCheckpointFile": "/tmp/pending-checkpoint",
-        "finalCheckpointFile": "/tmp/final-checkpoint"
+        "finalCheckpointFile": "/tmp/final-checkpoint",
+        "debugAddr": "8014"
     }
 }

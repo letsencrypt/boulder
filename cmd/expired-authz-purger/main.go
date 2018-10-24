@@ -12,16 +12,19 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type eapConfig struct {
 	ExpiredAuthzPurger struct {
 		cmd.DBConfig
+
+		DebugAddr string
 
 		Syslog cmd.SyslogConfig
 
@@ -51,6 +54,14 @@ type eapDB interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
 }
+
+var deletedStat = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "eap_authorizations_deleted",
+		Help: "Number of authorizations the EAP has deleted.",
+	},
+	[]string{"type"},
+)
 
 type expiredAuthzPurger struct {
 	log blog.Logger
@@ -261,6 +272,7 @@ func deleteAuthorization(db eapDB, table, id string) error {
 	if err != nil {
 		return err
 	}
+	deletedStat.WithLabelValues(table).Inc()
 	return nil
 }
 
@@ -281,10 +293,16 @@ func main() {
 	err = features.Set(config.ExpiredAuthzPurger.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	logger := cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
-	logger.Info(cmd.VersionString())
-
+	var logger blog.Logger
+	if config.ExpiredAuthzPurger.DebugAddr != "" {
+		var scope metrics.Scope
+		scope, logger = cmd.StatsAndLogging(config.ExpiredAuthzPurger.Syslog, config.ExpiredAuthzPurger.DebugAddr)
+		scope.MustRegister(deletedStat)
+	} else {
+		logger = cmd.NewLogger(config.ExpiredAuthzPurger.Syslog)
+	}
 	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString())
 
 	// Configure DB
 	dbURL, err := config.ExpiredAuthzPurger.DBConfig.URL()
