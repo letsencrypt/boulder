@@ -7,18 +7,17 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 )
 
 // ClientSetup creates a gRPC TransportCredentials that presents
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
 	if c.ServerAddress == "" {
 		if len(c.ServerAddresses) == 0 {
 			return nil, errors.New("Both ServerAddress and ServerAddresses are empty")
@@ -27,16 +26,21 @@ func ClientSetup(c *cmd.GRPCClientConfig, tls *tls.Config, metrics clientMetrics
 		}
 		c.ServerAddress = c.ServerAddresses[0]
 	}
-	if tls == nil {
+	if tlsConfig == nil {
 		return nil, errNilTLS
 	}
+
+	// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
+	// to ECDHE-RSA-CHACHA20-POLY1305.
+	tlsConfig.MinVersion, tlsConfig.MaxVersion = tls.VersionTLS12, tls.VersionTLS12
+	tlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
 		return nil, err
 	}
-	creds := bcreds.NewClientCredentials(tls.RootCAs, tls.Certificates, host)
+	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, host)
 	return grpc.Dial(
 		"dns:///"+c.ServerAddress,
 		grpc.WithBalancerName("round_robin"),
