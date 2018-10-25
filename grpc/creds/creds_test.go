@@ -93,7 +93,7 @@ func TestClientTransportCredentials(t *testing.T) {
 		NotBefore:             time.Unix(1000, 0),
 		NotAfter:              time.Now().AddDate(1, 0, 0),
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 	}
 	derA, err := x509.CreateCertificate(rand.Reader, temp, temp, priv.Public(), priv)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")

@@ -133,13 +133,13 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	return core.Challenge{
-		ID:     *in.Id,
-		Type:   *in.Type,
-		Status: core.AcmeStatus(*in.Status),
-		Token:  *in.Token,
+		ID:                       *in.Id,
+		Type:                     *in.Type,
+		Status:                   core.AcmeStatus(*in.Status),
+		Token:                    *in.Token,
 		ProvidedKeyAuthorization: *in.KeyAuthorization,
-		Error:            prob,
-		ValidationRecord: recordAry,
+		Error:                    prob,
+		ValidationRecord:         recordAry,
 	}, nil
 }
 

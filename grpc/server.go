@@ -7,11 +7,10 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 )
 
 // CodedError is a alias required to appease go vet
@@ -23,8 +22,8 @@ var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 // verifies that clients present a certificate that (a) is signed by one of
 // the configured ClientCAs, and (b) contains at least one
 // subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, metrics serverMetrics, clk clock.Clock) (*grpc.Server, net.Listener, error) {
-	if tls == nil {
+func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMetrics, clk clock.Clock) (*grpc.Server, net.Listener, error) {
+	if tlsConfig == nil {
 		return nil, nil, errNilTLS
 	}
 	acceptedSANs := make(map[string]struct{})
@@ -32,7 +31,12 @@ func NewServer(c *cmd.GRPCServerConfig, tls *tls.Config, metrics serverMetrics, 
 		acceptedSANs[name] = struct{}{}
 	}
 
-	creds, err := bcreds.NewServerCredentials(tls, acceptedSANs)
+	// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
+	// to ECDHE-RSA-CHACHA20-POLY1305.
+	tlsConfig.MinVersion, tlsConfig.MaxVersion = tls.VersionTLS12, tls.VersionTLS12
+	tlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}
+
+	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
 		return nil, nil, err
 	}

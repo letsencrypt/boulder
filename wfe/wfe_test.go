@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1629,6 +1630,45 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate already revoked","status":409}`)
 }
 
+func TestRevokeCertificateExpired(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	keyPemBytes, err := ioutil.ReadFile("test/178.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadPrivateKey(t, keyPemBytes)
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer := newJoseSigner(t, rsaKey, wfe.nonceService)
+
+	certPemBytes, err := ioutil.ReadFile("test/178.crt")
+	test.AssertNotError(t, err, "Failed to load cert")
+	certBlock, _ := pem.Decode(certPemBytes)
+	test.Assert(t, certBlock != nil, "Failed to decode PEM")
+	revokeRequest := struct {
+		Resource       string          `json:"resource"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
+	}{
+		Resource:       "revoke-cert",
+		CertificateDER: certBlock.Bytes,
+	}
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	test.AssertNotError(t, err, "Failed to marshal request")
+
+	parsedCert, err := x509.ParseCertificate(certBlock.Bytes)
+	test.AssertNotError(t, err, "failed to parse test cert")
+	fc.Set(parsedCert.NotAfter.Add(time.Hour))
+
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	responseWriter := httptest.NewRecorder()
+	responseWriter.Body.Reset()
+	result, _ := signer.Sign(revokeRequestJSON)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Certificate is expired","status":403}`)
+
+}
+
 func TestRevokeCertificateWithAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
@@ -2498,4 +2538,35 @@ func TestNewCertificateSCTError(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
+}
+
+type mockSAGetRegByKeyNotFoundAfterVerify struct {
+	core.StorageGetter
+	verified bool
+}
+
+func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+	if !sa.verified {
+		sa.verified = true
+		return sa.StorageGetter.GetRegistrationByKey(ctx, jwk)
+	}
+	return core.Registration{}, errors.New("broke")
+}
+
+// If GetRegistrationByKey returns a non berrors.NotFound error NewRegistration should fail
+// out with an internal server error instead of continuing on and attempting to create a new
+// account.
+func TestNewRegistrationGetKeyBroken(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFoundAfterVerify{mocks.NewStorageAuthority(fc), false}
+	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, payload, wfe.nonceService)))
+	var prob probs.ProblemDetails
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+	test.AssertNotError(t, err, "unmarshalling response")
+	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
+		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
 }
