@@ -8,7 +8,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/asaskevich/govalidator",
-			"Comment": "v6-25-g73945b6",
+			"Comment": "v7",
 			"Rev": "73945b6115bfbbcc57d89b7316e28109364124e1"
 		},
 		{
@@ -204,7 +204,7 @@
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
-			"Comment": "v1.0-4-g880ee4c",
+			"Comment": "v1.1",
 			"Rev": "880ee4c335489bc78d01e4d0a254ae880734bc15"
 		},
 		{
@@ -571,7 +571,7 @@
 		},
 		{
 			"ImportPath": "gopkg.in/go-gorp/gorp.v2",
-			"Comment": "v2.0.0-14-g6032c66",
+			"Comment": "v2.1",
 			"Rev": "6032c66e0f5f155fd56216ed14cbbdd991034605"
 		},
 		{
