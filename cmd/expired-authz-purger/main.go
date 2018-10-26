@@ -60,7 +60,7 @@ var deletedStat = prometheus.NewCounterVec(
 		Name: "eap_authorizations_deleted",
 		Help: "Number of authorizations the EAP has deleted.",
 	},
-	[]string{"type"},
+	[]string{"table"},
 )
 
 type expiredAuthzPurger struct {
@@ -205,9 +205,9 @@ func (p *expiredAuthzPurger) purge(
 	var query string
 	switch table {
 	case "pendingAuthorizations":
-		query = "SELECT id FROM pendingAuthorizations WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
+		query = "SELECT id FROM pendingAuthorizations WHERE id > :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	case "authz":
-		query = "SELECT id FROM authz WHERE id >= :id AND expires <= :expires ORDER BY id LIMIT :limit"
+		query = "SELECT id FROM authz WHERE id > :id AND expires <= :expires ORDER BY id LIMIT :limit"
 	}
 
 	// id starts as "", which is smaller than all other ids.

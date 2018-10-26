@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -17,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"golang.org/x/net/context"
 )
 
 func TestPurgeAuthzs(t *testing.T) {
@@ -69,6 +68,7 @@ func TestPurgeAuthzs(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "NewPendingAuthorization failed")
 
+	deletedStat.Reset()
 	err = p.purge(
 		"pendingAuthorizations",
 		fc.Now(),
@@ -85,6 +85,8 @@ func TestPurgeAuthzs(t *testing.T) {
 	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM challenges")
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(1))
+	test.AssertEquals(t, test.CountCounterVec("table", "pendingAuthorizations", deletedStat), 2)
+	test.AssertEquals(t, test.CountCounterVec("table", "authz", deletedStat), 0)
 
 	err = p.purge(
 		"pendingAuthorizations",
@@ -102,6 +104,8 @@ func TestPurgeAuthzs(t *testing.T) {
 	count, err = dbMap.SelectInt("SELECT COUNT(1) FROM challenges")
 	test.AssertNotError(t, err, "dbMap.SelectInt failed")
 	test.AssertEquals(t, count, int64(0))
+	test.AssertEquals(t, test.CountCounterVec("table", "pendingAuthorizations", deletedStat), 3)
+	test.AssertEquals(t, test.CountCounterVec("table", "authz", deletedStat), 0)
 
 }
 
