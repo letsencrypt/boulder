@@ -621,10 +621,10 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(domain string, earliest, latest time.Time) (int, error) {
+	sa.countCertificatesByName = func(sel dbSelector, domain string, earliest, latest time.Time) (int, error) {
 		interlocker.Done()
 		interlocker.Wait()
-		return oldCertCountFunc(domain, earliest, latest)
+		return oldCertCountFunc(sel, domain, earliest, latest)
 	}
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
