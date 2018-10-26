@@ -5,14 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
-
 	"github.com/letsencrypt/boulder/core"
 )
 
 const getAuthorizationIDsMax = 1000
 
-func getAuthorizationIDsByDomain(db *gorp.DbMap, tableName string, ident string, now time.Time) ([]string, error) {
+func getAuthorizationIDsByDomain(db dbSelector, tableName string, ident string, now time.Time) ([]string, error) {
 	var allIDs []string
 	_, err := db.Select(
 		&allIDs,
@@ -39,7 +37,7 @@ func getAuthorizationIDsByDomain(db *gorp.DbMap, tableName string, ident string,
 	return allIDs, nil
 }
 
-func revokeAuthorizations(db *gorp.DbMap, tableName string, authIDs []string) (int64, error) {
+func revokeAuthorizations(db dbExecer, tableName string, authIDs []string) (int64, error) {
 	stmtArgs := []interface{}{string(core.StatusRevoked)}
 	qmarks := []string{}
 	for _, id := range authIDs {

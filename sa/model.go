@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -23,6 +24,25 @@ type dbOneSelector interface {
 // A `dbSelector` is anything that provides a `Select` function.
 type dbSelector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
+}
+
+// a `dbInserter` is anything that provides an `Insert` function (e.g. a DbMap
+// or a Transaction or an SqlExecutor).
+type dbInserter interface {
+	Insert(list ...interface{}) error
+}
+
+// A `dbExecer` is anythin that provides an `Exec` function (e.g. DbMap,
+// Transaction, or SqlExecutor)
+type dbExecer interface {
+	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+// selectExecer offers a subset of gorp.SqlExecutor's methods: Select and
+// Exec.
+type selectExecer interface {
+	dbSelector
+	dbExecer
 }
 
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
@@ -281,10 +301,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:                       cm.ID,
-		Type:                     cm.Type,
-		Status:                   cm.Status,
-		Token:                    cm.Token,
+		ID:     cm.ID,
+		Type:   cm.Type,
+		Status: cm.Status,
+		Token:  cm.Token,
 		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {
