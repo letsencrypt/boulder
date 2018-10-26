@@ -217,13 +217,14 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		return authz, err
 	}
 	txCtx := tx.WithContext(ctx)
+
 	pa, err := selectPendingAuthz(txCtx, "WHERE id = ?", id)
 	if err != nil && err != sql.ErrNoRows {
 		return authz, Rollback(tx, err)
 	}
 	if err == sql.ErrNoRows {
 		var fa authzModel
-		err := tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		err := txCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 		if err != nil && err != sql.ErrNoRows {
 			return authz, Rollback(tx, err)
 		} else if err == sql.ErrNoRows {
