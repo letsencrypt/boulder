@@ -14,9 +14,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/ocsp"
-	"golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/akamai"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -27,6 +24,8 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"golang.org/x/crypto/ocsp"
+	"golang.org/x/net/context"
 )
 
 /*
@@ -373,6 +372,9 @@ func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize in
 		updater.log.AuditErrf("Failed to find certificates with missing OCSP responses: %s", err)
 		return err
 	}
+	if len(statuses) == batchSize {
+		updater.stats.Inc("newCertificateTick.FullTick", 1)
+	}
 
 	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("newCertificateTick"))
 }
@@ -394,6 +396,9 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		updater.stats.Inc("Errors.FindRevokedCertificates", 1)
 		updater.log.AuditErrf("Failed to find revoked certificates: %s", err)
 		return err
+	}
+	if len(statuses) == batchSize {
+		updater.stats.Inc("revokedCertificatesTick.FullTick", 1)
 	}
 
 	for _, status := range statuses {
@@ -467,6 +472,9 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
 		return err
+	}
+	if len(statuses) == batchSize {
+		updater.stats.Inc("oldOCSPResponsesTick.FullTick", 1)
 	}
 	tickEnd := updater.clk.Now()
 	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
