@@ -30,10 +30,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -43,6 +39,9 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v2"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -987,10 +986,10 @@ func TestValidateTLSALPN01(t *testing.T) {
 	va, _ := setup(hs, 0)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
-
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
+	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter), 1)
 
 	hs.Close()
 	chall = createChallenge(core.ChallengeTypeTLSALPN01)
@@ -999,10 +998,10 @@ func TestValidateTLSALPN01(t *testing.T) {
 	va, _ = setup(hs, 0)
 
 	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
-
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
+	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifierV1Obsolete.String(), va.metrics.tlsALPNOIDCounter), 1)
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {
