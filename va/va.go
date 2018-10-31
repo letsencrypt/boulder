@@ -23,9 +23,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/cmd"
@@ -35,6 +32,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -80,6 +79,7 @@ type vaMetrics struct {
 	validationTime           *prometheus.HistogramVec
 	remoteValidationTime     *prometheus.HistogramVec
 	remoteValidationFailures prometheus.Counter
+	tlsALPNOIDCounter        *prometheus.CounterVec
 }
 
 func initMetrics(stats metrics.Scope) *vaMetrics {
@@ -105,11 +105,20 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 			Help: "Number of validations failed due to remote VAs returning failure",
 		})
 	stats.MustRegister(remoteValidationFailures)
+	tlsALPNOIDCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "tls_alpn_oid_usage",
+			Help: "Number of TLS ALPN validations using either of the two OIDs",
+		},
+		[]string{"oid"},
+	)
+	stats.MustRegister(tlsALPNOIDCounter)
 
 	return &vaMetrics{
 		validationTime:           validationTime,
 		remoteValidationTime:     remoteValidationTime,
 		remoteValidationFailures: remoteValidationFailures,
+		tlsALPNOIDCounter:        tlsALPNOIDCounter,
 	}
 }
 
@@ -752,6 +761,11 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
 		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
+			if IdPeAcmeIdentifier.Equal(ext.Id) {
+				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
+			} else {
+				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifierV1Obsolete.String()).Inc()
+			}
 			if !ext.Critical {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
