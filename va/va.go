@@ -665,18 +665,13 @@ func tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Con
 	if err != nil {
 		return nil, err
 	}
+	if deadline, ok := ctx.Deadline(); ok {
+		netConn.SetDeadline(deadline)
+	}
 	conn := tls.Client(netConn, config)
-	errChan := make(chan error)
-	go func() {
-		errChan <- conn.Handshake()
-	}()
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errChan:
-		if err != nil {
-			return nil, err
-		}
+	err = conn.Handshake()
+	if err != nil {
+		return nil, err
 	}
 	return conn, nil
 }
