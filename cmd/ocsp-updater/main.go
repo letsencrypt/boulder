@@ -14,9 +14,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/ocsp"
-	"golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/akamai"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -27,6 +24,8 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"golang.org/x/crypto/ocsp"
+	"golang.org/x/net/context"
 )
 
 /*
@@ -297,6 +296,9 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 	return &status, nil
 }
 
+// generateRevokedResponse takes a core.CertificateStatus and updates it with a revoked OCSP response
+// for the certificate it represents. generateRevokedResponse then returns the updated status and a
+// list of OCSP request URLs that should be purged or an error.
 func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, []string, error) {
 	cert, err := updater.sac.GetCertificate(ctx, status.Serial)
 	if err != nil {
@@ -394,15 +396,15 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		return err
 	}
 
-	var purgeURLs []string
+	var allPurgeURLs []string
 	for _, status := range statuses {
-		meta, respURLs, err := updater.generateRevokedResponse(ctx, status)
+		meta, purgeURLs, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate revoked OCSP response: %s", err)
 			updater.stats.Inc("Errors.RevokedResponseGeneration", 1)
 			return err
 		}
-		purgeURLs = append(purgeURLs, respURLs...)
+		allPurgeURLs = append(allPurgeURLs, purgeURLs...)
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.stats.Inc("Errors.StoreRevokedResponse", 1)
@@ -412,7 +414,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	}
 
 	if updater.ccu != nil {
-		err = updater.ccu.Purge(purgeURLs)
+		err = updater.ccu.Purge(allPurgeURLs)
 		if err != nil {
 			updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
 			return err

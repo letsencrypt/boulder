@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -280,7 +279,11 @@ var akamaiBatchSize = 100
 //  of times before giving up and returning ErrAllRetriesFailed
 func (cpc *CachePurgeClient) Purge(urls []string) error {
 	for i := 0; i < len(urls); {
-		err := cpc.purgeBatch(urls[i:int(math.Min(float64(i+akamaiBatchSize), float64(len(urls))))])
+		sliceEnd := i + akamaiBatchSize
+		if sliceEnd > len(urls) {
+			sliceEnd = len(urls)
+		}
+		err := cpc.purgeBatch(urls[i:sliceEnd])
 		if err != nil {
 			return err
 		}

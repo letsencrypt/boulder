@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
-	"gopkg.in/go-gorp/gorp.v2"
-
+	"github.com/letsencrypt/boulder/akamai"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -21,6 +19,8 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"golang.org/x/net/context"
+	"gopkg.in/go-gorp/gorp.v2"
 )
 
 var ctx = context.Background()
@@ -98,6 +98,10 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
+	updater.ccu = &akamai.CachePurgeClient{}
+	issuer, err := core.LoadCert("../../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Couldn't read test issuer certificate")
+	updater.issuer = issuer
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
@@ -114,10 +118,18 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	secondMeta, _, err := updater.generateRevokedResponse(ctx, status)
+	secondMeta, purgeURLs, err := updater.generateRevokedResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
 	err = updater.storeResponse(secondMeta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
+	test.AssertDeepEquals(t, purgeURLs, []string{
+		// akamai magic POST format
+		"http://127.0.0.1:4002/?body-md5=1f00f751a981b76c",
+		// GET format with // replaced with /
+		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBRBJaTET3lGgf1uVfnmEsA5Rr8viQQU+3hPEvlgFYMsnxd/NBmzLjbqQYkCEwD/ajxemKXeOt+gQo15uy0YcQs=",
+		// GET format with url-encoding
+		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBRBJaTET3lGgf1uVfnmEsA5Rr8viQQU%2B3hPEvlgFYMsnxd%2FNBmzLjbqQYkCEwD%2FajxemKXeOt%2BgQo15uy0YcQs%3D",
+	})
 
 	newStatus, err := sa.GetCertificateStatus(ctx, status.Serial)
 	test.AssertNotError(t, err, "Couldn't retrieve certificate status")
