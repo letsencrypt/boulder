@@ -16,9 +16,10 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
-// By convention, any function that takes one of the following as arguments
-// expects that a context has already been applied to the relevant DbMap or
-// Transaction objection.
+// By convention, any function that takes a dbOneSelector, dbSelector,
+// dbInserter, dbExecer, or dbSelectExecer as as an argument expects
+// that a context has already been applied to the relevant DbMap or
+// Transaction object.
 
 // A `dbOneSelector` is anything that provides a `SelectOne` function.
 type dbOneSelector interface {
@@ -35,14 +36,14 @@ type dbInserter interface {
 	Insert(list ...interface{}) error
 }
 
-// A `dbExecer` is anythin that provides an `Exec` function
+// A `dbExecer` is anything that provides an `Exec` function
 type dbExecer interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }
 
-// selectExecer offers a subset of gorp.SqlExecutor's methods: Select and
+// dbSelectExecer offers a subset of gorp.SqlExecutor's methods: Select and
 // Exec.
-type selectExecer interface {
+type dbSelectExecer interface {
 	dbSelector
 	dbExecer
 }
