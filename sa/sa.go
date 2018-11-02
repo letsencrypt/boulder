@@ -135,7 +135,7 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
-func updateChallenges(authID string, challenges []core.Challenge, tx selectExecer) error {
+func updateChallenges(tx selectExecer, authID string, challenges []core.Challenge) error {
 	var challs []challModel
 	_, err := tx.Select(
 		&challs,
@@ -825,7 +825,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		return Rollback(tx, err)
 	}
 
-	err = updateChallenges(authz.ID, authz.Challenges, txCtx)
+	err = updateChallenges(txCtx, authz.ID, authz.Challenges)
 	if err != nil {
 		return Rollback(tx, err)
 	}
@@ -872,7 +872,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		return Rollback(tx, err)
 	}
 
-	err = updateChallenges(authz.ID, authz.Challenges, txCtx)
+	err = updateChallenges(txCtx, authz.ID, authz.Challenges)
 	if err != nil {
 		return Rollback(tx, err)
 	}

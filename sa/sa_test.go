@@ -2242,7 +2242,7 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 	// We shouldn't be able to change a challenge status back to pending once it's
 	// been set to "valid". This update should succeed, but have no effect.
 	authz.Challenges[0].Status = core.StatusPending
-	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	err = updateChallenges(tx, authz.ID, authz.Challenges)
 	test.AssertNotError(t, err, "updating challenges")
 	err = tx.Commit()
 	test.AssertNotError(t, err, "committing")
