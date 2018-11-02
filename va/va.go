@@ -666,7 +666,7 @@ func tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Con
 		return nil, err
 	}
 	if deadline, ok := ctx.Deadline(); ok {
-		netConn.SetDeadline(deadline)
+		_ = netConn.SetDeadline(deadline)
 	}
 	conn := tls.Client(netConn, config)
 	err = conn.Handshake()
