@@ -304,10 +304,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:     cm.ID,
-		Type:   cm.Type,
-		Status: cm.Status,
-		Token:  cm.Token,
+		ID:                       cm.ID,
+		Type:                     cm.Type,
+		Status:                   cm.Status,
+		Token:                    cm.Token,
 		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {
