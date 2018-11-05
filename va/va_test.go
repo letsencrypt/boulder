@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -674,6 +675,35 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 	expected := "Timeout during read (your server may be slow or overloaded)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
+	}
+}
+
+// Note: This test is potentially flaky, if some other concurrent test spawns
+// over a hundred goroutines concurrently with it.
+func TestTLSSNI01TimeoutNoLeak(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := slowTLSSrv()
+	va, _ := setup(hs, 0)
+
+	numGoroutinesBefore := runtime.NumGoroutine()
+	for i := 0; i < 200; i++ {
+		timeout := 10 * time.Millisecond
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		_, prob := va.validateTLSSNI01(ctx, dnsi("slow.server"), chall)
+		if prob == nil {
+			t.Fatalf("Validation should've failed")
+		}
+		if prob.Error() != "connection :: Timeout during read (your server may be slow or overloaded)" {
+			t.Errorf("Wrong error for TLS handshake timeout: %s", prob)
+		}
+	}
+	numGoroutinesAfter := runtime.NumGoroutine()
+
+	delta := numGoroutinesAfter - numGoroutinesBefore
+
+	if delta > 100 {
+		t.Fatalf("The number of goroutines increased by %d after running 1000 timed-out validations.", delta)
 	}
 }
 
