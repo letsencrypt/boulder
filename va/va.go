@@ -631,7 +631,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
 	// We expect a self-signed challenge certificate, do not verify it here.
 	config.InsecureSkipVerify = true
-	conn, err := tlsDial(ctx, hostPort, config)
+	conn, err := va.tlsDial(ctx, hostPort, config)
 
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
@@ -657,7 +657,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 
 // tlsDial does the equivalent of tls.Dial, but obeying a context. Once
 // tls.DialContextWithDialer is available, switch to that.
-func tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
+func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, singleDialTimeout)
 	defer cancel()
 	dialer := &net.Dialer{}
@@ -665,18 +665,16 @@ func tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Con
 	if err != nil {
 		return nil, err
 	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		va.log.AuditErr("tlsDial was called without a deadline")
+		return nil, fmt.Errorf("tlsDial was called without a deadline")
+	}
+	_ = netConn.SetDeadline(deadline)
 	conn := tls.Client(netConn, config)
-	errChan := make(chan error)
-	go func() {
-		errChan <- conn.Handshake()
-	}()
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errChan:
-		if err != nil {
-			return nil, err
-		}
+	err = conn.Handshake()
+	if err != nil {
+		return nil, err
 	}
 	return conn, nil
 }
