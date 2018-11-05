@@ -679,15 +679,18 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 }
 
 // Note: This test is potentially flaky, if some other concurrent test spawns
-// over a hundred goroutines concurrently with it.
+// over a hundred goroutines concurrently with it. It may also potentially flake
+// if we don't reliably timeout in the correct place (i.e. we may get timeout
+// during connect instead).
 func TestTLSSNI01TimeoutNoLeak(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0)
 
 	numGoroutinesBefore := runtime.NumGoroutine()
-	for i := 0; i < 200; i++ {
-		timeout := 10 * time.Millisecond
+	numAttempts := 200
+	for i := 0; i < numAttempts; i++ {
+		timeout := 20 * time.Millisecond
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		_, prob := va.validateTLSSNI01(ctx, dnsi("slow.server"), chall)
@@ -702,8 +705,8 @@ func TestTLSSNI01TimeoutNoLeak(t *testing.T) {
 
 	delta := numGoroutinesAfter - numGoroutinesBefore
 
-	if delta > 100 {
-		t.Fatalf("The number of goroutines increased by %d after running 1000 timed-out validations.", delta)
+	if delta > numAttempts/2 {
+		t.Fatalf("The number of goroutines increased by %d after running %d timed-out validations.", delta, numAttempts)
 	}
 }
 
