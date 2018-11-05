@@ -621,10 +621,10 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(domain string, earliest, latest time.Time) (int, error) {
+	sa.countCertificatesByName = func(sel dbSelector, domain string, earliest, latest time.Time) (int, error) {
 		interlocker.Done()
 		interlocker.Wait()
-		return oldCertCountFunc(domain, earliest, latest)
+		return oldCertCountFunc(sel, domain, earliest, latest)
 	}
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
@@ -1154,38 +1154,38 @@ func TestGetFQDNSetsBySerials(t *testing.T) {
 
 	// Asking for the fqdnSets for no serials should produce an error since this
 	// is not expected in normal conditions
-	fqdnSets, err := sa.getFQDNSetsBySerials([]string{})
+	fqdnSets, err := sa.getFQDNSetsBySerials(sa.dbMap, []string{})
 	test.AssertError(t, err, "No error calling getFQDNSetsBySerials for empty serials")
 	test.AssertEquals(t, len(fqdnSets), 0)
 
 	// Asking for the fqdnSets for serials that don't exist should return nothing
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"this", "doesn't", "exist"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"this", "doesn't", "exist"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for non-existent serials")
 	test.AssertEquals(t, len(fqdnSets), 0)
 
 	// Asking for the fqdnSets for serial "a" should return the expectedHashA hash
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"a"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"a"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"a\"")
 	test.AssertEquals(t, len(fqdnSets), 1)
 	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["a"].ExpectedHash))
 
 	// Asking for the fqdnSets for serial "b" should return the expectedHashA hash
 	// because cert "b" has namesA subjects
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"b"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"b"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"b\"")
 	test.AssertEquals(t, len(fqdnSets), 1)
 	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["b"].ExpectedHash))
 
 	// Asking for the fqdnSets for serial "d" should return the expectedHashC hash
 	// because cert "d" has namesC subjects
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"d"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"d"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"d\"")
 	test.AssertEquals(t, len(fqdnSets), 1)
 	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["d"].ExpectedHash))
 
 	// Asking for the fqdnSets for serial "c" should return the expectedHashB hash
 	// because cert "c" has namesB subjects
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"c"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"c"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"c\"")
 	test.AssertEquals(t, len(fqdnSets), 1)
 	test.AssertEquals(t, string(fqdnSets[0]), string(testcases["c"].ExpectedHash))
@@ -1197,7 +1197,7 @@ func TestGetFQDNSetsBySerials(t *testing.T) {
 		string(testcases["a"].ExpectedHash): 2,
 		string(testcases["c"].ExpectedHash): 1,
 	}
-	fqdnSets, err = sa.getFQDNSetsBySerials([]string{"a", "b", "c", "made up"})
+	fqdnSets, err = sa.getFQDNSetsBySerials(sa.dbMap, []string{"a", "b", "c", "made up"})
 	test.AssertNotError(t, err, "Error calling getFQDNSetsBySerials for serial \"a\", \"b\", \"c\", \"made up\"")
 
 	for _, setHash := range fqdnSets {
@@ -1226,25 +1226,25 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// Calling getNewIssuancesByFQDNSet with an empty FQDNSet should error
-	count, err := sa.getNewIssuancesByFQDNSet(nil, earliest)
+	count, err := sa.getNewIssuancesByFQDNSet(sa.dbMap, nil, earliest)
 	test.AssertError(t, err, "No error calling getNewIssuancesByFQDNSet for empty fqdn set")
 	test.AssertEquals(t, count, -1)
 
 	// Calling getNewIssuancesByFQDNSet with FQDNSet hashes that don't exist
 	// should return 0
-	count, err = sa.getNewIssuancesByFQDNSet([]setHash{setHash{0xC0, 0xFF, 0xEE}, setHash{0x13, 0x37}}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{setHash{0xC0, 0xFF, 0xEE}, setHash{0x13, 0x37}}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for non-existent set hashes")
 	test.AssertEquals(t, count, 0)
 
 	// Calling getNewIssuancesByFQDNSet with the "a" expected hash should return
 	// 1, since both testcase "b" was a renewal of testcase "a"
-	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["a"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{testcases["a"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase a")
 	test.AssertEquals(t, count, 1)
 
 	// Calling getNewIssuancesByFQDNSet with the "c" expected hash should return
 	// 1, since there is only one issuance for this sethash
-	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{testcases["c"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c")
 	test.AssertEquals(t, count, 1)
 
@@ -1252,12 +1252,12 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 	// only 1, since there is only one issuance for the provided set hashes that
 	// is within the earliest window. The issuance for "d" was too far in the past
 	// to be counted
-	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d")
 	test.AssertEquals(t, count, 1)
 
 	// But by moving the earliest point behind the "d" issuance, we should now get a count of 2
-	count, err = sa.getNewIssuancesByFQDNSet([]setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{testcases["c"].ExpectedHash, testcases["d"].ExpectedHash}, earliest.Add(-6*time.Hour))
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for testcase c and d with adjusted earliest")
 	test.AssertEquals(t, count, 2)
 }
@@ -1291,7 +1291,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
 
-	names, err := sa.namesForOrder(*order.Id)
+	names, err := sa.namesForOrder(context.Background(), *order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
@@ -2184,7 +2184,7 @@ func TestGetAuthorizationsFast(t *testing.T) {
 
 	// Mock out getChallenges so we can count how many times it's called.
 	var challengeFetchCount int
-	sa.getChallenges = func(s string) ([]core.Challenge, error) {
+	sa.getChallenges = func(sel dbSelector, s string) ([]core.Challenge, error) {
 		challengeFetchCount++
 		return nil, nil
 	}
@@ -2242,7 +2242,7 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 	// We shouldn't be able to change a challenge status back to pending once it's
 	// been set to "valid". This update should succeed, but have no effect.
 	authz.Challenges[0].Status = core.StatusPending
-	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	err = updateChallenges(tx, authz.ID, authz.Challenges)
 	test.AssertNotError(t, err, "updating challenges")
 	err = tx.Commit()
 	test.AssertNotError(t, err, "committing")
