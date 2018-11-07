@@ -30,7 +30,8 @@
       "RPCHeadroom": true,
       "IPv6First": true,
       "CAAValidationMethods": true,
-      "CAAAccountURI": true
+      "CAAAccountURI": true,
+      "SimplifiedVAHTTP": true
     },
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/"
@@ -38,7 +39,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 7,
     "sysloglevel": 4
   },
 

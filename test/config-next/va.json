@@ -36,7 +36,8 @@
       "VAChecksGSB": true,
       "IPv6First": true,
       "CAAValidationMethods": true,
-      "CAAAccountURI": true
+      "CAAAccountURI": true,
+      "SimplifiedVAHTTP": true
     },
     "remoteVAs": [
       {
@@ -54,7 +55,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 7,
     "sysloglevel": 4
   },
 
