@@ -68,9 +68,6 @@
                 "Qualifiers": [ {
                   "type": "id-qt-cps",
                   "value": "http://example.com/cps"
-                }, {
-                  "type": "id-qt-unotice",
-                  "value": "Do What Thou Wilt"
                 } ]
               }
             ],

@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -15,6 +16,11 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
+// By convention, any function that takes a dbOneSelector, dbSelector,
+// dbInserter, dbExecer, or dbSelectExecer as as an argument expects
+// that a context has already been applied to the relevant DbMap or
+// Transaction object.
+
 // A `dbOneSelector` is anything that provides a `SelectOne` function.
 type dbOneSelector interface {
 	SelectOne(interface{}, string, ...interface{}) error
@@ -23,6 +29,23 @@ type dbOneSelector interface {
 // A `dbSelector` is anything that provides a `Select` function.
 type dbSelector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
+}
+
+// a `dbInserter` is anything that provides an `Insert` function
+type dbInserter interface {
+	Insert(list ...interface{}) error
+}
+
+// A `dbExecer` is anything that provides an `Exec` function
+type dbExecer interface {
+	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+// dbSelectExecer offers a subset of gorp.SqlExecutor's methods: Select and
+// Exec.
+type dbSelectExecer interface {
+	dbSelector
+	dbExecer
 }
 
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"

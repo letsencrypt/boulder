@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -263,4 +262,38 @@ func TestNewCachePurgeClient(t *testing.T) {
 		metrics.NewNoopScope(),
 	)
 	test.AssertError(t, err, "NewCachePurgeClient with invalid server url parameter didn't error")
+}
+
+func TestBigBatchPurge(t *testing.T) {
+	log := blog.NewMock()
+
+	as := akamaiServer{
+		responseCode: http.StatusCreated,
+		v3:           true,
+	}
+	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
+	m.HandleFunc("/", as.akamaiHandler)
+	server.Start()
+
+	client, err := NewCachePurgeClient(
+		server.URL,
+		"token",
+		"secret",
+		"accessToken",
+		"production",
+		3,
+		time.Second,
+		log,
+		metrics.NewNoopScope(),
+	)
+	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
+
+	var urls []string
+	for i := 0; i < 250; i++ {
+		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
+	}
+
+	err = client.Purge(urls)
+	test.AssertNotError(t, err, "Purge failed with 201 response")
 }

@@ -671,7 +671,7 @@ func TestTLSSNI01TimeoutAfterConnect(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Timeout after connect (your server may be slow or overloaded)"
+	expected := "Timeout during read (your server may be slow or overloaded)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}

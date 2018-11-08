@@ -28,8 +28,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-type certCountFunc func(domain string, earliest, latest time.Time) (int, error)
-type getChallengesFunc func(authID string) ([]core.Challenge, error)
+type certCountFunc func(db dbSelector, domain string, earliest, latest time.Time) (int, error)
+type getChallengesFunc func(db dbSelector, authID string) ([]core.Challenge, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -117,15 +117,15 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(tx *gorp.Transaction, id string) bool {
+func existingPending(db dbOneSelector, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
+	_ = db.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
-func existingFinal(tx *gorp.Transaction, id string) bool {
+func existingFinal(db dbOneSelector, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
+	_ = db.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
@@ -135,9 +135,9 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
-func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Transaction) error {
+func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challenge) error {
 	var challs []challModel
-	_, err := tx.Select(
+	_, err := db.Select(
 		&challs,
 		getChallengesQuery,
 		map[string]interface{}{"authID": authID},
@@ -157,7 +157,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 			return err
 		}
 		chall.ID = challs[i].ID
-		_, err = tx.Exec(
+		_, err = db.Exec(
 			`UPDATE challenges SET
 				status = ?,
 				error = ?,
@@ -178,7 +178,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap, query, id)
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, id)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 	}
@@ -198,7 +198,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if err != nil {
 		return core.Registration{}, err
 	}
-	model, err := selectRegistration(ssa.dbMap, query, sha)
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
 	if err == sql.ErrNoRows {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
@@ -216,13 +216,15 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	if err != nil {
 		return authz, err
 	}
-	pa, err := selectPendingAuthz(tx, "WHERE id = ?", id)
+	txWithCtx := tx.WithContext(ctx)
+
+	pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", id)
 	if err != nil && err != sql.ErrNoRows {
 		return authz, Rollback(tx, err)
 	}
 	if err == sql.ErrNoRows {
 		var fa authzModel
-		err := tx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+		err := txWithCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 		if err != nil && err != sql.ErrNoRows {
 			return authz, Rollback(tx, err)
 		} else if err == sql.ErrNoRows {
@@ -238,7 +240,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 		authz = pa.Authorization
 	}
 
-	authz.Challenges, err = ssa.getChallenges(authz.ID)
+	authz.Challenges, err = ssa.getChallenges(txWithCtx, authz.ID)
 	if err != nil {
 		return authz, Rollback(tx, err)
 	}
@@ -313,7 +315,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // time range for a single IP address.
 func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
-	err := ssa.dbMap.SelectOne(
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
 		 WHERE
@@ -338,7 +340,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
-	err := ssa.dbMap.SelectOne(
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
 		 WHERE
@@ -393,7 +395,8 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 					return
 				default:
 				}
-				currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
+				currentCount, err := ssa.countCertificatesByName(
+					ssa.dbMap.WithContext(ctx), domain, earliest, latest)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -427,7 +430,8 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
 	var ret []*sapb.CountByNames_MapElement
 	for _, domain := range domains {
-		currentCount, err := ssa.countCertificatesByExactName(domain, earliest, latest)
+		currentCount, err := ssa.countCertificatesByExactName(
+			ssa.dbMap.WithContext(ctx), domain, earliest, latest)
 		if err != nil {
 			return ret, err
 		}
@@ -463,15 +467,25 @@ const countCertificatesExactSelect = `
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
 // subdomains.
-func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(domain string, earliest, latest time.Time) (int, error) {
-	return ssa.countCertificates(domain, earliest, latest, countCertificatesSelect)
+func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
+	db dbSelector,
+	domain string,
+	earliest,
+	latest time.Time,
+) (int, error) {
+	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
 }
 
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
 // countCertificatesByNames subdomains are NOT considered.
-func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earliest, latest time.Time) (int, error) {
-	return ssa.countCertificates(domain, earliest, latest, countCertificatesExactSelect)
+func (ssa *SQLStorageAuthority) countCertificatesByExactName(
+	db dbSelector,
+	domain string,
+	earliest,
+	latest time.Time,
+) (int, error) {
+	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
 }
 
 // countCertificates returns, for a single domain, the count of
@@ -480,9 +494,9 @@ func (ssa *SQLStorageAuthority) countCertificatesByExactName(domain string, earl
 // `countCertificatesSelect`. If the `AllowRenewalFirstRL` feature flag is set,
 // renewals of certificates issued within the same window are considered "free"
 // and are not counted.
-func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, latest time.Time, query string) (int, error) {
+func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, earliest, latest time.Time, query string) (int, error) {
 	var serials []string
-	_, err := ssa.dbMap.Select(
+	_, err := db.Select(
 		&serials,
 		query,
 		map[string]interface{}{
@@ -507,7 +521,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 
 		// Find all FQDN Set Hashes with the serials from the issuedNames table that
 		// were visible within our search window
-		fqdnSets, err := ssa.getFQDNSetsBySerials(serials)
+		fqdnSets, err := ssa.getFQDNSetsBySerials(db, serials)
 		if err != nil {
 			return 0, err
 		}
@@ -515,7 +529,7 @@ func (ssa *SQLStorageAuthority) countCertificates(domain string, earliest, lates
 		// Using those FQDN Set Hashes, we can then find all of the non-renewal
 		// issuances with a second query against the fqdnSets table using the set
 		// hashes we know about
-		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(fqdnSets, earliest)
+		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(db, fqdnSets, earliest)
 		if err != nil {
 			return 0, err
 		}
@@ -539,7 +553,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	cert, err := SelectCertificate(ssa.dbMap, "WHERE serial = ?", serial)
+	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), "WHERE serial = ?", serial)
 	if err == sql.ErrNoRows {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
@@ -559,7 +573,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 	}
 
 	var status core.CertificateStatus
-	statusObj, err := ssa.dbMap.Get(certStatusModel{}, serial)
+	statusObj, err := ssa.dbMap.WithContext(ctx).Get(certStatusModel{}, serial)
 	if err != nil {
 		return status, err
 	}
@@ -589,7 +603,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	if err != nil {
 		return reg, err
 	}
-	err = ssa.dbMap.Insert(rm)
+	err = ssa.dbMap.WithContext(ctx).Insert(rm)
 	if err != nil {
 		return reg, err
 	}
@@ -614,9 +628,10 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	const statusQuery = "WHERE serial = ?"
-	statusObj, err := SelectCertificateStatus(tx, statusQuery, serial)
+	statusObj, err := SelectCertificateStatus(txWithCtx, statusQuery, serial)
 	if err == sql.ErrNoRows {
 		err = fmt.Errorf("No certificate with serial %s", serial)
 		err = Rollback(tx, err)
@@ -649,7 +664,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap, query, reg.ID)
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
 	if err == sql.ErrNoRows {
 		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 	}
@@ -662,7 +677,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	// Copy the existing registration model's LockCol to the new updated
 	// registration model's LockCol
 	updatedRegModel.LockCol = model.LockCol
-	n, err := ssa.dbMap.Update(updatedRegModel)
+	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
 		return err
 	}
@@ -682,16 +697,18 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	if err != nil {
 		return output, err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	// Create a random ID and check that it doesn't exist already
 	authz.ID = core.NewToken()
-	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
+	for existingPending(txWithCtx, authz.ID) ||
+		existingFinal(txWithCtx, authz.ID) {
 		authz.ID = core.NewToken()
 	}
 
 	// Insert a stub row in pending
 	pendingAuthz := pendingauthzModel{Authorization: authz}
-	err = tx.Insert(&pendingAuthz)
+	err = txWithCtx.Insert(&pendingAuthz)
 	if err != nil {
 		err = Rollback(tx, err)
 		return output, err
@@ -708,7 +725,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		// the challenge objects inside the Authorization we return to know their
 		// IDs, so they can have proper URLs.
 		// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
-		err = tx.Insert(challModel)
+		err = txWithCtx.Insert(challModel)
 		if err != nil {
 			err = Rollback(tx, err)
 			return output, err
@@ -745,7 +762,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	// keep the amount of scanning to a minimum. That index does not include the
 	// identifier, so accounts with huge numbers of pending authzs may result in
 	// slow queries here.
-	pa, err := selectPendingAuthz(ssa.dbMap,
+	pa, err := selectPendingAuthz(ssa.dbMap.WithContext(ctx),
 		`WHERE registrationID = :regID
 			 AND identifier = :identifierJSON
 			 AND status = :status
@@ -782,23 +799,24 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	if !statusIsPending(authz.Status) {
 		err = berrors.WrongAuthorizationStateError("authorization is not pending")
 		return Rollback(tx, err)
 	}
 
-	if existingFinal(tx, authz.ID) {
+	if existingFinal(txWithCtx, authz.ID) {
 		err = berrors.WrongAuthorizationStateError("cannot update a finalized authorization")
 		return Rollback(tx, err)
 	}
 
-	if !existingPending(tx, authz.ID) {
+	if !existingPending(txWithCtx, authz.ID) {
 		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
 		return Rollback(tx, err)
 	}
 
-	_, err = selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
+	_, err = selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
 		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
 		return Rollback(tx, err)
@@ -807,7 +825,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, 
 		return Rollback(tx, err)
 	}
 
-	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
 	if err != nil {
 		return Rollback(tx, err)
 	}
@@ -823,9 +841,10 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	// Check that a pending authz exists
-	if !existingPending(tx, authz.ID) {
+	if !existingPending(txWithCtx, authz.ID) {
 		err = berrors.NotFoundError("authorization with ID %q not found", authz.ID)
 		return Rollback(tx, err)
 	}
@@ -835,7 +854,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	}
 
 	auth := &authzModel{authz}
-	pa, err := selectPendingAuthz(tx, "WHERE id = ?", authz.ID)
+	pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
 	if err == sql.ErrNoRows {
 		return Rollback(tx, berrors.NotFoundError("authorization with ID %q not found", authz.ID))
 	}
@@ -843,17 +862,17 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 		return Rollback(tx, err)
 	}
 
-	err = tx.Insert(auth)
+	err = txWithCtx.Insert(auth)
 	if err != nil {
 		return Rollback(tx, err)
 	}
 
-	_, err = tx.Delete(pa)
+	_, err = txWithCtx.Delete(pa)
 	if err != nil {
 		return Rollback(tx, err)
 	}
 
-	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
 	if err != nil {
 		return Rollback(tx, err)
 	}
@@ -874,7 +893,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	now := ssa.clk.Now()
 	for i, table := range authorizationTables {
 		for {
-			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
+			authz, err := getAuthorizationIDsByDomain(ssa.dbMap.WithContext(ctx), table, identifier, now)
 			if err != nil {
 				return results[0], results[1], err
 			}
@@ -883,7 +902,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 				break
 			}
 
-			numRevoked, err := revokeAuthorizations(ssa.dbMap, table, authz)
+			numRevoked, err := revokeAuthorizations(ssa.dbMap.WithContext(ctx), table, authz)
 			if err != nil {
 				return results[0], results[1], err
 			}
@@ -939,11 +958,12 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	if err != nil {
 		return "", err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
 	// to be fixed by redesign. Reference issue
 	// https://github.com/letsencrypt/boulder/issues/2265 for more
-	err = tx.Insert(cert)
+	err = txWithCtx.Insert(cert)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 			err = berrors.DuplicateError("cannot add a duplicate cert")
@@ -951,7 +971,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	err = tx.Insert(certStatus)
+	err = txWithCtx.Insert(certStatus)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 			err = berrors.DuplicateError("cannot add a duplicate cert status")
@@ -959,13 +979,13 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	err = addIssuedNames(tx, parsedCertificate)
+	err = addIssuedNames(txWithCtx, parsedCertificate)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}
 
 	err = addFQDNSet(
-		tx,
+		txWithCtx,
 		parsedCertificate.DNSNames,
 		serial,
 		parsedCertificate.NotBefore,
@@ -981,7 +1001,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 // CountPendingAuthorizations returns the number of pending, unexpired
 // authorizations for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
-	err = ssa.dbMap.SelectOne(&count,
+	err = ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
 		WHERE registrationID = :regID AND
 		expires > :now AND
@@ -996,7 +1016,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
 	var count int
-	err := ssa.dbMap.SelectOne(&count,
+	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :acctID AND
 		created >= :windowLeft AND
@@ -1032,7 +1052,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	count = &sapb.Count{
 		Count: new(int64),
 	}
-	err = ssa.dbMap.SelectOne(count.Count,
+	err = ssa.dbMap.WithContext(ctx).SelectOne(count.Count,
 		`SELECT COUNT(1) FROM authz
 		WHERE registrationID = :regID AND
 		identifier = :identifier AND
@@ -1055,8 +1075,8 @@ func hashNames(names []string) []byte {
 	return hash[:]
 }
 
-func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time.Time, expires time.Time) error {
-	return tx.Insert(&core.FQDNSet{
+func addFQDNSet(db dbInserter, names []string, serial string, issued time.Time, expires time.Time) error {
+	return db.Insert(&core.FQDNSet{
 		SetHash: hashNames(names),
 		Serial:  serial,
 		Issued:  issued,
@@ -1069,12 +1089,12 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 // addition can take place within the order addition transaction. The caller is
 // required to rollback the transaction if an error is returned.
 func addOrderFQDNSet(
-	tx *gorp.Transaction,
+	db dbInserter,
 	names []string,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	return tx.Insert(&orderFQDNSet{
+	return db.Insert(&orderFQDNSet{
 		SetHash:        hashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
@@ -1087,10 +1107,10 @@ func addOrderFQDNSet(
 // take place within the finalization transaction. The caller is required to
 // rollback the transaction if an error is returned.
 func deleteOrderFQDNSet(
-	tx *gorp.Transaction,
+	db dbExecer,
 	orderID int64) error {
 
-	result, err := tx.Exec(`
+	result, err := db.Exec(`
 	  DELETE FROM orderFqdnSets
 		WHERE orderID = ?`,
 		orderID)
@@ -1110,11 +1130,7 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-type execable interface {
-	Exec(string, ...interface{}) (sql.Result, error)
-}
-
-func addIssuedNames(tx execable, cert *x509.Certificate) error {
+func addIssuedNames(db dbExecer, cert *x509.Certificate) error {
 	var qmarks []string
 	var values []interface{}
 	for _, name := range cert.DNSNames {
@@ -1125,7 +1141,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 		qmarks = append(qmarks, "(?, ?, ?)")
 	}
 	query := `INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES ` + strings.Join(qmarks, ", ") + `;`
-	_, err := tx.Exec(query, values...)
+	_, err := db.Exec(query, values...)
 	return err
 }
 
@@ -1133,7 +1149,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 // |window|
 func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	var count int64
-	err := ssa.dbMap.SelectOne(
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
@@ -1150,7 +1166,10 @@ type setHash []byte
 // getFQDNSetsBySerials finds the setHashes corresponding to a set of
 // certificate serials. These serials can be used to check whether any
 // certificates have been issued for the same set of names previously.
-func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHash, error) {
+func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
+	db dbSelector,
+	serials []string,
+) ([]setHash, error) {
 	var fqdnSets []setHash
 
 	// It is unexpected that this function would be called with no serials
@@ -1168,7 +1187,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHas
 	}
 	query := "SELECT setHash FROM fqdnSets " +
 		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
-	_, err := ssa.dbMap.Select(
+	_, err := db.Select(
 		&fqdnSets,
 		query,
 		params...)
@@ -1191,7 +1210,11 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(serials []string) ([]setHas
 // getNewIssuancesByFQDNSet returns a count of new issuances (renewals are not
 // included) for a given slice of fqdnSets that occurred after the earliest
 // parameter.
-func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, earliest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
+	db dbSelector,
+	fqdnSets []setHash,
+	earliest time.Time,
+) (int, error) {
 	var results []struct {
 		Serial  string
 		SetHash setHash
@@ -1213,7 +1236,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 
 	// First, find the serial, sethash and issued date from the fqdnSets table for
 	// the given fqdn set hashes
-	_, err := ssa.dbMap.Select(
+	_, err := db.Select(
 		&results,
 		query,
 		params...)
@@ -1258,7 +1281,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(fqdnSets []setHash, ear
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
 	var count int64
-	err := ssa.dbMap.SelectOne(
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
@@ -1286,7 +1309,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 
 	// Find the most recently issued certificate containing this domain name.
 	var serial string
-	err := ssa.dbMap.SelectOne(
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&serial,
 		`SELECT serial FROM issuedNames
 		WHERE reversedName = ?
@@ -1303,7 +1326,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 
 	// Check whether that certificate was issued to the specified account.
 	var count int
-	err = ssa.dbMap.SelectOne(
+	err = ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM certificates
 		WHERE serial = ?
@@ -1328,7 +1351,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
-	_, err := ssa.dbMap.Exec(
+	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
@@ -1343,9 +1366,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
-	if existingPending(tx, id) {
-		authzObj, err := tx.Get(&pendingauthzModel{}, id)
+	if existingPending(txWithCtx, id) {
+		authzObj, err := txWithCtx.Get(&pendingauthzModel{}, id)
 		if err != nil {
 			return Rollback(tx, err)
 		}
@@ -1357,7 +1381,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		if authz.Status != core.StatusPending {
 			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
 		}
-		result, err := tx.Delete(authzObj)
+		result, err := txWithCtx.Delete(authzObj)
 		if err != nil {
 			return Rollback(tx, err)
 		}
@@ -1365,12 +1389,12 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
 		}
 		authz.Status = core.StatusDeactivated
-		err = tx.Insert(&authzModel{authz.Authorization})
+		err = txWithCtx.Insert(&authzModel{authz.Authorization})
 		if err != nil {
 			return Rollback(tx, err)
 		}
 	} else {
-		_, err = tx.Exec(
+		_, err = txWithCtx.Exec(
 			`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
 			string(core.StatusDeactivated),
 			id,
@@ -1396,8 +1420,9 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	if err != nil {
 		return nil, err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
-	if err := tx.Insert(order); err != nil {
+	if err := txWithCtx.Insert(order); err != nil {
 		return nil, Rollback(tx, err)
 	}
 
@@ -1406,7 +1431,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			OrderID: order.ID,
 			AuthzID: id,
 		}
-		if err := tx.Insert(otoa); err != nil {
+		if err := txWithCtx.Insert(otoa); err != nil {
 			return nil, Rollback(tx, err)
 		}
 	}
@@ -1416,14 +1441,14 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			OrderID:      order.ID,
 			ReversedName: ReverseName(name),
 		}
-		if err := tx.Insert(reqdName); err != nil {
+		if err := txWithCtx.Insert(reqdName); err != nil {
 			return nil, Rollback(tx, err)
 		}
 	}
 
 	// Add an FQDNSet entry for the order
 	if err := addOrderFQDNSet(
-		tx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+		txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
 		return nil, Rollback(tx, err)
 	}
 
@@ -1458,8 +1483,9 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
-	result, err := tx.Exec(`
+	result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
 		WHERE id = ?
@@ -1487,13 +1513,14 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
 	om, err := orderToModel(order)
 	if err != nil {
 		return Rollback(tx, err)
 	}
 
-	result, err := tx.Exec(`
+	result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
@@ -1522,8 +1549,9 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 	if err != nil {
 		return err
 	}
+	txWithCtx := tx.WithContext(ctx)
 
-	result, err := tx.Exec(`
+	result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?
 		WHERE id = ? AND
@@ -1543,16 +1571,17 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 	// Delete the orderFQDNSet row for the order now that it has been finalized.
 	// We use this table for order reuse and should not reuse a finalized order.
-	if err := deleteOrderFQDNSet(tx, *req.Id); err != nil {
+	if err := deleteOrderFQDNSet(txWithCtx, *req.Id); err != nil {
 		return Rollback(tx, err)
 	}
 
 	return tx.Commit()
 }
 
-func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, error) {
 	var ids []string
-	_, err := ssa.dbMap.Select(&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
+	_, err := ssa.dbMap.WithContext(ctx).Select(
+		&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -1561,12 +1590,14 @@ func (ssa *SQLStorageAuthority) authzForOrder(orderID int64) ([]string, error) {
 
 // namesForOrder finds all of the requested names associated with an order. The
 // names are returned in their reversed form (see `sa.ReverseName`).
-func (ssa *SQLStorageAuthority) namesForOrder(orderID int64) ([]string, error) {
+func (ssa *SQLStorageAuthority) namesForOrder(ctx context.Context, orderID int64) ([]string, error) {
 	var reversedNames []string
-	_, err := ssa.dbMap.Select(&reversedNames, `
-	SELECT reversedName
-	FROM requestedNames
-	WHERE orderID = ?`, orderID)
+	_, err := ssa.dbMap.WithContext(ctx).Select(
+		&reversedNames,
+		`SELECT reversedName
+	   FROM requestedNames
+	   WHERE orderID = ?`,
+		orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -1575,7 +1606,7 @@ func (ssa *SQLStorageAuthority) namesForOrder(orderID int64) ([]string, error) {
 
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
-	omObj, err := ssa.dbMap.Get(orderModel{}, *req.Id)
+	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, *req.Id)
 	if err == sql.ErrNoRows || omObj == nil {
 		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 	}
@@ -1586,7 +1617,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	authzIDs, err := ssa.authzForOrder(*order.Id)
+	authzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1594,7 +1625,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 		order.Authorizations = append(order.Authorizations, authzID)
 	}
 
-	names, err := ssa.namesForOrder(*order.Id)
+	names, err := ssa.namesForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1753,7 +1784,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
 
 	for _, table := range authorizationTables {
 		var authzs []*core.Authorization
-		_, err := ssa.dbMap.Select(
+		_, err := ssa.dbMap.WithContext(ctx).Select(
 			&authzs,
 			fmt.Sprintf(`SELECT %s from %s AS authz
 		INNER JOIN orderToAuthz
@@ -1799,7 +1830,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	// authorizations that are owned by the correct account ID and associated with
 	// the given order ID
 	var auths []*core.Authorization
-	_, err := ssa.dbMap.Select(
+	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&auths,
 		fmt.Sprintf(`SELECT %s FROM %s AS authz
 	LEFT JOIN orderToAuthz
@@ -1827,7 +1858,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 		existing, present := byName[auth.Identifier.Value]
 		if !present || auth.Expires.After(*existing.Expires) {
 			// Retrieve challenges for the authz
-			auth.Challenges, err = ssa.getChallenges(auth.ID)
+			auth.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), auth.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -1850,7 +1881,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	fqdnHash := hashNames(req.Names)
 
 	var orderID int64
-	err := ssa.dbMap.SelectOne(&orderID, `
+	err := ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
 	SELECT orderID
 	FROM orderFqdnSets
 	WHERE setHash = ?
@@ -1914,7 +1945,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	}
 
 	var auths []*core.Authorization
-	_, err := ssa.dbMap.Select(
+	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&auths,
 		fmt.Sprintf(`%s
 		WHERE registrationID = ? AND
@@ -1946,7 +1977,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 
 	for _, auth := range byName {
 		// Retrieve challenges for the authz
-		if auth.Challenges, err = ssa.getChallenges(auth.ID); err != nil {
+		if auth.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), auth.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -2031,7 +2062,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 	// challenge).
 	// Fetch each of the authorizations' associated challenges
 	for _, authz := range authzMap {
-		authz.Challenges, err = ssa.getChallenges(authz.ID)
+		authz.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), authz.ID)
 	}
 	return authzMapToPB(authzMap)
 }
@@ -2053,9 +2084,9 @@ func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, re
 	return &sapb.AuthorizationIDs{Ids: ids}, nil
 }
 
-func (ssa *SQLStorageAuthority) getChallengesImpl(authID string) ([]core.Challenge, error) {
+func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) ([]core.Challenge, error) {
 	var challObjs []challModel
-	_, err := ssa.dbMap.Select(
+	_, err := db.Select(
 		&challObjs,
 		getChallengesQuery,
 		map[string]interface{}{"authID": authID},
