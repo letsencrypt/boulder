@@ -16,10 +16,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -34,6 +30,9 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -983,6 +982,11 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
+	if authz.Status != core.StatusPending {
+		wfe.sendError(response, logEvent, probs.Malformed("authorization is not pending"), nil)
+		return
+	}
+
 	// NOTE(@cpu): Historically a challenge update needed to include
 	// a KeyAuthorization field. This is no longer the case, since both sides can
 	// calculate the key authorization as needed. We unmarshal here only to check
@@ -994,24 +998,14 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	// Ask the RA to update this authorization. Send an empty `core.Challenge{}`
-	// as the challenge update because we do not care about the KeyAuthorization
-	// (if any) sent in the challengeUpdate.
-	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
-		return
-	}
-
-	// assumption: UpdateAuthorization does not modify order of challenges
-	challenge := updatedAuthorization.Challenges[challengeIndex]
+	challenge := authz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
