@@ -324,8 +324,8 @@
 		},
 		{
 			"ImportPath": "github.com/weppos/publicsuffix-go/publicsuffix",
-			"Comment": "v0.4.0-33-g84b6b91",
-			"Rev": "84b6b9160782ef32750cea90dd5eaf17107a58c0"
+			"Comment": "v0.4.0-37-g928ba98",
+			"Rev": "928ba9809f1c2a919e7defbf586a3aeef6f6683f"
 		},
 		{
 			"ImportPath": "github.com/zmap/zcrypto/json",
