@@ -125,6 +125,9 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
 def do_dns_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
+        if a.body.status is messages.STATUS_VALID:
+            # if the authorization is already valid, don't attempt to re-validate
+            continue
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.net.key))
@@ -145,7 +148,7 @@ def do_dns_challenges(client, authzs):
 
 def do_http_challenges(client, authzs):
     port = int(PORT)
-    challs = [get_chall(a, challenges.HTTP01) for a in authzs]
+    challs = [get_chall(a, challenges.HTTP01) for a in authzs if a.body.status is not messages.STATUS_VALID]
     answers = set([http_01_answer(client, c) for c in challs])
     server = standalone.HTTP01Server(("", port), answers)
     thread = threading.Thread(target=server.serve_forever)
@@ -178,6 +181,9 @@ def do_http_challenges(client, authzs):
 def do_tlsalpn_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
+        if a.body.status is messages.STATUS_VALID:
+            # if the authorization is already valid, don't attempt to re-validate
+            continue
         c = get_chall(a, challenges.TLSALPN01)
         name, value = (a.body.identifier.value, c.key_authorization(client.key))
         cleanup_hosts.append(name)

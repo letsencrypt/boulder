@@ -17,10 +17,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -31,6 +27,9 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/web"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -1069,6 +1068,11 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			probs.Unauthorized("User registration ID doesn't match registration ID in authorization"),
 			fmt.Errorf("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID),
 		)
+		return
+	}
+
+	if authz.Status != core.StatusPending {
+		wfe.sendError(response, logEvent, probs.Malformed("authorization is not pending"), nil)
 		return
 	}
 
