@@ -998,14 +998,24 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	challenge := authz.Challenges[challengeIndex]
+	// Send the authorization to the RA for validation (the name of this RPC is somewhat
+	// misleading, the RA sends the authorization to the VA for validation. If the validation
+	// succeeds the VA calls back to the RA to finalize the authorization)
+	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+		return
+	}
+
+	// assumption: UpdateAuthorization does not modify order of challenges
+	challenge := updatedAuthorization.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
