@@ -20,8 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -41,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -1118,8 +1117,8 @@ func TestChallenge(t *testing.T) {
 	`), &key)
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
-	challengeURL := "http://localhost/acme/challenge/valid/23"
-	path := "valid/23"
+	challengeURL := "http://localhost/acme/challenge/pending/23"
+	path := "pending/23"
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(path,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
@@ -1130,10 +1129,10 @@ func TestChallenge(t *testing.T) {
 		challengeURL)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/authz/valid>;rel="up"`)
+		`<http://localhost/acme/authz/pending>;rel="up"`)
 	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
-		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+		`{"type":"dns","uri":"http://localhost/acme/challenge/pending/23"}`)
 
 	// Expired challenges should be inaccessible
 	challengeURL = "expired/23"
@@ -1167,26 +1166,11 @@ func TestChallenge(t *testing.T) {
 
 }
 
-// MockRAStrictUpdateAuthz is a mock RA that enforces authz status in `UpdateAuthorization`
-type MockRAStrictUpdateAuthz struct {
-	MockRegistrationAuthority
-}
-
-// UpdateAuthorization for a MockRAStrictUpdateAuthz returns a
-// berrors.WrongAuthorizationStateError when told to update a non-pending authz.
-// It returns the authz unchanged for all other cases.
-func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
-	if authz.Status != core.StatusPending {
-		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization is not pending")
-	}
-	return authz, nil
-}
-
 // TestUpdateChallengeFinalizedAuthz tests that POSTing a challenge associated
 // with an already valid authorization returns the expected Malformed problem.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.RA = &MockRAStrictUpdateAuthz{}
+	wfe.RA = &MockRegistrationAuthority{}
 	responseWriter := httptest.NewRecorder()
 
 	path := "valid/23"
@@ -1197,7 +1181,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
   "type": "`+probs.V1ErrorNS+`malformed",
-  "detail": "Unable to update challenge :: authorization is not pending",
+  "detail": "authorization is not pending",
   "status": 400
 }`)
 }
