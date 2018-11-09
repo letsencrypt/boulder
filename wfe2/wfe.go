@@ -982,11 +982,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	if authz.Status != core.StatusPending {
-		wfe.sendError(response, logEvent, probs.Malformed("authorization is not pending"), nil)
-		return
-	}
-
 	// NOTE(@cpu): Historically a challenge update needed to include
 	// a KeyAuthorization field. This is no longer the case, since both sides can
 	// calculate the key authorization as needed. We unmarshal here only to check

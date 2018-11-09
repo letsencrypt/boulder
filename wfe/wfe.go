@@ -1071,11 +1071,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	if authz.Status != core.StatusPending {
-		wfe.sendError(response, logEvent, probs.Malformed("authorization is not pending"), nil)
-		return
-	}
-
 	var challengeUpdate core.Challenge
 	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
