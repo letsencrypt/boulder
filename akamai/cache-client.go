@@ -145,6 +145,7 @@ func (cpc *CachePurgeClient) constructAuthHeader(request *http.Request, body []b
 		base64.StdEncoding.EncodeToString(bodyHash[:]),
 		header,
 	)
+	cpc.log.Debugf("To-be-signed Akamai EdgeGrid authentication: %s", strings.Replace(tbs, "\t", "\\t", -1))
 
 	// Create signing key using a HMAC of the client secret over the timestamp
 	h := hmac.New(sha256.New, []byte(cpc.clientSecret))
@@ -185,7 +186,6 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if err != nil {
 		return errFatal(err.Error())
 	}
-
 	req, err := http.NewRequest(
 		"POST",
 		endpoint,
@@ -199,7 +199,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	authHeader, err := cpc.constructAuthHeader(
 		req,
 		reqJSON,
-		purgePath,
+		purgePath+cpc.v3Network,
 		core.RandomString(16),
 	)
 	if err != nil {
@@ -207,6 +207,9 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
+
+	cpc.log.Debugf("POSTing to %s with Authorization %s: %s",
+		endpoint, authHeader, reqJSON)
 
 	rS := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
