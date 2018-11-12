@@ -18,6 +18,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+var log = blog.UseMock()
+
 func TestConstructAuthHeader(t *testing.T) {
 	stats := metrics.NewNoopScope()
 	cpc, err := NewCachePurgeClient(
@@ -28,7 +30,7 @@ func TestConstructAuthHeader(t *testing.T) {
 		"production",
 		0,
 		time.Second,
-		nil,
+		log,
 		stats,
 	)
 	test.AssertNotError(t, err, "Failed to create cache purge client")
