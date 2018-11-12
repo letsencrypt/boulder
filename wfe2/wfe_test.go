@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -36,8 +39,6 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -1040,13 +1041,13 @@ func TestChallenge(t *testing.T) {
 	}{
 		{
 			Name:           "Valid challenge",
-			Request:        post("pending/23"),
+			Request:        post("valid/23"),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
-				"Location": "http://localhost/acme/challenge/pending/23",
-				"Link":     `<http://localhost/acme/authz/pending>;rel="up"`,
+				"Location": "http://localhost/acme/challenge/valid/23",
+				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/pending/23"}`,
+			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
 			Name:           "Expired challenge",

@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -18,8 +21,6 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"golang.org/x/net/context"
-	"gopkg.in/square/go-jose.v2"
 )
 
 // StorageAuthority is a mock
@@ -267,13 +268,6 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		authz.RegistrationID = 2
 		authz.Expires = &exp
 		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
-		return authz, nil
-	} else if id == "pending" {
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.Expires = &exp
-		authz.ID = "pending"
-		authz.Status = core.StatusPending
-		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/pending/23"
 		return authz, nil
 	}
 
