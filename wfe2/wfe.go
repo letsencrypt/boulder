@@ -994,8 +994,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	}
 
 	// Send the authorization to the RA for validation (the name of this RPC is somewhat
-	// misleading, the RA sends the authorization to the VA for validation. If the validation
-	// succeeds the VA calls back to the RA to finalize the authorization)
+	// misleading, the RA sends the authorization to the VA for validation. Once the validation
+	// is complete the VA returns back to the RA to finalize the authorization)
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
