@@ -23,8 +23,6 @@ import (
 
 var log = blog.UseMock()
 
-const timestamp = "20140321T19:34:21+0000"
-
 func TestConstructAuthHeader(t *testing.T) {
 	stats := metrics.NewNoopScope()
 	cpc, err := NewCachePurgeClient(
@@ -41,7 +39,8 @@ func TestConstructAuthHeader(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create cache purge client")
 	fc := clock.NewFake()
 	cpc.clk = fc
-	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
+	wantedTimestamp, err := time.Parse(timestampFormat, "20140321T19:34:21+0000")
+
 	test.AssertNotError(t, err, "Failed to parse timestamp")
 	fc.Set(wantedTimestamp)
 
@@ -205,9 +204,6 @@ func TestV2Purge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 	fc := clock.NewFake()
 	client.clk = fc
-	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
-	test.AssertNotError(t, err, "Failed to parse timestamp")
-	fc.Set(wantedTimestamp)
 
 	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed with 201 response")
@@ -254,9 +250,6 @@ func TestV3Purge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 	fc := clock.NewFake()
 	client.clk = fc
-	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
-	test.AssertNotError(t, err, "Failed to parse timestamp")
-	fc.Set(wantedTimestamp)
 
 	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed with 201 response")
