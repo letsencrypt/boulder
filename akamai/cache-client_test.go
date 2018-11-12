@@ -2,6 +2,9 @@ package akamai
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -20,6 +23,8 @@ import (
 
 var log = blog.UseMock()
 
+const timestamp = "20140321T19:34:21+0000"
+
 func TestConstructAuthHeader(t *testing.T) {
 	stats := metrics.NewNoopScope()
 	cpc, err := NewCachePurgeClient(
@@ -36,9 +41,9 @@ func TestConstructAuthHeader(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create cache purge client")
 	fc := clock.NewFake()
 	cpc.clk = fc
-	wantedTimestamp, err := time.Parse(timestampFormat, "20140321T19:34:21+0000")
+	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
 	test.AssertNotError(t, err, "Failed to parse timestamp")
-	fc.Add(wantedTimestamp.Sub(fc.Now()))
+	fc.Set(wantedTimestamp)
 
 	req, err := http.NewRequest(
 		"POST",
@@ -61,6 +66,7 @@ func TestConstructAuthHeader(t *testing.T) {
 type akamaiServer struct {
 	responseCode int
 	v3           bool
+	*httptest.Server
 }
 
 func (as *akamaiServer) sendResponse(w http.ResponseWriter, resp purgeResponse) {
@@ -94,6 +100,13 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Printf("Failed to read request body: %s\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	err = as.checkSignature(r, body)
+	if err != nil {
+		fmt.Printf("Error checking signature: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -132,19 +145,54 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	as.sendResponse(w, resp)
 }
 
+func (as *akamaiServer) checkSignature(r *http.Request, body []byte) error {
+	bodyHash := sha256.Sum256(body)
+	bodyHashB64 := base64.StdEncoding.EncodeToString(bodyHash[:])
+
+	authorization := r.Header.Get("Authorization")
+	authValues := make(map[string]string)
+	for _, v := range strings.Split(authorization, ";") {
+		splitValue := strings.Split(v, "=")
+		authValues[splitValue[0]] = splitValue[1]
+	}
+	headerTimestamp := authValues["timestamp"]
+	shortenedHeader := strings.Split(authorization, "signature=")[0]
+	// The signature is just long enough to get b64 padding which gets messed up
+	// with splitting on "=", so don't use the map to extract it.
+	signature := strings.Split(authorization, "signature=")[1]
+	hostPort := strings.Split(as.URL, "://")[1]
+	// Assume all unittests use "secret" as the client secret.
+	h := hmac.New(sha256.New, signingKey("secret", headerTimestamp))
+	input := []byte(fmt.Sprintf("POST\thttp\t%s\t%s\t\t%s\t%s",
+		hostPort,
+		r.URL.Path,
+		bodyHashB64,
+		shortenedHeader,
+	))
+	h.Write(input)
+	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	if signature != expectedSignature {
+		return fmt.Errorf("Wrong signature %q in %q. Expected %q\n",
+			signature, authorization, expectedSignature)
+	}
+	return nil
+}
+
 // TestV2Purge tests the legacy CCU v2 Akamai API used when the v3Network
 // parameter to NewCachePurgeClient is "".
 func TestV2Purge(t *testing.T) {
 	log := blog.NewMock()
 
-	as := akamaiServer{responseCode: http.StatusCreated}
 	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
+	as := akamaiServer{
+		responseCode: http.StatusCreated,
+		Server:       httptest.NewUnstartedServer(m),
+	}
 	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as.Start()
 
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
@@ -157,6 +205,9 @@ func TestV2Purge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 	fc := clock.NewFake()
 	client.clk = fc
+	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
+	test.AssertNotError(t, err, "Failed to parse timestamp")
+	fc.Set(wantedTimestamp)
 
 	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed with 201 response")
@@ -179,18 +230,18 @@ func TestV2Purge(t *testing.T) {
 func TestV3Purge(t *testing.T) {
 	log := blog.NewMock()
 
+	m := http.NewServeMux()
 	as := akamaiServer{
 		responseCode: http.StatusCreated,
 		v3:           true,
+		Server:       httptest.NewUnstartedServer(m),
 	}
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
 	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as.Start()
 
 	// Client is a purge client with a "production" v3Network parameter
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
@@ -201,7 +252,11 @@ func TestV3Purge(t *testing.T) {
 		metrics.NewNoopScope(),
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
-	client.clk = clock.NewFake()
+	fc := clock.NewFake()
+	client.clk = fc
+	wantedTimestamp, err := time.Parse(timestampFormat, timestamp)
+	test.AssertNotError(t, err, "Failed to parse timestamp")
+	fc.Set(wantedTimestamp)
 
 	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed with 201 response")

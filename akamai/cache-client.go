@@ -145,21 +145,26 @@ func (cpc *CachePurgeClient) constructAuthHeader(request *http.Request, body []b
 		base64.StdEncoding.EncodeToString(bodyHash[:]),
 		header,
 	)
-	cpc.log.Debugf("To-be-signed Akamai EdgeGrid authentication: %s", strings.Replace(tbs, "\t", "\\t", -1))
 
-	// Create signing key using a HMAC of the client secret over the timestamp
-	h := hmac.New(sha256.New, []byte(cpc.clientSecret))
-	h.Write([]byte(timestamp))
-	key := make([]byte, base64.StdEncoding.EncodedLen(32))
-	base64.StdEncoding.Encode(key, h.Sum(nil))
+	cpc.log.Debugf("To-be-signed Akamai EdgeGrid authentication: %q", tbs)
 
-	h = hmac.New(sha256.New, key)
+	h := hmac.New(sha256.New, signingKey(cpc.clientSecret, timestamp))
 	h.Write([]byte(tbs))
 	return fmt.Sprintf(
 		"%ssignature=%s",
 		header,
 		base64.StdEncoding.EncodeToString(h.Sum(nil)),
 	), nil
+}
+
+// signingKey makes a signing key by HMAC'ing the timestamp
+// using a client secret as the key.
+func signingKey(clientSecret string, timestamp string) []byte {
+	h := hmac.New(sha256.New, []byte(clientSecret))
+	h.Write([]byte(timestamp))
+	key := make([]byte, base64.StdEncoding.EncodedLen(32))
+	base64.StdEncoding.Encode(key, h.Sum(nil))
+	return key
 }
 
 // purge actually sends the individual requests to the Akamai endpoint and checks
