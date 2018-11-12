@@ -17,6 +17,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -27,9 +31,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
