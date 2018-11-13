@@ -317,17 +317,17 @@ func TestNewCachePurgeClient(t *testing.T) {
 func TestBigBatchPurge(t *testing.T) {
 	log := blog.NewMock()
 
+	m := http.NewServeMux()
 	as := akamaiServer{
 		responseCode: http.StatusCreated,
 		v3:           true,
+		Server:       httptest.NewUnstartedServer(m),
 	}
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
 	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as.Start()
 
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
