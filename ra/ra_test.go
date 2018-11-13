@@ -23,6 +23,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	ctasn1 "github.com/google/certificate-transparency-go/asn1"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
+	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -45,12 +50,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
-
-	"github.com/golang/protobuf/proto"
-	ctasn1 "github.com/google/certificate-transparency-go/asn1"
-	ctx509 "github.com/google/certificate-transparency-go/x509"
-	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
-	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
@@ -927,7 +926,7 @@ func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
 	// A subsequent call to update the authorization should return the expected error
 	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
 	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
-		"FinalizeAuthorization of valid authz didn't return a berrors.WrongAuthorizationState")
+		"UpdateAuthorization of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
 }
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
