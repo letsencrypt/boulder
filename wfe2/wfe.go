@@ -982,35 +982,47 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	// NOTE(@cpu): Historically a challenge update needed to include
-	// a KeyAuthorization field. This is no longer the case, since both sides can
-	// calculate the key authorization as needed. We unmarshal here only to check
-	// that the POST body is valid JSON. Any data/fields included are ignored to
-	// be kind to ACMEv2 implementations that still send a key authorization.
-	var challengeUpdate struct{}
-	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
-		return
-	}
+	// We can expect some clients to try and update a challenge for an authorization
+	// that is already valid. In this case we don't need to process the challenge
+	// update. It wouldn't be helpful, the overall authorization is already good! We
+	// increment a stat for this case and return early.
+	var returnAuthz core.Authorization
+	if authz.Status == core.StatusValid {
+		// ra.stats.Inc("ReusedValidAuthzChallenge", 1)
+		returnAuthz = authz
+	} else {
 
-	// Send the authorization to the RA for validation (the name of this RPC is somewhat
-	// misleading, the RA sends the authorization to the VA for validation. Once the validation
-	// is complete the VA returns back to the RA to finalize the authorization)
-	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
-		return
+		// NOTE(@cpu): Historically a challenge update needed to include
+		// a KeyAuthorization field. This is no longer the case, since both sides can
+		// calculate the key authorization as needed. We unmarshal here only to check
+		// that the POST body is valid JSON. Any data/fields included are ignored to
+		// be kind to ACMEv2 implementations that still send a key authorization.
+		var challengeUpdate struct{}
+		if err := json.Unmarshal(body, &challengeUpdate); err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
+			return
+		}
+
+		// Send the authorization to the RA for validation (the name of this RPC is somewhat
+		// misleading, the RA sends the authorization to the VA for validation. Once the validation
+		// is complete the VA returns back to the RA to finalize the authorization)
+		var err error
+		returnAuthz, err = wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+			return
+		}
 	}
 
 	// assumption: UpdateAuthorization does not modify order of challenges
-	challenge := updatedAuthorization.Challenges[challengeIndex]
+	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)

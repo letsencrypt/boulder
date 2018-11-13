@@ -1167,23 +1167,18 @@ func TestChallenge(t *testing.T) {
 
 }
 
-// MockRAStrictUpdateAuthz is a mock RA that enforces authz status in `UpdateAuthorization`
+// MockRAUpdateAuthorizationError is a mock RA that just returns an error on UpdateAuthorization
 type MockRAStrictUpdateAuthz struct {
 	MockRegistrationAuthority
 }
 
-// UpdateAuthorization for a MockRAStrictUpdateAuthz returns a
-// berrors.WrongAuthorizationStateError when told to update a non-pending authz.
-// It returns the authz unchanged for all other cases.
 func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
-	if authz.Status != core.StatusPending {
-		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization is not pending")
-	}
-	return authz, nil
+	return core.Authorization{}, errors.New("broken on purpose")
 }
 
 // TestUpdateChallengeFinalizedAuthz tests that POSTing a challenge associated
-// with an already valid authorization returns the expected Malformed problem.
+// with an already valid authorization just returns the challenge without calling
+// the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.RA = &MockRAStrictUpdateAuthz{}
@@ -1195,11 +1190,11 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 
 	body := responseWriter.Body.String()
+	fmt.Println(body)
 	test.AssertUnmarshaledEquals(t, body, `{
-  "type": "`+probs.V1ErrorNS+`malformed",
-  "detail": "Unable to update challenge :: authorization is not pending",
-  "status": 400
-}`)
+		"type": "dns",
+		"uri": "http://localhost/acme/challenge/valid/23"
+	  }`)
 }
 
 func TestBadNonce(t *testing.T) {
