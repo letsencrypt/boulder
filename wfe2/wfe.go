@@ -16,10 +16,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -34,6 +30,9 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/context"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -994,9 +993,9 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	// Ask the RA to update this authorization. Send an empty `core.Challenge{}`
-	// as the challenge update because we do not care about the KeyAuthorization
-	// (if any) sent in the challengeUpdate.
+	// Send the authorization to the RA for validation (the name of this RPC is somewhat
+	// misleading, the RA sends the authorization to the VA for validation. Once the validation
+	// is complete the VA returns back to the RA to finalize the authorization)
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)

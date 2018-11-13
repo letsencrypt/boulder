@@ -14,10 +14,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
-
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -37,6 +33,9 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 )
 
@@ -1455,6 +1454,10 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 		return authz, nil
 	}
 
+	if authz.Status != core.StatusPending {
+		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization must be pending")
+	}
+
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
 	if err != nil {
@@ -1491,15 +1494,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 		return core.Authorization{}, berrors.MalformedError(cErr.Error())
 	}
 
-	// Store the updated version
-	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
-		ra.log.Warningf("Error calling ra.SA.UpdatePendingAuthorization: %s", err)
-		return core.Authorization{}, err
-	}
 	ra.stats.Inc("NewPendingAuthorizations", 1)
 
 	// Dispatch to the VA for service
-
 	vaCtx := context.Background()
 	go func(authz core.Authorization) {
 		// We will mutate challenges later in this goroutine to change status and
