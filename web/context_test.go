@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -13,6 +14,7 @@ import (
 type myHandler struct{}
 
 func (m myHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request) {
+	time.Sleep(10 * time.Millisecond)
 	w.WriteHeader(201)
 	_, _ = w.Write([]byte("hi"))
 }
