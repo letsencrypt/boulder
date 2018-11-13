@@ -1078,7 +1078,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// increment a stat for this case and return early.
 	var returnAuthz core.Authorization
 	if authz.Status == core.StatusValid {
-		// ra.stats.Inc("ReusedValidAuthzChallenge", 1)
+		wfe.stats.Inc("ReusedValidAuthzChallengeWFE", 1)
 		returnAuthz = authz
 	} else {
 		var challengeUpdate core.Challenge
