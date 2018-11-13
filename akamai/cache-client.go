@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -239,7 +238,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(body, &purgeInfo)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s. Body was: %s", err, body)
 	}
 	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
@@ -254,9 +253,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	return nil
 }
 
-// Purge attempts to send a purge request to the Akamai CCU API cpc.retries number
-//  of times before giving up and returning ErrAllRetriesFailed
-func (cpc *CachePurgeClient) Purge(urls []string) error {
+func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
 		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
@@ -281,5 +278,24 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 	}
 
 	cpc.stats.Inc("SuccessfulPurges", 1)
+	return nil
+}
+
+var akamaiBatchSize = 100
+
+// Purge attempts to send a purge request to the Akamai CCU API cpc.retries number
+//  of times before giving up and returning ErrAllRetriesFailed
+func (cpc *CachePurgeClient) Purge(urls []string) error {
+	for i := 0; i < len(urls); {
+		sliceEnd := i + akamaiBatchSize
+		if sliceEnd > len(urls) {
+			sliceEnd = len(urls)
+		}
+		err := cpc.purgeBatch(urls[i:sliceEnd])
+		if err != nil {
+			return err
+		}
+		i += akamaiBatchSize
+	}
 	return nil
 }
