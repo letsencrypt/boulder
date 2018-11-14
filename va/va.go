@@ -194,8 +194,8 @@ type verificationRequestEvent struct {
 	Hostname          string                  `json:",omitempty"`
 	ValidationRecords []core.ValidationRecord `json:",omitempty"`
 	Challenge         core.Challenge          `json:",omitempty"`
-	ValidationLatency time.Duration           `json:",omitempty"`
-	Error             string                  `json:",omitempty"`
+	ValidationLatency float64
+	Error             string `json:",omitempty"`
 }
 
 // getAddr will query for all A/AAAA records associated with hostname and return
@@ -1092,7 +1092,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent.Challenge = challenge
 
 	validationLatency := time.Since(vStart)
-	logEvent.ValidationLatency = validationLatency
+	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":        string(challenge.Type),

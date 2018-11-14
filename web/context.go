@@ -79,7 +79,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
 		logEvent.Code = rwws.code
-		logEvent.Latency = float64(time.Since(begin)) / float64(time.Second)
+		logEvent.Latency = time.Since(begin).Round(time.Millisecond).Seconds()
 		th.logEvent(logEvent)
 	}()
 	th.wfe.ServeHTTP(logEvent, rwws, r)
