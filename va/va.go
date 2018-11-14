@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -1093,7 +1092,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent.Challenge = challenge
 
 	validationLatency := time.Since(vStart)
-	logEvent.ValidationLatency = math.Floor(1000*float64(validationLatency)/float64(time.Second)) / 1000
+	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":        string(challenge.Type),
