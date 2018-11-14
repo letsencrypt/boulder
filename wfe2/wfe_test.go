@@ -1099,11 +1099,11 @@ func TestChallenge(t *testing.T) {
 }
 
 // MockRAUpdateAuthorizationError is a mock RA that just returns an error on UpdateAuthorization
-type MockRAStrictUpdateAuthz struct {
+type MockRAUpdateAuthorizationError struct {
 	MockRegistrationAuthority
 }
 
-func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
+func (ra *MockRAUpdateAuthorizationError) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
 	return core.Authorization{}, errors.New("broken on purpose")
 }
 
@@ -1112,7 +1112,7 @@ func (ra *MockRAStrictUpdateAuthz) UpdateAuthorization(_ context.Context, authz 
 // the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.RA = &MockRAStrictUpdateAuthz{}
+	wfe.RA = &MockRAUpdateAuthorizationError{}
 	responseWriter := httptest.NewRecorder()
 
 	signedURL := "http://localhost/valid/23"
@@ -1121,7 +1121,6 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
-	fmt.Println(body)
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "dns",
 		"url": "http://localhost/acme/challenge/valid/23"
