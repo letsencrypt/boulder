@@ -94,11 +94,6 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 			net.ParseIP("::1"),
 		}, nil
 	}
-	if hostname == "not-listening.ip" {
-		return []net.IP{
-			net.ParseIP("192.168.88.88"),
-		}, nil
-	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, nil
 }
