@@ -333,6 +333,38 @@ func (va *ValidationAuthorityImpl) fetchHTTPSimple(
 	return body, records, nil
 }
 
+// fallbackErr returns true only for:
+//   1. net.OpError instances
+//   2. net.Error instances
+//   3. url.Error instances wrapping one of the above
+// fallbackErr returns false for all other errors. By policy we're only
+// interested in retrying requests that were made to an IPv6 address that
+// generated a network error.
+func fallbackErr(err error) bool {
+	// Err shouldn't ever be nil if we're considering it for fallback
+	if err == nil {
+		return false
+	}
+
+	// if the error is a URL error, unwrap it and see if the inner err is
+	// a fallback error
+	if urlErr, ok := err.(*url.Error); ok {
+		return fallbackErr(urlErr.Err)
+	}
+
+	// Network operation errors should provoke a fallback
+	if _, ok := err.(*net.OpError); ok {
+		return true
+	}
+
+	// Generic network errors (timeouts, etc) should also provoke a fallback
+	if _, ok := err.(net.Error); ok {
+		return true
+	}
+
+	return false
+}
+
 // processHTTPValidation performs an HTTP validation for the given host, port
 // and path. If successful the body of the HTTP response is returned along with
 // the validation records created during the validation. If not successful
@@ -405,10 +437,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Make the initial validation request. This may result in redirects being
 	// followed.
 	httpResponse, err := client.Do(initialReq)
-	// If there was an error we may need to try a fallback.
-	if err != nil {
-		// Try to advance to another IP if there was an error we don't have
-		// a fallback address to use and must return the original error.
+	// If there was an error and its a kind of error we consider a fallback error,
+	// then try to fallback.
+	if err != nil && fallbackErr(err) {
+		// Try to advance to another IP. If there was an error advancing we don't
+		// have a fallback address to use and must return the original error.
 		if ipErr := target.nextIP(); ipErr != nil {
 			return nil, records, err
 		}
@@ -429,6 +462,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		if err != nil {
 			return nil, records, err
 		}
+	} else if err != nil {
+		// if the error was not a fallbackErr then return immediately.
+		return nil, records, err
 	}
 
 	// At this point we've made a successful request (be it from a retry or

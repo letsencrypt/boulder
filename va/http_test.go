@@ -3,6 +3,7 @@ package va
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -456,6 +457,102 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	})
 
 	return server
+}
+
+type testNetErr struct{}
+
+func (e *testNetErr) Error() string {
+	return "testNetErr"
+}
+
+func (e *testNetErr) Temporary() bool {
+	return false
+}
+
+func (e *testNetErr) Timeout() bool {
+	return false
+}
+
+func TestFallbackErr(t *testing.T) {
+	untypedErr := errors.New("the least interesting kind of error")
+	berr := berrors.InternalServerError("code violet: class neptune")
+	netOpErr := &net.OpError{
+		Err: fmt.Errorf("port was clogged. please empty packets"),
+	}
+	netErr := &testNetErr{}
+
+	testCases := []struct {
+		Name           string
+		Err            error
+		ExpectFallback bool
+	}{
+		{
+			Name: "Nil error",
+			Err:  nil,
+		},
+		{
+			Name: "Standard untyped error",
+			Err:  untypedErr,
+		},
+		{
+			Name: "A Boulder error instance",
+			Err:  berr,
+		},
+		{
+			Name:           "A net.OpError instance",
+			Err:            netOpErr,
+			ExpectFallback: true,
+		},
+		{
+			Name:           "A net.Error instance",
+			Err:            netErr,
+			ExpectFallback: true,
+		},
+		{
+			Name: "A URL error wrapping a standard error",
+			Err: &url.Error{
+				Op:  "ivy",
+				URL: "https://en.wikipedia.org/wiki/Operation_Ivy_(band)",
+				Err: errors.New("take warning"),
+			},
+		},
+		{
+			Name: "A URL error wrapping a nil error",
+			Err: &url.Error{
+				Err: nil,
+			},
+		},
+		{
+			Name: "A URL error wrapping a Boulder error instance",
+			Err: &url.Error{
+				Err: berr,
+			},
+		},
+		{
+			Name: "A URL error wrapping a net OpError",
+			Err: &url.Error{
+				Err: netOpErr,
+			},
+			ExpectFallback: true,
+		},
+		{
+			Name: "A URL error wrapping a net Error",
+			Err: &url.Error{
+				Err: netErr,
+			},
+			ExpectFallback: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if isFallback := fallbackErr(tc.Err); isFallback != tc.ExpectFallback {
+				t.Errorf(
+					"Expected fallbackErr for %t to be %v was %v\n",
+					tc.Err, tc.ExpectFallback, isFallback)
+			}
+		})
+	}
 }
 
 func TestFetchHTTPSimple(t *testing.T) {
