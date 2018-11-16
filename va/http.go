@@ -110,7 +110,7 @@ type httpValidationTarget struct {
 	// the IP addresses that will be drawn from by calls to nextIP() to set curIP
 	next []net.IP
 	// the current IP address being used for validation (if any)
-	cur *net.IP
+	cur net.IP
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -123,18 +123,15 @@ func (vt *httpValidationTarget) nextIP() error {
 			"host %q has no IP addresses remaining to use",
 			vt.host)
 	}
-	oldIP := vt.cur
-	if oldIP != nil {
-		vt.tried = append(vt.tried, *oldIP)
-	}
-	vt.cur = &vt.next[0]
+	vt.tried = append(vt.tried, vt.cur)
+	vt.cur = vt.next[0]
 	vt.next = vt.next[1:]
 	return nil
 }
 
 // ip returns the current *net.IP for the validation target. It may return nil
 // if all possible IPs have been expended by calls to nextIP.
-func (vt *httpValidationTarget) ip() *net.IP {
+func (vt *httpValidationTarget) ip() net.IP {
 	return vt.cur
 }
 
@@ -282,8 +279,8 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 			"host %q has no IP addresses remaining to use",
 			target.host)
 	}
-	record.AddressUsed = *targetIP
-	url := httpValidationURL(*targetIP, target.path, target.port)
+	record.AddressUsed = targetIP
+	url := httpValidationURL(targetIP, target.path, target.port)
 	record.URL = url.String()
 
 	// If there's no provided HTTP request to mutate (e.g. a redirect request
