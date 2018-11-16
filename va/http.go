@@ -18,12 +18,39 @@ import (
 )
 
 func newHTTPClient() http.Client {
+	// We want to be able to differentiate between timeouts during connect and
+	// timeouts after connect. To do so shavedDialContext shaves 10ms off of the
+	// context it was given before calling the default DialContext.
+	shavedDialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			// Shouldn't happen: All requests should have a deadline by this point.
+			deadline = time.Now().Add(100 * time.Second)
+		} else {
+			// Set the context deadline slightly shorter than the HTTP deadline, so we
+			// get a useful error rather than a generic "deadline exceeded" error. This
+			// lets us give a more specific error to the subscriber.
+			deadline = deadline.Add(-10 * time.Millisecond)
+		}
+		ctx, cancel := context.WithDeadline(ctx, deadline)
+		defer cancel()
+
+		// Invoke the default transport's original DialContext function using the
+		// reconstructed context.
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, fmt.Errorf("DefaultTransport was not an http.Transport")
+		}
+		return defaultTransport.DialContext(ctx, network, addr)
+	}
+
 	// Construct a one-off HTTP client with a custom transport.
 	return http.Client{
 		Transport: &http.Transport{
 			// We are talking to a client that does not yet have a certificate,
 			// so we accept a temporary, invalid one.
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			DialContext:     shavedDialContext,
 			// We don't expect to make multiple requests to a client, so close
 			// connection immediately.
 			DisableKeepAlives: true,
@@ -291,18 +318,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	host string,
 	path string) ([]byte, []core.ValidationRecord, error) {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		// Shouldn't happen: All requests should have a deadline by this point.
-		deadline = time.Now().Add(100 * time.Second)
-	} else {
-		// Set the context deadline slightly shorter than the HTTP deadline, so we
-		// get a useful error rather than a generic "deadline exceeded" error. This
-		// lets us give a more specific error to the subscriber.
-		deadline = deadline.Add(-10 * time.Millisecond)
-	}
-	ctx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
 
 	// Create a target for the host, port and path
 	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path)
