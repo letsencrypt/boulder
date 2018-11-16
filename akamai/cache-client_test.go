@@ -2,6 +2,9 @@ package akamai
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -18,6 +21,7 @@ import (
 )
 
 func TestConstructAuthHeader(t *testing.T) {
+	log := blog.NewMock()
 	stats := metrics.NewNoopScope()
 	cpc, err := NewCachePurgeClient(
 		"https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
@@ -27,7 +31,7 @@ func TestConstructAuthHeader(t *testing.T) {
 		"production",
 		0,
 		time.Second,
-		nil,
+		log,
 		stats,
 	)
 	test.AssertNotError(t, err, "Failed to create cache purge client")
@@ -35,7 +39,7 @@ func TestConstructAuthHeader(t *testing.T) {
 	cpc.clk = fc
 	wantedTimestamp, err := time.Parse(timestampFormat, "20140321T19:34:21+0000")
 	test.AssertNotError(t, err, "Failed to parse timestamp")
-	fc.Add(wantedTimestamp.Sub(fc.Now()))
+	fc.Set(wantedTimestamp)
 
 	req, err := http.NewRequest(
 		"POST",
@@ -58,6 +62,7 @@ func TestConstructAuthHeader(t *testing.T) {
 type akamaiServer struct {
 	responseCode int
 	v3           bool
+	*httptest.Server
 }
 
 func (as *akamaiServer) sendResponse(w http.ResponseWriter, resp purgeResponse) {
@@ -91,6 +96,13 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Printf("Failed to read request body: %s\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	err = as.checkSignature(r, body)
+	if err != nil {
+		fmt.Printf("Error checking signature: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -129,19 +141,58 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	as.sendResponse(w, resp)
 }
 
+func (as *akamaiServer) checkSignature(r *http.Request, body []byte) error {
+	bodyHash := sha256.Sum256(body)
+	bodyHashB64 := base64.StdEncoding.EncodeToString(bodyHash[:])
+
+	authorization := r.Header.Get("Authorization")
+	authValues := make(map[string]string)
+	for _, v := range strings.Split(authorization, ";") {
+		splitValue := strings.Split(v, "=")
+		authValues[splitValue[0]] = splitValue[1]
+	}
+	headerTimestamp := authValues["timestamp"]
+	splitHeader := strings.Split(authorization, "signature=")
+	shortenedHeader, signature := splitHeader[0], splitHeader[1]
+	hostPort := strings.Split(as.URL, "://")[1]
+	// Assume all unittests use "secret" as the client secret.
+	h := hmac.New(sha256.New, signingKey("secret", headerTimestamp))
+	input := []byte(fmt.Sprintf("POST\thttp\t%s\t%s\t\t%s\t%s",
+		hostPort,
+		r.URL.Path,
+		bodyHashB64,
+		shortenedHeader,
+	))
+	h.Write(input)
+	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	if signature != expectedSignature {
+		return fmt.Errorf("Wrong signature %q in %q. Expected %q\n",
+			signature, authorization, expectedSignature)
+	}
+	return nil
+}
+
+func newAkamaiServer(code int, v3 bool) *akamaiServer {
+	m := http.NewServeMux()
+	as := akamaiServer{
+		responseCode: code,
+		v3:           v3,
+		Server:       httptest.NewServer(m),
+	}
+	m.HandleFunc("/", as.akamaiHandler)
+	return &as
+}
+
 // TestV2Purge tests the legacy CCU v2 Akamai API used when the v3Network
 // parameter to NewCachePurgeClient is "".
 func TestV2Purge(t *testing.T) {
 	log := blog.NewMock()
 
-	as := akamaiServer{responseCode: http.StatusCreated}
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
-	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as := newAkamaiServer(http.StatusCreated, false)
+	defer as.Close()
 
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
@@ -174,31 +225,24 @@ func TestV2Purge(t *testing.T) {
 // TestV3Purge tests the Akamai CCU v3 purge API by setting the v3Network
 // parameter to "production".
 func TestV3Purge(t *testing.T) {
-	log := blog.NewMock()
-
-	as := akamaiServer{
-		responseCode: http.StatusCreated,
-		v3:           true,
-	}
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
-	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as := newAkamaiServer(http.StatusCreated, true)
+	defer as.Close()
 
 	// Client is a purge client with a "production" v3Network parameter
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
 		"production",
 		3,
 		time.Second,
-		log,
+		blog.NewMock(),
 		metrics.NewNoopScope(),
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
-	client.clk = clock.NewFake()
+	fc := clock.NewFake()
+	client.clk = fc
 
 	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed with 201 response")
@@ -217,34 +261,30 @@ func TestV3Purge(t *testing.T) {
 }
 
 func TestNewCachePurgeClient(t *testing.T) {
-	log := blog.NewMock()
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
-
 	// Creating a new cache purge client with an invalid "network" parameter should error
 	_, err := NewCachePurgeClient(
-		server.URL,
+		"http://127.0.0.1:9000/",
 		"token",
 		"secret",
 		"accessToken",
 		"fake",
 		3,
 		time.Second,
-		log,
+		blog.NewMock(),
 		metrics.NewNoopScope(),
 	)
 	test.AssertError(t, err, "NewCachePurgeClient with invalid network parameter didn't error")
 
 	// Creating a new cache purge client with a valid "network" parameter shouldn't error
 	_, err = NewCachePurgeClient(
-		server.URL,
+		"http://127.0.0.1:9000/",
 		"token",
 		"secret",
 		"accessToken",
 		"staging",
 		3,
 		time.Second,
-		log,
+		blog.NewMock(),
 		metrics.NewNoopScope(),
 	)
 	test.AssertNotError(t, err, "NewCachePurgeClient with valid network parameter errored")
@@ -258,7 +298,7 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"staging",
 		3,
 		time.Second,
-		log,
+		blog.NewMock(),
 		metrics.NewNoopScope(),
 	)
 	test.AssertError(t, err, "NewCachePurgeClient with invalid server url parameter didn't error")
@@ -267,17 +307,17 @@ func TestNewCachePurgeClient(t *testing.T) {
 func TestBigBatchPurge(t *testing.T) {
 	log := blog.NewMock()
 
+	m := http.NewServeMux()
 	as := akamaiServer{
 		responseCode: http.StatusCreated,
 		v3:           true,
+		Server:       httptest.NewUnstartedServer(m),
 	}
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
 	m.HandleFunc("/", as.akamaiHandler)
-	server.Start()
+	as.Start()
 
 	client, err := NewCachePurgeClient(
-		server.URL,
+		as.URL,
 		"token",
 		"secret",
 		"accessToken",
