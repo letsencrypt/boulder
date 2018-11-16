@@ -20,7 +20,10 @@ import (
 )
 
 func TestNewHTTPClient(t *testing.T) {
-	client := newHTTPClient()
+	dummyRedirHandler := func(_ *http.Request, _ []*http.Request) error {
+		return nil
+	}
+	client := newHTTPClient(dummyRedirHandler)
 
 	// The client should have a HTTP Transport
 	rawTransport := client.Transport

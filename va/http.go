@@ -17,7 +17,9 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 )
 
-func newHTTPClient() http.Client {
+type redirectChecker func(*http.Request, []*http.Request) error
+
+func newHTTPClient(checkRedirect redirectChecker) http.Client {
 	// We want to be able to differentiate between timeouts during connect and
 	// timeouts after connect. To do so shavedDialContext shaves 10ms off of the
 	// context it was given before calling the default DialContext.
@@ -47,10 +49,10 @@ func newHTTPClient() http.Client {
 	// Construct a one-off HTTP client with a custom transport.
 	return http.Client{
 		Transport: &http.Transport{
+			DialContext: shavedDialContext,
 			// We are talking to a client that does not yet have a certificate,
 			// so we accept a temporary, invalid one.
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			DialContext:     shavedDialContext,
 			// We don't expect to make multiple requests to a client, so close
 			// connection immediately.
 			DisableKeepAlives: true,
@@ -59,6 +61,7 @@ func newHTTPClient() http.Client {
 			IdleConnTimeout:     time.Second,
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
+		CheckRedirect: checkRedirect,
 	}
 }
 
@@ -377,8 +380,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Create a new HTTP client and check HTTP redirects it encounters with
 	// processRedirect
-	client := newHTTPClient()
-	client.CheckRedirect = processRedirect
+	client := newHTTPClient(processRedirect)
 
 	// Make the initial validation request. This may result in redirects being
 	// followed.
