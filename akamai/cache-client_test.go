@@ -38,7 +38,6 @@ func TestConstructAuthHeader(t *testing.T) {
 	fc := clock.NewFake()
 	cpc.clk = fc
 	wantedTimestamp, err := time.Parse(timestampFormat, "20140321T19:34:21+0000")
-
 	test.AssertNotError(t, err, "Failed to parse timestamp")
 	fc.Set(wantedTimestamp)
 
