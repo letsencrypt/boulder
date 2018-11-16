@@ -401,7 +401,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 
 		// Otherwise we tried IPv6 first and it failed, but we have another address
-		// to fallback to, so setup another validation to retry ithe target and
+		// to fallback to, so setup another validation to retry the target and
 		// append the retry record.
 		retryReq, retryRecord, err := va.setupHTTPValidation(ctx, nil, target)
 		records = append(records, retryRecord)
