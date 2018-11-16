@@ -152,12 +152,14 @@ func TestHTTPValidationTarget(t *testing.T) {
 				// Calling ip() on the target should give the expected IPs in the right
 				// order.
 				for i, expectedIP := range tc.ExpectedIPs {
-					gotIP, err := target.ip()
-					if err != nil {
-						t.Errorf("Expected IP %d to be %s got err: %v", i, expectedIP, err)
+					gotIP := target.ip()
+					if gotIP == nil {
+						t.Errorf("Expected IP %d to be %s got nil", i, expectedIP)
 					} else {
 						test.AssertEquals(t, gotIP.String(), expectedIP)
 					}
+					// Advance to the next IP
+					_ = target.nextIP()
 				}
 			}
 		})

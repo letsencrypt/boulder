@@ -104,26 +104,38 @@ type httpValidationTarget struct {
 	path string
 	// all of the IP addresses available for the host
 	available []net.IP
-	// the IP addresses that were tried for validation so far (e.g. returned by
-	// calls to the IP function)
+	// the IP addresses that were tried for validation previously that were cycled
+	// out of cur by calls to nextIP()
 	tried []net.IP
-	// the IP addresses that will be returned by calls to the IP function.
+	// the IP addresses that will be drawn from by calls to nextIP() to set curIP
 	next []net.IP
+	// the current IP address being used for validation (if any)
+	cur *net.IP
 }
 
-// ip hands out one of the next IP addresses for the validation target and
-// mutates the internal state of the validation target to track ips used. The
-// list of tried IP addresses is updated to include the IP that is returned to
-// the caller. The returned IP is also removed from the next slice. If there are
-// no next IP addresses an error is returned.
-func (vt *httpValidationTarget) ip() (*net.IP, error) {
+// nextIP changes the cur IP by removing the first entry from the next slice and
+// setting it to cur. If cur was previously set the value will be added to the
+// tried slice to keep track of IPs that were previously used. If nextIP() is
+// called but vt.next is empty an error is returned.
+func (vt *httpValidationTarget) nextIP() error {
 	if len(vt.next) == 0 {
-		return nil, fmt.Errorf("host %q has no IP addresses remaining to use", vt.host)
+		return fmt.Errorf(
+			"host %q has no IP addresses remaining to use",
+			vt.host)
 	}
-	curIP := vt.next[0]
+	oldIP := vt.cur
+	if oldIP != nil {
+		vt.tried = append(vt.tried, *oldIP)
+	}
+	vt.cur = &vt.next[0]
 	vt.next = vt.next[1:]
-	vt.tried = append(vt.tried, curIP)
-	return &curIP, nil
+	return nil
+}
+
+// ip returns the current *net.IP for the validation target. It may return nil
+// if all possible IPs have been expended by calls to nextIP.
+func (vt *httpValidationTarget) ip() *net.IP {
+	return vt.cur
 }
 
 // newHTTPValidationTarget creates a httpValidationTarget for the given host,
@@ -172,6 +184,9 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		// fallback address.
 		target.next = []net.IP{v6Addrs[0]}
 	}
+
+	// Advance the target using nextIP to populate the cur IP before returning
+	_ = target.nextIP()
 	return target, nil
 }
 
@@ -261,9 +276,11 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	}
 
 	// Build a URL with the target's IP address and port
-	targetIP, err := target.ip()
-	if err != nil {
-		return nil, record, err
+	targetIP := target.ip()
+	if targetIP == nil {
+		return nil, record, fmt.Errorf(
+			"host %q has no IP addresses remaining to use",
+			target.host)
 	}
 	record.AddressUsed = *targetIP
 	url := httpValidationURL(*targetIP, target.path, target.port)
@@ -273,6 +290,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	// we're following as part of a validation) then construct a new initial HTTP
 	// GET request for the validation.
 	if req == nil {
+		var err error
 		req, err = http.NewRequest("GET", url.String(), nil)
 		if err != nil {
 			return nil, record, err
@@ -389,22 +407,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	httpResponse, err := client.Do(initialReq)
 	// If there was an error we may need to try a fallback.
 	if err != nil {
-		// Calling To4 on an IPv6 address returns nil and can be used to
-		// differentiate IPv6/IPv4 net.IP instances
-		triedIPv6 := baseRecord.AddressUsed.To4() == nil
-		if !triedIPv6 {
-			// If the base validation record indicates we used an IPv4 address then we
-			// don't have anything to fallback to, return the error immediately.
-			return nil, records, err
-		} else if triedIPv6 && len(target.next) == 0 {
-			// If we did try IPv6 but there isn't another address to try, return the
-			// error immediately.
+		// Try to advance to another IP if there was an error we don't have
+		// a fallback address to use and must return the original error.
+		if ipErr := target.nextIP(); ipErr != nil {
 			return nil, records, err
 		}
 
-		// Otherwise we tried IPv6 first and it failed, but we have another address
-		// to fallback to, so setup another validation to retry the target and
-		// append the retry record.
+		// setup another validation to retry the target with the new IP and append
+		// the retry record.
 		retryReq, retryRecord, err := va.setupHTTPValidation(ctx, nil, target)
 		records = append(records, retryRecord)
 		if err != nil {
