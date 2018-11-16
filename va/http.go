@@ -36,7 +36,7 @@ func newHTTPClient() http.Client {
 }
 
 // httpValidationURL constructs a URL for the given IP address, path and port
-// combination. The port is omittied from the URL if it is the default HTTP
+// combination. The port is omitted from the URL if it is the default HTTP
 // port. It is only used for constructing initial HTTP-01 validation requests
 // and so does not need to support constructing a URL with an HTTPS scheme.
 func httpValidationURL(validationIP net.IP, path string, port int) *url.URL {
