@@ -46,11 +46,13 @@ func httpValidationURL(validationIP net.IP, path string, port int) *url.URL {
 	// the URL.
 	if port != 80 {
 		urlHost = net.JoinHostPort(validationIP.String(), strconv.Itoa(port))
-	} else if validationIP.To4() == nil {
-		// if the validation IP is an IPv6 address, and we aren't using
-		// `net.JoinHostPort` then we have to manually surround the IPv6 address
-		// with square brackets to make a valid IPv6 URL (e.g "http://[::1]/foo" not
-		// "http://::1/foo")
+	}
+
+	// if the validation IP is an IPv6 address, and we aren't using
+	// `net.JoinHostPort` then we have to manually surround the IPv6 address
+	// with square brackets to make a valid IPv6 URL (e.g "http://[::1]/foo" not
+	// "http://::1/foo")
+	if port == 80 && validationIP.To4() == nil {
 		urlHost = fmt.Sprintf("[%s]", urlHost)
 	}
 
