@@ -79,10 +79,10 @@ type httpValidationTarget struct {
 	next []net.IP
 }
 
-// IP hands out one of the next IP addresses for the validation target. The list
+// ip hands out one of the next IP addresses for the validation target. The list
 // of tried IP addresses is updated to include the IP that is returned to the
 // caller. If there are no next IP addresses an error is returned.
-func (vt *httpValidationTarget) IP() (*net.IP, error) {
+func (vt *httpValidationTarget) ip() (*net.IP, error) {
 	if len(vt.next) == 0 {
 		return nil, fmt.Errorf("host %q has no IP addresses remaining to use", vt.host)
 	}
@@ -227,7 +227,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	}
 
 	// Build a URL with the target's IP address and port
-	targetIP, err := target.IP()
+	targetIP, err := target.ip()
 	if err != nil {
 		return nil, record, err
 	}

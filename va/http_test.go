@@ -146,10 +146,10 @@ func TestHTTPValidationTarget(t *testing.T) {
 				test.AssertNotEquals(t, target.host, "")
 				test.AssertNotEquals(t, target.port, 0)
 				test.AssertNotEquals(t, target.path, "")
-				// Calling IP() on the target should give the expected IPs in the right
+				// Calling ip() on the target should give the expected IPs in the right
 				// order.
 				for i, expectedIP := range tc.ExpectedIPs {
-					gotIP, err := target.IP()
+					gotIP, err := target.ip()
 					if err != nil {
 						t.Errorf("Expected IP %d to be %s got err: %v", i, expectedIP, err)
 					} else {
