@@ -1072,28 +1072,39 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	var challengeUpdate core.Challenge
-	if err := json.Unmarshal(body, &challengeUpdate); err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
-		return
-	}
+	// We can expect some clients to try and update a challenge for an authorization
+	// that is already valid. In this case we don't need to process the challenge
+	// update. It wouldn't be helpful, the overall authorization is already good! We
+	// increment a stat for this case and return early.
+	var returnAuthz core.Authorization
+	if authz.Status == core.StatusValid {
+		wfe.stats.Inc("ReusedValidAuthzChallengeWFE", 1)
+		returnAuthz = authz
+	} else {
+		var challengeUpdate core.Challenge
+		if err := json.Unmarshal(body, &challengeUpdate); err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
+			return
+		}
 
-	// Ask the RA to update this authorization
-	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
-		return
+		// Ask the RA to update this authorization
+		var err error
+		returnAuthz, err = wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+			return
+		}
 	}
 
 	// assumption: UpdateAuthorization does not modify order of challenges
-	challenge := updatedAuthorization.Challenges[challengeIndex]
+	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
 	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
+	err := wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
