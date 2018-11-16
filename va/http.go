@@ -111,9 +111,11 @@ type httpValidationTarget struct {
 	next []net.IP
 }
 
-// ip hands out one of the next IP addresses for the validation target. The list
-// of tried IP addresses is updated to include the IP that is returned to the
-// caller. If there are no next IP addresses an error is returned.
+// ip hands out one of the next IP addresses for the validation target and
+// mutates the internal state of the validation target to track ips used. The
+// list of tried IP addresses is updated to include the IP that is returned to
+// the caller. The returned IP is also removed from the next slice. If there are
+// no next IP addresses an error is returned.
 func (vt *httpValidationTarget) ip() (*net.IP, error) {
 	if len(vt.next) == 0 {
 		return nil, fmt.Errorf("host %q has no IP addresses remaining to use", vt.host)
