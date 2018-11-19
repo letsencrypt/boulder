@@ -17,35 +17,43 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 )
 
+// shavedDialContext shaves 10ms off of the context it was given before
+// calling the default DialContext. This helps us be able to differentiate
+// between timeouts during connect and timeouts after connect.
+func shavedDialContext(
+	ctx context.Context,
+	network,
+	addr string) (net.Conn, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		// Shouldn't happen: All requests should have a deadline by this point.
+		deadline = time.Now().Add(100 * time.Second)
+	} else {
+		// Set the context deadline slightly shorter than the HTTP deadline, so we
+		// get a useful error rather than a generic "deadline exceeded" error. This
+		// lets us give a more specific error to the subscriber.
+		deadline = deadline.Add(-10 * time.Millisecond)
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	// Invoke the default transport's original DialContext function using the
+	// reconstructed context.
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("DefaultTransport was not an http.Transport")
+	}
+	return defaultTransport.DialContext(ctx, network, addr)
+}
+
+// redirectChecker is a function that can be used for an HTTP Client's
+// checkRedirect function.
 type redirectChecker func(*http.Request, []*http.Request) error
 
+// newHTTPClient constructs a HTTP client with a custom transport suitable for
+// HTTP-01 validation. The provided checkRedirect function is used as the
+// client's checkRedirect handler.
 func newHTTPClient(checkRedirect redirectChecker) http.Client {
-	// We want to be able to differentiate between timeouts during connect and
-	// timeouts after connect. To do so shavedDialContext shaves 10ms off of the
-	// context it was given before calling the default DialContext.
-	shavedDialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		deadline, ok := ctx.Deadline()
-		if !ok {
-			// Shouldn't happen: All requests should have a deadline by this point.
-			deadline = time.Now().Add(100 * time.Second)
-		} else {
-			// Set the context deadline slightly shorter than the HTTP deadline, so we
-			// get a useful error rather than a generic "deadline exceeded" error. This
-			// lets us give a more specific error to the subscriber.
-			deadline = deadline.Add(-10 * time.Millisecond)
-		}
-		ctx, cancel := context.WithDeadline(ctx, deadline)
-		defer cancel()
-
-		// Invoke the default transport's original DialContext function using the
-		// reconstructed context.
-		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-		if !ok {
-			return nil, fmt.Errorf("DefaultTransport was not an http.Transport")
-		}
-		return defaultTransport.DialContext(ctx, network, addr)
-	}
-
 	// Construct a one-off HTTP client with a custom transport.
 	return http.Client{
 		Transport: &http.Transport{
