@@ -10,7 +10,10 @@ service RegistrationAuthority {
         rpc NewAuthorization(NewAuthorizationRequest) returns (core.Authorization) {}
         rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
         rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
+        // TODO(@cpu): Remove UpdateAuthorization. It is deprecated in favour of
+        // PerformValidation.
         rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (core.Authorization) {}
+        rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
         rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
         rpc DeactivateRegistration(core.Registration) returns (core.Empty) {}
         rpc DeactivateAuthorization(core.Authorization) returns (core.Empty) {}
@@ -38,6 +41,11 @@ message UpdateAuthorizationRequest {
         optional core.Authorization authz = 1;
         optional int64 challengeIndex = 2;
         optional core.Challenge response = 3;
+}
+
+message PerformValidationRequest {
+        optional core.Authorization authz = 1;
+        optional int64 challengeIndex = 2;
 }
 
 message RevokeCertificateWithRegRequest {

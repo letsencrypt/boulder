@@ -122,6 +122,31 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 	return PBToAuthz(response)
 }
 
+func (rac RegistrationAuthorityClientWrapper) PerformValidation(
+	ctx context.Context,
+	authz core.Authorization,
+	challengeIndex int) (core.Authorization, error) {
+	authzPB, err := AuthzToPB(authz)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	ind := int64(challengeIndex)
+
+	response, err := rac.inner.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &ind,
+	})
+	if err != nil {
+		return core.Authorization{}, err
+	}
+
+	if response == nil || !authorizationValid(response) {
+		return core.Authorization{}, errIncompleteResponse
+	}
+
+	return PBToAuthz(response)
+}
+
 func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
 	reason := int64(code)
 	_, err := rac.inner.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
@@ -286,6 +311,23 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.C
 		return nil, err
 	}
 	newAuthz, err := ras.inner.UpdateAuthorization(ctx, authz, int(*request.ChallengeIndex), chall)
+	if err != nil {
+		return nil, err
+	}
+	return AuthzToPB(newAuthz)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
+	ctx context.Context,
+	request *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil {
+		return nil, errIncompleteRequest
+	}
+	authz, err := PBToAuthz(request.Authz)
+	if err != nil {
+		return nil, err
+	}
+	newAuthz, err := ras.inner.PerformValidation(ctx, authz, int(*request.ChallengeIndex))
 	if err != nil {
 		return nil, err
 	}

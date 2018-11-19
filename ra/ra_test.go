@@ -642,19 +642,16 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
-	response, err := makeResponse(httpChallenge)
-	test.AssertNotError(t, err, "Unable to construct response to secondAuthz http challenge")
-	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, httpIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz http failed")
+	secondAuthz, err = ra.PerformValidation(ctx, secondAuthz, httpIndex)
+	test.AssertNotError(t, err, "PerformValidation on secondAuthz http failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
 	// Similarly, sending an update to this authz for a pending challenge should do
 	// nothing (but produce no error), since the overall authz is already valid
-	response, err = makeResponse(sniChallenge)
 	test.AssertNotError(t, err, "Unable to construct response to secondAuthz sni challenge")
-	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, sniIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
+	secondAuthz, err = ra.PerformValidation(ctx, secondAuthz, sniIndex)
+	test.AssertNotError(t, err, "PerformValidation on secondAuthz sni failed")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
@@ -822,7 +819,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	}
 }
 
-func TestUpdateAuthorization(t *testing.T) {
+func TestPerformValidation(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -830,11 +827,8 @@ func TestUpdateAuthorization(t *testing.T) {
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	// Create a challenge response with a key authorization
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	test.AssertNotError(t, err, "PerformValidation failed")
 	var vaAuthz core.Authorization
 	select {
 	case a := <-va.argument:
@@ -862,8 +856,8 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Update it with an empty challenge, no key authorization
 	// This should work as well based on modern key authorization semantics
-	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, core.Challenge{})
-	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	test.AssertNotError(t, err, "PerformValidation failed")
 	select {
 	case a := <-va.argument:
 		vaAuthz = a
@@ -883,7 +877,7 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 }
 
-func TestUpdateAuthorizationExpired(t *testing.T) {
+func TestPerformValidationExpired(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -893,13 +887,11 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	expiry := fc.Now().Add(-2 * time.Hour)
 	authz.Expires = &expiry
 
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-
-	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
+	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
-func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
+func TestPerformValidationAlreadyValid(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -915,21 +907,19 @@ func TestUpdateAuthorizationAlreadyValid(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize pending authorization")
 
-	response, err := makeResponse(finalAuthz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
 	finalAuthz.Challenges[ResponseIndex].Type = core.ChallengeTypeHTTP01
 	finalAuthz.Challenges[ResponseIndex].Status = core.StatusPending
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
 
-	// A subsequent call to update the authorization should return the expected error
-	_, err = ra.UpdateAuthorization(ctx, finalAuthz, ResponseIndex, response)
+	// A subsequent call to perform validation should return the expected error
+	_, err = ra.PerformValidation(ctx, finalAuthz, ResponseIndex)
 	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
-		"UpdateAuthorization of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
+		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
 }
 
-func TestUpdateAuthorizationNewRPC(t *testing.T) {
+func TestPerformValidationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -937,15 +927,13 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
 	authz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
 
-	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization failed")
+	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	test.AssertNotError(t, err, "PerformValidation failed")
 	var vaAuthz core.Authorization
 	select {
 	case a := <-va.argument:
@@ -3453,7 +3441,7 @@ func TestValidChallengeStillGood(t *testing.T) {
 	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
 }
 
-func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
+func TestPerformValidationBadChallengeType(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	pa, err := policy.New(map[string]bool{})
@@ -3461,8 +3449,8 @@ func TestUpdateAuthorizationBadChallengeType(t *testing.T) {
 	ra.PA = pa
 
 	exp := fc.Now().Add(10 * time.Hour)
-	_, err = ra.UpdateAuthorization(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0, core.Challenge{})
-	test.AssertError(t, err, "ra.UpdateAuthorization allowed a update to a authorization")
+	_, err = ra.PerformValidation(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0)
+	test.AssertError(t, err, "ra.PerformValidation allowed a update to a authorization")
 	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
 }
 

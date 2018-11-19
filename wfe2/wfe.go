@@ -1007,14 +1007,14 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		// misleading, the RA sends the authorization to the VA for validation. Once the validation
 		// is complete the VA returns back to the RA to finalize the authorization)
 		var err error
-		returnAuthz, err = wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, core.Challenge{})
+		returnAuthz, err = wfe.RA.PerformValidation(ctx, authz, challengeIndex)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
 	}
 
-	// assumption: UpdateAuthorization does not modify order of challenges
+	// assumption: PerformValidation does not modify order of challenges
 	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 

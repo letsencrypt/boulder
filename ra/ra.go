@@ -1409,12 +1409,24 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	return changed
 }
 
-// UpdateAuthorization updates an authorization with new values.
+// UpdateAuthorization is a legacy function in the process of being replaced by
+// PerformValidation.
+// TODO(@cpu): Delete this function.
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 	ctx context.Context,
 	base core.Authorization,
 	challengeIndex int,
-	response core.Challenge) (core.Authorization, error) {
+	_ core.Challenge) (core.Authorization, error) {
+	return ra.PerformValidation(ctx, base, challengeIndex)
+}
+
+// PerformValidation initiates validation for a specific challenge associated
+// with the given base authorization. The authorization and challenge are
+// updated based on the results.
+func (ra *RegistrationAuthorityImpl) PerformValidation(
+	ctx context.Context,
+	base core.Authorization,
+	challengeIndex int) (core.Authorization, error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
 		return core.Authorization{}, berrors.MalformedError("expired authorization")
@@ -1468,17 +1480,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return core.Authorization{}, berrors.InternalServerError("could not compute expected key authorization value")
-	}
-
-	// NOTE(@cpu): Historically challenge update required the client to send
-	// a JSON POST body that included a computed KeyAuthorization. The RA would
-	// check this provided authorization against its own computation of the key
-	// authorization and err if they did not match. New ACME specification does
-	// not require this - the client does not need to send the key authorization.
-	// To support this for ACMEv2 we only enforce the provided key authorization
-	// matches expected if the update included it.
-	if response.ProvidedKeyAuthorization != "" && expectedKeyAuthorization != response.ProvidedKeyAuthorization {
-		return core.Authorization{}, berrors.MalformedError("provided key authorization was incorrect")
 	}
 
 	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
