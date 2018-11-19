@@ -97,6 +97,7 @@ def start(race_detection, fakeclock=None, account_uri=None):
         [8104, 'boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
         [8001, 'boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
         [8101, 'boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(default_config_dir, "ca-b.json")],
+        [6789, 'akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
         [8006, 'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
         [8002, 'boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
         [8102, 'boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],

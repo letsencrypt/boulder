@@ -2,9 +2,6 @@ package akamai
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -100,7 +97,7 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = as.checkSignature(r, body)
+	err = CheckSignature("secret", as.URL, r, body)
 	if err != nil {
 		fmt.Printf("Error checking signature: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -140,38 +137,6 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	as.sendResponse(w, resp)
 }
-
-func (as *akamaiServer) checkSignature(r *http.Request, body []byte) error {
-	bodyHash := sha256.Sum256(body)
-	bodyHashB64 := base64.StdEncoding.EncodeToString(bodyHash[:])
-
-	authorization := r.Header.Get("Authorization")
-	authValues := make(map[string]string)
-	for _, v := range strings.Split(authorization, ";") {
-		splitValue := strings.Split(v, "=")
-		authValues[splitValue[0]] = splitValue[1]
-	}
-	headerTimestamp := authValues["timestamp"]
-	splitHeader := strings.Split(authorization, "signature=")
-	shortenedHeader, signature := splitHeader[0], splitHeader[1]
-	hostPort := strings.Split(as.URL, "://")[1]
-	// Assume all unittests use "secret" as the client secret.
-	h := hmac.New(sha256.New, signingKey("secret", headerTimestamp))
-	input := []byte(fmt.Sprintf("POST\thttp\t%s\t%s\t\t%s\t%s",
-		hostPort,
-		r.URL.Path,
-		bodyHashB64,
-		shortenedHeader,
-	))
-	h.Write(input)
-	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	if signature != expectedSignature {
-		return fmt.Errorf("Wrong signature %q in %q. Expected %q\n",
-			signature, authorization, expectedSignature)
-	}
-	return nil
-}
-
 func newAkamaiServer(code int, v3 bool) *akamaiServer {
 	m := http.NewServeMux()
 	as := akamaiServer{
