@@ -477,7 +477,12 @@ func TestFallbackErr(t *testing.T) {
 	untypedErr := errors.New("the least interesting kind of error")
 	berr := berrors.InternalServerError("code violet: class neptune")
 	netOpErr := &net.OpError{
+		Op:  "siphon",
 		Err: fmt.Errorf("port was clogged. please empty packets"),
+	}
+	netDialOpErr := &net.OpError{
+		Op:  "dial",
+		Err: fmt.Errorf("your call is important to us - please stay on the line"),
 	}
 	netErr := &testNetErr{}
 
@@ -499,14 +504,17 @@ func TestFallbackErr(t *testing.T) {
 			Err:  berr,
 		},
 		{
-			Name:           "A net.OpError instance",
-			Err:            netOpErr,
+			Name: "A non-dial net.OpError instance",
+			Err:  netOpErr,
+		},
+		{
+			Name:           "A dial net.OpError instance",
+			Err:            netDialOpErr,
 			ExpectFallback: true,
 		},
 		{
-			Name:           "A net.Error instance",
-			Err:            netErr,
-			ExpectFallback: true,
+			Name: "A generic net.Error instance",
+			Err:  netErr,
 		},
 		{
 			Name: "A URL error wrapping a standard error",
@@ -529,18 +537,23 @@ func TestFallbackErr(t *testing.T) {
 			},
 		},
 		{
-			Name: "A URL error wrapping a net OpError",
+			Name: "A URL error wrapping a non-dial net OpError",
 			Err: &url.Error{
 				Err: netOpErr,
+			},
+		},
+		{
+			Name: "A URL error wrapping a dial net.OpError",
+			Err: &url.Error{
+				Err: netDialOpErr,
 			},
 			ExpectFallback: true,
 		},
 		{
-			Name: "A URL error wrapping a net Error",
+			Name: "A URL error wrapping a generic net Error",
 			Err: &url.Error{
 				Err: netErr,
 			},
-			ExpectFallback: true,
 		},
 	}
 

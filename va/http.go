@@ -338,13 +338,11 @@ func (va *ValidationAuthorityImpl) fetchHTTPSimple(
 	return body, records, nil
 }
 
-// fallbackErr returns true only for:
-//   1. net.OpError instances
-//   2. net.Error instances
-//   3. url.Error instances wrapping one of the above
-// fallbackErr returns false for all other errors. By policy we're only
-// interested in retrying requests that were made to an IPv6 address that
-// generated a network error.
+// fallbackErr returns true only for net.OpError instances where the op is equal
+// to "dial", or url.Error instances wrapping such an error. fallbackErr returns
+// false for all other errors. By policy we're only interested in retrying
+// requests that were made to an IPv6 address that generated a network error
+// during dials.
 func fallbackErr(err error) bool {
 	// Err shouldn't ever be nil if we're considering it for fallback
 	if err == nil {
@@ -353,12 +351,13 @@ func fallbackErr(err error) bool {
 
 	switch err := err.(type) {
 	case *url.Error:
+		// URL Errors should be unwrapped and tested
 		return fallbackErr(err.Err)
 	case *net.OpError:
-		return true
-	case net.Error:
-		return true
+		// Net OpErrors are fallback errs only if the operation was a "dial"
+		return err.Op == "dial"
 	default:
+		// All other errs are not fallback errs
 		return false
 	}
 }
