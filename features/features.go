@@ -38,6 +38,9 @@ const (
 	ACME13KeyRollover
 	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
 	ProbeCTLogs
+	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
+	// a custom dialer.
+	SimplifiedVAHTTP
 )
 
 // List of features and their default value, protected by fMu
@@ -62,6 +65,7 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:               false,
 	ACME13KeyRollover:           false,
 	ProbeCTLogs:                 false,
+	SimplifiedVAHTTP:            false,
 }
 
 var fMu = new(sync.RWMutex)

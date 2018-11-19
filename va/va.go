@@ -80,6 +80,8 @@ type vaMetrics struct {
 	remoteValidationTime     *prometheus.HistogramVec
 	remoteValidationFailures prometheus.Counter
 	tlsALPNOIDCounter        *prometheus.CounterVec
+	http01Fallbacks          prometheus.Counter
+	http01Redirects          prometheus.Counter
 }
 
 func initMetrics(stats metrics.Scope) *vaMetrics {
@@ -113,12 +115,26 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		[]string{"oid"},
 	)
 	stats.MustRegister(tlsALPNOIDCounter)
+	http01Fallbacks := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "http01_fallbacks",
+			Help: "Number of IPv6 to IPv4 HTTP-01 fallback requests made",
+		})
+	stats.MustRegister(http01Fallbacks)
+	http01Redirects := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "http01_redirects",
+			Help: "Number of HTTP-01 redirects followed",
+		})
+	stats.MustRegister(http01Redirects)
 
 	return &vaMetrics{
 		validationTime:           validationTime,
 		remoteValidationTime:     remoteValidationTime,
 		remoteValidationFailures: remoteValidationFailures,
 		tlsALPNOIDCounter:        tlsALPNOIDCounter,
+		http01Fallbacks:          http01Fallbacks,
+		http01Redirects:          http01Redirects,
 	}
 }
 
@@ -687,7 +703,14 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, identifier, path, false, challenge)
+	var body []byte
+	var validationRecords []core.ValidationRecord
+	var prob *probs.ProblemDetails
+	if features.Enabled(features.SimplifiedVAHTTP) {
+		body, validationRecords, prob = va.fetchHTTPSimple(ctx, identifier.Value, "/"+path)
+	} else {
+		body, validationRecords, prob = va.fetchHTTP(ctx, identifier, path, false, challenge)
+	}
 	if prob != nil {
 		return validationRecords, prob
 	}
@@ -838,6 +861,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 	if berrors.Is(err, berrors.ConnectionFailure) {
 		return probs.ConnectionFailure(err.Error())
+	}
+	if berrors.Is(err, berrors.Unauthorized) {
+		return probs.Unauthorized(err.Error())
 	}
 
 	return probs.ConnectionFailure("Error getting validation data")
