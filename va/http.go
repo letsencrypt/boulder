@@ -340,9 +340,8 @@ func (va *ValidationAuthorityImpl) fetchHTTPSimple(
 
 // fallbackErr returns true only for net.OpError instances where the op is equal
 // to "dial", or url.Error instances wrapping such an error. fallbackErr returns
-// false for all other errors. By policy we're only interested in retrying
-// requests that were made to an IPv6 address that generated a network error
-// during dials.
+// false for all other errors. By policy, only dial errors (not read or write
+// errors) are eligble for fallback from an IPv6 to an IPv4 address.
 func fallbackErr(err error) bool {
 	// Err shouldn't ever be nil if we're considering it for fallback
 	if err == nil {
