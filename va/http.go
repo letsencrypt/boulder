@@ -351,23 +351,16 @@ func fallbackErr(err error) bool {
 		return false
 	}
 
-	// if the error is a URL error, unwrap it and see if the inner err is
-	// a fallback error
-	if urlErr, ok := err.(*url.Error); ok {
-		return fallbackErr(urlErr.Err)
-	}
-
-	// Network operation errors should provoke a fallback
-	if _, ok := err.(*net.OpError); ok {
+	switch err := err.(type) {
+	case *url.Error:
+		return fallbackErr(err.Err)
+	case *net.OpError:
 		return true
-	}
-
-	// Generic network errors (timeouts, etc) should also provoke a fallback
-	if _, ok := err.(net.Error); ok {
+	case net.Error:
 		return true
+	default:
+		return false
 	}
-
-	return false
 }
 
 // processHTTPValidation performs an HTTP validation for the given host, port
