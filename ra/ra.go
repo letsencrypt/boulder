@@ -1411,7 +1411,7 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 
 // UpdateAuthorization is a legacy function in the process of being replaced by
 // PerformValidation.
-// TODO(@cpu): Delete this function.
+// TODO(@cpu): Remove this. https://github.com/letsencrypt/boulder/issues/3947
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 	ctx context.Context,
 	base core.Authorization,

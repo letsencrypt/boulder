@@ -323,7 +323,7 @@ type RegistrationAuthorityClient interface {
 	NewCertificate(ctx context.Context, in *NewCertificateRequest, opts ...grpc.CallOption) (*core.Certificate, error)
 	UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*core.Registration, error)
 	// TODO(@cpu): Remove UpdateAuthorization. It is deprecated in favour of
-	// PerformValidation.
+	// PerformValidation. See https://github.com/letsencrypt/boulder/issues/3947
 	UpdateAuthorization(ctx context.Context, in *UpdateAuthorizationRequest, opts ...grpc.CallOption) (*core.Authorization, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*core.Authorization, error)
 	RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*core.Empty, error)
@@ -458,7 +458,7 @@ type RegistrationAuthorityServer interface {
 	NewCertificate(context.Context, *NewCertificateRequest) (*core.Certificate, error)
 	UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*core.Registration, error)
 	// TODO(@cpu): Remove UpdateAuthorization. It is deprecated in favour of
-	// PerformValidation.
+	// PerformValidation. See https://github.com/letsencrypt/boulder/issues/3947
 	UpdateAuthorization(context.Context, *UpdateAuthorizationRequest) (*core.Authorization, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*core.Authorization, error)
 	RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*core.Empty, error)
