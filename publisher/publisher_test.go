@@ -15,7 +15,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -200,9 +199,7 @@ func errorLogSrv() *httptest.Server {
 
 func errorBodyLogSrv() *httptest.Server {
 	m := http.NewServeMux()
-	m.HandleFunc("/ct/v1/", func(w http.ResponseWriter, r *http.Request) {
-		buf, _ := httputil.DumpRequest(r, true)
-		fmt.Printf("Req: \n%s\n", string(buf))
+	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("well this isn't good now is it."))
 	})
@@ -413,6 +410,28 @@ func TestLogCache(t *testing.T) {
 	test.AssertEquals(t, cache.Len(), 2)
 	test.AssertEquals(t, l2.uri, "http://log.two.example.com")
 	test.AssertEquals(t, l2.logID, k2b64)
+}
+
+func TestLogErrorBody(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	srv := errorBodyLogSrv()
+	defer srv.Close()
+	port, err := getPort(srv.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+
+	log.Clear()
+	logURI := fmt.Sprintf("http://localhost:%d", port)
+	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       &logURI,
+		LogPublicKey: &pkB64,
+		Der:          leaf.Raw,
+	})
+	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
+	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
 }
 
 func TestProbeLogs(t *testing.T) {
