@@ -11,13 +11,12 @@ package main
 
 import (
 	"crypto/rand"
-	// START CT CHANGES
-	"github.com/google/certificate-transparency-go/x509"
-	"github.com/google/certificate-transparency-go/x509/pkix"
-	// END CT CHANGES
 	"encoding/pem"
 	"math/big"
 	"time"
+
+	"github.com/google/certificate-transparency-go/x509"
+	"github.com/google/certificate-transparency-go/x509/pkix"
 )
 
 func main() {

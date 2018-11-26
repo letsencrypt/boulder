@@ -151,43 +151,43 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client/configpb",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/tls",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-105-gf840c15",
+			"Rev": "f840c15c5e89724c8db71732d703ebadb155479b"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",

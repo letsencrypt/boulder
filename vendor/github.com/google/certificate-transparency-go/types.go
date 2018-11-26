@@ -54,6 +54,12 @@ func (e LogEntryType) String() string {
 	}
 }
 
+// RFC6962 section 2.1 requires a prefix byte on hash inputs for second preimage resistance.
+const (
+	TreeLeafPrefix = byte(0x00)
+	TreeNodePrefix = byte(0x01)
+)
+
 // MerkleLeafType represents the MerkleLeafType enum from section 3.4:
 //   enum { timestamped_entry(0), (255) } MerkleLeafType;
 type MerkleLeafType tls.Enum // tls:"maxval:255"
@@ -193,6 +199,25 @@ func (d *DigitallySigned) UnmarshalJSON(b []byte) error {
 	return d.FromBase64String(content)
 }
 
+// RawLogEntry represents the (TLS-parsed) contents of an entry in a CT log.
+type RawLogEntry struct {
+	// Index is a position of the entry in the log.
+	Index int64
+	// Leaf is a parsed Merkle leaf hash input.
+	Leaf MerkleTreeLeaf
+	// Cert is:
+	// - A certificate if Leaf.TimestampedEntry.EntryType is X509LogEntryType.
+	// - A precertificate if Leaf.TimestampedEntry.EntryType is
+	//   PrecertLogEntryType, in the form of a DER-encoded Certificate as
+	//   originally added (which includes the poison extension and a signature
+	//   generated over the pre-cert by the pre-cert issuer).
+	// - Empty otherwise.
+	Cert ASN1Cert
+	// Chain is the issuing certificate chain starting with the issuer of Cert,
+	// or an empty slice if Cert is empty.
+	Chain []ASN1Cert
+}
+
 // LogEntry represents the (parsed) contents of an entry in a CT log.  This is described
 // in section 3.1, but note that this structure does *not* match the TLS structure
 // defined there (the TLS structure is never used directly in RFC6962).
@@ -271,6 +296,23 @@ type SignedTreeHead struct {
 	SHA256RootHash    SHA256Hash      `json:"sha256_root_hash"`    // The root hash of the log's Merkle tree
 	TreeHeadSignature DigitallySigned `json:"tree_head_signature"` // Log's signature over a TLS-encoded TreeHeadSignature
 	LogID             SHA256Hash      `json:"log_id"`              // The SHA256 hash of the log's public key
+}
+
+func (s SignedTreeHead) String() string {
+	sigStr, err := s.TreeHeadSignature.Base64String()
+	if err != nil {
+		sigStr = tls.DigitallySigned(s.TreeHeadSignature).String()
+	}
+
+	// If the LogID field in the SignedTreeHead is empty, don't include it in
+	// the string.
+	var logIDStr string
+	if id, empty := s.LogID, (SHA256Hash{}); id != empty {
+		logIDStr = fmt.Sprintf("LogID:%s, ", id.Base64String())
+	}
+
+	return fmt.Sprintf("{%sTreeSize:%d, Timestamp:%d, SHA256RootHash:%q, TreeHeadSignature:%q}",
+		logIDStr, s.TreeSize, s.Timestamp, s.SHA256RootHash.Base64String(), sigStr)
 }
 
 // TreeHeadSignature holds the data over which the signature in an STH is
@@ -368,7 +410,27 @@ func (m *MerkleTreeLeaf) Precertificate() (*x509.Certificate, error) {
 	return x509.ParseTBSCertificate(m.TimestampedEntry.PrecertEntry.TBSCertificate)
 }
 
+// APIEndpoint is a string that represents one of the Certificate Transparency
+// Log API endpoints.
+type APIEndpoint string
+
+// Certificate Transparency Log API endpoints; see section 4.
+// WARNING: Should match the URI paths without the "/ct/v1/" prefix.  If
+// changing these constants, may need to change those too.
+const (
+	AddChainStr          APIEndpoint = "add-chain"
+	AddPreChainStr       APIEndpoint = "add-pre-chain"
+	GetSTHStr            APIEndpoint = "get-sth"
+	GetEntriesStr        APIEndpoint = "get-entries"
+	GetProofByHashStr    APIEndpoint = "get-proof-by-hash"
+	GetSTHConsistencyStr APIEndpoint = "get-sth-consistency"
+	GetRootsStr          APIEndpoint = "get-roots"
+	GetEntryAndProofStr  APIEndpoint = "get-entry-and-proof"
+)
+
 // URI paths for Log requests; see section 4.
+// WARNING: Should match the API endpoints, with the "/ct/v1/" prefix.  If
+// changing these constants, may need to change those too.
 const (
 	AddChainPath          = "/ct/v1/add-chain"
 	AddPreChainPath       = "/ct/v1/add-pre-chain"
@@ -413,6 +475,29 @@ type GetSTHResponse struct {
 	Timestamp         uint64 `json:"timestamp"`           // Time that the tree was created
 	SHA256RootHash    []byte `json:"sha256_root_hash"`    // Root hash of the tree
 	TreeHeadSignature []byte `json:"tree_head_signature"` // Log signature for this STH
+}
+
+// ToSignedTreeHead creates a SignedTreeHead from the GetSTHResponse.
+func (r *GetSTHResponse) ToSignedTreeHead() (*SignedTreeHead, error) {
+	sth := SignedTreeHead{
+		TreeSize:  r.TreeSize,
+		Timestamp: r.Timestamp,
+	}
+
+	if len(r.SHA256RootHash) != sha256.Size {
+		return nil, fmt.Errorf("sha256_root_hash is invalid length, expected %d got %d", sha256.Size, len(r.SHA256RootHash))
+	}
+	copy(sth.SHA256RootHash[:], r.SHA256RootHash)
+
+	var ds DigitallySigned
+	if rest, err := tls.Unmarshal(r.TreeHeadSignature, &ds); err != nil {
+		return nil, fmt.Errorf("tls.Unmarshal(): %s", err)
+	} else if len(rest) > 0 {
+		return nil, fmt.Errorf("trailing data (%d bytes) after DigitallySigned", len(rest))
+	}
+	sth.TreeHeadSignature = ds
+
+	return &sth, nil
 }
 
 // GetSTHConsistencyResponse represents the JSON response to the get-sth-consistency

@@ -19,7 +19,6 @@ package client
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -35,11 +34,19 @@ type LogClient struct {
 	jsonclient.JSONClient
 }
 
+// CheckLogClient is an interface that allows (just) checking of various log contents.
+type CheckLogClient interface {
+	BaseURI() string
+	GetSTH(context.Context) (*ct.SignedTreeHead, error)
+	GetSTHConsistency(ctx context.Context, first, second uint64) ([][]byte, error)
+	GetProofByHash(ctx context.Context, hash []byte, treeSize uint64) (*ct.GetProofByHashResponse, error)
+}
+
 // New constructs a new LogClient instance.
 // |uri| is the base URI of the CT log instance to interact with, e.g.
-// http://ct.googleapis.com/pilot
+// https://ct.googleapis.com/pilot
 // |hc| is the underlying client to be used for HTTP requests to the CT log.
-// |opts| can be used to provide a customer logger interface and a public key
+// |opts| can be used to provide a custom logger interface and a public key
 // for signature verification.
 func New(uri string, hc *http.Client, opts jsonclient.Options) (*LogClient, error) {
 	logClient, err := jsonclient.New(uri, hc, opts)
@@ -49,18 +56,8 @@ func New(uri string, hc *http.Client, opts jsonclient.Options) (*LogClient, erro
 	return &LogClient{*logClient}, err
 }
 
-// RspError represents an error that occurred when processing a response from  a server,
-// and also includes key details from the http.Response that triggered the error.
-type RspError struct {
-	Err        error
-	StatusCode int
-	Body       []byte
-}
-
-// Error formats the RspError instance, focusing on the error.
-func (e RspError) Error() string {
-	return e.Err.Error()
-}
+// RspError represents a server error including HTTP information.
+type RspError = jsonclient.RspError
 
 // Attempts to add |chain| to the log, using the api end-point specified by
 // |path|. If provided context expires before submission is complete an
@@ -74,9 +71,6 @@ func (c *LogClient) addChainWithRetry(ctx context.Context, ctype ct.LogEntryType
 
 	httpRsp, body, err := c.PostAndParseWithRetry(ctx, path, &req, &resp)
 	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
 		return nil, err
 	}
 
@@ -131,9 +125,6 @@ func (c *LogClient) AddJSON(ctx context.Context, data interface{}) (*ct.SignedCe
 	var resp ct.AddChainResponse
 	httpRsp, body, err := c.PostAndParse(ctx, ct.AddJSONPath, &req, &resp)
 	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
 		return nil, err
 	}
 	var ds ct.DigitallySigned
@@ -164,40 +155,18 @@ func (c *LogClient) GetSTH(ctx context.Context) (*ct.SignedTreeHead, error) {
 	var resp ct.GetSTHResponse
 	httpRsp, body, err := c.GetAndParse(ctx, ct.GetSTHPath, nil, &resp)
 	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
 		return nil, err
 	}
-	sth := ct.SignedTreeHead{
-		TreeSize:  resp.TreeSize,
-		Timestamp: resp.Timestamp,
-	}
 
-	if len(resp.SHA256RootHash) != sha256.Size {
-		return nil, RspError{
-			Err:        fmt.Errorf("sha256_root_hash is invalid length, expected %d got %d", sha256.Size, len(resp.SHA256RootHash)),
-			StatusCode: httpRsp.StatusCode,
-			Body:       body,
-		}
-	}
-	copy(sth.SHA256RootHash[:], resp.SHA256RootHash)
-
-	var ds ct.DigitallySigned
-	if rest, err := tls.Unmarshal(resp.TreeHeadSignature, &ds); err != nil {
-		return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-	} else if len(rest) > 0 {
-		return nil, RspError{
-			Err:        fmt.Errorf("trailing data (%d bytes) after DigitallySigned", len(rest)),
-			StatusCode: httpRsp.StatusCode,
-			Body:       body,
-		}
-	}
-	sth.TreeHeadSignature = ds
-	if err := c.VerifySTHSignature(sth); err != nil {
+	sth, err := resp.ToSignedTreeHead()
+	if err != nil {
 		return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
 	}
-	return &sth, nil
+
+	if err := c.VerifySTHSignature(*sth); err != nil {
+		return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
+	}
+	return sth, nil
 }
 
 // VerifySTHSignature checks the signature in sth, returning any error encountered or nil if verification is
@@ -232,11 +201,7 @@ func (c *LogClient) GetSTHConsistency(ctx context.Context, first, second uint64)
 		"second": strconv.FormatUint(second, base10),
 	}
 	var resp ct.GetSTHConsistencyResponse
-	httpRsp, body, err := c.GetAndParse(ctx, ct.GetSTHConsistencyPath, params, &resp)
-	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
+	if _, _, err := c.GetAndParse(ctx, ct.GetSTHConsistencyPath, params, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Consistency, nil
@@ -251,11 +216,7 @@ func (c *LogClient) GetProofByHash(ctx context.Context, hash []byte, treeSize ui
 		"hash":      b64Hash,
 	}
 	var resp ct.GetProofByHashResponse
-	httpRsp, body, err := c.GetAndParse(ctx, ct.GetProofByHashPath, params, &resp)
-	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
+	if _, _, err := c.GetAndParse(ctx, ct.GetProofByHashPath, params, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -266,9 +227,6 @@ func (c *LogClient) GetAcceptedRoots(ctx context.Context) ([]ct.ASN1Cert, error)
 	var resp ct.GetRootsResponse
 	httpRsp, body, err := c.GetAndParse(ctx, ct.GetRootsPath, nil, &resp)
 	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
 		return nil, err
 	}
 	var roots []ct.ASN1Cert
@@ -280,4 +238,18 @@ func (c *LogClient) GetAcceptedRoots(ctx context.Context) ([]ct.ASN1Cert, error)
 		roots = append(roots, ct.ASN1Cert{Data: cert})
 	}
 	return roots, nil
+}
+
+// GetEntryAndProof returns a log entry and audit path for the index of a leaf.
+func (c *LogClient) GetEntryAndProof(ctx context.Context, index, treeSize uint64) (*ct.GetEntryAndProofResponse, error) {
+	base10 := 10
+	params := map[string]string{
+		"leaf_index": strconv.FormatUint(index, base10),
+		"tree_size":  strconv.FormatUint(treeSize, base10),
+	}
+	var resp ct.GetEntryAndProofResponse
+	if _, _, err := c.GetAndParse(ctx, ct.GetEntryAndProofPath, params, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
